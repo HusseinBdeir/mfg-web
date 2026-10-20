@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISABI Systems — Manufacturing Operations Command (WTC · BBConstruction · Lions Transport)</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0B1730">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ====================================================================
+         LEFT NAVIGATION RAIL (#0B1730 MIDNIGHT INK)
+         ==================================================================== -->
+    <aside class="app-rail">
+      <div class="rail-brand">
+        <div class="rail-brand-left">
+          <svg class="rail-brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#13264C" stroke="rgba(184,136,59,0.45)" stroke-width="2"/>
+            <path d="M22 14 H44 C50 14 52 18 52 23 C52 28 49 31 44 31 H20 C15 31 12 34 12 39 C12 44 14 50 20 50 H42"
+                  stroke="#F6F3EC" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter"/>
+            <circle cx="46" cy="50" r="4.5" fill="#B8883B"/>
+          </svg>
+          <div>
+            <div class="rail-brand-title">ISABI</div>
+            <div class="rail-brand-sub">MFG COMMAND · SQL</div>
+          </div>
+        </div>
+        <span class="rail-live-dot" title="Standalone SQLite + Offline PWA Active"></span>
+      </div>
+
+      <div class="rail-section-label">Executive</div>
+      <nav class="rail-nav" id="railNav">
+        <button class="rail-btn active" data-view="overview">
+          <span class="rail-btn-label"><span class="rail-btn-icon">01</span> Overview Command</span>
+          <span class="rail-btn-badge">LIVE</span>
+        </button>
+        <button class="rail-btn" data-view="sentinels">
+          <span class="rail-btn-label"><span class="rail-btn-icon">02</span> AI Sentinels</span>
+          <span class="rail-btn-badge" id="badgeSentinels">6</span>
+        </button>
+
+        <div class="rail-section-label">Operations &amp; Desk</div>
+        <button class="rail-btn" data-view="sales">
+          <span class="rail-btn-label"><span class="rail-btn-icon">03</span> Sales &amp; Deliveries</span>
+          <span class="rail-btn-badge" id="badgeSales">25.8k</span>
+        </button>
+        <button class="rail-btn" data-view="raw">
+          <span class="rail-btn-label"><span class="rail-btn-icon">04</span> Raw Material &amp; Quarries</span>
+          <span class="rail-btn-badge" id="badgeRaw">24.0k</span>
+        </button>
+        <button class="rail-btn" data-view="fleet">
+          <span class="rail-btn-label"><span class="rail-btn-icon">05</span> Equipment, Fleet &amp; Diesel</span>
+          <span class="rail-btn-badge" id="badgeFleet">1,637</span>
+        </button>
+        <button class="rail-btn" data-view="pricing">
+          <span class="rail-btn-label"><span class="rail-btn-icon">06</span> Pricing &amp; Commission</span>
+          <span class="rail-btn-badge" id="badgePricing">753</span>
+        </button>
+
+        <div class="rail-section-label">Treasury &amp; Ledger</div>
+        <button class="rail-btn" data-view="ar">
+          <span class="rail-btn-label"><span class="rail-btn-icon">07</span> Customers &amp; AR</span>
+          <span class="rail-btn-badge" id="badgeAR">$152k</span>
+        </button>
+        <button class="rail-btn" data-view="ap">
+          <span class="rail-btn-label"><span class="rail-btn-icon">08</span> Suppliers &amp; AP</span>
+          <span class="rail-btn-badge" id="badgeAP">3 Legs</span>
+        </button>
+        <button class="rail-btn" data-view="expenses">
+          <span class="rail-btn-label"><span class="rail-btn-icon">09</span> Expenses &amp; Payroll</span>
+          <span class="rail-btn-badge" id="badgeExp">$5.7M</span>
+        </button>
+        <button class="rail-btn" data-view="gl">
+          <span class="rail-btn-label"><span class="rail-btn-icon">10</span> General Ledger &amp; SOA</span>
+          <span class="rail-btn-badge">TB $0</span>
+        </button>
+
+        <div class="rail-section-label">Governance &amp; SQL</div>
+        <button class="rail-btn" data-view="statements">
+          <span class="rail-btn-label"><span class="rail-btn-icon">11</span> 22 Printable Statements</span>
+          <span class="rail-btn-badge">A4/PDF</span>
+        </button>
+        <button class="rail-btn" data-view="users">
+          <span class="rail-btn-label"><span class="rail-btn-icon">12</span> Users, Roles &amp; SQL DB</span>
+          <span class="rail-btn-badge">$0/seat</span>
+        </button>
+      </nav>
+
+      <div class="rail-footer">
+        <div class="rail-db-pill">
+          <span>ENGINE: SQLITE / PG</span>
+          <span style="color:#34D399" id="dbStatusText">● CONNECTED</span>
+        </div>
+        <div class="rail-db-sub">
+          Option 3 Standalone Web App<br>
+          0 Dataverse / 0 PPU Seats Required
+        </div>
+      </div>
+    </aside>
+
+    <!-- ====================================================================
+         MAIN WORKSPACE (STICKY COMMAND BAR + VIEW CONTAINER)
+         ==================================================================== -->
+    <div class="app-main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <!-- Company Switcher -->
+          <div class="seg-group" id="companySwitcher" role="tablist" aria-label="Operating Company">
+            <button class="seg-btn active" data-company="manufacturing-group">All Group (3)</button>
+            <button class="seg-btn" data-company="wtc">WTC</button>
+            <button class="seg-btn" data-company="bbconstruction">BBConstruction</button>
+            <button class="seg-btn" data-company="lionstransport">Lions Transport</button>
+          </div>
+
+          <!-- Period Picker -->
+          <select id="periodPicker" class="ctrl-select" aria-label="Reporting Period">
+            <option value="all" selected>All-Time (2024–2026)</option>
+            <option value="ytd">FY 2026 (YTD)</option>
+            <option value="mtd">October 2026 (MTD)</option>
+            <option value="sep2026">September 2026</option>
+            <option value="aug2026">August 2026</option>
+            <option value="q3_2026">Q3 2026 (Jul–Sep)</option>
+            <option value="fy2025">FY 2025 (Full Year)</option>
+          </select>
+
+          <!-- Date Basis Toggle (Transaction Date vs Reporting Date) -->
+          <div class="seg-group" id="basisSwitcher" title="Switch between physical Transaction Date and Invoice/Reporting Date">
+            <button class="seg-btn active" data-basis="tx">Tx Date</button>
+            <button class="seg-btn" data-basis="rep">Reporting Date</button>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <button class="seat-badge" id="seatSimBtn" title="Click to switch active user role or manage unlimited web seats">
+            <span id="activeUserLabel">Hussein Bdeir · Full Access</span>
+          </button>
+          <button class="btn btn-brass" id="openNewTicketBtn">+ New Ticket / Entry</button>
+          <button class="btn" id="openAskIsabiBtn">✦ Ask ISABI</button>
+          <button class="btn" id="themeToggleBtn" title="Toggle Light Paper / Dark Ink">◐ Ink</button>
+        </div>
+      </header>
+
+      <main class="workspace-scroll" id="workspaceContent">
+        <!-- Populated dynamically by js/app.js -->
+      </main>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       SMART ENTRY MODAL (35 MANUFACTURING SALES TICKET RULES / RAW / SETTLEMENT)
+       ====================================================================== -->
+  <div class="modal-backdrop" id="entryModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--brass-light);letter-spacing:0.12em;text-transform:uppercase" id="modalEyebrow">
+            ISABI SMART ENTRY ENGINE · 35 MANUFACTURING RULES ENFORCED
+          </div>
+          <div style="font-family:var(--font-serif);font-size:19px;font-weight:500" id="modalTitle">
+            New Sales Ticket
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div class="seg-group" id="modalTypeSwitcher">
+            <button class="seg-btn active" data-form="sales">Sales Ticket</button>
+            <button class="seg-btn" data-form="raw">Raw Receipt</button>
+            <button class="seg-btn" data-form="receipt">Customer Receipt (FIFO)</button>
+            <button class="seg-btn" data-form="fuel">Fuel Intake</button>
+          </div>
+          <button class="btn" id="closeEntryModalBtn" style="padding:4px 9px">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="entryModalBody"></div>
+      <div class="modal-foot">
+        <div class="mono" style="font-size:11px;color:var(--text-muted)" id="modalFooterNote">
+          Writes directly to local SQLite (`data/mfg.db`) + updates live SOA &amp; KPIs.
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="cancelEntryModalBtn">Cancel</button>
+          <button class="btn btn-primary" id="saveEntryModalBtn">✓ Post to SQL Ledger</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       ASK ISABI SLIDE-OVER DRAWER
+       ====================================================================== -->
+  <div class="drawer-backdrop" id="askDrawer" hidden>
+    <div class="drawer-panel">
+      <div class="modal-head">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--brass-light);letter-spacing:0.12em">EXECUTIVE AI COPILOT</div>
+          <div style="font-family:var(--font-serif);font-size:18px">Ask ISABI — Manufacturing Intelligence</div>
+        </div>
+        <button class="btn" id="closeAskDrawerBtn" style="padding:4px 9px">✕</button>
+      </div>
+      <div class="modal-body" id="askDrawerBody" style="flex:1;display:flex;flex-direction:column;gap:12px">
+        <div class="rule-banner">
+          Connected to live <strong>WTC</strong>, <strong>BBConstruction</strong> &amp; <strong>Lions Transport</strong> SQL dataset (<span class="mono">25,884</span> sales loads, <span class="mono">24,037</span> raw loads, <span class="mono">1,638</span> equipment units).
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="askPromptChips">
+          <button class="filter-chip" data-q="margin">Why is BBConstruction GM% higher than WTC?</button>
+          <button class="filter-chip" data-q="ar">Who are the top overdue AR customers?</button>
+          <button class="filter-chip" data-q="ap">Explain the 3-leg AP balance by quarry &amp; hauler</button>
+          <button class="filter-chip" data-q="diesel">Why is BBConstruction diesel tank negative?</button>
+          <button class="filter-chip" data-q="fleet">Compare Cost/Ton hauled across WTC &amp; BBConstruction</button>
+          <button class="filter-chip" data-q="seats">How much do we save with Option 3 vs Dataverse?</button>
+        </div>
+        <div id="askChatLog" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px"></div>
+      </div>
+      <div class="modal-foot">
+        <input type="text" id="askInput" class="search-input" style="flex:1;min-width:0" placeholder="Ask about WTC, BBConstruction, quarries, trucks, AR/AP, or GL...">
+        <button class="btn btn-primary" id="askSendBtn">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/seed_data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "ISABI Systems — Manufacturing Operations",
+  "short_name": "Mfg Ops",
+  "description": "WTC, BBConstruction & Lions Transport Standalone ERP, Fleet & BI Command Center",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0B1730",
+  "theme_color": "#0B1730",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

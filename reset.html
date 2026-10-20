@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Resetting Manufacturing Operations Cache…</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0B1730; color: #F4F2EE; display: grid; place-items: center; height: 100vh; }
+    .card { padding: 24px 32px; background: #132342; border: 1px solid #C0892F; border-radius: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>Clearing Service Worker &amp; Cache…</h3>
+    <p id="status">Preserving local database records and redirecting…</p>
+  </div>
+  <script>
+    (async function() {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) await r.unregister();
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          for (const k of keys) await caches.delete(k);
+        }
+      } catch (e) {}
+      location.replace('./?reset=' + Date.now());
+    })();
+  </script>
+</body>
+</html>
