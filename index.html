@@ -1,198 +1,167 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ISABI Systems — Manufacturing Operations Command (WTC · BBConstruction · Lions Transport)</title>
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ISABI Systems | Manufacturing Operations Command &amp; Ledger</title>
+  <meta name="description" content="ISABI Systems — Manufacturing Operations Command Center &amp; Double-Entry Ledger for WTC, BBConstruction &amp; Lions Transport.">
+  <meta name="theme-color" content="#F4F2EE">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ISABI Mfg">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0B1730">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=2.0">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/app.css?v=3.0">
 </head>
 <body>
-  <!-- ======================================================================
-       MULTI-DEVICE TEAM SIGN-IN GATE (#authGate)
-       ====================================================================== -->
-  <div class="auth-gate" id="authGate" hidden>
-    <div class="auth-card">
-      <div class="auth-left">
-        <div>
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
-            <svg width="38" height="38" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-              <rect width="64" height="64" rx="14" fill="#13264C" stroke="rgba(184,136,59,0.55)" stroke-width="2"/>
-              <path d="M22 14 H44 C50 14 52 18 52 23 C52 28 49 31 44 31 H20 C15 31 12 34 12 39 C12 44 14 50 20 50 H42"
-                    stroke="#F6F3EC" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter"/>
-              <circle cx="46" cy="50" r="4.5" fill="#B8883B"/>
-            </svg>
-            <div>
-              <div style="font-weight:700;font-size:15px;letter-spacing:0.18em;color:#F6F3EC">ISABI SYSTEMS</div>
-              <div class="mono" style="font-size:10px;color:var(--brass-light);letter-spacing:0.10em">MANUFACTURING OPERATIONS · MULTI-DEVICE CLOUD AUTH</div>
-            </div>
-          </div>
-
-          <h1 style="font-family:var(--font-serif);font-size:26px;font-weight:500;color:#FFFFFF;margin-bottom:6px">
-            Team Workspace Sign-In
-          </h1>
-          <p style="font-size:12.5px;color:rgba(246,243,236,0.72);margin-bottom:18px;line-height:1.5">
-            Sign in from any laptop, tablet, or phone. Row-Level Security (RLS) automatically scopes your session to your assigned operating companies (<strong>WTC</strong>, <strong>BBConstruction</strong>, <strong>Lions Transport</strong>) and role permissions.
-          </p>
-
-          <div id="authErrorBox" class="badge badge-err" style="display:none;width:100%;padding:8px 10px;margin-bottom:12px;font-size:11.5px"></div>
-
-          <div style="margin-bottom:12px">
-            <label class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(246,243,236,0.65)">Team Email Address</label>
-            <input type="email" id="loginEmailInput" class="auth-input" value="husseinbdeir@bhfirms.com" autocomplete="username" placeholder="name@bhfirms.com">
-          </div>
-
-          <div style="margin-bottom:16px">
-            <label class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(246,243,236,0.65);display:flex;justify-content:space-between">
-              <span>Access PIN / Passcode</span>
-              <span style="color:var(--brass-light)">4–8 Digits</span>
-            </label>
-            <input type="text" inputmode="numeric" id="loginPinInput" class="auth-input pin-disc" value="1111" autocomplete="off" placeholder="••••">
-          </div>
-
-          <button class="btn btn-brass" id="loginSubmitBtn" style="width:100%;justify-content:center;padding:10px 16px;font-size:13px;background:var(--brass);color:#070F20;font-weight:700">
-            → Sign In to Manufacturing Operations
-          </button>
-        </div>
-
-        <div style="margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:10px;color:rgba(246,243,236,0.55)">
-          <span>0 Dataverse Seats · 0 PPU Seats</span>
-          <span style="color:#34D399">● CLOUD RELAY + SQLITE READY</span>
-        </div>
-      </div>
-
-      <div class="auth-right">
-        <div>
-          <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--brass-light);margin-bottom:4px">
-            QUICK ROLE &amp; DEVICE SIMULATOR (1-CLICK FILL)
-          </div>
-          <p style="font-size:11.5px;color:rgba(246,243,236,0.65);margin-bottom:10px">
-            Click any team member below to pre-fill their credentials and test how Row-Level Security (RLS) scopes their view:
-          </p>
-          <div class="quick-seat-list" id="quickSeatList">
-            <!-- Populated by js/app.js -->
-          </div>
-        </div>
-        <div style="margin-top:12px;font-size:11px;color:rgba(246,243,236,0.55);line-height:1.4">
-          Need to add more plant or office staff? Sign in as <strong>Full Access (Owner)</strong> and open <strong>12 · Users, Roles &amp; Cloud Auth</strong> to issue new PINs or WhatsApp invite links.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="app-shell">
-    <!-- ====================================================================
-         LEFT NAVIGATION RAIL (#0B1730 MIDNIGHT INK)
-         ==================================================================== -->
-    <aside class="app-rail">
-      <div class="rail-brand">
-        <div class="rail-brand-left">
-          <svg class="rail-brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-            <rect width="64" height="64" rx="14" fill="#13264C" stroke="rgba(184,136,59,0.45)" stroke-width="2"/>
-            <path d="M22 14 H44 C50 14 52 18 52 23 C52 28 49 31 44 31 H20 C15 31 12 34 12 39 C12 44 14 50 20 50 H42"
-                  stroke="#F6F3EC" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter"/>
-            <circle cx="46" cy="50" r="4.5" fill="#B8883B"/>
+  <div class="app-shell" id="appShell">
+    <!-- ==================== LEFT INK RAIL (REV 10 "LEDGER") ==================== -->
+    <aside class="rail" id="sidebar">
+      <div class="brand">
+        <a href="#overview" class="brand-lockup" id="brandHomeLink" aria-label="ISABI Systems Manufacturing Command">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="brand-badge" role="img" aria-label="ISABI Systems Badge">
+            <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.35)" stroke-width="3"/>
+            <g transform="translate(39.52,77.62) scale(0.74)">
+              <g fill="#F4F2EE">
+                <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+              </g>
+              <g fill="#D9A54A">
+                <rect x="0" y="9.5" width="55.66" height="3.4"/>
+                <rect x="0" y="17.5" width="55.66" height="3.4"/>
+              </g>
+            </g>
           </svg>
-          <div>
-            <div class="rail-brand-title">ISABI</div>
-            <div class="rail-brand-sub">MFG COMMAND · SQL</div>
+          <div class="brand-wordmark-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -82.8 346.86 160.76" class="brand-wordmark" role="img" aria-label="ISABI Systems">
+              <g fill="#F4F2EE">
+                <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                <path transform="translate(-12.95,0)" d="M82.46 1.2Q74.06 1.2 66.77 0.2Q59.48 -0.81 54 -3.31Q48.52 -5.82 45.43 -10.3Q42.33 -14.78 42.33 -21.68Q42.33 -21.88 42.33 -22.21Q42.33 -22.53 42.43 -22.84H62.38Q62.28 -22.44 62.25 -22Q62.23 -21.56 62.23 -21.08Q62.23 -18.03 64.55 -16.27Q66.87 -14.51 71.11 -13.8Q75.35 -13.09 80.96 -13.09Q83.32 -13.09 85.78 -13.23Q88.24 -13.38 90.53 -13.74Q92.82 -14.1 94.65 -14.79Q96.47 -15.47 97.56 -16.55Q98.65 -17.63 98.65 -19.15Q98.65 -21.32 96.35 -22.57Q94.05 -23.82 90.14 -24.58Q86.22 -25.33 81.35 -25.92Q76.49 -26.52 71.28 -27.34Q66.06 -28.16 61.2 -29.61Q56.33 -31.06 52.41 -33.47Q48.5 -35.88 46.2 -39.66Q43.9 -43.45 43.9 -48.91Q43.9 -54.37 46.67 -58.34Q49.43 -62.31 54.42 -64.89Q59.41 -67.46 66.2 -68.71Q73 -69.95 81.01 -69.95Q89.17 -69.95 95.82 -68.69Q102.46 -67.43 107.23 -64.88Q112 -62.33 114.57 -58.47Q117.13 -54.6 117.13 -49.39V-48.01H97.39V-48.82Q97.39 -50.91 95.59 -52.53Q93.78 -54.15 90.34 -55.12Q86.89 -56.1 81.96 -56.1Q76.07 -56.1 72.27 -55.36Q68.48 -54.62 66.68 -53.34Q64.88 -52.07 64.88 -50.55Q64.88 -48.52 67.17 -47.33Q69.47 -46.15 73.39 -45.47Q77.3 -44.78 82.17 -44.19Q87.03 -43.6 92.25 -42.78Q97.46 -41.96 102.32 -40.59Q107.19 -39.21 111.11 -36.84Q115.03 -34.46 117.32 -30.83Q119.62 -27.2 119.62 -21.89Q119.62 -13.62 114.83 -8.52Q110.04 -3.43 101.65 -1.11Q93.26 1.2 82.46 1.2Z"/>
+                <path transform="translate(-12.35,0)" d="M125.53 0 159.33 -68.75H181.97L215.77 0H193.74L188.55 -11.02H151.65L146.51 0ZM158.47 -25.93H181.73L175.47 -39.9Q175.08 -40.84 174.37 -42.55Q173.67 -44.27 172.91 -46.22Q172.15 -48.17 171.51 -49.85Q170.87 -51.52 170.55 -52.33H169.8Q169.07 -50.49 168.11 -48.11Q167.15 -45.73 166.26 -43.49Q165.37 -41.25 164.73 -39.85Z"/>
+                <path transform="translate(-14.35,0)" d="M225.75 0V-68.75H282.27Q287.86 -68.75 292.39 -66.6Q296.91 -64.45 299.54 -60.65Q302.18 -56.85 302.18 -51.81Q302.18 -47.31 300.57 -44.11Q298.96 -40.91 296.25 -38.92Q293.54 -36.94 290.23 -35.95V-35.55Q294.09 -34.75 297.19 -32.66Q300.3 -30.57 302.11 -27.09Q303.92 -23.62 303.92 -18.57Q303.92 -12.66 301.07 -8.52Q298.22 -4.37 293.39 -2.19Q288.55 0 282.6 0ZM246.11 -14.49H275.8Q279 -14.49 281.02 -16.24Q283.05 -17.98 283.05 -21.59Q283.05 -23.49 282.17 -25.01Q281.3 -26.53 279.61 -27.37Q277.93 -28.21 275.53 -28.21H246.11ZM246.11 -41.59H274.11Q276.44 -41.59 278.03 -42.43Q279.63 -43.27 280.49 -44.8Q281.35 -46.33 281.35 -48.4Q281.35 -51.33 279.38 -53.04Q277.4 -54.75 274.39 -54.75H246.11Z"/>
+                <path transform="translate(-18.65,0)" d="M317.15 0V-68.75H337.51V0Z"/>
+              </g>
+              <g fill="#D9A54A">
+                <rect x="0" y="9.5" width="318.86" height="3.4"/>
+                <rect x="0" y="17.5" width="318.86" height="3.4"/>
+              </g>
+              <g fill="#F4F2EE" transform="translate(0,62.46) scale(0.42)">
+                <path transform="translate(-5.17,0)" d="M38 1.2Q31.29 1.2 25.32 0.09Q19.36 -1.01 14.83 -3.57Q10.3 -6.12 7.74 -10.29Q5.17 -14.45 5.17 -20.57Q5.17 -20.98 5.2 -21.44Q5.22 -21.89 5.27 -22.14H19.28Q19.24 -21.85 19.19 -21.3Q19.14 -20.75 19.14 -20.2Q19.14 -17 21.42 -14.84Q23.7 -12.68 27.98 -11.6Q32.25 -10.52 38.01 -10.52Q41.12 -10.52 43.86 -10.85Q46.6 -11.18 48.86 -11.81Q51.12 -12.44 52.78 -13.41Q54.43 -14.39 55.32 -15.72Q56.2 -17.04 56.2 -18.68Q56.2 -21.44 54.14 -23.17Q52.08 -24.9 48.57 -26.06Q45.06 -27.22 40.66 -28.1Q36.26 -28.98 31.59 -29.96Q26.91 -30.94 22.51 -32.44Q18.11 -33.94 14.6 -36.19Q11.1 -38.44 9.03 -41.93Q6.97 -45.43 6.97 -50.42Q6.97 -55.22 9.14 -58.86Q11.31 -62.51 15.42 -64.96Q19.53 -67.4 25.27 -68.63Q31.02 -69.85 38.16 -69.85Q45.15 -69.85 50.75 -68.58Q56.34 -67.31 60.28 -64.79Q64.22 -62.26 66.3 -58.56Q68.37 -54.86 68.37 -50V-48.6H54.56V-49.75Q54.56 -52.31 52.5 -54.17Q50.44 -56.02 46.83 -57.08Q43.22 -58.13 38.54 -58.13Q32.75 -58.13 28.92 -57.25Q25.1 -56.38 23.21 -54.78Q21.32 -53.18 21.32 -51.02Q21.32 -48.61 23.38 -47.06Q25.44 -45.5 28.95 -44.47Q32.46 -43.44 36.86 -42.58Q41.26 -41.72 45.93 -40.69Q50.61 -39.66 55.01 -38.21Q59.41 -36.76 62.92 -34.46Q66.42 -32.16 68.49 -28.74Q70.55 -25.32 70.55 -20.44Q70.55 -12.59 66.39 -7.82Q62.24 -3.05 54.89 -0.92Q47.55 1.2 38 1.2Z"/>
+                <path transform="translate(32.83,0)" d="M106.74 0V-27.85L76.88 -68.65H93.47L113.82 -39.79H114.56L134.96 -68.65H150.65L120.8 -27.85V0Z"/>
+                <path transform="translate(70.83,0)" d="M190 1.2Q183.29 1.2 177.32 0.09Q171.36 -1.01 166.83 -3.57Q162.3 -6.12 159.74 -10.29Q157.17 -14.45 157.17 -20.57Q157.17 -20.98 157.2 -21.44Q157.22 -21.89 157.27 -22.14H171.28Q171.24 -21.85 171.19 -21.3Q171.14 -20.75 171.14 -20.2Q171.14 -17 173.42 -14.84Q175.7 -12.68 179.98 -11.6Q184.25 -10.52 190.01 -10.52Q193.12 -10.52 195.86 -10.85Q198.6 -11.18 200.86 -11.81Q203.12 -12.44 204.78 -13.41Q206.43 -14.39 207.32 -15.72Q208.2 -17.04 208.2 -18.68Q208.2 -21.44 206.14 -23.17Q204.08 -24.9 200.57 -26.06Q197.06 -27.22 192.66 -28.1Q188.26 -28.98 183.59 -29.96Q178.91 -30.94 174.51 -32.44Q170.11 -33.94 166.6 -36.19Q163.1 -38.44 161.03 -41.93Q158.97 -45.43 158.97 -50.42Q158.97 -55.22 161.14 -58.86Q163.31 -62.51 167.42 -64.96Q171.53 -67.4 177.27 -68.63Q183.02 -69.85 190.16 -69.85Q197.15 -69.85 202.75 -68.58Q208.34 -67.31 212.28 -64.79Q216.22 -62.26 218.3 -58.56Q220.37 -54.86 220.37 -50V-48.6H206.56V-49.75Q206.56 -52.31 204.5 -54.17Q202.44 -56.02 198.83 -57.08Q195.22 -58.13 190.54 -58.13Q184.75 -58.13 180.92 -57.25Q177.1 -56.38 175.21 -54.78Q173.32 -53.18 173.32 -51.02Q173.32 -48.61 175.38 -47.06Q177.44 -45.5 180.95 -44.47Q184.46 -43.44 188.86 -42.58Q193.26 -41.72 197.93 -40.69Q202.61 -39.66 207.01 -38.21Q211.41 -36.76 214.92 -34.46Q218.42 -32.16 220.49 -28.74Q222.55 -25.32 222.55 -20.44Q222.55 -12.59 218.39 -7.82Q214.24 -3.05 206.89 -0.92Q199.55 1.2 190 1.2Z"/>
+                <path transform="translate(108.83,0)" d="M256.08 0V-56.39H230.05V-68.65H296.21V-56.39H270.13V0Z"/>
+                <path transform="translate(146.83,0)" d="M307.41 0V-68.65H368.59V-56.78H321.46V-40.94H363.42V-29.07H321.46V-11.87H369.28V0Z"/>
+                <path transform="translate(184.83,0)" d="M383.91 0V-68.65H405.9L419.05 -31.84Q419.7 -30.03 420.56 -27.36Q421.42 -24.7 422.31 -21.99Q423.2 -19.28 423.83 -17.15H424.58Q425.12 -19.03 425.9 -21.62Q426.69 -24.2 427.55 -26.92Q428.41 -29.64 429.16 -31.8L442.31 -68.65H463.96V0H449.9V-38.2Q449.9 -41.41 449.98 -44.81Q450.05 -48.21 450.18 -50.91Q450.3 -53.61 450.35 -54.64H449.55Q449.21 -53.46 448.41 -50.89Q447.61 -48.32 446.76 -45.49Q445.9 -42.66 445.2 -40.6L430.35 0H417.01L402.11 -40.54Q401.36 -42.6 400.57 -45.16Q399.77 -47.73 399.07 -50.28Q398.36 -52.82 397.81 -54.64H397.01Q397.11 -52.66 397.19 -49.78Q397.26 -46.89 397.34 -43.86Q397.42 -40.82 397.42 -38.2V0Z"/>
+                <path transform="translate(222.83,0)" d="M510.6 1.2Q503.89 1.2 497.92 0.09Q491.96 -1.01 487.43 -3.57Q482.9 -6.12 480.34 -10.29Q477.77 -14.45 477.77 -20.57Q477.77 -20.98 477.8 -21.44Q477.82 -21.89 477.87 -22.14H491.88Q491.84 -21.85 491.79 -21.3Q491.74 -20.75 491.74 -20.2Q491.74 -17 494.02 -14.84Q496.3 -12.68 500.58 -11.6Q504.85 -10.52 510.61 -10.52Q513.72 -10.52 516.46 -10.85Q519.2 -11.18 521.46 -11.81Q523.72 -12.44 525.38 -13.41Q206.43 -14.39 527.92 -15.72Q528.8 -17.04 528.8 -18.68Q528.8 -21.44 526.74 -23.17Q524.68 -24.9 521.17 -26.06Q517.66 -27.22 513.26 -28.1Q508.86 -28.98 504.19 -29.96Q499.51 -30.94 495.11 -32.44Q490.71 -33.94 487.2 -36.19Q483.7 -38.44 481.63 -41.93Q479.57 -45.43 479.57 -50.42Q479.57 -55.22 481.74 -58.86Q483.91 -62.51 488.02 -64.96Q492.13 -67.4 497.87 -68.63Q503.62 -69.85 510.76 -69.85Q517.75 -69.85 523.35 -68.58Q528.94 -67.31 532.88 -64.79Q536.82 -62.26 538.9 -58.56Q540.97 -54.86 540.97 -50V-48.6H527.16V-49.75Q527.16 -52.31 525.1 -54.17Q523.04 -56.02 519.43 -57.08Q515.82 -58.13 511.14 -58.13Q505.35 -58.13 501.52 -57.25Q497.7 -56.38 495.81 -54.78Q493.92 -53.18 493.92 -51.02Q493.92 -48.61 495.98 -47.06Q498.04 -45.5 501.55 -44.47Q505.06 -43.44 509.46 -42.58Q513.86 -41.72 518.53 -40.69Q523.21 -39.66 527.61 -38.21Q532.01 -36.76 535.52 -34.46Q539.02 -32.16 541.09 -28.74Q543.15 -25.32 543.15 -20.44Q543.15 -12.59 538.99 -7.82Q534.84 -3.05 527.49 -0.92Q520.15 1.2 510.6 1.2Z"/>
+              </g>
+            </svg>
+            <small class="brand-sub">Manufacturing Command</small>
           </div>
-        </div>
-        <span class="rail-live-dot" id="railSyncDot" title="Multi-Device Cloud Sync + SQLite Active"></span>
+        </a>
       </div>
 
-      <div class="rail-section-label">Executive</div>
-      <nav class="rail-nav" id="railNav">
-        <button class="rail-btn active" data-view="overview" data-req-pbi="partial">
-          <span class="rail-btn-label"><span class="rail-btn-icon">01</span> Overview Command</span>
-          <span class="rail-btn-badge">LIVE</span>
+      <nav class="rail-nav" id="sidebarNav" aria-label="Manufacturing Modules">
+        <div class="grp">Executive</div>
+        <button type="button" class="nav-item on" data-view="overview">
+          <span>Overview Command</span>
+          <em class="nav-pill brass">Live</em>
         </button>
-        <button class="rail-btn" data-view="sentinels" data-req-pbi="full">
-          <span class="rail-btn-label"><span class="rail-btn-icon">02</span> AI Sentinels</span>
-          <span class="rail-btn-badge" id="badgeSentinels">6</span>
-        </button>
-
-        <div class="rail-section-label">Operations &amp; Desk</div>
-        <button class="rail-btn" data-view="sales">
-          <span class="rail-btn-label"><span class="rail-btn-icon">03</span> Sales &amp; Deliveries</span>
-          <span class="rail-btn-badge" id="badgeSales">25.8k</span>
-        </button>
-        <button class="rail-btn" data-view="raw">
-          <span class="rail-btn-label"><span class="rail-btn-icon">04</span> Raw Material &amp; Quarries</span>
-          <span class="rail-btn-badge" id="badgeRaw">24.0k</span>
-        </button>
-        <button class="rail-btn" data-view="fleet">
-          <span class="rail-btn-label"><span class="rail-btn-icon">05</span> Equipment, Fleet &amp; Diesel</span>
-          <span class="rail-btn-badge" id="badgeFleet">1,637</span>
-        </button>
-        <button class="rail-btn" data-view="pricing">
-          <span class="rail-btn-label"><span class="rail-btn-icon">06</span> Pricing &amp; Commission</span>
-          <span class="rail-btn-badge" id="badgePricing">753</span>
+        <button type="button" class="nav-item" data-view="sentinels">
+          <span>AI Sentinels &amp; Audit</span>
+          <em class="nav-pill">6</em>
         </button>
 
-        <div class="rail-section-label">Treasury &amp; Ledger</div>
-        <button class="rail-btn" data-view="ar">
-          <span class="rail-btn-label"><span class="rail-btn-icon">07</span> Customers &amp; AR</span>
-          <span class="rail-btn-badge" id="badgeAR">$152k</span>
+        <div class="grp">Plant &amp; Dispatch</div>
+        <button type="button" class="nav-item" data-view="sales">
+          <span>Sales &amp; Deliveries</span>
+          <em class="nav-pill" id="navCountSales">25,884</em>
         </button>
-        <button class="rail-btn" data-view="ap">
-          <span class="rail-btn-label"><span class="rail-btn-icon">08</span> Suppliers &amp; AP</span>
-          <span class="rail-btn-badge" id="badgeAP">3 Legs</span>
+        <button type="button" class="nav-item" data-view="raw">
+          <span>Quarries &amp; Raw Intake</span>
+          <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
-        <button class="rail-btn" data-view="expenses" data-req-pbi="partial">
-          <span class="rail-btn-label"><span class="rail-btn-icon">09</span> Expenses &amp; Payroll</span>
-          <span class="rail-btn-badge" id="badgeExp">$5.7M</span>
+        <button type="button" class="nav-item" data-view="fleet">
+          <span>Fleet &amp; Diesel Control</span>
+          <em class="nav-pill" id="navCountFleet">1,637</em>
         </button>
-        <button class="rail-btn" data-view="gl" data-req-pbi="full">
-          <span class="rail-btn-label"><span class="rail-btn-icon">10</span> General Ledger &amp; SOA</span>
-          <span class="rail-btn-badge">TB $0</span>
+        <button type="button" class="nav-item" data-view="pricing">
+          <span>Pricing &amp; Commissions</span>
+          <em class="nav-pill" id="navCountPricing">753</em>
         </button>
 
-        <div class="rail-section-label">Governance &amp; SQL</div>
-        <button class="rail-btn" data-view="statements" data-req-stmt="partial">
-          <span class="rail-btn-label"><span class="rail-btn-icon">11</span> 22 Printable Statements</span>
-          <span class="rail-btn-badge">A4/PDF</span>
+        <div class="grp">Treasury &amp; Books</div>
+        <button type="button" class="nav-item" data-view="customers">
+          <span>Customers &amp; AR Aging</span>
+          <em class="nav-pill" id="navCountAR">$151.7k</em>
         </button>
-        <button class="rail-btn" data-view="users">
-          <span class="rail-btn-label"><span class="rail-btn-icon">12</span> Users, Roles &amp; Cloud Auth</span>
-          <span class="rail-btn-badge">$0/seat</span>
+        <button type="button" class="nav-item" data-view="suppliers">
+          <span>Suppliers &amp; 3-Leg AP</span>
+          <em class="nav-pill">3 Legs</em>
+        </button>
+        <button type="button" class="nav-item" data-view="expenses">
+          <span>Expenses &amp; Payroll</span>
+          <em class="nav-pill">$5.7M</em>
+        </button>
+        <button type="button" class="nav-item" data-view="ledger">
+          <span>General Ledger &amp; SOA</span>
+          <em class="nav-pill good">TB $0</em>
+        </button>
+
+        <div class="grp">Governance &amp; Cloud</div>
+        <button type="button" class="nav-item" data-view="statements">
+          <span>22 Statements (PDF)</span>
+          <em class="nav-pill">A4</em>
+        </button>
+        <button type="button" class="nav-item" data-view="users">
+          <span>Users &amp; Cloud Auth</span>
+          <em class="nav-pill brass" id="navCountUsers">10 Seats</em>
         </button>
       </nav>
 
       <div class="rail-footer">
-        <div class="rail-db-pill">
-          <span>CLOUD + SQL</span>
-          <span style="color:#34D399" id="dbStatusText">● MULTI-DEVICE LIVE</span>
+        <div class="me">
+          <span class="av" id="railUserAvatar">HB</span>
+          <div class="me-info">
+            <strong id="railUserName">Hussein Bdeir</strong>
+            <small id="activeRoleBadge">Full Access · 3 Entities</small>
+          </div>
+          <button type="button" class="rail-switch-btn" id="signOutBtn" title="Switch Team Login or Lock Session">Switch</button>
         </div>
-        <div class="rail-db-sub" id="railUserScopeText">
-          Option 3 Standalone Web App<br>
-          0 Dataverse / 0 PPU Seats Required
+        <div class="rail-status-row">
+          <span class="engine-dot"><i></i><span id="sqlStatusText">Cloud + SQLite Live</span></span>
+          <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
         </div>
       </div>
     </aside>
 
-    <!-- ====================================================================
-         MAIN WORKSPACE (STICKY COMMAND BAR + VIEW CONTAINER)
-         ==================================================================== -->
-    <div class="app-main">
-      <header class="topbar">
-        <div class="topbar-left">
-          <!-- Company Switcher (Dynamically filtered by User RLS!) -->
-          <div class="seg-group" id="companySwitcher" role="tablist" aria-label="Operating Company">
-            <button class="seg-btn active" data-company="manufacturing-group">All Group (3)</button>
-            <button class="seg-btn" data-company="wtc">WTC</button>
-            <button class="seg-btn" data-company="bbconstruction">BBConstruction</button>
-            <button class="seg-btn" data-company="lionstransport">Lions Transport</button>
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <div class="main-area">
+      <header class="top" id="topbar">
+        <div class="top-left">
+          <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Navigation">☰</button>
+          <div class="crumb">
+            <span id="topbarEyebrow">ISABI Systems · Manufacturing Operations · Double-Entry Ledger</span>
+            <b id="topbarTitle">Consolidated Group Overview (WTC · BBConstruction · Lions Transport)</b>
+          </div>
+        </div>
+
+        <div class="tools">
+          <!-- Entity / Business Unit Selector (Match ISABI Sandbox Bar) -->
+          <div class="entity-bar" id="companySwitch" role="group" aria-label="Operating Entity">
+            <button type="button" class="entity-btn active" data-company="manufacturing-group">All Group (3)</button>
+            <button type="button" class="entity-btn" data-company="wtc">WTC</button>
+            <button type="button" class="entity-btn" data-company="bbconstruction">BBConstruction</button>
+            <button type="button" class="entity-btn" data-company="lionstransport">Lions Transport</button>
           </div>
 
-          <!-- Period Picker -->
-          <select id="periodPicker" class="ctrl-select" aria-label="Reporting Period">
-            <option value="all" selected>All-Time (2024–2026)</option>
+          <!-- Period Slicer -->
+          <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
+            <option value="all">All-Time (2024–2026)</option>
             <option value="ytd">FY 2026 (YTD)</option>
             <option value="mtd">October 2026 (MTD)</option>
             <option value="sep2026">September 2026</option>
@@ -201,102 +170,185 @@
             <option value="fy2025">FY 2025 (Full Year)</option>
           </select>
 
-          <!-- Date Basis Toggle (Transaction Date vs Reporting Date) -->
-          <div class="seg-group" id="basisSwitcher" title="Switch between physical Transaction Date and Invoice/Reporting Date">
-            <button class="seg-btn active" data-basis="tx">Tx Date</button>
-            <button class="seg-btn" data-basis="rep">Reporting Date</button>
+          <!-- Date Basis -->
+          <div class="basis-switch" id="basisSwitch" role="group" aria-label="Accounting Date Basis">
+            <button type="button" class="basis-btn active" data-basis="tx" title="Operational Transaction Date">Tx Date</button>
+            <button type="button" class="basis-btn" data-basis="rep" title="Statutory Reporting Date">Rep Date</button>
           </div>
-        </div>
 
-        <div class="topbar-right">
-          <button class="seat-badge" id="seatSimBtn" title="Click to manage team logins or switch user session">
-            <span id="activeUserLabel">Hussein Bdeir · Full Access</span>
+          <!-- Smart Entry Action -->
+          <button type="button" class="btn btn-outline-bar" id="newEntryBtn">+ New Entry</button>
+
+          <!-- Official Ask ISABI Trigger -->
+          <button type="button" class="ask-isabi-trigger" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
+              <g fill="#F4F2EE">
+                <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+              </g>
+              <g fill="#D9A54A">
+                <rect x="0" y="9.5" width="55.66" height="3.4"/>
+                <rect x="0" y="17.5" width="55.66" height="3.4"/>
+              </g>
+            </svg>
+            <span>Ask ISABI</span>
           </button>
-          <button class="btn" id="signOutBtn" title="Open Multi-Device Sign-In / Switch User">⇄ Switch Login</button>
-          <button class="btn btn-brass" id="openNewTicketBtn">+ New Ticket / Entry</button>
-          <button class="btn" id="openAskIsabiBtn">✦ Ask ISABI</button>
-          <button class="btn" id="themeToggleBtn" title="Toggle Light Paper / Dark Ink">◐ Ink</button>
+
+          <!-- Theme Toggle -->
+          <button type="button" class="btn btn-ghost-bar" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
         </div>
       </header>
 
-      <main class="workspace-scroll" id="workspaceContent">
-        <!-- Populated dynamically by js/app.js -->
-      </main>
+      <!-- Dynamic Workspace Canvas -->
+      <main class="workspace" id="workspace" tabindex="-1"></main>
     </div>
   </div>
 
-  <!-- ======================================================================
-       SMART ENTRY MODAL (35 MANUFACTURING SALES TICKET RULES / RAW / SETTLEMENT)
-       ====================================================================== -->
+  <!-- ==================== ASK ISABI SLIDE-OVER DRAWER ==================== -->
+  <aside class="ai-drawer" id="aiDrawer" aria-hidden="true" aria-label="Ask ISABI Intelligence">
+    <div class="ai-console-hdr">
+      <div class="ai-console-title">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="brand-badge-sm" role="img" aria-label="ISABI Systems Badge">
+          <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.4)" stroke-width="3"/>
+          <g transform="translate(39.52,77.62) scale(0.74)">
+            <g fill="#F4F2EE">
+              <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+              <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+            </g>
+            <g fill="#D9A54A">
+              <rect x="0" y="9.5" width="55.66" height="3.4"/>
+              <rect x="0" y="17.5" width="55.66" height="3.4"/>
+            </g>
+          </g>
+        </svg>
+        <div>
+          <b>Ask ISABI · Manufacturing Intelligence</b>
+          <small>Wired to WTC, BBConstruction &amp; Lions Transport SQL books</small>
+        </div>
+      </div>
+      <button type="button" class="ai-close-btn" id="closeAiDrawerBtn" aria-label="Close Ask ISABI">✕</button>
+    </div>
+
+    <div class="ai-scope-bar">
+      <span>Active Context: <b id="aiDrawerScope">All Group · USD · All-Time</b></span>
+      <button type="button" class="ai-reset-btn" id="resetAiThreadBtn">Reset</button>
+    </div>
+
+    <div class="ai-prompt-pills" id="aiChips">
+      <button type="button" class="ai-pill-btn" data-prompt="Compare WTC vs BBConstruction revenue, margin, and operating profit">WTC vs BBConstruction P&amp;L</button>
+      <button type="button" class="ai-pill-btn" data-prompt="Show top overdue AR customers and credit risk">Overdue AR &amp; Credit Hold</button>
+      <button type="button" class="ai-pill-btn" data-prompt="Explain the diesel tank reconciliation variance across entities">Diesel Tank Audit</button>
+      <button type="button" class="ai-pill-btn" data-prompt="Verify the Lebanese CoA double-entry trial balance">Trial Balance Audit ($0.00)</button>
+      <button type="button" class="ai-pill-btn" data-prompt="How much do we save per year with Option 3 multi-device team logins?">License Savings &amp; Architecture</button>
+    </div>
+
+    <div class="ai-thread" id="aiMessages"></div>
+
+    <form class="ai-console-ftr" id="aiForm">
+      <input type="text" id="aiInput" placeholder="Ask ISABI about WTC, BBConstruction, Lions, AR, diesel, or trial balance..." autocomplete="off">
+      <button type="submit" class="btn btn-brass">Ask</button>
+    </form>
+  </aside>
+
+  <!-- ==================== SMART TRANSACTION ENTRY MODAL ==================== -->
   <div class="modal-backdrop" id="entryModal" hidden>
     <div class="modal-card">
-      <div class="modal-head">
+      <div class="modal-header">
         <div>
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--brass-light);letter-spacing:0.12em;text-transform:uppercase" id="modalEyebrow">
-            ISABI SMART ENTRY ENGINE · 35 MANUFACTURING RULES ENFORCED
-          </div>
-          <div style="font-family:var(--font-serif);font-size:19px;font-weight:500" id="modalTitle">
-            New Sales Ticket
+          <span class="modal-eyebrow">ISABI Double-Entry Operational Desk · Auto-Journal &amp; Price Matrix</span>
+          <h2 id="modalTitle">New Operational Transaction</h2>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeModalBtn">✕</button>
+      </div>
+      <div class="modal-tabs" id="modalTabs">
+        <button type="button" class="modal-tab active" data-form="sales">Sales / Weighbridge Ticket</button>
+        <button type="button" class="modal-tab" data-form="raw">Raw Quarry Purchase</button>
+        <button type="button" class="modal-tab" data-form="receipt">Customer AR Receipt</button>
+        <button type="button" class="modal-tab" data-form="fuel">Diesel Tank Intake / Issue</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- ==================== MULTI-DEVICE TEAM SIGN-IN GATE ==================== -->
+  <div class="auth-gate" id="authGate" hidden>
+    <div class="auth-card">
+      <div class="auth-left">
+        <div class="auth-brand">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="auth-badge" role="img" aria-label="ISABI Systems Badge">
+            <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.45)" stroke-width="3"/>
+            <g transform="translate(39.52,77.62) scale(0.74)">
+              <g fill="#F4F2EE">
+                <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+              </g>
+              <g fill="#D9A54A">
+                <rect x="0" y="9.5" width="55.66" height="3.4"/>
+                <rect x="0" y="17.5" width="55.66" height="3.4"/>
+              </g>
+            </g>
+          </svg>
+          <div>
+            <div class="auth-brand-title">ISABI SYSTEMS</div>
+            <div class="auth-brand-sub">Manufacturing Operations · Multi-Device Cloud Auth</div>
           </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <div class="seg-group" id="modalTypeSwitcher">
-            <button class="seg-btn active" data-form="sales">Sales Ticket</button>
-            <button class="seg-btn" data-form="raw">Raw Receipt</button>
-            <button class="seg-btn" data-form="receipt">Customer Receipt (FIFO)</button>
-            <button class="seg-btn" data-form="fuel">Fuel Intake</button>
-          </div>
-          <button class="btn" id="closeEntryModalBtn" style="padding:4px 9px">✕</button>
+
+        <h1 class="auth-heading">The Books Close on <span class="brass-text">ISABI</span>.</h1>
+        <p class="auth-desc">
+          Sign in from any workstation, plant weighbridge, tablet, or phone. Row-Level Security (RLS) automatically scopes your session to your assigned operating entities (<b>WTC</b>, <b>BBConstruction</b>, <b>Lions Transport</b>) and role permissions.
+        </p>
+
+        <form id="authLoginForm" class="auth-form" autocomplete="on">
+          <label class="auth-label">
+            <span>Team Email Address</span>
+            <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com" required autocomplete="username">
+          </label>
+          <label class="auth-label">
+            <span>Access PIN / Passcode <em>4 to 8 Digits</em></span>
+            <input type="text" id="authPinInput" class="auth-input pin-disc" inputmode="numeric" pattern="[0-9A-Za-z]{4,12}" placeholder="••••" required autocomplete="current-password">
+          </label>
+          <div id="authErrorBox" class="auth-error" hidden></div>
+          <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
+            Sign In to Manufacturing Command
+          </button>
+        </form>
+
+        <div class="auth-footer-note">
+          <span>0 Dataverse Seats · 0 Power BI PPU Seats</span>
+          <span id="authCloudStatusBadge" class="auth-cloud-ok">● Cloud Relay + SQLite Ready</span>
         </div>
       </div>
-      <div class="modal-body" id="entryModalBody"></div>
-      <div class="modal-foot">
-        <div class="mono" style="font-size:11px;color:var(--text-muted)" id="modalFooterNote">
-          Syncs across all team devices via Cloud Relay + writes to local SQLite (`data/mfg.db`).
+
+      <div class="auth-right">
+        <div class="auth-right-hdr">
+          <span>Quick Role &amp; Device Simulator (1-Click Fill)</span>
+          <small>Select any plant, dispatch, or executive seat below to test how Row-Level Security scopes the interface:</small>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="cancelEntryModalBtn">Cancel</button>
-          <button class="btn btn-primary" id="saveEntryModalBtn">✓ Post &amp; Sync to Cloud</button>
+        <div class="quick-seat-list" id="quickSeatList"></div>
+        <div class="auth-right-ftr">
+          Need to issue a new PIN or WhatsApp invite link? Sign in as <b>Full Access (Owner)</b> and open <b>Users, Roles &amp; Cloud Sync</b>.
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ======================================================================
-       ASK ISABI SLIDE-OVER DRAWER
-       ====================================================================== -->
-  <div class="drawer-backdrop" id="askDrawer" hidden>
-    <div class="drawer-panel">
-      <div class="modal-head">
-        <div>
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--brass-light);letter-spacing:0.12em">EXECUTIVE AI COPILOT</div>
-          <div style="font-family:var(--font-serif);font-size:18px">Ask ISABI — Manufacturing Intelligence</div>
-        </div>
-        <button class="btn" id="closeAskDrawerBtn" style="padding:4px 9px">✕</button>
-      </div>
-      <div class="modal-body" id="askDrawerBody" style="flex:1;display:flex;flex-direction:column;gap:12px">
-        <div class="rule-banner">
-          Connected to live <strong>WTC</strong>, <strong>BBConstruction</strong> &amp; <strong>Lions Transport</strong> SQL dataset (<span class="mono">25,884</span> sales loads, <span class="mono">24,037</span> raw loads, <span class="mono">1,638</span> equipment units).
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px" id="askPromptChips">
-          <button class="filter-chip" data-q="margin">Why is BBConstruction GM% higher than WTC?</button>
-          <button class="filter-chip" data-q="ar">Who are the top overdue AR customers?</button>
-          <button class="filter-chip" data-q="ap">Explain the 3-leg AP balance by quarry &amp; hauler</button>
-          <button class="filter-chip" data-q="diesel">Why is BBConstruction diesel tank negative?</button>
-          <button class="filter-chip" data-q="fleet">Compare Cost/Ton hauled across WTC &amp; BBConstruction</button>
-          <button class="filter-chip" data-q="seats">How much do we save with Option 3 vs Dataverse?</button>
-        </div>
-        <div id="askChatLog" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px"></div>
-      </div>
-      <div class="modal-foot">
-        <input type="text" id="askInput" class="search-input" style="flex:1;min-width:0" placeholder="Ask about WTC, BBConstruction, quarries, trucks, AR/AP, or GL...">
-        <button class="btn btn-primary" id="askSendBtn">Ask</button>
-      </div>
-    </div>
-  </div>
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" hidden></div>
 
-  <script src="js/endpoints.js?v=2.0"></script>
-  <script src="js/seed_data.js?v=2.0"></script>
-  <script src="js/app.js?v=2.0"></script>
+  <script src="js/endpoints.js?v=3.0"></script>
+  <script src="js/seed_data.js?v=3.0"></script>
+  <script src="js/app.js?v=3.0"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) { refreshing = true; location.reload(); }
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

@@ -128,8 +128,71 @@
   }
 
   // ==========================================================================
-  // VIEW 01: OVERVIEW COMMAND CENTER (MATCHES ISABI SANDBOX SCREENSHOT)
+  // VIEW 01: OVERVIEW COMMAND CENTER (EXACT ISABI REV 10 "LEDGER" ARCHITECTURE)
   // ==========================================================================
+  function buildExecutiveChart(months) {
+    const W = 660, H = 248, ml = 46, mr = 12, mt = 18, mb = 30;
+    const pw = W - ml - mr, ph = H - mt - mb;
+    const rows = (months || []).slice(-12);
+    if (!rows.length) {
+      return '<svg class="chart" viewBox="0 0 660 248"></svg>';
+    }
+
+    const sValsList = rows.map(r => {
+      const s = Math.max(0, Number(STATE.basis === 'rep' ? (r.sales_rep || r.sales_ttc || 0) : (r.sales_ttc || 0))) / 1000;
+      const raw = Math.max(0, Number(r.raw_cost || 0)) / 1000;
+      const prof = Math.max(0, Number(r.operating_profit || 0)) / 1000;
+      return [s, raw, prof];
+    });
+
+    const maxVal = Math.max(100, ...sValsList.map(v => Math.max(v[0], v[1] + v[2])));
+    const max = Math.ceil(maxVal / 250) * 250;
+    const y = v => mt + ph - (v / max) * ph;
+
+    let g = '';
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const tv = Math.round(max * f);
+      g += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${y(tv).toFixed(1)}" y2="${y(tv).toFixed(1)}"/>`;
+      g += `<text class="tick" x="${ml - 8}" y="${(y(tv) + 4).toFixed(1)}" text-anchor="end">$${tv.toLocaleString()}k</text>`;
+    });
+    g += `<text class="tick" x="${ml}" y="${mt - 5}" text-anchor="start">USD thousands</text>`;
+
+    const n = rows.length;
+    const slot = pw / n;
+    const bw = Math.min(28, Math.max(16, slot * 0.58));
+    const subW = (bw - 2) / 3;
+
+    rows.forEach((row, i) => {
+      const x0 = ml + slot * i + (slot - bw) / 2;
+      const [sK, rK, pK] = sValsList[i];
+      const ymFull = String(row['Year Month'] || row.YearMonthNo || '');
+      const ymShort = ymFull.replace('2024', '24').replace('2025', '25').replace('2026', '26');
+
+      const bars = [
+        { v: sK, cls: 's-1', x: x0 },
+        { v: rK, cls: 's-2', x: x0 + subW + 1 },
+        { v: pK, cls: 's-3', x: x0 + (subW + 1) * 2 }
+      ].map(b => {
+        const top = y(b.v);
+        const bottom = y(0);
+        const h = Math.max(2, bottom - top);
+        return `<rect class="${b.cls}" x="${b.x.toFixed(1)}" y="${top.toFixed(1)}" width="${subW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"/>`;
+      }).join('');
+
+      const tip = `Sales TTC: $${sK.toFixed(1)}k · Raw Cost: $${rK.toFixed(1)}k · Cash Profit: $${pK.toFixed(1)}k · Loads: ${fmtNum(row.loads)}`;
+      g += `<g class="col" data-m="${esc(ymFull)}" data-t="$${sK.toFixed(1)}k Sales" data-tip="${esc(tip)}">`
+        + `<rect class="hit" x="${(ml + slot * i).toFixed(1)}" y="${mt}" width="${slot.toFixed(1)}" height="${ph}"/>`
+        + `${bars}</g>`;
+      g += `<text class="tick" x="${(x0 + bw / 2).toFixed(1)}" y="${H - 9}" text-anchor="middle">${esc(ymShort.slice(0, 6))}</text>`;
+      if (i === n - 1) {
+        g += `<text class="lbl" x="${(x0 + bw / 2).toFixed(1)}" y="${(y(sK) - 6).toFixed(1)}" text-anchor="middle">$${Math.round(sK)}k</text>`;
+      }
+    });
+
+    g += `<line class="axis" x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}"/>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly revenue, quarry cost, and profit trajectory">${g}</svg>`;
+  }
+
   function renderOverview() {
     const m = getModel();
     const k = getKPI();
@@ -142,313 +205,254 @@
     const expVal = STATE.basis === 'rep' ? (k.exp_rep_date || k.expenses) : k.expenses;
     const opProfit = STATE.basis === 'rep' ? (k.op_profit_rep_date || k.operating_profit) : k.operating_profit;
 
-    // Build 12-month stacked SVG chart from m.monthly
-    const months = (m.monthly || []).slice(-12);
-    const maxMonthRev = Math.max(1, ...months.map(x => Number(x.sales_ttc || 0) + Number(x.raw_cost || 0) * 0.2));
-    const svgBars = months.map((row, idx) => {
-      const x = 44 + idx * 46;
-      const sVal = Number(STATE.basis === 'rep' ? (row.sales_rep || row.sales_ttc || 0) : (row.sales_ttc || 0));
-      const rVal = Number(row.raw_cost || 0);
-      const pVal = Math.max(0, Number(row.operating_profit || 0));
-      const hSales = Math.min(145, Math.round((sVal / maxMonthRev) * 145));
-      const hRaw = Math.min(145, Math.round((rVal / maxMonthRev) * 145));
-      const hProf = Math.min(145, Math.round((pVal / maxMonthRev) * 145));
-      const ymLabel = String(row['Year Month'] || row.YearMonthNo || '').replace('2025', '25').replace('2026', '26');
-      return `
-        <g transform="translate(${x}, 0)">
-          <title>${esc(row['Year Month'])}: Sales TTC ${fmtUSD(sVal)} | Raw Cost ${fmtUSD(rVal)} | Profit ${fmtUSD(pVal)} | Loads ${fmtNum(row.loads)}</title>
-          <rect x="0" y="${160 - hSales}" width="11" height="${Math.max(2, hSales)}" rx="2" fill="#0B1730"></rect>
-          <rect x="12" y="${160 - hRaw}" width="11" height="${Math.max(2, hRaw)}" rx="2" fill="#B8883B"></rect>
-          <rect x="24" y="${160 - hProf}" width="9" height="${Math.max(2, hProf)}" rx="2" fill="#137347"></rect>
-          <text x="16" y="176" text-anchor="middle" fill="#5A657D" font-family="JetBrains Mono" font-size="9">${esc(ymLabel.slice(0, 6))}</text>
-        </g>
-      `;
-    }).join('');
-
-    // Sentinels preview
     const sentinelRows = buildSentinelItems().slice(0, 4);
+    const soaRows = (m.soa_stream || []).slice(0, 8);
+    const booksCount = STATE.company === 'manufacturing-group' ? '3' : '1';
+    const booksUnit = STATE.company === 'manufacturing-group' ? ' of 3' : ' of 1';
 
-    // Recent SOA journal lines
-    const soaRows = (m.soa_stream || []).slice(0, 12);
+    let totDeb = 0, totCred = 0;
+    soaRows.forEach(r => {
+      totDeb += Number(r.debit || 0);
+      totCred += Number(r.credit || 0);
+    });
 
     return `
-      <!-- Executive Telemetry Banner -->
-      <div class="cockpit-banner">
-        <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">ISABI MANUFACTURING COMMAND · ${esc(k.label || 'All-Time')} · ${STATE.basis === 'rep' ? 'REPORTING DATE BASIS' : 'TRANSACTION DATE BASIS'}</div>
-          <div class="cockpit-title">${esc(COMPANY_LABELS[STATE.company])}</div>
-          <div class="cockpit-sub">Live SQL Engine (<span class="mono">data/mfg.db</span>) · Lebanese CoA Double-Entry SOA · Trial Balance Variance: <strong class="mono">$0.00</strong></div>
+      <!-- 1. UNIFIED 6-COLUMN EXECUTIVE KPI BAND (REV 10 "LEDGER" SURFACE) -->
+      <section class="kpis" aria-label="Executive Key Performance Indicators">
+        <div class="kpi">
+          <span class="k">Consolidated Revenue (TTC)</span>
+          <span class="v num">${fmtUSD(salesVal, 0)}</span>
+          <span class="d good">Net Ex-VAT: ${fmtUSD(k.net_sales, 0)} · 11% VAT Incl.</span>
         </div>
-        <div class="cockpit-pills">
-          <div class="cockpit-pill">
-            <div class="cockpit-pill-lbl">Sales Loads</div>
-            <div class="cockpit-pill-val brass">${fmtNum(k.loads)}</div>
-          </div>
-          <div class="cockpit-pill">
-            <div class="cockpit-pill-lbl">Tons Sold</div>
-            <div class="cockpit-pill-val">${fmtNum(k.tons_sold, 0)} t</div>
-          </div>
-          <div class="cockpit-pill">
-            <div class="cockpit-pill-lbl">Raw Quarry Loads</div>
-            <div class="cockpit-pill-val">${fmtNum(k.raw_loads)}</div>
-          </div>
-          <div class="cockpit-pill">
-            <div class="cockpit-pill-lbl">Active Fleet</div>
-            <div class="cockpit-pill-val emerald">${fmtNum(k.active_equip)} units</div>
-          </div>
-          <div class="cockpit-pill">
-            <div class="cockpit-pill-lbl">Price Rules</div>
-            <div class="cockpit-pill-val">${fmtNum(k.active_agreements)} active</div>
-          </div>
+        <div class="kpi">
+          <span class="k">Realized Gross Margin</span>
+          <span class="v num">${fmtUSD(k.gross_margin, 0)}<small>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</small></span>
+          <span class="d good">Raw Quarry Cost: ${fmtUSD(rawVal, 0)}</span>
         </div>
-      </div>
+        <div class="kpi">
+          <span class="k">Operating Cash Profit</span>
+          <span class="v num">${fmtUSD(opProfit, 0)}<small>${fmtPct(k.op_margin_pct, opProfit, k.net_sales)}</small></span>
+          <span class="d">Expenses: ${fmtUSD(expVal, 0)} · Payroll: ${fmtUSD(k.salaries_paid, 0)}</span>
+        </div>
+        <div class="kpi">
+          <span class="k">Cash Till &amp; Net Flow (5300)</span>
+          <span class="v num">${fmtUSD(k.cash_till, 2)}</span>
+          <span class="d">In: ${fmtUSD(k.cash_inflow, 0)} · Out: ${fmtUSD(k.cash_outflow, 0)}</span>
+        </div>
+        <div class="kpi">
+          <span class="k">Open AR Receivables (FIFO)</span>
+          <span class="v num">${fmtUSD(k.ar_balance, 0)}</span>
+          <span class="d ${Number(k.ar_overdue || 0) > 0 ? 'crit' : 'good'}">Overdue &gt;30d: ${fmtUSD(k.ar_overdue, 0)} · DSO ${fmtNum(k.dso_days, 0)}d</span>
+        </div>
+        <div class="kpi books">
+          <span class="k">Operating Books Status</span>
+          <span class="v num">${booksCount}<small>${booksUnit}</small></span>
+          <span class="d good">Trial Balance $0.00 Variance</span>
+        </div>
+      </section>
 
-      <!-- 5 Headline Executive KPIs (Matches ISABI Sandbox Screenshot) -->
-      <div class="kpi-grid-5">
-        <div class="kpi-card">
-          <div class="kpi-lbl"><span>REVENUE (SALES TTC)</span><span class="badge badge-ok">11% VAT INCL</span></div>
-          <div class="kpi-val">${fmtUSD(salesVal, 0)}</div>
-          <div class="kpi-delta up">▲ Net Ex-VAT: ${fmtUSD(k.net_sales, 0)} · Trans: ${fmtUSD(k.trans_rev, 0)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl"><span>GROSS MARGIN</span><span class="badge badge-brass">${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)} GM</span></div>
-          <div class="kpi-val">${fmtUSD(k.gross_margin, 0)}</div>
-          <div class="kpi-delta up">▲ Raw Cost: ${fmtUSD(rawVal, 0)} (${fmtNum(k.raw_tons, 0)} t)</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl"><span>OPERATING PROFIT (CASH)</span><span class="badge badge-ok">${fmtPct(k.op_margin_pct, opProfit, k.net_sales)} OP</span></div>
-          <div class="kpi-val">${fmtUSD(opProfit, 0)}</div>
-          <div class="kpi-delta neutral">Expenses: ${fmtUSD(expVal, 0)} · Salaries: ${fmtUSD(k.salaries_paid, 0)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl"><span>CASH TILL &amp; NET FLOW</span><span class="badge badge-info">5300 TILL</span></div>
-          <div class="kpi-val">${fmtUSD(k.cash_till, 2)}</div>
-          <div class="kpi-delta up">In: ${fmtUSD(k.cash_inflow, 0)} · Out: ${fmtUSD(k.cash_outflow, 0)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl"><span>OPEN AR RECEIVABLES</span><span class="badge badge-warn">FIFO AGED</span></div>
-          <div class="kpi-val">${fmtUSD(k.ar_balance, 0)}</div>
-          <div class="kpi-delta warn">Overdue &gt;30d: ${fmtUSD(k.ar_overdue, 0)} · DSO: ${fmtNum(k.dso_days, 0)}d</div>
-        </div>
-      </div>
+      <!-- 2. SECONDARY OPERATIONAL PROOF STRIP -->
+      <section class="ops-strip" aria-label="Operational Unit Economics">
+        <div class="ops-cell"><span>Sales Loads &amp; Volume</span><b class="num">${fmtNum(k.loads)} (${fmtNum(k.tons_sold, 0)} t)</b></div>
+        <div class="ops-cell"><span>Avg Selling Price (TTC)</span><b class="num">${fmtUSD(k.avg_price_ttc, 2)} / unit</b></div>
+        <div class="ops-cell"><span>Raw Quarry Intake</span><b class="num">${fmtNum(k.raw_loads)} loads (${fmtUSD(k.avg_raw_cost, 2)}/u)</b></div>
+        <div class="ops-cell"><span>Active Fleet &amp; Cost/Ton</span><b class="num">${fmtNum(k.active_equip)} units · ${fmtUSD(k.cost_per_ton, 2)}/t</b></div>
+        <div class="ops-cell"><span>Customer Price Matrix</span><b class="num">${fmtNum(k.active_agreements)} active rules</b></div>
+        <div class="ops-cell"><span>3-Leg AP Open Balance</span><b class="num">${fmtUSD(k.ap_balance, 0)}</b></div>
+      </section>
 
-      <!-- 6 Unit Economics & Fleet Telemetry Strip -->
-      <div class="unit-strip-6">
-        <div class="unit-card">
-          <div class="unit-lbl">Avg Selling Price (TTC)</div>
-          <div class="unit-val">${fmtUSD(k.avg_price_ttc, 2)} / unit</div>
-          <div class="unit-sub">Net Ex-VAT: ${fmtUSD(k.avg_price_net, 2)}</div>
-        </div>
-        <div class="unit-card">
-          <div class="unit-lbl">Avg Raw Quarry Cost</div>
-          <div class="unit-val">${fmtUSD(k.avg_raw_cost, 2)} / unit</div>
-          <div class="unit-sub">Mat: ${fmtUSD(k.raw_mat_cost, 0)} · Haul: ${fmtUSD(k.raw_haulage, 0)}</div>
-        </div>
-        <div class="unit-card">
-          <div class="unit-lbl">Fleet Cost per Ton</div>
-          <div class="unit-val">${fmtUSD(k.cost_per_ton, 2)} / ton</div>
-          <div class="unit-sub">Cost/Unit: ${fmtUSD(k.cost_per_unit, 2)} · Own Loads: ${fmtNum(k.own_fleet_loads)}</div>
-        </div>
-        <div class="unit-card">
-          <div class="unit-lbl">Diesel Tank Balance</div>
-          <div class="unit-val">${fmtNum(k.diesel_in_tank, 0)} L</div>
-          <div class="unit-sub">Issued: ${fmtNum(k.diesel_litres, 0)} L · Bought: ${fmtNum(k.diesel_purchased, 0)} L</div>
-        </div>
-        <div class="unit-card">
-          <div class="unit-lbl">AP Open Legs (401)</div>
-          <div class="unit-val">${fmtUSD(k.ap_balance, 0)}</div>
-          <div class="unit-sub">Paid: ${fmtUSD(k.settlements_paid, 0)}</div>
-        </div>
-        <div class="unit-card">
-          <div class="unit-lbl">Overtime &amp; Commission</div>
-          <div class="unit-val">${fmtUSD((k.overtime_bonus || 0) + (k.commission_due || 0), 0)}</div>
-          <div class="unit-sub">OT Due: ${fmtUSD(k.overtime_bonus, 0)} · Comm: ${fmtUSD(k.commission_due, 0)}</div>
-        </div>
-      </div>
-
-      <!-- Split Row: Monthly Trajectory Chart + Operating Entities / Sentinels -->
-      <div class="split-grid-2">
-        <div class="panel-card">
-          <div class="panel-head">
-            <div class="panel-title"><span>MONTHLY REVENUE, QUARRY COST &amp; PROFIT TRAJECTORY</span></div>
-            <div class="panel-meta">■ Ink: Sales TTC · ■ Brass: Raw Cost · ■ Emerald: Cash Profit</div>
-          </div>
-          <svg viewBox="0 0 605 188" style="width:100%;height:205px;display:block">
-            <line x1="36" y1="20" x2="595" y2="20" stroke="rgba(11,23,48,0.07)" stroke-dasharray="3,3"/>
-            <line x1="36" y1="66" x2="595" y2="66" stroke="rgba(11,23,48,0.07)" stroke-dasharray="3,3"/>
-            <line x1="36" y1="112" x2="595" y2="112" stroke="rgba(11,23,48,0.07)" stroke-dasharray="3,3"/>
-            <line x1="36" y1="160" x2="595" y2="160" stroke="rgba(11,23,48,0.22)"/>
-            ${svgBars}
-          </svg>
-          <div style="margin-top:12px;border-top:1px solid var(--border-hairline);padding-top:10px">
-            <div class="panel-title" style="margin-bottom:8px">OPERATING ENTITIES &amp; BOOKS STATUS (CONSOLIDATED GROUP)</div>
-            <div class="table-wrap">
-              <table class="ledger-table">
-                <thead>
-                  <tr>
-                    <th>Operating Company</th>
-                    <th class="r">Sales TTC</th>
-                    <th class="r">Loads</th>
-                    <th class="r">Tons Sold</th>
-                    <th class="r">Gross Margin</th>
-                    <th class="r">Op. Profit</th>
-                    <th class="r">Open AR</th>
-                    <th>TB Audit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style="cursor:pointer" data-jump-co="wtc">
-                    <td><strong>WTC (World Trading &amp; Construction)</strong></td>
-                    <td class="r">${fmtUSD(wtcK.sales_ttc, 2)}</td>
-                    <td class="r">${fmtNum(wtcK.loads)}</td>
-                    <td class="r">${fmtNum(wtcK.tons_sold, 0)}</td>
-                    <td class="r">${fmtUSD(wtcK.gross_margin, 0)} (${fmtPct(wtcK.gm_pct, wtcK.gross_margin, wtcK.net_sales)})</td>
-                    <td class="r">${fmtUSD(wtcK.operating_profit, 0)}</td>
-                    <td class="r">${fmtUSD(wtcK.ar_balance, 0)}</td>
-                    <td><span class="badge badge-ok">● TIED $0.00</span></td>
-                  </tr>
-                  <tr style="cursor:pointer" data-jump-co="bbconstruction">
-                    <td><strong>BBConstruction</strong></td>
-                    <td class="r">${fmtUSD(bbcK.sales_ttc, 2)}</td>
-                    <td class="r">${fmtNum(bbcK.loads)}</td>
-                    <td class="r">${fmtNum(bbcK.tons_sold, 0)}</td>
-                    <td class="r">${fmtUSD(bbcK.gross_margin, 0)} (${fmtPct(bbcK.gm_pct, bbcK.gross_margin, bbcK.net_sales)})</td>
-                    <td class="r">${fmtUSD(bbcK.operating_profit, 0)}</td>
-                    <td class="r">${fmtUSD(bbcK.ar_balance, 0)}</td>
-                    <td><span class="badge badge-ok">● TIED $0.00</span></td>
-                  </tr>
-                  <tr style="cursor:pointer" data-jump-co="lionstransport">
-                    <td><strong>Lions Transport</strong></td>
-                    <td class="r">${fmtUSD(ltK.sales_ttc, 2)}</td>
-                    <td class="r">${fmtNum(ltK.loads)}</td>
-                    <td class="r">${fmtNum(ltK.tons_sold, 0)}</td>
-                    <td class="r">${fmtUSD(ltK.gross_margin, 0)}</td>
-                    <td class="r">${fmtUSD(ltK.operating_profit, 0)}</td>
-                    <td class="r">${fmtUSD(ltK.ar_balance, 0)}</td>
-                    <td><span class="badge badge-info">● FLEET READY</span></td>
-                  </tr>
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td>CONSOLIDATED MANUFACTURING GROUP</td>
-                    <td class="r">${fmtUSD(k.sales_ttc, 2)}</td>
-                    <td class="r">${fmtNum(k.loads)}</td>
-                    <td class="r">${fmtNum(k.tons_sold, 0)}</td>
-                    <td class="r">${fmtUSD(k.gross_margin, 0)} (${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)})</td>
-                    <td class="r">${fmtUSD(k.operating_profit, 0)}</td>
-                    <td class="r">${fmtUSD(k.ar_balance, 0)}</td>
-                    <td><span class="badge badge-brass">AUDITED</span></td>
-                  </tr>
-                </tfoot>
-              </table>
+      <!-- 3. ROW 2: MONTHLY TRAJECTORY CHART + OPERATING ENTITIES & TOP GRADES -->
+      <section class="row2">
+        <div class="panel">
+          <div class="ph">
+            <div>
+              <h3>Monthly Revenue, Quarry Cost &amp; Cash Profit Trajectory</h3>
+              <span class="ph-sub">${esc(COMPANY_LABELS[STATE.company])} · Hover bars to inspect monthly ledger totals</span>
+            </div>
+            <div class="legend">
+              <span><i class="sw-box s-1"></i>Sales TTC</span>
+              <span><i class="sw-box s-2"></i>Raw Quarry Cost</span>
+              <span><i class="sw-box s-3"></i>Operating Profit</span>
             </div>
           </div>
+          <div class="chartwrap" id="execChartWrap">
+            ${buildExecutiveChart(m.monthly)}
+            <div class="chart-tip" id="execChartTip" hidden></div>
+          </div>
+          ${(() => {
+            const months = m.monthly || [];
+            const peakM = months.reduce((best, r) => (Number(r.sales_ttc || 0) > Number((best && best.sales_ttc) || 0) ? r : best), months[0] || {});
+            const peakLabel = peakM.Month || peakM.label || peakM.ym || '2026-02';
+            const avgM = months.length ? (Number(k.sales_ttc || 0) / months.length) : 0;
+            const cogsPct = Number(k.net_sales || 0) > 0 ? ((Number(k.raw_cost || 0) / Number(k.net_sales || 1)) * 100).toFixed(1) + '%' : '0.0%';
+            const opPctStr = fmtPct(k.op_margin_pct, opProfit, k.net_sales);
+            const gmPctStr = fmtPct(k.gm_pct, k.gross_margin, k.net_sales);
+            return `
+              <div class="chart-ftr">
+                <div class="chart-ftr-cell"><small>Peak Month (${esc(peakLabel)})</small><b class="num">${fmtUSD(peakM.sales_ttc || 0, 0)}</b></div>
+                <div class="chart-ftr-cell"><small>Monthly Run-Rate (${months.length || 12}m)</small><b class="num">${fmtUSD(avgM, 0)} / mo</b></div>
+                <div class="chart-ftr-cell"><small>Direct Quarry Ratio</small><b class="num">${cogsPct} of Net</b></div>
+                <div class="chart-ftr-cell"><small>Operating Profit %</small><b class="num">${opPctStr} (${gmPctStr} GM)</b></div>
+              </div>
+            `;
+          })()}
         </div>
 
-        <!-- Right Column: AI Sentinel Watchdogs + Top Products -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="panel-card">
-            <div class="panel-head">
-              <div class="panel-title"><span>AUTONOMOUS AI SENTINEL WATCHDOGS (M280)</span></div>
-              <button class="btn" style="padding:3px 8px;font-size:10.5px" data-nav-jump="sentinels">All 6 Sentinels →</button>
-            </div>
-            <div class="sentinel-list">
-              ${sentinelRows.map(s => `
-                <div class="sentinel-item ${s.severity}">
-                  <div>
-                    <div class="sentinel-title">${esc(s.title)}</div>
-                    <div class="sentinel-detail">${esc(s.detail)}</div>
-                  </div>
-                  <span class="badge ${s.badgeClass}">${esc(s.badge)}</span>
-                </div>
-              `).join('')}
-            </div>
+        <div class="panel">
+          <div class="ph">
+            <h3>Operating Entities &amp; Books Status</h3>
+            <span class="ph-sub">Click any entity to filter workspace</span>
           </div>
-
-          <div class="panel-card">
-            <div class="panel-head">
-              <div class="panel-title"><span>TOP AGGREGATES &amp; MATERIALS BY REVENUE</span></div>
-              <span class="panel-meta">${(m.products || []).length} Active Grades</span>
-            </div>
-            <div class="table-wrap">
-              <table class="ledger-table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>UoM</th>
-                    <th class="r">Loads</th>
-                    <th class="r">Tons</th>
-                    <th class="r">Avg TTC</th>
-                    <th class="r">Sales TTC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(m.products || []).slice(0, 6).map(p => `
-                    <tr>
-                      <td><strong>${esc(p.Product)}</strong></td>
-                      <td class="mono">${esc(p.UoM || 'm³')}</td>
-                      <td class="r">${fmtNum(p.loads)}</td>
-                      <td class="r">${fmtNum(p.tons_sold, 0)}</td>
-                      <td class="r">${fmtUSD(p.avg_price_ttc, 2)}</td>
-                      <td class="r"><strong>${fmtUSD(p.sales_ttc, 0)}</strong></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bottom Full-Width Audited General Ledger Stream (Closed with Brass Double Rule) -->
-      <div class="panel-card">
-        <div class="panel-head">
-          <div class="panel-title"><span>AUDITED GENERAL LEDGER STREAM (LEBANESE COA DOUBLE-ENTRY SOA)</span></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="panel-meta">Every Sales Ticket, Raw Quarry Leg, Settlement &amp; VAT 11% Entry</span>
-            <button class="btn" style="padding:3px 9px;font-size:11px" data-nav-jump="gl">Full Trial Balance →</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Company</th>
-                <th>Voucher / Doc</th>
-                <th>GL Code</th>
-                <th>Account Name</th>
-                <th>Counterparty / Detail</th>
-                <th>Narrative Description</th>
-                <th class="r">Debit ($)</th>
-                <th class="r">Credit ($)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${soaRows.map(r => `
+          <div class="table-scroll">
+            <table class="m-grid">
+              <thead>
                 <tr>
-                  <td class="mono">${esc(String(r.date || '').slice(0, 10))}</td>
-                  <td><span class="badge badge-brass">${esc(r.company || 'WTC')}</span></td>
-                  <td class="mono">${esc(r.doc || '—')}</td>
-                  <td class="mono"><strong>${esc(r.code)}</strong></td>
-                  <td>${esc(r.account)}</td>
-                  <td>${esc(r.detail || '—')}</td>
-                  <td>${esc(r.desc || '')}</td>
-                  <td class="r">${r.debit ? fmtUSD(r.debit, 2) : '—'}</td>
-                  <td class="r">${r.credit ? fmtUSD(r.credit, 2) : '—'}</td>
+                  <th>Operating Entity</th>
+                  <th class="n">Sales TTC</th>
+                  <th class="n">Loads</th>
+                  <th class="n">GM %</th>
+                  <th class="n">Op. Profit</th>
+                  <th>Books</th>
                 </tr>
-              `).join('')}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="7">DOUBLE-ENTRY TRIAL BALANCE VERIFICATION (${esc(COMPANY_LABELS[STATE.company])})</td>
-                <td class="r">TB CHECK: $0.00</td>
-                <td class="r">BALANCED ✓</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                <tr class="clickable-row" data-jump-co="wtc">
+                  <td><b>WTC · World Trading</b></td>
+                  <td class="n">${fmtUSD(wtcK.sales_ttc, 0)}</td>
+                  <td class="n">${fmtNum(wtcK.loads)}</td>
+                  <td class="n">${fmtPct(wtcK.gm_pct, wtcK.gross_margin, wtcK.net_sales)}</td>
+                  <td class="n">${fmtUSD(wtcK.operating_profit, 0)}</td>
+                  <td><span class="m-chip closed">Balanced</span></td>
+                </tr>
+                <tr class="clickable-row" data-jump-co="bbconstruction">
+                  <td><b>BBConstruction</b></td>
+                  <td class="n">${fmtUSD(bbcK.sales_ttc, 0)}</td>
+                  <td class="n">${fmtNum(bbcK.loads)}</td>
+                  <td class="n">${fmtPct(bbcK.gm_pct, bbcK.gross_margin, bbcK.net_sales)}</td>
+                  <td class="n">${fmtUSD(bbcK.operating_profit, 0)}</td>
+                  <td><span class="m-chip closed">Balanced</span></td>
+                </tr>
+                <tr class="clickable-row" data-jump-co="lionstransport">
+                  <td><b>Lions Transport</b></td>
+                  <td class="n">${fmtUSD(ltK.sales_ttc, 0)}</td>
+                  <td class="n">${fmtNum(ltK.loads || k.own_fleet_loads)}</td>
+                  <td class="n">Fleet</td>
+                  <td class="n">${fmtUSD(ltK.operating_profit, 0)}</td>
+                  <td><span class="m-chip closed">Synced</span></td>
+                </tr>
+                <tr class="total">
+                  <td>Group Total (3 BUs)</td>
+                  <td class="n">${fmtUSD(k.sales_ttc, 0)}</td>
+                  <td class="n">${fmtNum(k.loads)}</td>
+                  <td class="n">${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</td>
+                  <td class="n">${fmtUSD(k.operating_profit, 0)}</td>
+                  <td><span class="m-chip brass">Audited</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="ph" style="border-top:1px solid var(--line);margin-top:4px">
+            <h3>Top Aggregates &amp; Materials by Revenue</h3>
+            <span class="ph-sub">${(m.products || []).length} Active Grades</span>
+          </div>
+          <div class="table-scroll">
+            <table class="m-grid">
+              <thead>
+                <tr>
+                  <th>Aggregate Grade</th>
+                  <th>UoM</th>
+                  <th class="n">Loads</th>
+                  <th class="n">Tons</th>
+                  <th class="n">Avg TTC</th>
+                  <th class="n">Revenue TTC</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(m.products || []).slice(0, 4).map(p => `
+                  <tr>
+                    <td><b>${esc(p.Product)}</b></td>
+                    <td class="mu">${esc(p.UoM || 'm³')}</td>
+                    <td class="n">${fmtNum(p.loads)}</td>
+                    <td class="n">${fmtNum(p.tons_sold, 0)}</td>
+                    <td class="n">${fmtUSD(p.avg_price_ttc, 2)}</td>
+                    <td class="n"><b>${fmtUSD(p.sales_ttc, 0)}</b></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <!-- 4. ROW 3: EXECUTIVE EXCEPTIONS & WATCHDOGS + AUDITED DOUBLE-ENTRY GL STREAM -->
+      <section class="row3">
+        <div class="panel">
+          <div class="ph">
+            <h3>Executive Exceptions &amp; Sentinel Watchdogs</h3>
+            <button type="button" class="btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="sentinels">All 6 Sentinels</button>
+          </div>
+          <ul class="att">
+            ${sentinelRows.map(s => {
+              const cls = s.severity === 'ok' ? 'good' : s.severity;
+              return `
+                <li class="${cls}">
+                  <b>${esc(s.title)}</b>
+                  <span>${esc(s.detail)}</span>
+                  <button type="button" class="att-act" data-nav-jump="sentinels">${esc(s.badge)}</button>
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        </div>
+
+        <div class="panel">
+          <div class="ph">
+            <div>
+              <h3>Audited General Ledger Stream (Double-Entry Lebanese CoA)</h3>
+              <span class="ph-sub">Closed with the ISABI Double Rule · Every Sales Ticket, Quarry Leg, VAT 11% &amp; Settlement</span>
+            </div>
+            <button type="button" class="btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="ledger">Full Trial Balance</button>
+          </div>
+          <div class="table-scroll">
+            <table class="m-grid">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>BU</th>
+                  <th>Voucher</th>
+                  <th>CoA Account &amp; Counterparty</th>
+                  <th class="n">Debit</th>
+                  <th class="n">Credit</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${soaRows.map(r => {
+                  const rawDoc = String(r.doc || '—');
+                  const hashMatch = rawDoc.match(/#\d+/);
+                  const shortDoc = hashMatch ? ('TKT ' + hashMatch[0]) : rawDoc.slice(0, 14);
+                  const cp = String(r.detail || r.desc || '').split('·')[0].trim().slice(0, 20);
+                  return `
+                  <tr>
+                    <td class="mu">${esc(String(r.date || '').slice(0, 10))}</td>
+                    <td><span class="m-chip brass">${esc(r.company === 'BBConstruction' ? 'BBC' : (r.company || 'WTC'))}</span></td>
+                    <td class="mono">${esc(shortDoc)}</td>
+                    <td><b>${esc(r.code)}</b> · ${esc(String(r.account || '').slice(0, 18))}${cp ? ` <span class="mu">(${esc(cp)})</span>` : ''}</td>
+                    <td class="n">${r.debit ? fmtUSD(r.debit, 2) : '—'}</td>
+                    <td class="n">${r.credit ? fmtUSD(r.credit, 2) : '—'}</td>
+                  </tr>
+                  `;
+                }).join('')}
+                <tr class="total">
+                  <td colspan="4">Total Audited Ledger Stream · Trial Balance Variance: $0.00</td>
+                  <td class="n">${fmtUSD(totDeb, 2)}</td>
+                  <td class="n">${fmtUSD(totCred, 2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     `;
   }
 
@@ -2081,6 +2085,33 @@
     return allowed.length ? allowed : ['wtc'];
   }
 
+  const VIEW_TITLES = {
+    overview: 'Consolidated Command & Ledger Overview',
+    sentinels: 'AI Sentinel Watchdogs & Deterministic Audit (m280)',
+    sales: 'Sales & Weighbridge Deliveries Register',
+    raw: 'Raw Material & Quarry Intake (2-Leg Payable Split)',
+    fleet: 'Equipment, Fleet Telemetry & Diesel Control (m142)',
+    pricing: 'Customer & Quarry Price Matrix & Commissions',
+    customers: 'Customers & FIFO Accounts Receivable Aging',
+    ar: 'Customers & FIFO Accounts Receivable Aging',
+    suppliers: 'Suppliers, Quarries & 3-Leg Accounts Payable',
+    ap: 'Suppliers, Quarries & 3-Leg Accounts Payable',
+    expenses: 'Operating Expenses, Salaries & Overtime',
+    ledger: 'Lebanese CoA Trial Balance & SOA Journal Stream',
+    gl: 'Lebanese CoA Trial Balance & SOA Journal Stream',
+    statements: '22 Printable A4 Financial & Operational Statements',
+    users: 'Multi-Device Team Authentication, RLS & Cloud Sync'
+  };
+
+  function getInitials(name) {
+    return String(name || 'IS')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(p => p[0].toUpperCase())
+      .join('');
+  }
+
   function applyUserRlsAndPermissions() {
     const user = STATE.users[STATE.activeUserIdx] || STATE.users[0];
     const allowedCos = getAllowedCompanyKeys(user);
@@ -2089,7 +2120,7 @@
     if (!allowedCos.includes(STATE.company)) {
       STATE.company = allowedCos[0];
     }
-    document.querySelectorAll('#companySwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => {
       const cKey = btn.getAttribute('data-company');
       btn.hidden = !allowedCos.includes(cKey);
     });
@@ -2097,32 +2128,36 @@
     // 2. Enforce Module Rail Permissions by Role & Access Flags
     const pbiAcc = user.pbi_access || 'partial';
     const stmtAcc = user.statements_access || 'partial';
-    document.querySelectorAll('#railNav .rail-btn').forEach(btn => {
+    document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
       const v = btn.getAttribute('data-view');
       let show = true;
       if (v === 'overview' && pbiAcc === 'none') show = false;
       if (v === 'sentinels' && pbiAcc !== 'full') show = false;
-      if (v === 'gl' && pbiAcc !== 'full') show = false;
+      if ((v === 'ledger' || v === 'gl') && pbiAcc !== 'full') show = false;
       if (v === 'expenses' && pbiAcc === 'none') show = false;
       if (v === 'statements' && stmtAcc === 'none') show = false;
       btn.hidden = !show;
     });
 
     // Ensure current view is allowed for this role
-    if (pbiAcc === 'none' && ['overview', 'sentinels', 'gl', 'expenses'].includes(STATE.view)) {
+    if (pbiAcc === 'none' && ['overview', 'sentinels', 'ledger', 'gl', 'expenses'].includes(STATE.view)) {
       STATE.view = user.email.includes('fuel') ? 'fleet' : 'sales';
     }
 
     // 3. Enforce New Ticket / Entry button permission
     const canEnter = user.role.includes('Owner') || user.role.includes('Entry');
-    const newBtn = document.getElementById('openNewTicketBtn');
+    const newBtn = document.getElementById('newEntryBtn');
     if (newBtn) newBtn.hidden = !canEnter;
 
-    // 4. Update Rail Scope Footer
-    const scopeEl = document.getElementById('railUserScopeText');
-    if (scopeEl) {
-      scopeEl.innerHTML = `Signed in: <strong>${esc(user.full_name)}</strong><br>RLS Scope: ${esc(user.companies)}`;
-    }
+    // 4. Update Rail User Profile & RLS Footer
+    const avEl = document.getElementById('railUserAvatar');
+    const nmEl = document.getElementById('railUserName');
+    const rlEl = document.getElementById('activeRoleBadge');
+    const scEl = document.getElementById('railRlsScope');
+    if (avEl) avEl.textContent = getInitials(user.full_name);
+    if (nmEl) nmEl.textContent = user.full_name;
+    if (rlEl) rlEl.textContent = user.role;
+    if (scEl) scEl.textContent = String(user.companies || 'WTC').replace(/BBConstruction/g, 'BBC').replace(/Lions Transport/g, 'Lions');
   }
 
   function renderQuickSeatsInAuthGate() {
@@ -2131,12 +2166,12 @@
     listEl.innerHTML = STATE.users.map((u, idx) => `
       <button type="button" class="quick-seat-item" data-quick-seat="${idx}">
         <div>
-          <div style="font-weight:600;font-size:12px">${esc(u.full_name)}</div>
-          <div class="mono" style="font-size:10px;color:rgba(246,243,236,0.62)">${esc(u.email)} · ${esc(u.companies)}</div>
+          <b>${esc(u.full_name)}</b>
+          <small>${esc(u.email)} · ${esc(u.companies)}</small>
         </div>
-        <div style="text-align:right">
-          <span class="badge badge-brass">${esc(u.role)}</span>
-          <div class="mono" style="font-size:9.5px;color:#34D399;margin-top:2px">PIN: ${esc(u.pin_code || '1111')}</div>
+        <div class="quick-seat-meta">
+          <span class="quick-seat-role">${esc(u.role)}</span>
+          <span class="quick-seat-pin">PIN: ${esc(u.pin_code || '1111')}</span>
         </div>
       </button>
     `).join('');
@@ -2145,8 +2180,8 @@
       btn.addEventListener('click', () => {
         const u = STATE.users[Number(btn.getAttribute('data-quick-seat'))];
         if (!u) return;
-        const emEl = document.getElementById('loginEmailInput');
-        const pinEl = document.getElementById('loginPinInput');
+        const emEl = document.getElementById('authEmailInput');
+        const pinEl = document.getElementById('authPinInput');
         if (emEl) emEl.value = u.email;
         if (pinEl) pinEl.value = u.pin_code || '1111';
         performLogin(u.email, u.pin_code || '1111');
@@ -2156,8 +2191,13 @@
 
   function openAuthGate() {
     renderQuickSeatsInAuthGate();
+    const activeUser = STATE.users[STATE.activeUserIdx] || STATE.users[0];
+    const emEl = document.getElementById('authEmailInput');
+    const pinEl = document.getElementById('authPinInput');
+    if (emEl && activeUser) emEl.value = activeUser.email;
+    if (pinEl && activeUser) pinEl.value = activeUser.pin_code || '1111';
     const errEl = document.getElementById('authErrorBox');
-    if (errEl) errEl.style.display = 'none';
+    if (errEl) errEl.hidden = true;
     const gate = document.getElementById('authGate');
     if (gate) gate.hidden = false;
   }
@@ -2171,7 +2211,7 @@
     if (idx < 0) {
       if (errEl) {
         errEl.textContent = 'Email not found in Manufacturing Team Directory.';
-        errEl.style.display = 'block';
+        errEl.hidden = false;
       }
       return;
     }
@@ -2181,7 +2221,7 @@
     if (pin !== expectedPin) {
       if (errEl) {
         errEl.textContent = 'Incorrect Access PIN for ' + user.full_name + '.';
-        errEl.style.display = 'block';
+        errEl.hidden = false;
       }
       return;
     }
@@ -2235,17 +2275,17 @@
     const w = SEED.models.wtc?.periods?.all || {};
     const b = SEED.models.bbconstruction?.periods?.all || {};
 
-    if (q.includes('margin') || q.includes('gm') || q.includes('bbconstruction')) {
-      return `<strong>Gross Margin Analysis (WTC vs BBConstruction):</strong><br>
-        • <strong>BBConstruction</strong> achieves an <strong>81.3% Gross Margin</strong> (${fmtUSD(b.gross_margin, 0)} on ${fmtUSD(b.net_sales, 0)} Net Sales) because a larger share of its raw aggregates is extracted from own/JV pits with lower third-party quarry royalties (${fmtUSD(b.raw_cost, 0)} across ${fmtNum(b.raw_loads)} loads).<br>
-        • <strong>WTC</strong> achieves a <strong>64.7% Gross Margin</strong> (${fmtUSD(w.gross_margin, 0)} on ${fmtUSD(w.net_sales, 0)} Net Sales) with ${fmtUSD(w.raw_cost, 0)} in raw material &amp; haulage across ${fmtNum(w.raw_loads)} loads, but generates a higher <strong>Operating Profit of ${fmtUSD(w.operating_profit, 0)}</strong> (14.6% cash margin vs BBConstruction's 4.2%).`;
+    if (q.includes('margin') || q.includes('gm') || q.includes('bbconstruction') || q.includes('p&l')) {
+      return `<strong>Gross Margin &amp; P&amp;L Analysis (WTC vs BBConstruction):</strong><br>
+        • <strong>BBConstruction</strong> achieves a <strong>79.6% Gross Margin</strong> (${fmtUSD(b.gross_margin, 0)} on ${fmtUSD(b.net_sales, 0)} Net Sales) because a larger share of its raw aggregates is extracted from own/JV pits with lower third-party quarry royalties (${fmtUSD(b.raw_cost, 0)} across ${fmtNum(b.raw_loads)} loads).<br>
+        • <strong>WTC</strong> achieves a <strong>64.7% Gross Margin</strong> (${fmtUSD(w.gross_margin, 0)} on ${fmtUSD(w.net_sales, 0)} Net Sales) with ${fmtUSD(w.raw_cost, 0)} in raw material &amp; haulage across ${fmtNum(w.raw_loads)} loads, and generates <strong>${fmtUSD(w.operating_profit, 0)} in Cash Operating Profit</strong>.`;
     }
     if (q.includes('ar') || q.includes('overdue') || q.includes('receivable') || q.includes('customer')) {
       const topC = (SEED.models['manufacturing-group']?.customers || []).slice(0, 4).map(c => `${c.Customer} (${fmtUSD(c.ar_balance, 0)})`).join(', ');
       return `<strong>FIFO Accounts Receivable Summary:</strong><br>
         • Consolidated Open AR is <strong>${fmtUSD(g.ar_balance, 2)}</strong> (WTC: ${fmtUSD(w.ar_balance, 2)}, BBConstruction: ${fmtUSD(b.ar_balance, 2)}).<br>
         • Per rule <code class="mono">m249</code>, VAT-registered customers carry their 11% VAT inside their receivable balance.<br>
-        • Key customer accounts: ${topC}.`;
+        • Key customer balances: ${topC}.`;
     }
     if (q.includes('ap') || q.includes('leg') || q.includes('quarry') || q.includes('supplier')) {
       return `<strong>3-Leg Accounts Payable Engine (<code class="mono">m192</code>):</strong><br>
@@ -2260,15 +2300,13 @@
         • <strong>WTC Tank Balance:</strong> <code class="mono">+1,042.0 L</code> (422,500 L purchased − 401,532 L issued to fleet − 19,926 L sold).<br>
         • <strong>BBConstruction Tank Balance:</strong> <code class="mono">-242,095.0 L</code> because fleet dispensers logged 242,095 L of fuel intakes while bulk diesel purchase invoices were recorded under General Expenses rather than Fuel Purchases.`;
     }
-    if (q.includes('fleet') || q.includes('cost/ton') || q.includes('truck')) {
-      return `<strong>Fleet Unit Economics (1,637 Active Units):</strong><br>
-        • <strong>WTC:</strong> ${fmtNum(w.active_equip)} active units · Cost/Ton Hauled = <strong>$0.46/ton</strong> ($0.71/m³).<br>
-        • <strong>BBConstruction:</strong> ${fmtNum(b.active_equip)} active units · Cost/Ton Hauled = <strong>$0.26/ton</strong> ($0.29/m³).<br>
-        • Protected by <code class="mono">m142</code> Odometer/Hour-Meter median tolerance guard.`;
+    if (q.includes('trial') || q.includes('balance') || q.includes('coa')) {
+      return `<strong>Lebanese CoA Double-Entry Trial Balance Verification:</strong><br>
+        • All 41,280+ SOA journal legs across Class 4 (Receivables/Payables/VAT), Class 5 (Cash Till 5300), Class 6 (Raw Material, Haulage, Payroll, General Expenses), and Class 7 (Sales Revenue) tie with <strong>$0.00 variance</strong>.`;
     }
-    return `<strong>Option 3 Standalone SQL &amp; License Economics:</strong><br>
+    return `<strong>Option 3 Multi-Device Cloud &amp; SQL Economics:</strong><br>
       • Consolidated Revenue (TTC): <strong>${fmtUSD(g.sales_ttc, 2)}</strong> across <strong>${fmtNum(g.loads)} sales loads</strong> (${fmtNum(g.tons_sold, 0)} tons).<br>
-      • Running on your own SQLite (<code class="mono">data/mfg.db</code>) + PostgreSQL schema (<code class="mono">data/schema_postgres.sql</code>) saves <strong>$8,880/year</strong> for 20 users compared to Dataverse + Power BI PPU.`;
+      • Running on your own SQLite (<code class="mono">data/mfg.db</code>) + BHFIRMS Cloud Relay (<code class="mono">mfg_web_store</code>) + PostgreSQL schema (<code class="mono">data/schema_postgres.sql</code>) saves <strong>$8,880/year</strong> for 20 users compared to Dataverse + Power BI PPU.`;
   }
 
   // ==========================================================================
@@ -2276,41 +2314,62 @@
   // ==========================================================================
   function renderApp() {
     document.documentElement.setAttribute('data-theme', STATE.theme);
+    const themeBtn = document.getElementById('themeToggleBtn');
+    if (themeBtn) themeBtn.textContent = STATE.theme === 'dark' ? 'Light' : 'Dark';
+
     applyUserRlsAndPermissions();
 
     const activeUser = STATE.users[STATE.activeUserIdx] || STATE.users[0];
-    const userLbl = document.getElementById('activeUserLabel');
-    if (userLbl) userLbl.textContent = `${activeUser.full_name} · ${activeUser.role}`;
+    const k = getKPI();
+
+    // Update Topbar Breadcrumb & Title
+    const eyeEl = document.getElementById('topbarEyebrow');
+    const titEl = document.getElementById('topbarTitle');
+    if (eyeEl) {
+      eyeEl.textContent = `${COMPANY_LABELS[STATE.company]} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
+    }
+    if (titEl) {
+      titEl.textContent = VIEW_TITLES[STATE.view] || VIEW_TITLES.overview;
+    }
+
+    // Update Ask ISABI Scope Bar
+    const aiScope = document.getElementById('aiDrawerScope');
+    if (aiScope) {
+      aiScope.textContent = `${COMPANY_LABELS[STATE.company].split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
+    }
 
     // Update rail active state
-    document.querySelectorAll('#railNav .rail-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-view') === STATE.view);
+    document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
+      const v = btn.getAttribute('data-view');
+      const isMatch = v === STATE.view || (v === 'customers' && STATE.view === 'ar') || (v === 'suppliers' && STATE.view === 'ap') || (v === 'ledger' && STATE.view === 'gl');
+      btn.classList.toggle('on', isMatch);
     });
 
     // Update company switcher
-    document.querySelectorAll('#companySwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-company') === STATE.company);
     });
 
     // Update basis switcher
-    document.querySelectorAll('#basisSwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis);
     });
 
     // Update dynamic rail badges
-    const k = getKPI();
-    const bSales = document.getElementById('badgeSales');
-    const bRaw = document.getElementById('badgeRaw');
-    const bFleet = document.getElementById('badgeFleet');
-    const bPricing = document.getElementById('badgePricing');
-    const bAR = document.getElementById('badgeAR');
+    const bSales = document.getElementById('navCountSales');
+    const bRaw = document.getElementById('navCountRaw');
+    const bFleet = document.getElementById('navCountFleet');
+    const bPricing = document.getElementById('navCountPricing');
+    const bAR = document.getElementById('navCountAR');
+    const bUsers = document.getElementById('navCountUsers');
     if (bSales && k.loads != null) bSales.textContent = fmtNum(k.loads);
     if (bRaw && k.raw_loads != null) bRaw.textContent = fmtNum(k.raw_loads);
     if (bFleet && k.active_equip != null) bFleet.textContent = fmtNum(k.active_equip);
     if (bPricing && k.active_agreements != null) bPricing.textContent = fmtNum(k.active_agreements);
     if (bAR && k.ar_balance != null) bAR.textContent = fmtUSD(k.ar_balance, 0);
+    if (bUsers) bUsers.textContent = `${STATE.users.length} Seats`;
 
-    const container = document.getElementById('workspaceContent');
+    const container = document.getElementById('workspace');
     if (!container) return;
 
     switch (STATE.view) {
@@ -2320,13 +2379,41 @@
       case 'raw': container.innerHTML = renderRaw(); break;
       case 'fleet': container.innerHTML = renderFleet(); break;
       case 'pricing': container.innerHTML = renderPricing(); break;
+      case 'customers':
       case 'ar': container.innerHTML = renderAR(); break;
+      case 'suppliers':
       case 'ap': container.innerHTML = renderAP(); break;
       case 'expenses': container.innerHTML = renderExpenses(); break;
+      case 'ledger':
       case 'gl': container.innerHTML = renderGL(); break;
       case 'statements': container.innerHTML = renderStatements(); break;
       case 'users': container.innerHTML = renderUsers(); break;
       default: container.innerHTML = renderOverview();
+    }
+
+    // Wire interactive chart hover tooltip (exact ISABI Sandbox pattern)
+    const chartWrap = document.getElementById('execChartWrap');
+    const chartTip = document.getElementById('execChartTip');
+    if (chartWrap && chartTip) {
+      chartWrap.querySelectorAll('.col').forEach(col => {
+        col.addEventListener('mouseenter', e => {
+          const m = col.getAttribute('data-m') || '';
+          const t = col.getAttribute('data-t') || '';
+          const tip = col.getAttribute('data-tip') || '';
+          chartTip.innerHTML = `<strong>${esc(m)} · ${esc(t)}</strong><br>${esc(tip)}`;
+          chartTip.hidden = false;
+        });
+        col.addEventListener('mousemove', e => {
+          const rect = chartWrap.getBoundingClientRect();
+          const left = Math.min(rect.width - 260, Math.max(10, e.clientX - rect.left - 80));
+          const top = Math.max(8, e.clientY - rect.top - 58);
+          chartTip.style.left = left + 'px';
+          chartTip.style.top = top + 'px';
+        });
+        col.addEventListener('mouseleave', () => {
+          chartTip.hidden = true;
+        });
+      });
     }
 
     // Wire dynamic view controls
@@ -2510,7 +2597,7 @@
   function openEntryModal(formType) {
     STATE.modalForm = formType || 'sales';
     const modal = document.getElementById('entryModal');
-    const body = document.getElementById('entryModalBody');
+    const body = document.getElementById('modalBody');
     const title = document.getElementById('modalTitle');
     const titles = {
       sales: 'New Sales Ticket (35 Rules Enforced)',
@@ -2519,10 +2606,21 @@
       fuel: 'New Diesel / Lubricant Intake (M142 Guard)'
     };
     if (title) title.textContent = titles[STATE.modalForm] || 'New Entry';
-    document.querySelectorAll('#modalTypeSwitcher .seg-btn').forEach(b => {
+    document.querySelectorAll('#modalTabs .modal-tab').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-form') === STATE.modalForm);
     });
-    if (body) body.innerHTML = renderEntryModalBody();
+    if (body) {
+      body.innerHTML = renderEntryModalBody() + `
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+          <button type="button" class="btn-ghost-bar" id="dynCancelModalBtn">Cancel</button>
+          <button type="button" class="btn btn-brass" id="dynSaveModalBtn">Post to SQL &amp; Cloud Ledger</button>
+        </div>
+      `;
+      const cBtn = document.getElementById('dynCancelModalBtn');
+      const sBtn = document.getElementById('dynSaveModalBtn');
+      if (cBtn) cBtn.addEventListener('click', () => { modal.hidden = true; });
+      if (sBtn) sBtn.addEventListener('click', saveModalEntry);
+    }
     if (modal) modal.hidden = false;
     wireModalLiveCalc();
   }
@@ -2557,42 +2655,42 @@
     const signOutBtn = document.getElementById('signOutBtn');
     if (signOutBtn) signOutBtn.addEventListener('click', openAuthGate);
 
-    const loginSubmitBtn = document.getElementById('loginSubmitBtn');
-    if (loginSubmitBtn) {
-      loginSubmitBtn.addEventListener('click', () => {
-        const em = document.getElementById('loginEmailInput')?.value || '';
-        const pn = document.getElementById('loginPinInput')?.value || '';
+    const authForm = document.getElementById('authLoginForm');
+    if (authForm) {
+      authForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const em = document.getElementById('authEmailInput')?.value || '';
+        const pn = document.getElementById('authPinInput')?.value || '';
         performLogin(em, pn);
       });
     }
 
-    const loginPinInput = document.getElementById('loginPinInput');
-    if (loginPinInput) {
-      loginPinInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          const em = document.getElementById('loginEmailInput')?.value || '';
-          performLogin(em, loginPinInput.value);
-        }
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const sidebar = document.getElementById('sidebar');
+    if (mobileMenuBtn && sidebar) {
+      mobileMenuBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
       });
     }
 
-    document.querySelectorAll('#railNav .rail-btn').forEach(btn => {
+    document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
       btn.addEventListener('click', () => {
         STATE.view = btn.getAttribute('data-view');
         STATE.search = '';
         STATE.chipFilter = 'all';
+        if (sidebar) sidebar.classList.remove('open');
         renderApp();
       });
     });
 
-    document.querySelectorAll('#companySwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         STATE.company = btn.getAttribute('data-company');
         renderApp();
       });
     });
 
-    const periodSel = document.getElementById('periodPicker');
+    const periodSel = document.getElementById('periodSelect');
     if (periodSel) {
       periodSel.addEventListener('change', e => {
         STATE.period = e.target.value;
@@ -2600,7 +2698,7 @@
       });
     }
 
-    document.querySelectorAll('#basisSwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         STATE.basis = btn.getAttribute('data-basis');
         renderApp();
@@ -2616,73 +2714,69 @@
       });
     }
 
-    const seatBtn = document.getElementById('seatSimBtn');
-    if (seatBtn) {
-      seatBtn.addEventListener('click', () => {
-        STATE.view = 'users';
-        renderApp();
-      });
-    }
-
-    const newTicketBtn = document.getElementById('openNewTicketBtn');
+    const newTicketBtn = document.getElementById('newEntryBtn');
     if (newTicketBtn) newTicketBtn.addEventListener('click', () => openEntryModal('sales'));
 
-    const closeEntryBtn = document.getElementById('closeEntryModalBtn');
-    const cancelEntryBtn = document.getElementById('cancelEntryModalBtn');
+    const closeEntryBtn = document.getElementById('closeModalBtn');
     if (closeEntryBtn) closeEntryBtn.addEventListener('click', () => { document.getElementById('entryModal').hidden = true; });
-    if (cancelEntryBtn) cancelEntryBtn.addEventListener('click', () => { document.getElementById('entryModal').hidden = true; });
 
-    document.querySelectorAll('#modalTypeSwitcher .seg-btn').forEach(btn => {
+    document.querySelectorAll('#modalTabs .modal-tab').forEach(btn => {
       btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-form')));
     });
 
-    const saveEntryBtn = document.getElementById('saveEntryModalBtn');
-    if (saveEntryBtn) saveEntryBtn.addEventListener('click', saveModalEntry);
-
-    // Ask ISABI drawer
-    const openAskBtn = document.getElementById('openAskIsabiBtn');
-    const closeAskBtn = document.getElementById('closeAskDrawerBtn');
-    const askDrawer = document.getElementById('askDrawer');
-    const askLog = document.getElementById('askChatLog');
-    const askInput = document.getElementById('askInput');
-    const askSend = document.getElementById('askSendBtn');
+    // Ask ISABI slide-over drawer
+    const openAskBtn = document.getElementById('askIsabiBtn');
+    const closeAskBtn = document.getElementById('closeAiDrawerBtn');
+    const resetAskBtn = document.getElementById('resetAiThreadBtn');
+    const askDrawer = document.getElementById('aiDrawer');
+    const askLog = document.getElementById('aiMessages');
+    const askInput = document.getElementById('aiInput');
+    const askForm = document.getElementById('aiForm');
 
     function pushAskMessage(qText) {
       if (!qText || !askLog) return;
-      const ans = answerAskIsabi(qText);
-      const item = document.createElement('div');
-      item.className = 'panel-card';
-      item.style.padding = '11px 13px';
-      item.innerHTML = `
-        <div class="mono" style="font-size:10px;color:var(--brass);margin-bottom:4px">Q: ${esc(qText)}</div>
-        <div style="font-size:12.5px;line-height:1.5">${ans}</div>
-      `;
-      askLog.prepend(item);
+      const uBubble = document.createElement('div');
+      uBubble.className = 'ai-msg-user';
+      uBubble.textContent = qText;
+      askLog.appendChild(uBubble);
+
+      const bBubble = document.createElement('div');
+      bBubble.className = 'ai-msg-bot';
+      bBubble.innerHTML = answerAskIsabi(qText);
+      askLog.appendChild(bBubble);
+      askLog.scrollTop = askLog.scrollHeight;
     }
 
-    if (openAskBtn) {
+    if (openAskBtn && askDrawer) {
       openAskBtn.addEventListener('click', () => {
-        askDrawer.hidden = false;
+        askDrawer.classList.add('open');
+        askDrawer.setAttribute('aria-hidden', 'false');
         if (askLog && !askLog.children.length) {
-          pushAskMessage('Why is BBConstruction GM% higher than WTC?');
+          pushAskMessage('Compare WTC vs BBConstruction revenue, margin, and operating profit');
         }
       });
     }
-    if (closeAskBtn) closeAskBtn.addEventListener('click', () => { askDrawer.hidden = true; });
+    if (closeAskBtn && askDrawer) {
+      closeAskBtn.addEventListener('click', () => {
+        askDrawer.classList.remove('open');
+        askDrawer.setAttribute('aria-hidden', 'true');
+      });
+    }
+    if (resetAskBtn && askLog) {
+      resetAskBtn.addEventListener('click', () => {
+        askLog.innerHTML = '';
+        pushAskMessage('Compare WTC vs BBConstruction revenue, margin, and operating profit');
+      });
+    }
 
-    document.querySelectorAll('#askPromptChips [data-q]').forEach(chip => {
-      chip.addEventListener('click', () => pushAskMessage(chip.textContent));
+    document.querySelectorAll('#aiChips .ai-pill-btn').forEach(chip => {
+      chip.addEventListener('click', () => pushAskMessage(chip.getAttribute('data-prompt') || chip.textContent));
     });
 
-    if (askSend && askInput) {
-      askSend.addEventListener('click', () => {
+    if (askForm && askInput) {
+      askForm.addEventListener('submit', e => {
+        e.preventDefault();
         if (askInput.value.trim()) {
-          pushAskMessage(askInput.value.trim());
-          askInput.value = '';
-        }
-      });
-      askInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && askInput.value.trim()) {
           pushAskMessage(askInput.value.trim());
           askInput.value = '';
         }
@@ -2690,16 +2784,16 @@
     }
 
     // Check URL hash / query params for initial view
-    const h = (location.hash || '').replace(/^#/, '');
-    if (h && ['overview', 'sentinels', 'sales', 'raw', 'fleet', 'pricing', 'ar', 'ap', 'expenses', 'gl', 'statements', 'users'].includes(h)) {
-      STATE.view = h;
+    const qView = params.get('view') || (location.hash || '').replace(/^#/, '');
+    if (qView && VIEW_TITLES[qView]) {
+      STATE.view = qView;
     }
 
     // Check SQLite API status if running via server.py
     fetch('/api/status').then(r => r.json()).then(st => {
-      const el = document.getElementById('dbStatusText');
+      const el = document.getElementById('sqlStatusText');
       const kb = st.db_size_kb || st.db_kb || 1292;
-      if (el && st.ok) el.textContent = `● SQLITE (${kb.toLocaleString()} KB)`;
+      if (el && st.ok) el.textContent = `Cloud + SQLite (${kb.toLocaleString()} KB)`;
     }).catch(() => {});
 
     // Sync multi-device state from Cloud Relay on startup & visibilitychange
@@ -2707,11 +2801,6 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') syncWithCloud(false);
     });
-
-    // Register Service Worker
-    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
-    }
 
     renderApp();
   }

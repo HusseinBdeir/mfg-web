@@ -1,20 +1,27 @@
-const CACHE = 'isabi-mfg-v2.0';
-const ASSETS = [
+const CACHE = 'isabi-mfg-v3.0';
+const SHELL = [
   './',
   './index.html',
+  './css/app.css?v=3.0',
+  './js/endpoints.js?v=3.0',
+  './js/seed_data.js?v=3.0',
+  './js/app.js?v=3.0',
   './manifest.json',
-  './icon.svg',
-  './css/app.css?v=2.0',
-  './js/endpoints.js?v=2.0',
-  './js/seed_data.js?v=2.0',
-  './js/app.js?v=2.0'
+  './icon.svg'
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE)
-      .then(cache => Promise.all(ASSETS.map(u => cache.add(new Request(u, { cache: 'reload' })))))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache =>
+      Promise.all(
+        SHELL.map(url =>
+          fetch(new Request(url, { cache: 'reload' }))
+            .then(res => (res.ok ? cache.put(url, res) : null))
+            .catch(() => null)
+        )
+      )
+    )
   );
 });
 
@@ -27,12 +34,19 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-  if (url.pathname.startsWith('/api/')) return;
-  if (url.pathname.endsWith('/reset.html')) return;
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.pathname.endsWith('/reset.html') || url.pathname.startsWith('/api/')) return;
+
   event.respondWith(
-    caches.match(req).then(cached => cached || fetch(req).catch(() => caches.match('./index.html')))
+    fetch(event.request)
+      .then(res => {
+        if (res && res.status === 200 && url.origin === self.location.origin) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(event.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
