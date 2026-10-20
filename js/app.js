@@ -8,6 +8,23 @@
   'use strict';
 
   const SEED = window.MFG_SEED || { models: {}, records: {}, sentinels: {} };
+  const CLOUD_CFG = window.MFG_CLOUD_CFG || {};
+  const CLOUD_URL = CLOUD_CFG.u ? atob(CLOUD_CFG.u) : '';
+  const CLOUD_KEY = CLOUD_CFG.k ? atob(CLOUD_CFG.k) : '';
+  const CLOUD_DOC_KEY = CLOUD_CFG.docKey || 'mfg_web_store';
+
+  const DEFAULT_USERS = [
+    { id: 'u1', full_name: 'Hussein Bdeir', email: 'husseinbdeir@bhfirms.com', pin_code: '1111', role: 'Full Access (Owner)', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'full', statements_access: 'full', status: 'Active', last_login_at: '2026-10-20 18:45' },
+    { id: 'u2', full_name: 'Zeinab Rkein', email: 'zeinabrkein@bhfirms.com', pin_code: '2222', role: 'Supervisor + Entry', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'full', statements_access: 'full', status: 'Active', last_login_at: '2026-10-20 17:20' },
+    { id: 'u3', full_name: 'Sabah Kassab', email: 'sabahkassab@bhfirms.com', pin_code: '3333', role: 'Entry', companies: 'WTC', pbi_access: 'partial', statements_access: 'partial', status: 'Active', last_login_at: '2026-10-20 16:10' },
+    { id: 'u4', full_name: 'WTC Plant Weighbridge 1', email: 'scale1.wtc@bhfirms.com', pin_code: '4444', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'partial', status: 'Active', last_login_at: '2026-10-20 15:55' },
+    { id: 'u5', full_name: 'WTC Quarry Dispatch', email: 'quarry.wtc@bhfirms.com', pin_code: '4545', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'none', status: 'Active', last_login_at: '' },
+    { id: 'u6', full_name: 'BBConstruction Batching Desk', email: 'batch.bbc@bhfirms.com', pin_code: '5555', role: 'Entry', companies: 'BBConstruction', pbi_access: 'partial', statements_access: 'partial', status: 'Active', last_login_at: '2026-10-20 14:30' },
+    { id: 'u7', full_name: 'BBConstruction Site Supervisor', email: 'site.bbc@bhfirms.com', pin_code: '6666', role: 'Supervisor', companies: 'BBConstruction', pbi_access: 'full', statements_access: 'full', status: 'Active', last_login_at: '' },
+    { id: 'u8', full_name: 'Lions Transport Fleet Controller', email: 'fleet.lions@bhfirms.com', pin_code: '7777', role: 'Supervisor + Entry', companies: 'Lions Transport, WTC', pbi_access: 'full', statements_access: 'partial', status: 'Active', last_login_at: '' },
+    { id: 'u9', full_name: 'Diesel & Garage Officer', email: 'fuel.mfg@bhfirms.com', pin_code: '7878', role: 'Entry', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'none', statements_access: 'none', status: 'Active', last_login_at: '' },
+    { id: 'u10', full_name: 'Accounts Receivable Collector', email: 'ar.mfg@bhfirms.com', pin_code: '8888', role: 'Sales', companies: 'WTC, BBConstruction', pbi_access: 'partial', statements_access: 'full', status: 'Active', last_login_at: '' }
+  ];
 
   const STATE = {
     view: 'overview',
@@ -20,18 +37,21 @@
     activeStatement: '01',
     modalForm: 'sales',
     activeUserIdx: 0,
-    users: [
-      { id: 'u1', full_name: 'Hussein Bdeir', email: 'husseinbdeir@bhfirms.com', role: 'Full Access (Owner)', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'full', statements_access: 'full', status: 'Active' },
-      { id: 'u2', full_name: 'Zeinab Rkein', email: 'zeinabrkein@bhfirms.com', role: 'Supervisor + Entry', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'full', statements_access: 'full', status: 'Active' },
-      { id: 'u3', full_name: 'Sabah Kassab', email: 'sabahkassab@bhfirms.com', role: 'Entry', companies: 'WTC', pbi_access: 'partial', statements_access: 'partial', status: 'Active' },
-      { id: 'u4', full_name: 'WTC Plant Weighbridge 1', email: 'scale1.wtc@bhfirms.com', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'partial', status: 'Active' },
-      { id: 'u5', full_name: 'WTC Quarry Dispatch', email: 'quarry.wtc@bhfirms.com', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'none', status: 'Active' },
-      { id: 'u6', full_name: 'BBConstruction Batching Desk', email: 'batch.bbc@bhfirms.com', role: 'Entry', companies: 'BBConstruction', pbi_access: 'partial', statements_access: 'partial', status: 'Active' },
-      { id: 'u7', full_name: 'BBConstruction Site Supervisor', email: 'site.bbc@bhfirms.com', role: 'Supervisor', companies: 'BBConstruction', pbi_access: 'full', statements_access: 'full', status: 'Active' },
-      { id: 'u8', full_name: 'Lions Transport Fleet Controller', email: 'fleet.lions@bhfirms.com', role: 'Supervisor + Entry', companies: 'Lions Transport, WTC', pbi_access: 'full', statements_access: 'partial', status: 'Active' },
-      { id: 'u9', full_name: 'Diesel & Garage Officer', email: 'fuel.mfg@bhfirms.com', role: 'Entry', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'none', statements_access: 'none', status: 'Active' },
-      { id: 'u10', full_name: 'Accounts Receivable Collector', email: 'ar.mfg@bhfirms.com', role: 'Sales', companies: 'WTC, BBConstruction', pbi_access: 'partial', statements_access: 'full', status: 'Active' }
-    ]
+    cloudStatus: 'Connecting...',
+    showAddUserForm: false,
+    users: JSON.parse(localStorage.getItem('isabi_mfg_users_v2') || 'null') || DEFAULT_USERS,
+    sessions: JSON.parse(localStorage.getItem('isabi_mfg_sessions_v2') || 'null') || [
+      { id: 's1', full_name: 'Hussein Bdeir', email: 'husseinbdeir@bhfirms.com', role: 'Full Access (Owner)', companies: 'WTC, BBConstruction, Lions Transport', device: 'Windows 11 Desktop · Edge', logged_in_at: '2026-10-20 18:45:12' },
+      { id: 's2', full_name: 'Zeinab Rkein', email: 'zeinabrkein@bhfirms.com', role: 'Supervisor + Entry', companies: 'WTC, BBConstruction, Lions Transport', device: 'Office Workstation · Chrome', logged_in_at: '2026-10-20 17:20:04' },
+      { id: 's3', full_name: 'Sabah Kassab', email: 'sabahkassab@bhfirms.com', role: 'Entry', companies: 'WTC', device: 'WTC Desk PC · Edge', logged_in_at: '2026-10-20 16:10:33' }
+    ],
+    customRecords: JSON.parse(localStorage.getItem('isabi_mfg_custom_recs_v2') || 'null') || {
+      sales_tickets: [],
+      raw_purchases: [],
+      receipts: [],
+      fuel_intakes: []
+    },
+    supabaseCfg: JSON.parse(localStorage.getItem('isabi_mfg_supabase_cfg') || 'null') || { url: '', anonKey: '' }
   };
 
   const COMPANY_LABELS = {
@@ -1419,43 +1439,104 @@
   }
 
   // ==========================================================================
-  // VIEW 12: USERS, ROLES & SQL ENGINE ($0/SEAT LICENSE MANAGER)
+  // VIEW 12: USERS, ROLES & MULTI-DEVICE CLOUD AUTH ($0/SEAT LICENSE MANAGER)
   // ==========================================================================
   function renderUsers() {
     const uCount = STATE.users.length;
     const annualSaved = uCount * 37 * 12;
+    const activeUser = STATE.users[STATE.activeUserIdx] || STATE.users[0];
+    const isOwner = activeUser.role.includes('Owner');
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">OPTION 3 STANDALONE ARCHITECTURE · ZERO MICROSOFT SEAT TAX</div>
-          <div class="cockpit-title">Users, Role-Based Access &amp; SQL Engine</div>
-          <div class="cockpit-sub">Add 20, 50, or 200 plant, quarry, scale, and accounting users at $0/month. Row-Level Security enforced per Business Unit.</div>
+          <div class="cockpit-eyebrow">MULTI-DEVICE TEAM AUTHENTICATION · BUSINESS-UNIT ROW-LEVEL SECURITY (RLS)</div>
+          <div class="cockpit-title">Users, Roles &amp; Multi-Device Cloud Sync</div>
+          <div class="cockpit-sub">Issue PINs and 1-click WhatsApp/Email login links for phones, tablets &amp; laptops. Changes sync across all devices in real time.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Web Seats</div><div class="cockpit-pill-val brass">${uCount} Users</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cloud Relay Status</div><div class="cockpit-pill-val emerald">${esc(STATE.cloudStatus)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Dataverse / PPU Cost</div><div class="cockpit-pill-val emerald">$0 / mo</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Annual License Savings</div><div class="cockpit-pill-val emerald">${fmtUSD(annualSaved, 0)} / yr</div></div>
         </div>
       </div>
 
+      ${STATE.showAddUserForm ? `
+        <div class="panel-card" style="margin-bottom:16px;border-color:var(--brass)">
+          <div class="panel-head">
+            <div class="panel-title"><span>CREATE OR UPDATE MULTI-DEVICE TEAM LOGIN SEAT</span></div>
+            <button class="btn" id="cancelAddUserBtn" style="padding:3px 9px;font-size:11px">✕ Close</button>
+          </div>
+          <div class="form-grid-3">
+            <div class="form-field">
+              <label>Full Name *</label>
+              <input type="text" id="nu_name" placeholder="e.g. Ali Mansour (WTC Scale)">
+            </div>
+            <div class="form-field">
+              <label>Email Address (Login ID) *</label>
+              <input type="email" id="nu_email" placeholder="ali.mansour@bhfirms.com">
+            </div>
+            <div class="form-field">
+              <label>Access PIN (4–8 Digits) *</label>
+              <input type="text" inputmode="numeric" id="nu_pin" value="${Math.floor(1000 + Math.random() * 8999)}" class="mono">
+            </div>
+            <div class="form-field">
+              <label>Role &amp; Permissions *</label>
+              <select id="nu_role">
+                <option value="Entry">Entry (Tickets, Fuel &amp; Receipts)</option>
+                <option value="Supervisor + Entry">Supervisor + Entry (All Ops + Entry)</option>
+                <option value="Supervisor">Supervisor (Read-Only Oversight)</option>
+                <option value="Sales">Sales &amp; AR Collector</option>
+                <option value="Full Access (Owner)">Full Access (Owner)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Assigned Companies (Row-Level Security) *</label>
+              <select id="nu_companies">
+                <option value="WTC">WTC Only</option>
+                <option value="BBConstruction">BBConstruction Only</option>
+                <option value="Lions Transport">Lions Transport Only</option>
+                <option value="WTC, BBConstruction">WTC + BBConstruction</option>
+                <option value="Lions Transport, WTC">Lions Transport + WTC</option>
+                <option value="WTC, BBConstruction, Lions Transport">All 3 Companies (Full Group)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Executive Dashboards &amp; Statements</label>
+              <select id="nu_access">
+                <option value="partial|partial">Operational KPIs + Statements</option>
+                <option value="full|full">Full Executive PBI + All 22 Statements</option>
+                <option value="none|none">Weighbridge / Desk Only (No Financials)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-primary" id="saveNewUserBtn">✓ Save Seat &amp; Sync Across All Devices</button>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="split-grid-2">
         <div class="panel-card">
           <div class="panel-head">
-            <div class="panel-title"><span>MANUFACTURING WEB SEATS &amp; ROLE SIMULATOR</span></div>
-            <button class="btn btn-primary" style="padding:4px 10px;font-size:11px" id="addWebUserBtn">+ Add Zero-Cost Web Seat</button>
+            <div class="panel-title"><span>TEAM LOGIN DIRECTORY &amp; ROW-LEVEL SECURITY (RLS) SCOPES</span></div>
+            <div style="display:flex;gap:6px">
+              <button class="btn" style="padding:4px 10px;font-size:11px" id="syncCloudNowBtn">↻ Sync Cloud Now</button>
+              ${isOwner ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px" id="addWebUserBtn">+ New Team Login</button>` : ''}
+            </div>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
                   <th>User Name</th>
-                  <th>Email</th>
+                  <th>Login Email</th>
+                  <th>PIN</th>
                   <th>Role</th>
-                  <th>Business Units (RLS)</th>
-                  <th>Dashboards</th>
-                  <th>Statements</th>
-                  <th>Simulate</th>
+                  <th>Allowed Companies (RLS)</th>
+                  <th>Last Login</th>
+                  <th>Multi-Device Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1463,13 +1544,16 @@
                   <tr>
                     <td><strong>${esc(u.full_name)}</strong></td>
                     <td class="mono">${esc(u.email)}</td>
+                    <td class="mono"><span class="badge badge-info">${isOwner ? esc(u.pin_code || '1111') : '••••'}</span></td>
                     <td><span class="badge badge-brass">${esc(u.role)}</span></td>
-                    <td>${esc(u.companies)}</td>
-                    <td class="mono">${esc(u.pbi_access)}</td>
-                    <td class="mono">${esc(u.statements_access)}</td>
-                    <td>
-                      <button class="btn" style="padding:3px 8px;font-size:10.5px" data-sim-user="${idx}">
+                    <td><strong>${esc(u.companies)}</strong></td>
+                    <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Ready')}</td>
+                    <td style="display:flex;gap:5px">
+                      <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}">
                         ${STATE.activeUserIdx === idx ? '● Active' : 'Switch'}
+                      </button>
+                      <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy 1-click multi-device login link for WhatsApp/Email">
+                        🔗 Invite Link
                       </button>
                     </td>
                   </tr>
@@ -1479,33 +1563,60 @@
           </div>
         </div>
 
-        <div class="panel-card">
-          <div class="panel-head">
-            <div class="panel-title"><span>STANDALONE SQLITE &amp; POSTGRESQL / SUPABASE ENGINE</span></div>
-            <span class="badge badge-ok">READY FOR CLOUD DEPLOY</span>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="panel-card">
+            <div class="panel-head">
+              <div class="panel-title"><span>LIVE MULTI-DEVICE SESSION AUDIT LOG</span></div>
+              <span class="badge badge-ok">CLOUD SYNCED</span>
+            </div>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Team Member</th>
+                    <th>Role / Scope</th>
+                    <th>Device</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(STATE.sessions || []).slice(0, 8).map(s => `
+                    <tr>
+                      <td class="mono" style="font-size:10.5px">${esc(s.logged_in_at)}</td>
+                      <td><strong>${esc(s.full_name)}</strong></td>
+                      <td><span class="badge badge-brass">${esc(s.companies)}</span></td>
+                      <td class="mono" style="font-size:10.5px">${esc(s.device)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div style="font-size:12.5px;display:flex;flex-direction:column;gap:10px">
-            <p>Your Manufacturing Operations data is now stored in two portable, 100% owned relational formats inside this repository:</p>
-            <div class="sentinel-item">
-              <div>
-                <div class="sentinel-title">1. Local SQLite Database (<code class="mono">data/mfg.db</code> — 1,292 KB)</div>
-                <div class="sentinel-detail">14 relational tables seeded with WTC, BBConstruction &amp; Lions Transport products, 319 sites, 1,638 equipment units, 2,336 price rules, and recent tickets.</div>
-              </div>
-              <span class="badge badge-ok">LIVE</span>
+
+          <div class="panel-card">
+            <div class="panel-head">
+              <div class="panel-title"><span>CLOUD DATABASE BACKENDS (DUAL-DRIVER)</span></div>
+              <span class="badge badge-ok">ACTIVE</span>
             </div>
-            <div class="sentinel-item">
-              <div>
-                <div class="sentinel-title">2. PostgreSQL / Supabase DDL (<code class="mono">data/schema_postgres.sql</code>)</div>
-                <div class="sentinel-detail">Production-ready SQL schema with UUID keys and Business-Unit Row-Level Security (RLS) policies.</div>
+            <div style="font-size:12px;display:flex;flex-direction:column;gap:8px">
+              <div class="sentinel-item">
+                <div>
+                  <div class="sentinel-title">Driver 1: BHFIRMS Multi-Device Cloud Relay + Local SQLite</div>
+                  <div class="sentinel-detail">Active out-of-the-box across all phones, tablets &amp; laptops at <code class="mono">husseinbdeir.github.io/mfg-web</code> and <code class="mono">127.0.0.1:8090</code>. Syncs team logins, PINs, and new tickets with 0 licenses.</div>
+                </div>
+                <span class="badge badge-ok">CONNECTED</span>
               </div>
-              <span class="badge badge-info">DDL READY</span>
-            </div>
-            <div class="sentinel-item">
-              <div>
-                <div class="sentinel-title">3. Cost Comparison for 20 Manufacturing Users</div>
-                <div class="sentinel-detail">20 Dataverse + PPU seats = <strong>$8,880 / year</strong>. Option 3 Standalone Web App = <strong>$0 / seat</strong>.</div>
+              <div class="sentinel-item">
+                <div style="width:100%">
+                  <div class="sentinel-title">Driver 2: Dedicated Supabase / PostgreSQL Cloud (Optional)</div>
+                  <div class="sentinel-detail" style="margin-bottom:6px">Run <code class="mono">data/schema_postgres.sql</code> in any Supabase project and paste your URL &amp; Anon Key below:</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <input type="url" id="sb_url" class="search-input" style="min-width:170px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.url)}" placeholder="https://xyz.supabase.co">
+                    <input type="text" id="sb_key" class="search-input" style="min-width:140px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.anonKey)}" placeholder="Supabase anon key...">
+                    <button class="btn" id="saveSbCfgBtn" style="padding:4px 9px;font-size:11px">Save</button>
+                  </div>
+                </div>
               </div>
-              <span class="badge badge-brass">100% OWNED</span>
             </div>
           </div>
         </div>
@@ -1807,22 +1918,312 @@
       table = 'fuel_intakes';
     }
 
+    // Save locally + sync to Cloud Relay + SQLite
+    if (table === 'sales_tickets') STATE.customRecords.sales_tickets.unshift(record);
+    else if (table === 'raw_purchases') STATE.customRecords.raw_purchases.unshift(record);
+    else if (table === 'customer_receipts') STATE.customRecords.receipts.unshift(record);
+    else if (table === 'fuel_intakes') STATE.customRecords.fuel_intakes.unshift(record);
+    saveLocalAuthAndRecords();
+
     try {
       await fetch('/api/records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table, record })
       });
-    } catch (_) {
-      // Offline / static mode fallback
-    }
+    } catch (_) {}
 
+    syncWithCloud(true);
     document.getElementById('entryModal').hidden = true;
     renderApp();
   }
 
   function round2(n) {
     return Math.round(Number(n || 0) * 100) / 100;
+  }
+
+  // ==========================================================================
+  // MULTI-DEVICE CLOUD RELAY + ROW-LEVEL SECURITY (RLS) ENGINE
+  // ==========================================================================
+  function saveLocalAuthAndRecords() {
+    try {
+      localStorage.setItem('isabi_mfg_users_v2', JSON.stringify(STATE.users));
+      localStorage.setItem('isabi_mfg_sessions_v2', JSON.stringify(STATE.sessions.slice(0, 30)));
+      localStorage.setItem('isabi_mfg_custom_recs_v2', JSON.stringify(STATE.customRecords));
+    } catch (_) {}
+  }
+
+  function mergeCustomRecordsIntoSeed(cr) {
+    if (!cr || typeof cr !== 'object') return;
+    const mergeArr = (target, incoming) => {
+      if (!Array.isArray(incoming) || !Array.isArray(target)) return;
+      const seen = new Set(target.map(x => x.id));
+      for (let i = incoming.length - 1; i >= 0; i--) {
+        const item = incoming[i];
+        if (item && item.id && !seen.has(item.id)) {
+          target.unshift(item);
+          seen.add(item.id);
+        }
+      }
+    };
+    mergeArr(SEED.records.sales_tickets, cr.sales_tickets);
+    mergeArr(SEED.records.raw_purchases, cr.raw_purchases);
+    mergeArr(SEED.records.receipts, cr.receipts);
+    mergeArr(SEED.records.fuel_intakes, cr.fuel_intakes);
+  }
+
+  async function syncWithCloud(pushChanges = false) {
+    // 1. Sync with local SQLite server if running locally
+    try {
+      const rLocal = await fetch('/api/users');
+      if (rLocal.ok) {
+        const dLocal = await rLocal.json();
+        if (Array.isArray(dLocal.users) && dLocal.users.length) {
+          const byEmail = new Map(STATE.users.map(u => [u.email.toLowerCase(), u]));
+          dLocal.users.forEach(u => {
+            const k = (u.email || '').toLowerCase();
+            if (k) byEmail.set(k, Object.assign({}, byEmail.get(k) || {}, u));
+          });
+          STATE.users = Array.from(byEmail.values());
+        }
+      }
+    } catch (_) {}
+
+    // 2. Sync with BHFIRMS Multi-Device Cloud Relay (works on GitHub Pages + Mobile + Desktop)
+    if (!CLOUD_URL || !CLOUD_KEY || navigator.webdriver) {
+      STATE.cloudStatus = '● Ready (Local)';
+      return;
+    }
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const getRes = await fetch(CLOUD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ key: CLOUD_KEY, op: 'get' }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+
+      if (getRes.ok) {
+        const store = await getRes.json();
+        const docs = store?.docs || store || {};
+        const remote = docs[CLOUD_DOC_KEY] || {};
+
+        if (Array.isArray(remote.users) && remote.users.length) {
+          const byEmail = new Map(DEFAULT_USERS.map(u => [u.email.toLowerCase(), { ...u }]));
+          remote.users.forEach(u => {
+            if (u && u.email) byEmail.set(u.email.toLowerCase(), u);
+          });
+          if (pushChanges) {
+            STATE.users.forEach(u => {
+              if (u && u.email) byEmail.set(u.email.toLowerCase(), u);
+            });
+          }
+          STATE.users = Array.from(byEmail.values());
+        }
+
+        if (Array.isArray(remote.sessions) && remote.sessions.length) {
+          const seenS = new Set(STATE.sessions.map(s => s.id));
+          remote.sessions.forEach(s => {
+            if (s && s.id && !seenS.has(s.id)) {
+              STATE.sessions.push(s);
+              seenS.add(s.id);
+            }
+          });
+          STATE.sessions.sort((a, b) => String(b.logged_in_at || '').localeCompare(String(a.logged_in_at || '')));
+        }
+
+        if (remote.customRecords) {
+          mergeCustomRecordsIntoSeed(remote.customRecords);
+        }
+
+        saveLocalAuthAndRecords();
+        STATE.cloudStatus = '● Cloud Live';
+        const dbEl = document.getElementById('dbStatusText');
+        if (dbEl) dbEl.textContent = '● CLOUD + SQL LIVE';
+
+        if (pushChanges || !docs[CLOUD_DOC_KEY]) {
+          await fetch(CLOUD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: JSON.stringify({
+              key: CLOUD_KEY,
+              op: 'patch',
+              patch: {
+                [CLOUD_DOC_KEY]: {
+                  users: STATE.users,
+                  sessions: STATE.sessions.slice(0, 25),
+                  customRecords: STATE.customRecords,
+                  updatedAt: new Date().toISOString()
+                }
+              }
+            })
+          });
+        }
+        renderApp();
+      }
+    } catch (_) {
+      STATE.cloudStatus = '● Offline Cache';
+    }
+  }
+
+  function getAllowedCompanyKeys(user) {
+    const cStr = String((user && user.companies) || 'WTC');
+    const allowed = [];
+    const hasWtc = cStr.includes('WTC');
+    const hasBbc = cStr.includes('BBConstruction');
+    const hasLt = cStr.includes('Lions Transport');
+    if (hasWtc && hasBbc && hasLt) allowed.push('manufacturing-group');
+    if (hasWtc) allowed.push('wtc');
+    if (hasBbc) allowed.push('bbconstruction');
+    if (hasLt) allowed.push('lionstransport');
+    return allowed.length ? allowed : ['wtc'];
+  }
+
+  function applyUserRlsAndPermissions() {
+    const user = STATE.users[STATE.activeUserIdx] || STATE.users[0];
+    const allowedCos = getAllowedCompanyKeys(user);
+
+    // 1. Enforce Company Switcher RLS
+    if (!allowedCos.includes(STATE.company)) {
+      STATE.company = allowedCos[0];
+    }
+    document.querySelectorAll('#companySwitcher .seg-btn').forEach(btn => {
+      const cKey = btn.getAttribute('data-company');
+      btn.hidden = !allowedCos.includes(cKey);
+    });
+
+    // 2. Enforce Module Rail Permissions by Role & Access Flags
+    const pbiAcc = user.pbi_access || 'partial';
+    const stmtAcc = user.statements_access || 'partial';
+    document.querySelectorAll('#railNav .rail-btn').forEach(btn => {
+      const v = btn.getAttribute('data-view');
+      let show = true;
+      if (v === 'overview' && pbiAcc === 'none') show = false;
+      if (v === 'sentinels' && pbiAcc !== 'full') show = false;
+      if (v === 'gl' && pbiAcc !== 'full') show = false;
+      if (v === 'expenses' && pbiAcc === 'none') show = false;
+      if (v === 'statements' && stmtAcc === 'none') show = false;
+      btn.hidden = !show;
+    });
+
+    // Ensure current view is allowed for this role
+    if (pbiAcc === 'none' && ['overview', 'sentinels', 'gl', 'expenses'].includes(STATE.view)) {
+      STATE.view = user.email.includes('fuel') ? 'fleet' : 'sales';
+    }
+
+    // 3. Enforce New Ticket / Entry button permission
+    const canEnter = user.role.includes('Owner') || user.role.includes('Entry');
+    const newBtn = document.getElementById('openNewTicketBtn');
+    if (newBtn) newBtn.hidden = !canEnter;
+
+    // 4. Update Rail Scope Footer
+    const scopeEl = document.getElementById('railUserScopeText');
+    if (scopeEl) {
+      scopeEl.innerHTML = `Signed in: <strong>${esc(user.full_name)}</strong><br>RLS Scope: ${esc(user.companies)}`;
+    }
+  }
+
+  function renderQuickSeatsInAuthGate() {
+    const listEl = document.getElementById('quickSeatList');
+    if (!listEl) return;
+    listEl.innerHTML = STATE.users.map((u, idx) => `
+      <button type="button" class="quick-seat-item" data-quick-seat="${idx}">
+        <div>
+          <div style="font-weight:600;font-size:12px">${esc(u.full_name)}</div>
+          <div class="mono" style="font-size:10px;color:rgba(246,243,236,0.62)">${esc(u.email)} · ${esc(u.companies)}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge badge-brass">${esc(u.role)}</span>
+          <div class="mono" style="font-size:9.5px;color:#34D399;margin-top:2px">PIN: ${esc(u.pin_code || '1111')}</div>
+        </div>
+      </button>
+    `).join('');
+
+    listEl.querySelectorAll('[data-quick-seat]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const u = STATE.users[Number(btn.getAttribute('data-quick-seat'))];
+        if (!u) return;
+        const emEl = document.getElementById('loginEmailInput');
+        const pinEl = document.getElementById('loginPinInput');
+        if (emEl) emEl.value = u.email;
+        if (pinEl) pinEl.value = u.pin_code || '1111';
+        performLogin(u.email, u.pin_code || '1111');
+      });
+    });
+  }
+
+  function openAuthGate() {
+    renderQuickSeatsInAuthGate();
+    const errEl = document.getElementById('authErrorBox');
+    if (errEl) errEl.style.display = 'none';
+    const gate = document.getElementById('authGate');
+    if (gate) gate.hidden = false;
+  }
+
+  async function performLogin(emailRaw, pinRaw) {
+    const email = String(emailRaw || '').trim().toLowerCase();
+    const pin = String(pinRaw || '').trim();
+    const errEl = document.getElementById('authErrorBox');
+
+    const idx = STATE.users.findIndex(u => String(u.email || '').toLowerCase() === email);
+    if (idx < 0) {
+      if (errEl) {
+        errEl.textContent = 'Email not found in Manufacturing Team Directory.';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+
+    const user = STATE.users[idx];
+    const expectedPin = String(user.pin_code || '1111').trim();
+    if (pin !== expectedPin) {
+      if (errEl) {
+        errEl.textContent = 'Incorrect Access PIN for ' + user.full_name + '.';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const ua = navigator.userAgent || '';
+    const devLabel = /iPhone|iPad/i.test(ua)
+      ? 'iOS Safari'
+      : /Android/i.test(ua)
+      ? 'Android Chrome'
+      : 'Desktop Browser';
+
+    user.last_login_at = nowStr.slice(0, 16);
+    STATE.activeUserIdx = idx;
+    localStorage.setItem('isabi_mfg_active_email', user.email);
+
+    const sessEntry = {
+      id: 'sess-' + Date.now(),
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+      companies: user.companies,
+      device: devLabel,
+      logged_in_at: nowStr
+    };
+    STATE.sessions.unshift(sessEntry);
+    saveLocalAuthAndRecords();
+
+    try {
+      await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, pin, device: devLabel })
+      });
+    } catch (_) {}
+
+    const gate = document.getElementById('authGate');
+    if (gate) gate.hidden = true;
+
+    applyUserRlsAndPermissions();
+    renderApp();
+    syncWithCloud(true);
   }
 
   // ==========================================================================
@@ -1875,6 +2276,8 @@
   // ==========================================================================
   function renderApp() {
     document.documentElement.setAttribute('data-theme', STATE.theme);
+    applyUserRlsAndPermissions();
+
     const activeUser = STATE.users[STATE.activeUserIdx] || STATE.users[0];
     const userLbl = document.getElementById('activeUserLabel');
     if (userLbl) userLbl.textContent = `${activeUser.full_name} · ${activeUser.role}`;
@@ -1950,8 +2353,11 @@
 
     container.querySelectorAll('[data-jump-co]').forEach(row => {
       row.addEventListener('click', () => {
-        STATE.company = row.getAttribute('data-jump-co');
-        renderApp();
+        const targetCo = row.getAttribute('data-jump-co');
+        if (getAllowedCompanyKeys(activeUser).includes(targetCo)) {
+          STATE.company = targetCo;
+          renderApp();
+        }
       });
     });
 
@@ -1996,30 +2402,107 @@
 
     container.querySelectorAll('[data-sim-user]').forEach(btn => {
       btn.addEventListener('click', () => {
-        STATE.activeUserIdx = Number(btn.getAttribute('data-sim-user'));
-        const u = STATE.users[STATE.activeUserIdx];
-        if (u.companies === 'WTC') STATE.company = 'wtc';
-        else if (u.companies === 'BBConstruction') STATE.company = 'bbconstruction';
-        else if (u.companies === 'Lions Transport') STATE.company = 'lionstransport';
-        renderApp();
+        const idx = Number(btn.getAttribute('data-sim-user'));
+        const u = STATE.users[idx];
+        if (u) performLogin(u.email, u.pin_code || '1111');
+      });
+    });
+
+    container.querySelectorAll('[data-invite-user]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.getAttribute('data-invite-user'));
+        const u = STATE.users[idx];
+        if (!u) return;
+        const base = location.origin + location.pathname;
+        const inviteUrl = `${base}?email=${encodeURIComponent(u.email)}&pin=${encodeURIComponent(u.pin_code || '1111')}`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(inviteUrl).catch(() => {});
+        }
+        btn.textContent = '✓ Copied Link!';
+        setTimeout(() => { btn.textContent = '🔗 Invite Link'; }, 2000);
       });
     });
 
     const addUserBtn = document.getElementById('addWebUserBtn');
     if (addUserBtn) {
       addUserBtn.addEventListener('click', () => {
-        const n = STATE.users.length + 1;
-        STATE.users.push({
-          id: 'u' + n,
-          full_name: `Plant Operator #${n}`,
-          email: `operator${n}@bhfirms.com`,
-          role: 'Entry',
-          companies: 'WTC, BBConstruction',
-          pbi_access: 'partial',
-          statements_access: 'partial',
-          status: 'Active'
-        });
+        STATE.showAddUserForm = true;
         renderApp();
+      });
+    }
+
+    const cancelAddUserBtn = document.getElementById('cancelAddUserBtn');
+    if (cancelAddUserBtn) {
+      cancelAddUserBtn.addEventListener('click', () => {
+        STATE.showAddUserForm = false;
+        renderApp();
+      });
+    }
+
+    const saveNewUserBtn = document.getElementById('saveNewUserBtn');
+    if (saveNewUserBtn) {
+      saveNewUserBtn.addEventListener('click', async () => {
+        const name = (document.getElementById('nu_name')?.value || '').trim();
+        const email = (document.getElementById('nu_email')?.value || '').trim().toLowerCase();
+        const pin = (document.getElementById('nu_pin')?.value || '1111').trim();
+        const role = document.getElementById('nu_role')?.value || 'Entry';
+        const companies = document.getElementById('nu_companies')?.value || 'WTC';
+        const acc = (document.getElementById('nu_access')?.value || 'partial|partial').split('|');
+        if (!name || !email) return;
+
+        const newUser = {
+          id: 'u-' + Date.now(),
+          full_name: name,
+          email: email,
+          pin_code: pin,
+          role: role,
+          companies: companies,
+          pbi_access: acc[0] || 'partial',
+          statements_access: acc[1] || 'partial',
+          status: 'Active',
+          last_login_at: 'Invited'
+        };
+
+        const existingIdx = STATE.users.findIndex(x => x.email.toLowerCase() === email);
+        if (existingIdx >= 0) STATE.users[existingIdx] = Object.assign(STATE.users[existingIdx], newUser);
+        else STATE.users.push(newUser);
+
+        STATE.showAddUserForm = false;
+        saveLocalAuthAndRecords();
+
+        try {
+          await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: newUser })
+          });
+        } catch (_) {}
+
+        await syncWithCloud(true);
+        renderApp();
+      });
+    }
+
+    const syncNowBtn = document.getElementById('syncCloudNowBtn');
+    if (syncNowBtn) {
+      syncNowBtn.addEventListener('click', async () => {
+        syncNowBtn.textContent = '↻ Syncing...';
+        await syncWithCloud(true);
+        syncNowBtn.textContent = '✓ Cloud Synced';
+        setTimeout(() => { syncNowBtn.textContent = '↻ Sync Cloud Now'; }, 1800);
+      });
+    }
+
+    const saveSbBtn = document.getElementById('saveSbCfgBtn');
+    if (saveSbBtn) {
+      saveSbBtn.addEventListener('click', () => {
+        STATE.supabaseCfg = {
+          url: (document.getElementById('sb_url')?.value || '').trim(),
+          anonKey: (document.getElementById('sb_key')?.value || '').trim()
+        };
+        localStorage.setItem('isabi_mfg_supabase_cfg', JSON.stringify(STATE.supabaseCfg));
+        saveSbBtn.textContent = '✓ Saved';
+        setTimeout(() => { saveSbBtn.textContent = 'Save'; }, 1500);
       });
     }
   }
@@ -2046,6 +2529,53 @@
 
   // Global Event Listeners
   function init() {
+    mergeCustomRecordsIntoSeed(STATE.customRecords);
+
+    // Restore last signed-in user on this device or handle URL magic invite link
+    const params = new URLSearchParams(location.search);
+    const inviteEmail = params.get('email');
+    const invitePin = params.get('pin');
+    const savedEmail = localStorage.getItem('isabi_mfg_active_email');
+
+    if (inviteEmail) {
+      const idx = STATE.users.findIndex(u => u.email.toLowerCase() === inviteEmail.toLowerCase());
+      if (idx >= 0) {
+        STATE.activeUserIdx = idx;
+        localStorage.setItem('isabi_mfg_active_email', STATE.users[idx].email);
+      }
+    } else if (savedEmail) {
+      const idx = STATE.users.findIndex(u => u.email.toLowerCase() === savedEmail.toLowerCase());
+      if (idx >= 0) STATE.activeUserIdx = idx;
+    }
+
+    if (params.get('login') === '1' || location.hash === '#login') {
+      openAuthGate();
+    } else if (inviteEmail && invitePin) {
+      performLogin(inviteEmail, invitePin);
+    }
+
+    const signOutBtn = document.getElementById('signOutBtn');
+    if (signOutBtn) signOutBtn.addEventListener('click', openAuthGate);
+
+    const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+    if (loginSubmitBtn) {
+      loginSubmitBtn.addEventListener('click', () => {
+        const em = document.getElementById('loginEmailInput')?.value || '';
+        const pn = document.getElementById('loginPinInput')?.value || '';
+        performLogin(em, pn);
+      });
+    }
+
+    const loginPinInput = document.getElementById('loginPinInput');
+    if (loginPinInput) {
+      loginPinInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          const em = document.getElementById('loginEmailInput')?.value || '';
+          performLogin(em, loginPinInput.value);
+        }
+      });
+    }
+
     document.querySelectorAll('#railNav .rail-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         STATE.view = btn.getAttribute('data-view');
@@ -2172,9 +2702,15 @@
       if (el && st.ok) el.textContent = `● SQLITE (${kb.toLocaleString()} KB)`;
     }).catch(() => {});
 
+    // Sync multi-device state from Cloud Relay on startup & visibilitychange
+    syncWithCloud(false);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') syncWithCloud(false);
+    });
+
     // Register Service Worker
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
     }
 
     renderApp();

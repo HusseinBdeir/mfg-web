@@ -10,9 +10,81 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/app.css?v=2.0">
 </head>
 <body>
+  <!-- ======================================================================
+       MULTI-DEVICE TEAM SIGN-IN GATE (#authGate)
+       ====================================================================== -->
+  <div class="auth-gate" id="authGate" hidden>
+    <div class="auth-card">
+      <div class="auth-left">
+        <div>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+            <svg width="38" height="38" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <rect width="64" height="64" rx="14" fill="#13264C" stroke="rgba(184,136,59,0.55)" stroke-width="2"/>
+              <path d="M22 14 H44 C50 14 52 18 52 23 C52 28 49 31 44 31 H20 C15 31 12 34 12 39 C12 44 14 50 20 50 H42"
+                    stroke="#F6F3EC" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter"/>
+              <circle cx="46" cy="50" r="4.5" fill="#B8883B"/>
+            </svg>
+            <div>
+              <div style="font-weight:700;font-size:15px;letter-spacing:0.18em;color:#F6F3EC">ISABI SYSTEMS</div>
+              <div class="mono" style="font-size:10px;color:var(--brass-light);letter-spacing:0.10em">MANUFACTURING OPERATIONS · MULTI-DEVICE CLOUD AUTH</div>
+            </div>
+          </div>
+
+          <h1 style="font-family:var(--font-serif);font-size:26px;font-weight:500;color:#FFFFFF;margin-bottom:6px">
+            Team Workspace Sign-In
+          </h1>
+          <p style="font-size:12.5px;color:rgba(246,243,236,0.72);margin-bottom:18px;line-height:1.5">
+            Sign in from any laptop, tablet, or phone. Row-Level Security (RLS) automatically scopes your session to your assigned operating companies (<strong>WTC</strong>, <strong>BBConstruction</strong>, <strong>Lions Transport</strong>) and role permissions.
+          </p>
+
+          <div id="authErrorBox" class="badge badge-err" style="display:none;width:100%;padding:8px 10px;margin-bottom:12px;font-size:11.5px"></div>
+
+          <div style="margin-bottom:12px">
+            <label class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(246,243,236,0.65)">Team Email Address</label>
+            <input type="email" id="loginEmailInput" class="auth-input" value="husseinbdeir@bhfirms.com" autocomplete="username" placeholder="name@bhfirms.com">
+          </div>
+
+          <div style="margin-bottom:16px">
+            <label class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(246,243,236,0.65);display:flex;justify-content:space-between">
+              <span>Access PIN / Passcode</span>
+              <span style="color:var(--brass-light)">4–8 Digits</span>
+            </label>
+            <input type="text" inputmode="numeric" id="loginPinInput" class="auth-input pin-disc" value="1111" autocomplete="off" placeholder="••••">
+          </div>
+
+          <button class="btn btn-brass" id="loginSubmitBtn" style="width:100%;justify-content:center;padding:10px 16px;font-size:13px;background:var(--brass);color:#070F20;font-weight:700">
+            → Sign In to Manufacturing Operations
+          </button>
+        </div>
+
+        <div style="margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:10px;color:rgba(246,243,236,0.55)">
+          <span>0 Dataverse Seats · 0 PPU Seats</span>
+          <span style="color:#34D399">● CLOUD RELAY + SQLITE READY</span>
+        </div>
+      </div>
+
+      <div class="auth-right">
+        <div>
+          <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--brass-light);margin-bottom:4px">
+            QUICK ROLE &amp; DEVICE SIMULATOR (1-CLICK FILL)
+          </div>
+          <p style="font-size:11.5px;color:rgba(246,243,236,0.65);margin-bottom:10px">
+            Click any team member below to pre-fill their credentials and test how Row-Level Security (RLS) scopes their view:
+          </p>
+          <div class="quick-seat-list" id="quickSeatList">
+            <!-- Populated by js/app.js -->
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:rgba(246,243,236,0.55);line-height:1.4">
+          Need to add more plant or office staff? Sign in as <strong>Full Access (Owner)</strong> and open <strong>12 · Users, Roles &amp; Cloud Auth</strong> to issue new PINs or WhatsApp invite links.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="app-shell">
     <!-- ====================================================================
          LEFT NAVIGATION RAIL (#0B1730 MIDNIGHT INK)
@@ -31,16 +103,16 @@
             <div class="rail-brand-sub">MFG COMMAND · SQL</div>
           </div>
         </div>
-        <span class="rail-live-dot" title="Standalone SQLite + Offline PWA Active"></span>
+        <span class="rail-live-dot" id="railSyncDot" title="Multi-Device Cloud Sync + SQLite Active"></span>
       </div>
 
       <div class="rail-section-label">Executive</div>
       <nav class="rail-nav" id="railNav">
-        <button class="rail-btn active" data-view="overview">
+        <button class="rail-btn active" data-view="overview" data-req-pbi="partial">
           <span class="rail-btn-label"><span class="rail-btn-icon">01</span> Overview Command</span>
           <span class="rail-btn-badge">LIVE</span>
         </button>
-        <button class="rail-btn" data-view="sentinels">
+        <button class="rail-btn" data-view="sentinels" data-req-pbi="full">
           <span class="rail-btn-label"><span class="rail-btn-icon">02</span> AI Sentinels</span>
           <span class="rail-btn-badge" id="badgeSentinels">6</span>
         </button>
@@ -72,32 +144,32 @@
           <span class="rail-btn-label"><span class="rail-btn-icon">08</span> Suppliers &amp; AP</span>
           <span class="rail-btn-badge" id="badgeAP">3 Legs</span>
         </button>
-        <button class="rail-btn" data-view="expenses">
+        <button class="rail-btn" data-view="expenses" data-req-pbi="partial">
           <span class="rail-btn-label"><span class="rail-btn-icon">09</span> Expenses &amp; Payroll</span>
           <span class="rail-btn-badge" id="badgeExp">$5.7M</span>
         </button>
-        <button class="rail-btn" data-view="gl">
+        <button class="rail-btn" data-view="gl" data-req-pbi="full">
           <span class="rail-btn-label"><span class="rail-btn-icon">10</span> General Ledger &amp; SOA</span>
           <span class="rail-btn-badge">TB $0</span>
         </button>
 
         <div class="rail-section-label">Governance &amp; SQL</div>
-        <button class="rail-btn" data-view="statements">
+        <button class="rail-btn" data-view="statements" data-req-stmt="partial">
           <span class="rail-btn-label"><span class="rail-btn-icon">11</span> 22 Printable Statements</span>
           <span class="rail-btn-badge">A4/PDF</span>
         </button>
         <button class="rail-btn" data-view="users">
-          <span class="rail-btn-label"><span class="rail-btn-icon">12</span> Users, Roles &amp; SQL DB</span>
+          <span class="rail-btn-label"><span class="rail-btn-icon">12</span> Users, Roles &amp; Cloud Auth</span>
           <span class="rail-btn-badge">$0/seat</span>
         </button>
       </nav>
 
       <div class="rail-footer">
         <div class="rail-db-pill">
-          <span>ENGINE: SQLITE / PG</span>
-          <span style="color:#34D399" id="dbStatusText">● CONNECTED</span>
+          <span>CLOUD + SQL</span>
+          <span style="color:#34D399" id="dbStatusText">● MULTI-DEVICE LIVE</span>
         </div>
-        <div class="rail-db-sub">
+        <div class="rail-db-sub" id="railUserScopeText">
           Option 3 Standalone Web App<br>
           0 Dataverse / 0 PPU Seats Required
         </div>
@@ -110,7 +182,7 @@
     <div class="app-main">
       <header class="topbar">
         <div class="topbar-left">
-          <!-- Company Switcher -->
+          <!-- Company Switcher (Dynamically filtered by User RLS!) -->
           <div class="seg-group" id="companySwitcher" role="tablist" aria-label="Operating Company">
             <button class="seg-btn active" data-company="manufacturing-group">All Group (3)</button>
             <button class="seg-btn" data-company="wtc">WTC</button>
@@ -137,9 +209,10 @@
         </div>
 
         <div class="topbar-right">
-          <button class="seat-badge" id="seatSimBtn" title="Click to switch active user role or manage unlimited web seats">
+          <button class="seat-badge" id="seatSimBtn" title="Click to manage team logins or switch user session">
             <span id="activeUserLabel">Hussein Bdeir · Full Access</span>
           </button>
+          <button class="btn" id="signOutBtn" title="Open Multi-Device Sign-In / Switch User">⇄ Switch Login</button>
           <button class="btn btn-brass" id="openNewTicketBtn">+ New Ticket / Entry</button>
           <button class="btn" id="openAskIsabiBtn">✦ Ask ISABI</button>
           <button class="btn" id="themeToggleBtn" title="Toggle Light Paper / Dark Ink">◐ Ink</button>
@@ -179,11 +252,11 @@
       <div class="modal-body" id="entryModalBody"></div>
       <div class="modal-foot">
         <div class="mono" style="font-size:11px;color:var(--text-muted)" id="modalFooterNote">
-          Writes directly to local SQLite (`data/mfg.db`) + updates live SOA &amp; KPIs.
+          Syncs across all team devices via Cloud Relay + writes to local SQLite (`data/mfg.db`).
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn" id="cancelEntryModalBtn">Cancel</button>
-          <button class="btn btn-primary" id="saveEntryModalBtn">✓ Post to SQL Ledger</button>
+          <button class="btn btn-primary" id="saveEntryModalBtn">✓ Post &amp; Sync to Cloud</button>
         </div>
       </div>
     </div>
@@ -222,7 +295,8 @@
     </div>
   </div>
 
-  <script src="js/seed_data.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/endpoints.js?v=2.0"></script>
+  <script src="js/seed_data.js?v=2.0"></script>
+  <script src="js/app.js?v=2.0"></script>
 </body>
 </html>

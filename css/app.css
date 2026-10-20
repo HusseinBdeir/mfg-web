@@ -1005,6 +1005,113 @@ html, body {
 }
 
 /* ============================================================================
+   MULTI-DEVICE TEAM SIGN-IN GATE (#authGate)
+   ============================================================================ */
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: radial-gradient(circle at 20% 20%, #13264C 0%, #070F20 70%);
+  color: #F6F3EC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 920px;
+  background: #0B1730;
+  border: 1px solid rgba(184, 136, 59, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  overflow: hidden;
+}
+
+.auth-left {
+  padding: 28px 30px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.auth-right {
+  padding: 24px 26px;
+  background: rgba(7, 15, 32, 0.55);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.auth-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #FFFFFF;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: var(--brass-light);
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.pin-disc {
+  font-family: var(--font-mono);
+  letter-spacing: 0.22em;
+  -webkit-text-security: disc;
+}
+
+.quick-seat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.quick-seat-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  text-align: left;
+  color: #F6F3EC;
+}
+
+.quick-seat-item:hover {
+  border-color: var(--brass-light);
+  background: rgba(184, 136, 59, 0.16);
+}
+
+@media (max-width: 860px) {
+  .auth-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .auth-left {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ============================================================================
    RESPONSIVE & PRINT RULES (PWA.md COMPLIANT)
    ============================================================================ */
 @media (max-width: 1200px) {

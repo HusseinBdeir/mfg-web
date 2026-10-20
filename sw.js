@@ -1,19 +1,19 @@
-const CACHE = 'isabi-mfg-v1.0';
+const CACHE = 'isabi-mfg-v2.0';
 const ASSETS = [
   './',
   './index.html',
-  './reset.html',
   './manifest.json',
   './icon.svg',
-  './css/app.css',
-  './js/seed_data.js',
-  './js/app.js'
+  './css/app.css?v=2.0',
+  './js/endpoints.js?v=2.0',
+  './js/seed_data.js?v=2.0',
+  './js/app.js?v=2.0'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
-      .then(cache => cache.addAll(ASSETS))
+      .then(cache => Promise.all(ASSETS.map(u => cache.add(new Request(u, { cache: 'reload' })))))
       .then(() => self.skipWaiting())
   );
 });
@@ -31,6 +31,7 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.endsWith('/reset.html')) return;
   event.respondWith(
     caches.match(req).then(cached => cached || fetch(req).catch(() => caches.match('./index.html')))
   );

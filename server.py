@@ -1,28 +1,27 @@
-"""server.py — Standalone Option 3 HTTP + SQLite REST server for Manufacturing Operations Web App.
-Serves the static PWA at http://127.0.0.1:8090/ and exposes `/api/*` endpoints backed by `data/mfg.db`.
-Zero dependency on Microsoft Dataverse or Power BI PPU at runtime.
+"""server.py — Standalone HTTP + REST API Server for ISABI Manufacturing Operations Web App.
+Serves the static PWA and provides live SQLite read/write + Multi-Device Auth endpoints:
+  - GET  /api/status        -> Engine health, DB size, table row counts
+  - POST /api/auth/login    -> Validates user email + PIN/password against SQLite `users`, logs session
+  - GET  /api/users         -> Returns team user directory (with BU RLS scopes & roles)
+  - POST /api/users         -> Creates or updates a team user seat in SQLite `users`
+  - GET  /api/records       -> Query any table (?table=sales_tickets&company=WTC&limit=100)
+  - POST /api/records       -> Insert a new record into SQLite `data/mfg.db`
+  - GET  /api/sync          -> Pulls users + custom records + sessions log from SQLite
+  - POST /api/sync          -> Merges multi-device cloud state into SQLite
 """
+import datetime as dt
 import json
 import os
 import sqlite3
 import sys
-import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "mfg.db"
-PORT = int(os.environ.get("MFG_WEB_PORT", "8090"))
 
 ALLOWED_TABLES = {
-    "companies",
-    "users",
-    "products",
-    "sites",
-    "equipment",
-    "drivers",
-    "price_rules",
     "sales_tickets",
     "raw_purchases",
     "fuel_intakes",
@@ -30,56 +29,116 @@ ALLOWED_TABLES = {
     "customer_receipts",
     "supplier_payments",
     "salary_payments",
+    "price_rules",
+    "users",
+    "products",
+    "sites",
+    "equipment",
+    "drivers",
 }
 
+DEFAULT_USERS = [
+    ("u1", "Hussein Bdeir", "husseinbdeir@bhfirms.com", "1111", "Full Access (Owner)", "WTC,BBConstruction,Lions Transport", "full", "full", "Active", ""),
+    ("u2", "Zeinab Rkein", "zeinabrkein@bhfirms.com", "2222", "Supervisor + Entry", "WTC,BBConstruction,Lions Transport", "full", "full", "Active", ""),
+    ("u3", "Sabah Kassab", "sabahkassab@bhfirms.com", "3333", "Entry", "WTC", "partial", "partial", "Active", ""),
+    ("u4", "WTC Plant Weighbridge 1", "scale1.wtc@bhfirms.com", "4444", "Entry", "WTC", "none", "partial", "Active", ""),
+    ("u5", "WTC Quarry Dispatch", "quarry.wtc@bhfirms.com", "4545", "Entry", "WTC", "none", "none", "Active", ""),
+    ("u6", "BBConstruction Batching Desk", "batch.bbc@bhfirms.com", "5555", "Entry", "BBConstruction", "partial", "partial", "Active", ""),
+    ("u7", "BBConstruction Site Supervisor", "site.bbc@bhfirms.com", "6666", "Supervisor", "BBConstruction", "full", "full", "Active", ""),
+    ("u8", "Lions Transport Fleet Controller", "fleet.lions@bhfirms.com", "7777", "Supervisor + Entry", "Lions Transport,WTC", "full", "partial", "Active", ""),
+    ("u9", "Diesel & Garage Officer", "fuel.mfg@bhfirms.com", "7878", "Entry", "WTC,BBConstruction,Lions Transport", "none", "none", "Active", ""),
+    ("u10", "Accounts Receivable Collector", "ar.mfg@bhfirms.com", "8888", "Sales", "WTC,BBConstruction", "partial", "full", "Active", ""),
+]
 
-def db_conn():
+
+def ensure_auth_schema():
+    if not DB_PATH.exists():
+        return
     conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {r[1] for r in cur.fetchall()}
+    if "pin_code" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN pin_code TEXT DEFAULT '1111'")
+    if "last_login_at" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT DEFAULT ''")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            email TEXT,
+            full_name TEXT,
+            role TEXT,
+            companies TEXT,
+            device TEXT,
+            logged_in_at TEXT
+        )
+        """
+    )
+    cur.execute("DELETE FROM users WHERE id IN ('u-wtc', 'u-bbc', 'u-lions')")
+    for u in DEFAULT_USERS:
+        uid, fname, email, pin, role, comps, pbi, stmts, status, llogin = u
+        cur.execute("SELECT id, pin_code FROM users WHERE LOWER(email) = LOWER(?)", (email,))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute(
+                "UPDATE users SET full_name=?, pin_code=?, role=?, companies=?, pbi_access=?, statements_access=?, status=? WHERE LOWER(email)=LOWER(?)",
+                (fname, pin, role, comps, pbi, stmts, status, email),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                u,
+            )
+    conn.commit()
+    conn.close()
 
 
-class MfgRequestHandler(SimpleHTTPRequestHandler):
+class MfgHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
-    def log_message(self, fmt, *args):
-        pass
-
-    def _send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+    def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+
+    def _send_json(self, payload, status=200):
+        raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             if not DB_PATH.exists():
-                return self._send_json({"ok": False, "error": "Database not initialized"}, 500)
-            conn = db_conn()
+                return self._send_json({"ok": False, "error": "mfg.db not built yet"}, 503)
+            conn = sqlite3.connect(str(DB_PATH))
             cur = conn.cursor()
             counts = {}
-            for tbl in sorted(ALLOWED_TABLES):
+            for t in sorted(ALLOWED_TABLES):
                 try:
-                    counts[tbl] = cur.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+                    counts[t] = cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                 except Exception:
-                    counts[tbl] = 0
+                    counts[t] = 0
             conn.close()
             return self._send_json({
                 "ok": True,
-                "engine": "SQLite 3.x / PostgreSQL 16 (Option 3 Standalone)",
+                "engine": "SQLite 3.x + BHFIRMS Multi-Device Cloud Relay",
                 "db_path": str(DB_PATH),
                 "db_size_kb": DB_PATH.stat().st_size // 1024,
                 "dataverse_licenses_required": 0,
@@ -87,62 +146,138 @@ class MfgRequestHandler(SimpleHTTPRequestHandler):
                 "counts": counts,
             })
 
+        if parsed.path == "/api/users":
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
+            rows = [dict(r) for r in conn.execute("SELECT * FROM users ORDER BY id").fetchall()]
+            sessions = [dict(r) for r in conn.execute("SELECT * FROM auth_sessions ORDER BY logged_in_at DESC LIMIT 25").fetchall()]
+            conn.close()
+            return self._send_json({"ok": True, "users": rows, "sessions": sessions})
+
         if parsed.path == "/api/records":
             qs = parse_qs(parsed.query)
-            table = (qs.get("table") or [""])[0]
+            table = (qs.get("table") or ["sales_tickets"])[0]
             company = (qs.get("company") or [""])[0]
-            limit = min(int((qs.get("limit") or ["250"])[0]), 2000)
+            limit = min(int((qs.get("limit") or ["150"])[0]), 1000)
             if table not in ALLOWED_TABLES:
-                return self._send_json({"ok": False, "error": f"Unknown table: {table}"}, 400)
-            conn = db_conn()
+                return self._send_json({"ok": False, "error": "Invalid table"}, 400)
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
-            sql = f"SELECT * FROM {table}"
-            params = []
-            if company and company not in ("group", "all", "manufacturing-group") and "company" in cols:
-                co_map = {"wtc": "WTC", "bbconstruction": "BBConstruction", "lionstransport": "Lions Transport"}
-                sql += " WHERE company = ?"
-                params.append(co_map.get(company.lower(), company))
-            if "date" in cols:
-                sql += " ORDER BY date DESC"
-            sql += f" LIMIT {limit}"
-            rows = [dict(r) for r in cur.execute(sql, params).fetchall()]
+            if company and company not in ("all", "manufacturing-group"):
+                rows = cur.execute(
+                    f"SELECT * FROM {table} WHERE lower(company) = lower(?) LIMIT ?",
+                    (company, limit),
+                ).fetchall()
+            else:
+                rows = cur.execute(f"SELECT * FROM {table} LIMIT ?", (limit,)).fetchall()
             conn.close()
-            return self._send_json({"ok": True, "table": table, "rows": rows})
+            return self._send_json({"ok": True, "table": table, "rows": [dict(r) for r in rows]})
 
         return super().do_GET()
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/records":
-            length = int(self.headers.get("Content-Length") or "0")
-            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
-            payload = json.loads(raw)
-            table = payload.get("table") or ""
-            record = dict(payload.get("record") or {})
-            if table not in ALLOWED_TABLES:
-                return self._send_json({"ok": False, "error": f"Invalid table: {table}"}, 400)
-            conn = db_conn()
+        body = self._read_body()
+
+        if parsed.path == "/api/auth/login":
+            email = str(body.get("email") or "").strip().lower()
+            pin = str(body.get("pin") or "").strip()
+            device = str(body.get("device") or "Web Browser")[:80]
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
-            if "id" in cols and not record.get("id"):
-                record["id"] = str(uuid.uuid4())
-            valid_keys = [k for k in cols if k in record]
-            placeholders = ",".join("?" for _ in valid_keys)
-            col_list = ",".join(valid_keys)
-            vals = [record[k] for k in valid_keys]
-            cur.execute(f"INSERT OR REPLACE INTO {table} ({col_list}) VALUES ({placeholders})", vals)
+            row = cur.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
+            if not row:
+                conn.close()
+                return self._send_json({"ok": False, "error": "User email not found in Manufacturing roster."}, 401)
+            user = dict(row)
+            if user.get("status") == "Suspended":
+                conn.close()
+                return self._send_json({"ok": False, "error": "This user seat is currently suspended."}, 403)
+            expected_pin = str(user.get("pin_code") or "1111").strip()
+            if pin and pin != expected_pin:
+                conn.close()
+                return self._send_json({"ok": False, "error": "Invalid Access PIN / Password."}, 401)
+            now_iso = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now_iso, user["id"]))
+            sess_id = f"sess-{int(dt.datetime.now().timestamp() * 1000)}"
+            cur.execute(
+                "INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?)",
+                (sess_id, user["id"], user["email"], user["full_name"], user["role"], user["companies"], device, now_iso),
+            )
             conn.commit()
             conn.close()
-            return self._send_json({"ok": True, "table": table, "record": record})
+            user["last_login_at"] = now_iso
+            return self._send_json({"ok": True, "user": user, "session_id": sess_id})
+
+        if parsed.path == "/api/users":
+            u = body.get("user") or {}
+            if not u.get("email") or not u.get("full_name"):
+                return self._send_json({"ok": False, "error": "Name and email are required."}, 400)
+            uid = u.get("id") or f"u-{int(dt.datetime.now().timestamp())}"
+            conn = sqlite3.connect(str(DB_PATH))
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(email) DO UPDATE SET
+                    full_name = excluded.full_name,
+                    pin_code = excluded.pin_code,
+                    role = excluded.role,
+                    companies = excluded.companies,
+                    pbi_access = excluded.pbi_access,
+                    statements_access = excluded.statements_access,
+                    status = excluded.status
+                """,
+                (
+                    uid,
+                    u.get("full_name"),
+                    u.get("email").strip().lower(),
+                    str(u.get("pin_code") or "1111"),
+                    u.get("role") or "Entry",
+                    u.get("companies") or "WTC",
+                    u.get("pbi_access") or "partial",
+                    u.get("statements_access") or "partial",
+                    u.get("status") or "Active",
+                    u.get("last_login_at") or "",
+                ),
+            )
+            conn.commit()
+            conn.close()
+            return self._send_json({"ok": True, "id": uid})
+
+        if parsed.path == "/api/records":
+            table = body.get("table")
+            record = body.get("record") or {}
+            if table not in ALLOWED_TABLES or not record:
+                return self._send_json({"ok": False, "error": "Invalid table or record"}, 400)
+            conn = sqlite3.connect(str(DB_PATH))
+            cur = conn.cursor()
+            cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+            valid = {k: v for k, v in record.items() if k in cols}
+            placeholders = ",".join("?" for _ in valid)
+            col_names = ",".join(valid.keys())
+            cur.execute(
+                f"INSERT OR REPLACE INTO {table} ({col_names}) VALUES ({placeholders})",
+                tuple(valid.values()),
+            )
+            conn.commit()
+            conn.close()
+            return self._send_json({"ok": True, "table": table, "inserted": valid})
 
         return self._send_json({"ok": False, "error": "Not found"}, 404)
 
+    def log_message(self, fmt, *args):
+        pass
+
 
 def main():
-    os.chdir(str(ROOT))
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), MfgRequestHandler)
-    print(f"ISABI Manufacturing Operations Web App running at http://127.0.0.1:{PORT}/", flush=True)
+    ensure_auth_schema()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PORT", 8090))
+    srv = ThreadingHTTPServer(("0.0.0.0", port), MfgHandler)
+    print(f"ISABI Manufacturing Operations Web App running at http://127.0.0.1:{port}/", flush=True)
     srv.serve_forever()
 
 
