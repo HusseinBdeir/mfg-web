@@ -6,6 +6,10 @@
   <title>ISABI Systems | Manufacturing Operations Command &amp; Ledger</title>
   <meta name="description" content="ISABI Systems — Manufacturing Operations Command Center &amp; Double-Entry Ledger for WTC, BBConstruction &amp; Lions Transport.">
   <meta name="theme-color" content="#F4F2EE">
+  <script id="pre">
+    // Pre-paint theme (no white flash for dark users) — PWA.md §3.3
+    try { var t = localStorage.getItem('isabi_mfg_theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ISABI Mfg">
@@ -16,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=3.0">
+  <link rel="stylesheet" href="css/app.css?v=3.1">
 </head>
 <body>
   <div class="app-shell" id="appShell">
@@ -73,7 +77,7 @@
         </button>
         <button type="button" class="nav-item" data-view="sentinels">
           <span>AI Sentinels &amp; Audit</span>
-          <em class="nav-pill">6</em>
+          <em class="nav-pill" id="navCountSentinels">—</em>
         </button>
 
         <div class="grp">Plant &amp; Dispatch</div>
@@ -97,19 +101,19 @@
         <div class="grp">Treasury &amp; Books</div>
         <button type="button" class="nav-item" data-view="customers">
           <span>Customers &amp; AR Aging</span>
-          <em class="nav-pill" id="navCountAR">$151.7k</em>
+          <em class="nav-pill" id="navCountAR">—</em>
         </button>
         <button type="button" class="nav-item" data-view="suppliers">
           <span>Suppliers &amp; 3-Leg AP</span>
-          <em class="nav-pill">3 Legs</em>
+          <em class="nav-pill" id="navCountAP">3 Legs</em>
         </button>
         <button type="button" class="nav-item" data-view="expenses">
           <span>Expenses &amp; Payroll</span>
-          <em class="nav-pill">$5.7M</em>
+          <em class="nav-pill" id="navCountExp">—</em>
         </button>
         <button type="button" class="nav-item" data-view="ledger">
           <span>General Ledger &amp; SOA</span>
-          <em class="nav-pill good">TB $0</em>
+          <em class="nav-pill good" id="navCountTB">TB —</em>
         </button>
 
         <div class="grp">Governance &amp; Cloud</div>
@@ -130,14 +134,15 @@
             <strong id="railUserName">Hussein Bdeir</strong>
             <small id="activeRoleBadge">Full Access · 3 Entities</small>
           </div>
-          <button type="button" class="rail-switch-btn" id="signOutBtn" title="Switch Team Login or Lock Session">Switch</button>
+          <button type="button" class="rail-switch-btn" id="signOutBtn" title="Lock this session and switch team login">Lock</button>
         </div>
         <div class="rail-status-row">
-          <span class="engine-dot"><i></i><span id="sqlStatusText">Cloud + SQLite Live</span></span>
+          <span class="engine-dot"><i></i><span id="sqlStatusText">Connecting…</span></span>
           <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
         </div>
       </div>
     </aside>
+    <div class="rail-backdrop" id="railBackdrop" hidden></div>
 
     <!-- ==================== MAIN WORKSPACE ==================== -->
     <div class="main-area">
@@ -252,26 +257,29 @@
 
   <!-- ==================== SMART TRANSACTION ENTRY MODAL ==================== -->
   <div class="modal-backdrop" id="entryModal" hidden>
-    <div class="modal-card">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modal-header">
         <div>
           <span class="modal-eyebrow">ISABI Double-Entry Operational Desk · Auto-Journal &amp; Price Matrix</span>
           <h2 id="modalTitle">New Operational Transaction</h2>
         </div>
-        <button type="button" class="modal-close-btn" id="closeModalBtn">✕</button>
+        <button type="button" class="modal-close-btn" id="closeModalBtn" aria-label="Close">✕</button>
       </div>
       <div class="modal-tabs" id="modalTabs">
         <button type="button" class="modal-tab active" data-form="sales">Sales / Weighbridge Ticket</button>
         <button type="button" class="modal-tab" data-form="raw">Raw Quarry Purchase</button>
         <button type="button" class="modal-tab" data-form="receipt">Customer AR Receipt</button>
-        <button type="button" class="modal-tab" data-form="fuel">Diesel Tank Intake / Issue</button>
+        <button type="button" class="modal-tab" data-form="fuel">Diesel / Lubricant Intake</button>
+        <button type="button" class="modal-tab" data-form="expense">Expense</button>
+        <button type="button" class="modal-tab" data-form="settlement">Supplier Settlement</button>
       </div>
       <div class="modal-body" id="modalBody"></div>
     </div>
   </div>
 
   <!-- ==================== MULTI-DEVICE TEAM SIGN-IN GATE ==================== -->
-  <div class="auth-gate" id="authGate" hidden>
+  <!-- Fail-closed: the gate ships visible and only JS hides it once a remembered session or a valid PIN resumes it -->
+  <div class="auth-gate" id="authGate">
     <div class="auth-card">
       <div class="auth-left">
         <div class="auth-brand">
@@ -305,8 +313,8 @@
             <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com" required autocomplete="username">
           </label>
           <label class="auth-label">
-            <span>Access PIN / Passcode <em>4 to 8 Digits</em></span>
-            <input type="text" id="authPinInput" class="auth-input pin-disc" inputmode="numeric" pattern="[0-9A-Za-z]{4,12}" placeholder="••••" required autocomplete="current-password">
+            <span>Access PIN <em>4 to 8 Digits</em></span>
+            <input type="text" id="authPinInput" class="auth-input pin-disc" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="••••" required autocomplete="off" autocapitalize="off" spellcheck="false">
           </label>
           <div id="authErrorBox" class="auth-error" hidden></div>
           <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
@@ -316,7 +324,7 @@
 
         <div class="auth-footer-note">
           <span>0 Dataverse Seats · 0 Power BI PPU Seats</span>
-          <span id="authCloudStatusBadge" class="auth-cloud-ok">● Cloud Relay + SQLite Ready</span>
+          <span id="authCloudStatusBadge" class="auth-cloud-ok">● Connecting to cloud relay…</span>
         </div>
       </div>
 
@@ -327,7 +335,7 @@
         </div>
         <div class="quick-seat-list" id="quickSeatList"></div>
         <div class="auth-right-ftr">
-          Need to issue a new PIN or WhatsApp invite link? Sign in as <b>Full Access (Owner)</b> and open <b>Users, Roles &amp; Cloud Sync</b>.
+          Need a new PIN or a WhatsApp invite link? The <b>Full Access (Owner)</b> seat issues them under <b>Users &amp; Cloud Auth</b>. Entries posted offline stay on this device and sync when the relay is back.
         </div>
       </div>
     </div>
@@ -336,9 +344,9 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="js/endpoints.js?v=3.0"></script>
-  <script src="js/seed_data.js?v=3.0"></script>
-  <script src="js/app.js?v=3.0"></script>
+  <script src="js/endpoints.js?v=3.1"></script>
+  <script src="js/seed_data.js?v=3.1"></script>
+  <script src="js/app.js?v=3.1"></script>
   <script>
     if ('serviceWorker' in navigator) {
       let refreshing = false;

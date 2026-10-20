@@ -2,16 +2,21 @@
   "name": "ISABI Systems — Manufacturing Operations",
   "short_name": "Mfg Ops",
   "description": "WTC, BBConstruction & Lions Transport Standalone ERP, Fleet & BI Command Center",
-  "start_url": "./index.html",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0B1730",
   "theme_color": "#0B1730",
   "icons": [
-    {
-      "src": "./icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "New Sales Ticket", "url": "./#sales", "description": "Open the Sales & Deliveries register" },
+    { "name": "Fuel Intake", "url": "./#fleet", "description": "Log a diesel or lubricant intake" },
+    { "name": "Customer Receipt", "url": "./#customers", "description": "Post a FIFO customer receipt" }
   ]
 }

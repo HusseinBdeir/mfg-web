@@ -51,6 +51,24 @@ def run_dax(model_key, query):
         return []
 
 
+# requests replaces the whole `Prefer` header per call, so mlib.get_all (odata.maxpagesize only) silently drops the
+# FormattedValue annotations every lookup / option-set column relies on -> price rules exported without customer,
+# product, site or rule type (v3.0 bug). This helper keeps both preferences on every page.
+FMT_PREFER = 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+
+
+def get_all_fmt(path):
+    rows, url = [], f"{mlib.API}/{path}"
+    S = mlib.session()
+    while url:
+        r = S.get(url, timeout=120, headers={"Prefer": FMT_PREFER})
+        r.raise_for_status()
+        j = r.json()
+        rows.extend(j.get("value", []))
+        url = j.get("@odata.nextLink")
+    return rows
+
+
 def clean_row(row):
     """Strip table[col] or [col] brackets from DAX output keys."""
     out = {}
@@ -392,7 +410,7 @@ def fetch_dataverse_records():
     bu_filter = " or ".join(f"_owningbusinessunit_value eq {bid}" for bid in BU_IDS.values())
 
     # 1. Products
-    prods_raw = mlib.get_all(
+    prods_raw = get_all_fmt(
         "bhf_products?$filter=statecode eq 0"
         "&$select=bhf_productid,bhf_name,bhf_officialname,bhf_tonfactor,_bhf_type_value,_bhf_uom_value,_bhf_inputproduct_value"
     )
@@ -414,7 +432,7 @@ def fetch_dataverse_records():
     print(f"  Products: {len(products)}", flush=True)
 
     # 2. Sites
-    sites_raw = mlib.get_all(
+    sites_raw = get_all_fmt(
         "bhf_sites?$filter=statecode eq 0"
         "&$select=bhf_siteid,bhf_name,bhf_jv,bhf_address,_bhf_region_value,_bhf_supplier_value"
     )
@@ -435,7 +453,7 @@ def fetch_dataverse_records():
     print(f"  Sites: {len(sites)}", flush=True)
 
     # 3. Equipment (universal registry + company equipment enrichment)
-    ce_raw = mlib.get_all(
+    ce_raw = get_all_fmt(
         f"bhf_companyequipments?$filter=statecode eq 0 and ({bu_filter})"
         "&$select=_bhf_equipment_value,bhf_ownership,bhf_status,_bhf_customer_value,_bhf_driver_value"
     )
@@ -450,7 +468,7 @@ def fetch_dataverse_records():
                 "driver": ce.get("_bhf_driver_value@OData.Community.Display.V1.FormattedValue") or "",
             }
 
-    equip_raw = mlib.get_all(
+    equip_raw = get_all_fmt(
         "bhf_equipments?$filter=statecode eq 0"
         "&$select=bhf_equipmentid,bhf_name,bhf_plateno,bhf_category,bhf_model,bhf_capacity,_bhf_supplier_value"
     )
@@ -472,7 +490,7 @@ def fetch_dataverse_records():
     print(f"  Equipment: {len(equipment)}", flush=True)
 
     # 4. Drivers
-    drv_raw = mlib.get_all(
+    drv_raw = get_all_fmt(
         "bhf_drivers?$filter=statecode eq 0"
         "&$select=bhf_driverid,bhf_name,bhf_phone,_bhf_supplier_value"
     )
@@ -487,7 +505,7 @@ def fetch_dataverse_records():
     print(f"  Drivers: {len(drivers)}", flush=True)
 
     # 5. Price Agreements (Active / Recent)
-    pr_raw = mlib.get_all(
+    pr_raw = get_all_fmt(
         f"bhf_pricerules?$filter=statecode eq 0 and ({bu_filter})"
         "&$select=bhf_priceruleid,bhf_name,bhf_ruletype,bhf_price,bhf_transprice,bhf_indifferentprice,bhf_unit,bhf_startdate,bhf_enddate,"
         "_bhf_customer_value,_bhf_supplier_value,_bhf_product_value,_bhf_site_value,_bhf_uom_value,_owningbusinessunit_value"

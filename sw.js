@@ -1,13 +1,15 @@
-const CACHE = 'isabi-mfg-v3.0';
+const CACHE = 'isabi-mfg-v3.1';
 const SHELL = [
   './',
   './index.html',
-  './css/app.css?v=3.0',
-  './js/endpoints.js?v=3.0',
-  './js/seed_data.js?v=3.0',
-  './js/app.js?v=3.0',
+  './css/app.css?v=3.1',
+  './js/endpoints.js?v=3.1',
+  './js/seed_data.js?v=3.1',
+  './js/app.js?v=3.1',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', event => {
@@ -36,17 +38,22 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.pathname.endsWith('/reset.html') || url.pathname.startsWith('/api/')) return;
+  // Never serve the recovery page or the local SQLite API from cache; never touch cross-origin (fonts, relay)
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('/reset.html') || url.pathname.includes('/api/')) return;
 
+  const isNav = event.request.mode === 'navigate';
   event.respondWith(
     fetch(event.request)
       .then(res => {
-        if (res && res.status === 200 && url.origin === self.location.origin) {
+        if (res && res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(event.request, clone));
         }
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        caches.match(event.request).then(hit => hit || (isNav ? caches.match('./index.html') : undefined))
+      )
   );
 });

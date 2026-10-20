@@ -20,6 +20,17 @@ def main():
     users_res = json.loads(
         urllib.request.urlopen("http://127.0.0.1:8090/api/users", timeout=5).read().decode("utf-8")
     )
+    # Read the live document first: the app entries (customRecords) keyed on phones / tablets live ONLY in the
+    # relay until the books absorb them, so this script must never overwrite them with empty lists (v3.0 bug).
+    cur_req = urllib.request.Request(
+        cloud_url,
+        data=json.dumps({"key": cloud_key, "op": "get"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    cur_doc = json.loads(urllib.request.urlopen(cur_req, timeout=15).read().decode("utf-8")).get("docs", {}).get("mfg_web_store", {})
+    custom = cur_doc.get("customRecords") or {}
+    for k in ("sales_tickets", "raw_purchases", "receipts", "fuel_intakes", "expenses", "settlements"):
+        custom.setdefault(k, [])
     now_iso = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     payload = {
         "key": cloud_key,
@@ -28,13 +39,9 @@ def main():
             "mfg_web_store": {
                 "users": users_res["users"],
                 "sessions": users_res["sessions"],
-                "customRecords": {
-                    "sales_tickets": [],
-                    "raw_purchases": [],
-                    "receipts": [],
-                    "fuel_intakes": [],
-                },
+                "customRecords": custom,
                 "updatedAt": now_iso,
+                "updatedBy": "build/sync_cloud.py",
             }
         },
     }

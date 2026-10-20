@@ -10,6 +10,7 @@ Serves the static PWA and provides live SQLite read/write + Multi-Device Auth en
   - POST /api/sync          -> Merges multi-device cloud state into SQLite
 """
 import datetime as dt
+import hmac
 import json
 import os
 import sqlite3
@@ -36,6 +37,27 @@ ALLOWED_TABLES = {
     "equipment",
     "drivers",
 }
+
+# Tables the web entry desk may write through POST /api/records (master data stays read-only here)
+USER_WRITABLE_TABLES = {
+    "sales_tickets",
+    "raw_purchases",
+    "fuel_intakes",
+    "expenses",
+    "customer_receipts",
+    "supplier_payments",
+}
+
+# App-entry audit columns added on first run so INSERT OR REPLACE keeps them
+APP_AUDIT_COLUMNS = (
+    ("source", "TEXT DEFAULT ''"),
+    ("entered_by", "TEXT DEFAULT ''"),
+    ("entered_at", "TEXT DEFAULT ''"),
+    ("voided", "INTEGER DEFAULT 0"),
+    ("voided_by", "TEXT DEFAULT ''"),
+    ("voided_at", "TEXT DEFAULT ''"),
+    ("notes", "TEXT DEFAULT ''"),
+)
 
 DEFAULT_USERS = [
     ("u1", "Hussein Bdeir", "husseinbdeir@bhfirms.com", "1111", "Full Access (Owner)", "WTC,BBConstruction,Lions Transport", "full", "full", "Active", ""),
@@ -77,6 +99,16 @@ def ensure_auth_schema():
         """
     )
     cur.execute("DELETE FROM users WHERE id IN ('u-wtc', 'u-bbc', 'u-lions')")
+    for table in USER_WRITABLE_TABLES:
+        try:
+            tcols = {r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+        except Exception:
+            continue
+        if not tcols:
+            continue
+        for col, ddl in APP_AUDIT_COLUMNS:
+            if col not in tcols:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     for u in DEFAULT_USERS:
         uid, fname, email, pin, role, comps, pbi, stmts, status, llogin = u
         cur.execute("SELECT id, pin_code FROM users WHERE LOWER(email) = LOWER(?)", (email,))
@@ -196,9 +228,10 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({"ok": False, "error": "This user seat is currently suspended."}, 403)
             expected_pin = str(user.get("pin_code") or "1111").strip()
-            if pin and pin != expected_pin:
+            # An empty PIN used to bypass the check — it is now required and compared in constant time
+            if not pin or not hmac.compare_digest(pin.encode("utf-8"), expected_pin.encode("utf-8")):
                 conn.close()
-                return self._send_json({"ok": False, "error": "Invalid Access PIN / Password."}, 401)
+                return self._send_json({"ok": False, "error": "Invalid Access PIN."}, 401)
             now_iso = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cur.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now_iso, user["id"]))
             sess_id = f"sess-{int(dt.datetime.now().timestamp() * 1000)}"
@@ -251,12 +284,23 @@ class MfgHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/records":
             table = body.get("table")
             record = body.get("record") or {}
-            if table not in ALLOWED_TABLES or not record:
-                return self._send_json({"ok": False, "error": "Invalid table or record"}, 400)
+            if table not in USER_WRITABLE_TABLES or not isinstance(record, dict) or not record.get("id"):
+                return self._send_json({"ok": False, "error": "Invalid table or record (id required)"}, 400)
             conn = sqlite3.connect(str(DB_PATH))
             cur = conn.cursor()
             cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
-            valid = {k: v for k, v in record.items() if k in cols}
+            valid = {}
+            for k, v in record.items():
+                if k not in cols:
+                    continue
+                if isinstance(v, bool):
+                    v = 1 if v else 0
+                elif isinstance(v, (dict, list)):
+                    v = json.dumps(v, ensure_ascii=False)
+                valid[k] = v
+            if not valid:
+                conn.close()
+                return self._send_json({"ok": False, "error": "No matching columns"}, 400)
             placeholders = ",".join("?" for _ in valid)
             col_names = ",".join(valid.keys())
             cur.execute(
