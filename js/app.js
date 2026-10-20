@@ -702,7 +702,7 @@
           <div class="ph">
             <div>
               <h3>Monthly Revenue, Quarry Cost &amp; Cash Profit Trajectory</h3>
-              <span class="ph-sub">${esc(COMPANY_LABELS[STATE.company])} · Hover bars to inspect monthly ledger totals</span>
+              <span class="ph-sub">${esc(COMPANY_LABELS[STATE.company])} · Tap or hover bars to inspect monthly ledger totals</span>
             </div>
             <div class="legend">
               <span><i class="sw-box s-1"></i>Sales TTC</span>
@@ -751,7 +751,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${[['wtc', 'WTC · World Trading', wtcK], ['bbconstruction', 'BBConstruction', bbcK]].map(([key, label, kk]) => {
+                ${[['wtc', 'WTC<span class="hide-xs"> · World Trading</span>', wtcK], ['bbconstruction', 'BBConstruction', bbcK]].map(([key, label, kk]) => {
                   const t = tbStatus(kk);
                   return `
                 <tr class="clickable-row" data-jump-co="${key}">
@@ -772,7 +772,7 @@
                   <td><span class="m-chip ${ltHasLedger ? 'closed' : ''}">${ltHasLedger ? 'Balanced' : 'No ledger yet'}</span></td>
                 </tr>
                 <tr class="total">
-                  <td>Group Total (${ltHasLedger ? 3 : 2} live BUs)</td>
+                  <td>Group Total<span class="hide-xs"> (${ltHasLedger ? 3 : 2} live BUs)</span></td>
                   <td class="n">${fmtUSD(k.sales_ttc, 0)}</td>
                   <td class="n">${fmtNum(k.loads)}</td>
                   <td class="n">${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</td>
@@ -1163,6 +1163,69 @@
           </table>
         </div>
       </div>
+
+      <div class="split-grid-2">
+        <div class="panel-card" id="salesProdPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>SALES BY PRODUCT &amp; AGGREGATE GRADE (FULL LEDGER)</span></div>
+            <span class="panel-meta">${fmtNum((getModel().products || []).length)} Grades ${exportBtn('salesProdPanel', 'Sales_By_Product')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('sprod', 'Product / Grade', 'Product')}${th('sprod', 'Family', 'Material Family')}${th('sprod', 'UoM', 'UoM')}${th('sprod', 'Loads', 'loads', 'r')}
+                  ${th('sprod', 'Qty Sold', 'qty_sold', 'r')}${th('sprod', 'Tons Sold', 'tons_sold', 'r')}${th('sprod', 'List Price', 'list_price', 'r')}${th('sprod', 'Avg Net', 'avg_price_net', 'r')}${th('sprod', 'Avg TTC', 'avg_price_ttc', 'r')}${th('sprod', 'Sales TTC ($)', 'sales_ttc', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortRows((getModel().products || []), 'sprod', 'sales_ttc', 'desc').map(p => `
+                  <tr>
+                    <td><strong>${esc(p.Product)}</strong></td>
+                    <td>${esc(p['Material Family'] || 'Aggregate')}</td>
+                    <td class="mono">${esc(p.UoM || 'm³')}</td>
+                    <td class="r">${fmtNum(p.loads)}</td>
+                    <td class="r">${fmtNum(p.qty_sold, 0)}</td>
+                    <td class="r">${fmtNum(p.tons_sold, 0)}</td>
+                    <td class="r">${p.list_price != null ? fmtUSD(p.list_price, 2) : '—'}</td>
+                    <td class="r">${fmtUSD(p.avg_price_net, 2)}</td>
+                    <td class="r">${fmtUSD(p.avg_price_ttc, 2)}</td>
+                    <td class="r"><strong>${fmtUSD(p.sales_ttc, 0)}</strong></td>
+                  </tr>
+                `).join('') || emptyRow(10, 'No product breakdown for this entity')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="salesSitePanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>LOADS &amp; REVENUE BY DESTINATION SITE</span></div>
+            <span class="panel-meta">${fmtNum((getModel().sites || []).length)} Active Sites ${exportBtn('salesSitePanel', 'Sales_By_Site')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('ssite', 'Destination Site', 'Site')}${th('ssite', 'JV', 'JV')}${th('ssite', 'Sales Loads', 'loads', 'r')}${th('ssite', 'Tons Sold', 'tons_sold', 'r')}${th('ssite', 'Transport Rev ($)', 'trans_rev', 'r')}${th('ssite', 'Sales TTC ($)', 'sales_ttc', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortRows((getModel().sites || []), 'ssite', 'sales_ttc', 'desc').map(s => `
+                  <tr>
+                    <td><strong>${esc(s.Site || '(no site on ticket)')}</strong></td>
+                    <td>${s.JV === 'Yes' ? '<span class="badge badge-brass">JV</span>' : '—'}</td>
+                    <td class="r">${fmtNum(s.loads)}</td>
+                    <td class="r">${fmtNum(s.tons_sold, 0)}</td>
+                    <td class="r">${fmtUSD(s.trans_rev, 0)}</td>
+                    <td class="r"><strong>${fmtUSD(s.sales_ttc, 0)}</strong></td>
+                  </tr>
+                `).join('') || emptyRow(6, 'No site breakdown for this entity')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -1424,6 +1487,37 @@
             </table>
           </div>
         </div>
+
+        <div class="panel-card" id="driverPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>UNIVERSAL EQUIPMENT &amp; DRIVER REGISTRY (${fmtNum(SEED.records.equipment.length)} UNITS · ${fmtNum(SEED.records.drivers.length)} DRIVERS)</span></div>
+            <span class="panel-meta">M99 + M107 Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('eqreg', 'Unit / Plate', 'name')}${th('eqreg', 'Category', 'type')}${th('eqreg', 'Ownership', 'ownership')}${th('eqreg', 'Capacity', 'capacity', 'r')}
+                  ${th('eqreg', 'Truck Owner / Supplier', 'supplier')}${th('eqreg', 'Customer Link', 'customer')}${th('eqreg', 'Default Driver', 'default_driver')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortRows(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'eqreg', 'name', 'asc').slice(0, shownCount('eqreg')).map(e => `
+                  <tr>
+                    <td class="mono"><strong>${esc(e.name)}</strong></td>
+                    <td>${esc(e.type || 'Truck')}</td>
+                    <td><span class="badge ${/^own/i.test(e.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(e.ownership || 'Transporter')}</span></td>
+                    <td class="r">${e.capacity ? fmtNum(e.capacity, 1) : '—'}</td>
+                    <td>${esc(e.supplier || '—')}</td>
+                    <td>${esc(e.customer || '—')}</td>
+                    <td>${esc(e.default_driver || '—')}</td>
+                  </tr>
+                `).join('') || emptyRow(7, 'No matching equipment units')}
+                ${showMoreRow('eqreg', SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())).length, 7)}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1500,6 +1594,38 @@
               ${showMoreRow('pricing', rules.length, 12)}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="split-grid-2">
+        <div class="panel-card" id="listPricePanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>LIST PRICE BENCHMARK VS. REALIZED SELLING PRICE BY GRADE</span></div>
+            <span class="panel-meta">M281 Price vs. List ${exportBtn('listPricePanel', 'Price_Benchmark')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('pbench', 'Product / Grade', 'Product')}${th('pbench', 'UoM', 'UoM')}${th('pbench', 'Loads', 'loads', 'r')}${th('pbench', 'List Price ($)', 'list_price', 'r')}
+                  ${th('pbench', 'Realized Net ($)', 'avg_price_net', 'r')}${th('pbench', 'Realized TTC ($)', 'avg_price_ttc', 'r')}${th('pbench', 'Sales TTC ($)', 'sales_ttc', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortRows((getModel().products || []), 'pbench', 'sales_ttc', 'desc').map(p => `
+                  <tr>
+                    <td><strong>${esc(p.Product)}</strong></td>
+                    <td class="mono">${esc(p.UoM || 'm³')}</td>
+                    <td class="r">${fmtNum(p.loads)}</td>
+                    <td class="r">${p.list_price != null ? fmtUSD(p.list_price, 2) : '—'}</td>
+                    <td class="r">${fmtUSD(p.avg_price_net, 2)}</td>
+                    <td class="r"><strong>${fmtUSD(p.avg_price_ttc, 2)}</strong></td>
+                    <td class="r">${fmtUSD(p.sales_ttc, 0)}</td>
+                  </tr>
+                `).join('') || emptyRow(7, 'No product benchmark rows for this entity')}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
@@ -1879,6 +2005,38 @@
           </table>
         </div>
       </div>
+
+      <div class="panel-card" id="soaPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>AUDITED SOA DOUBLE-ENTRY JOURNAL STREAM (${fmtNum((m.soa_stream || []).length)} RECENT LEGS)</span></div>
+          <span class="panel-meta">Balanced Debit &amp; Credit Postings ${exportBtn('soaPanel', 'SOA_Journal_Stream')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('soa', 'Date', 'date')}${th('soa', 'Co.', 'company')}${th('soa', 'Voucher / Document', 'doc')}${th('soa', 'GL Code', 'code')}${th('soa', 'Account', 'account')}
+                ${th('soa', 'Counterparty / Detail', 'detail')}${th('soa', 'Description', 'desc')}${th('soa', 'Debit ($)', 'debit', 'r')}${th('soa', 'Credit ($)', 'credit', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${sortRows((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)), 'soa', 'date', 'desc').map(r => `
+                <tr>
+                  <td class="mono">${esc(String(r.date || '').slice(0, 10))}</td>
+                  <td><span class="badge badge-brass">${esc(r.company || 'WTC')}</span></td>
+                  <td class="mono">${esc(r.doc || '—')}</td>
+                  <td class="mono"><strong>${esc(r.code)}</strong></td>
+                  <td><strong>${esc(r.account)}</strong></td>
+                  <td>${esc(r.detail || '—')}</td>
+                  <td>${esc(r.desc || '—')}</td>
+                  <td class="r">${r.debit ? fmtUSD(r.debit, 2) : '—'}</td>
+                  <td class="r">${r.credit ? fmtUSD(r.credit, 2) : '—'}</td>
+                </tr>
+              `).join('') || emptyRow(9, 'No SOA journal legs in this snapshot')}
+            </tbody>
+          </table>
+        </div>
+      </div>
     `;
   }
 
@@ -2123,7 +2281,10 @@
           <div class="cockpit-title">22 Printable A4 Statements &amp; Exports</div>
           <div class="cockpit-sub">Every statement follows the entity, period and date basis selected above. Print to A4 PDF or download the sheet as CSV / Excel.</div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="stmt-banner-actions">
+          <select id="stmtQuickSelect" class="pill-select stmt-quick-select" aria-label="Select Statement">
+            ${STATEMENT_CATALOG.map(s => `<option value="${s.code}" ${STATE.activeStatement === s.code ? 'selected' : ''}>RDL-${s.code} · ${esc(s.name)}</option>`).join('')}
+          </select>
           <button class="btn btn-brass" id="printStmtBtn">🖨 Print / Save A4 PDF</button>
           <button class="btn btn-outline-bar" id="exportCsvBtn">⬇ Export CSV (Excel)</button>
         </div>
@@ -3093,7 +3254,7 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '3.1'
+      appVersion: '3.2'
     };
   }
 
@@ -3470,10 +3631,74 @@
   // ==========================================================================
   let searchTimer = null;
 
+  function contextFormForView(view, user) {
+    user = user || activeUser();
+    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense' };
+    const preferred = map[view] || 'sales';
+    if (canEnterForm(preferred, user)) return preferred;
+    if (canEnterForm('sales', user)) return 'sales';
+    if (canEnterForm('receipt', user)) return 'receipt';
+    return 'sales';
+  }
+
+  function renderMobileSubnav(user, k, sentinelsOpen) {
+    const el = $('mobileSubnav');
+    if (!el) return;
+    const v = STATE.view;
+    let group = 'exec';
+    if (['sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
+    else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'ledger', 'gl'].includes(v)) group = 'books';
+
+    const specs = {
+      exec: [
+        { view: 'overview', label: 'Overview', pill: 'Live' },
+        { view: 'sentinels', label: 'Sentinels', pill: String(sentinelsOpen) },
+        { view: 'statements', label: '22 Statements', pill: 'A4' },
+        { view: 'users', label: 'Team & Cloud', pill: String(STATE.users.length) }
+      ],
+      dispatch: [
+        { view: 'sales', label: 'Sales', pill: k.loads != null ? fmtNum(k.loads) : '' },
+        { view: 'raw', label: 'Quarries', pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
+        { view: 'fleet', label: 'Fleet & Diesel', pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
+        { view: 'pricing', label: 'Pricing', pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
+      ],
+      books: [
+        { view: 'customers', match: ['customers', 'ar'], label: 'Customers AR', pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
+        { view: 'suppliers', match: ['suppliers', 'ap'], label: 'Suppliers AP', pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
+        { view: 'expenses', label: 'Expenses & Pay', pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
+        { view: 'ledger', match: ['ledger', 'gl'], label: 'GL & SOA', pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
+      ]
+    };
+
+    const items = (specs[group] || specs.exec).filter(it => canViewView(it.view, user));
+    el.innerHTML = items.map(it => {
+      const on = (it.match || [it.view]).includes(v);
+      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}"><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
+    }).join('');
+    el.querySelectorAll('[data-subnav-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-subnav-view'))));
+
+    // Sync Mobile Bottom Dock active states
+    const dOver = $('dockBtnOverview'), dDisp = $('dockBtnDispatch'), dBooks = $('dockBtnBooks'), dEntry = $('mobileDockEntryBtn'), dEntryLbl = $('mobileDockEntryLabel');
+    if (dOver) dOver.classList.toggle('on', group === 'exec');
+    if (dDisp) dDisp.classList.toggle('on', group === 'dispatch');
+    if (dBooks) dBooks.classList.toggle('on', group === 'books');
+    if (dEntry && dEntryLbl) {
+      if (canEnterAny(user)) {
+        dEntry.hidden = false;
+        const formLabels = { sales: 'Post Ticket', raw: 'Post Raw', fuel: 'Log Fuel', receipt: 'Post Receipt', settlement: 'Settle AP', expense: 'Post Expense' };
+        dEntryLbl.textContent = formLabels[contextFormForView(v, user)] || 'Post Entry';
+      } else {
+        dEntry.hidden = true;
+      }
+    }
+  }
+
   function renderApp() {
     document.documentElement.setAttribute('data-theme', STATE.theme);
     const themeBtn = $('themeToggleBtn');
     if (themeBtn) themeBtn.textContent = STATE.theme === 'dark' ? 'Light' : 'Dark';
+    const mThemeBtn = $('mobileThemeBtn');
+    if (mThemeBtn) mThemeBtn.textContent = STATE.theme === 'dark' ? '☀' : '☾';
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0E1A2E' : '#F4F2EE');
 
@@ -3517,6 +3742,8 @@
     const snPill = $('navCountSentinels');
     if (snPill) snPill.className = 'nav-pill ' + (sentinelsOpen ? 'brass' : 'good');
 
+    renderMobileSubnav(user, k, sentinelsOpen);
+
     const container = $('workspace');
     if (!container) return;
 
@@ -3542,21 +3769,29 @@
   }
 
   function wireWorkspace(container, activeUserRow) {
-    // Chart hover tooltip
+    // Chart hover & mobile tap tooltip
     const chartWrap = $('execChartWrap');
     const chartTip = $('execChartTip');
     if (chartWrap && chartTip) {
+      const showTip = (col, clientX, clientY) => {
+        chartTip.innerHTML = `<strong>${esc(col.getAttribute('data-m') || '')} · ${esc(col.getAttribute('data-t') || '')}</strong><br>${esc(col.getAttribute('data-tip') || '')}`;
+        chartTip.hidden = false;
+        const rect = chartWrap.getBoundingClientRect();
+        const tipW = Math.min(260, rect.width - 16);
+        const x = clientX != null ? (clientX - rect.left - tipW / 2) : 10;
+        const y = clientY != null ? (clientY - rect.top - 58) : 8;
+        chartTip.style.left = Math.min(Math.max(8, rect.width - tipW - 8), Math.max(8, x)) + 'px';
+        chartTip.style.top = Math.max(6, y) + 'px';
+      };
       chartWrap.querySelectorAll('.col').forEach(col => {
-        col.addEventListener('mouseenter', () => {
-          chartTip.innerHTML = `<strong>${esc(col.getAttribute('data-m') || '')} · ${esc(col.getAttribute('data-t') || '')}</strong><br>${esc(col.getAttribute('data-tip') || '')}`;
-          chartTip.hidden = false;
-        });
-        col.addEventListener('mousemove', e => {
-          const rect = chartWrap.getBoundingClientRect();
-          chartTip.style.left = Math.min(rect.width - 260, Math.max(10, e.clientX - rect.left - 80)) + 'px';
-          chartTip.style.top = Math.max(8, e.clientY - rect.top - 58) + 'px';
-        });
+        col.addEventListener('mouseenter', e => showTip(col, e.clientX, e.clientY));
+        col.addEventListener('mousemove', e => showTip(col, e.clientX, e.clientY));
         col.addEventListener('mouseleave', () => { chartTip.hidden = true; });
+        col.addEventListener('click', e => {
+          e.stopPropagation();
+          const b = col.getBoundingClientRect();
+          showTip(col, b.left + b.width / 2, b.top);
+        });
       });
     }
 
@@ -3590,9 +3825,19 @@
     }));
     container.querySelectorAll('[data-open-modal]').forEach(btn => btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-open-modal'))));
     container.querySelectorAll('[data-stmt]').forEach(card => {
-      const go = () => { STATE.activeStatement = card.getAttribute('data-stmt'); renderApp(); const sheet = $('printableSheet'); if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      const go = () => {
+        STATE.activeStatement = card.getAttribute('data-stmt');
+        renderApp();
+        const sheet = $('printableSheet');
+        if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
       card.addEventListener('click', go);
       card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    const stmtSel = $('stmtQuickSelect');
+    if (stmtSel) stmtSel.addEventListener('change', e => {
+      STATE.activeStatement = e.target.value;
+      renderApp();
     });
     container.querySelectorAll('th.sortable').forEach(h => h.addEventListener('click', () => {
       const view = h.getAttribute('data-sort-view'), key = h.getAttribute('data-sort-key');
@@ -3774,13 +4019,17 @@
     if (authForm) authForm.addEventListener('submit', e => { e.preventDefault(); performLogin(val('authEmailInput'), val('authPinInput')); });
 
     const mobileMenuBtn = $('mobileMenuBtn');
+    const mobileDockMenuBtn = $('mobileDockMenuBtn');
     const sidebar = $('sidebar');
     const backdrop = $('railBackdrop');
+    const toggleRail = () => { if (!sidebar) return; const open = !sidebar.classList.contains('open'); sidebar.classList.toggle('open', open); if (backdrop) backdrop.hidden = !open; };
     const closeRail = () => { if (sidebar) sidebar.classList.remove('open'); if (backdrop) backdrop.hidden = true; };
-    if (mobileMenuBtn && sidebar) mobileMenuBtn.addEventListener('click', () => { const open = !sidebar.classList.contains('open'); sidebar.classList.toggle('open', open); if (backdrop) backdrop.hidden = !open; });
+    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleRail);
+    if (mobileDockMenuBtn) mobileDockMenuBtn.addEventListener('click', toggleRail);
     if (backdrop) backdrop.addEventListener('click', closeRail);
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-view'))));
+    document.querySelectorAll('#mobileBottomDock [data-dock-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-dock-view'))));
     const brand = $('brandHomeLink');
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
@@ -3789,11 +4038,16 @@
     if (periodSel) periodSel.addEventListener('change', e => { STATE.period = e.target.value; STATE.shown = {}; renderApp(); });
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); renderApp(); }));
 
+    const toggleTheme = () => { STATE.theme = STATE.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('isabi_mfg_theme', STATE.theme); renderApp(); };
     const themeBtn = $('themeToggleBtn');
-    if (themeBtn) themeBtn.addEventListener('click', () => { STATE.theme = STATE.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('isabi_mfg_theme', STATE.theme); renderApp(); });
+    const mobileThemeBtn = $('mobileThemeBtn');
+    if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+    if (mobileThemeBtn) mobileThemeBtn.addEventListener('click', toggleTheme);
 
     const newTicketBtn = $('newEntryBtn');
-    if (newTicketBtn) newTicketBtn.addEventListener('click', () => openEntryModal(canEnterForm('sales') ? 'sales' : 'receipt'));
+    const mobileDockEntryBtn = $('mobileDockEntryBtn');
+    if (newTicketBtn) newTicketBtn.addEventListener('click', () => openEntryModal(contextFormForView(STATE.view)));
+    if (mobileDockEntryBtn) mobileDockEntryBtn.addEventListener('click', () => openEntryModal(contextFormForView(STATE.view)));
     const closeEntryBtn = $('closeModalBtn');
     if (closeEntryBtn) closeEntryBtn.addEventListener('click', () => closeEntryModal());
     const modal = $('entryModal');
@@ -3802,6 +4056,7 @@
 
     // Ask ISABI slide-over drawer
     const openAskBtn = $('askIsabiBtn');
+    const mobileAskBtn = $('mobileAskIsabiBtn');
     const closeAskBtn = $('closeAiDrawerBtn');
     const resetAskBtn = $('resetAiThreadBtn');
     const askDrawer = $('aiDrawer');
@@ -3822,13 +4077,17 @@
       askLog.appendChild(bBubble);
       askLog.scrollTop = askLog.scrollHeight;
     }
-    const closeDrawer = () => { if (askDrawer) { askDrawer.classList.remove('open'); askDrawer.setAttribute('aria-hidden', 'true'); } };
-    if (openAskBtn && askDrawer) openAskBtn.addEventListener('click', () => {
+    const openDrawer = () => {
+      if (!askDrawer) return;
+      closeRail();
       askDrawer.classList.add('open');
       askDrawer.setAttribute('aria-hidden', 'false');
       if (askLog && !askLog.children.length) pushAskMessage(defaultPrompt);
-      if (askInput) setTimeout(() => askInput.focus(), 200);
-    });
+      if (askInput && window.matchMedia('(min-width: 861px)').matches) setTimeout(() => askInput.focus(), 200);
+    };
+    const closeDrawer = () => { if (askDrawer) { askDrawer.classList.remove('open'); askDrawer.setAttribute('aria-hidden', 'true'); } };
+    if (openAskBtn) openAskBtn.addEventListener('click', openDrawer);
+    if (mobileAskBtn) mobileAskBtn.addEventListener('click', openDrawer);
     if (closeAskBtn) closeAskBtn.addEventListener('click', closeDrawer);
     if (resetAskBtn && askLog) resetAskBtn.addEventListener('click', () => { askLog.innerHTML = ''; pushAskMessage(defaultPrompt); });
     document.querySelectorAll('#aiChips .ai-pill-btn').forEach(chip => chip.addEventListener('click', () => pushAskMessage(chip.getAttribute('data-prompt') || chip.textContent)));

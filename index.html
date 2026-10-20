@@ -7,8 +7,13 @@
   <meta name="description" content="ISABI Systems — Manufacturing Operations Command Center &amp; Double-Entry Ledger for WTC, BBConstruction &amp; Lions Transport.">
   <meta name="theme-color" content="#F4F2EE">
   <script id="pre">
-    // Pre-paint theme (no white flash for dark users) — PWA.md §3.3
-    try { var t = localStorage.getItem('isabi_mfg_theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    // Pre-paint theme + iOS standalone detection (no white flash, safe-area inset ready) — PWA.md §3.1 & §3.3
+    try {
+      var t = localStorage.getItem('isabi_mfg_theme');
+      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+      var isStandalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+      if (isStandalone) document.documentElement.classList.add('ios-standalone');
+    } catch (e) {}
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -20,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=3.1">
+  <link rel="stylesheet" href="css/app.css?v=3.3">
 </head>
 <body>
   <div class="app-shell" id="appShell">
@@ -153,39 +158,57 @@
             <span id="topbarEyebrow">ISABI Systems · Manufacturing Operations · Double-Entry Ledger</span>
             <b id="topbarTitle">Consolidated Group Overview (WTC · BBConstruction · Lions Transport)</b>
           </div>
+          <div class="top-mobile-actions">
+            <button type="button" class="ask-isabi-trigger ask-isabi-mobile" id="mobileAskIsabiBtn" title="Open Ask ISABI Intelligence">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
+                <g fill="#F4F2EE">
+                  <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                  <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+                </g>
+                <g fill="#D9A54A">
+                  <rect x="0" y="9.5" width="55.66" height="3.4"/>
+                  <rect x="0" y="17.5" width="55.66" height="3.4"/>
+                </g>
+              </svg>
+              <span>ISABI</span>
+            </button>
+            <button type="button" class="btn btn-ghost-bar mobile-theme-btn" id="mobileThemeBtn" title="Switch Light Paper / Dark Ink" aria-label="Toggle Theme">Dark</button>
+          </div>
         </div>
 
         <div class="tools">
           <!-- Entity / Business Unit Selector (Match ISABI Sandbox Bar) -->
           <div class="entity-bar" id="companySwitch" role="group" aria-label="Operating Entity">
-            <button type="button" class="entity-btn active" data-company="manufacturing-group">All Group (3)</button>
+            <button type="button" class="entity-btn active" data-company="manufacturing-group"><span class="co-full">All Group (3)</span><span class="co-short">All Group</span></button>
             <button type="button" class="entity-btn" data-company="wtc">WTC</button>
-            <button type="button" class="entity-btn" data-company="bbconstruction">BBConstruction</button>
-            <button type="button" class="entity-btn" data-company="lionstransport">Lions Transport</button>
+            <button type="button" class="entity-btn" data-company="bbconstruction"><span class="co-full">BBConstruction</span><span class="co-short">BBC</span></button>
+            <button type="button" class="entity-btn" data-company="lionstransport"><span class="co-full">Lions Transport</span><span class="co-short">Lions</span></button>
           </div>
 
-          <!-- Period Slicer -->
-          <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
-            <option value="all">All-Time (2024–2026)</option>
-            <option value="ytd">FY 2026 (YTD)</option>
-            <option value="mtd">October 2026 (MTD)</option>
-            <option value="sep2026">September 2026</option>
-            <option value="aug2026">August 2026</option>
-            <option value="q3_2026">Q3 2026 (Jul–Sep)</option>
-            <option value="fy2025">FY 2025 (Full Year)</option>
-          </select>
+          <div class="period-basis-row">
+            <!-- Period Slicer -->
+            <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
+              <option value="all">All-Time (2024–2026)</option>
+              <option value="ytd">FY 2026 (YTD)</option>
+              <option value="mtd">October 2026 (MTD)</option>
+              <option value="sep2026">September 2026</option>
+              <option value="aug2026">August 2026</option>
+              <option value="q3_2026">Q3 2026 (Jul–Sep)</option>
+              <option value="fy2025">FY 2025 (Full Year)</option>
+            </select>
 
-          <!-- Date Basis -->
-          <div class="basis-switch" id="basisSwitch" role="group" aria-label="Accounting Date Basis">
-            <button type="button" class="basis-btn active" data-basis="tx" title="Operational Transaction Date">Tx Date</button>
-            <button type="button" class="basis-btn" data-basis="rep" title="Statutory Reporting Date">Rep Date</button>
+            <!-- Date Basis -->
+            <div class="basis-switch" id="basisSwitch" role="group" aria-label="Accounting Date Basis">
+              <button type="button" class="basis-btn active" data-basis="tx" title="Operational Transaction Date">Tx Date</button>
+              <button type="button" class="basis-btn" data-basis="rep" title="Statutory Reporting Date">Rep Date</button>
+            </div>
           </div>
 
           <!-- Smart Entry Action -->
-          <button type="button" class="btn btn-outline-bar" id="newEntryBtn">+ New Entry</button>
+          <button type="button" class="btn btn-outline-bar desktop-tool-btn" id="newEntryBtn">+ New Entry</button>
 
           <!-- Official Ask ISABI Trigger -->
-          <button type="button" class="ask-isabi-trigger" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
+          <button type="button" class="ask-isabi-trigger desktop-tool-btn" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
               <g fill="#F4F2EE">
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
@@ -200,12 +223,41 @@
           </button>
 
           <!-- Theme Toggle -->
-          <button type="button" class="btn btn-ghost-bar" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
+          <button type="button" class="btn btn-ghost-bar desktop-tool-btn" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
         </div>
       </header>
 
+      <!-- Mobile In-Group Module Pill Strip -->
+      <div class="mobile-subnav no-print" id="mobileSubnav" role="navigation" aria-label="Section Views"></div>
+
       <!-- Dynamic Workspace Canvas -->
       <main class="workspace" id="workspace" tabindex="-1"></main>
+
+      <!-- Mobile Bottom Navigation Dock (PWA.md §3.1) -->
+      <nav class="mobile-bottom-dock no-print" id="mobileBottomDock" aria-label="Mobile Navigation">
+        <button type="button" class="dock-btn on" data-dock-view="overview" id="dockBtnOverview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          <span>Overview</span>
+        </button>
+        <button type="button" class="dock-btn" data-dock-view="sales" id="dockBtnDispatch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+          <span>Dispatch</span>
+        </button>
+        <button type="button" class="dock-btn dock-cta" id="mobileDockEntryBtn">
+          <span class="dock-cta-ring">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </span>
+          <span id="mobileDockEntryLabel">Post Entry</span>
+        </button>
+        <button type="button" class="dock-btn" data-dock-view="customers" id="dockBtnBooks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          <span>Books</span>
+        </button>
+        <button type="button" class="dock-btn" id="mobileDockMenuBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          <span>Modules</span>
+        </button>
+      </nav>
     </div>
   </div>
 
@@ -344,9 +396,9 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="js/endpoints.js?v=3.1"></script>
-  <script src="js/seed_data.js?v=3.1"></script>
-  <script src="js/app.js?v=3.1"></script>
+  <script src="js/endpoints.js?v=3.3"></script>
+  <script src="js/seed_data.js?v=3.3"></script>
+  <script src="js/app.js?v=3.3"></script>
   <script>
     if ('serviceWorker' in navigator) {
       let refreshing = false;
