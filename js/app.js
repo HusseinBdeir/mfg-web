@@ -742,9 +742,9 @@
             <table class="m-grid">
               <thead>
                 <tr>
-                  <th>Operating Entity</th>
+                  <th>Entity</th>
                   <th class="n">Sales TTC</th>
-                  <th class="n">Loads</th>
+                  <th class="n hide-xs">Loads</th>
                   <th class="n">GM %</th>
                   <th class="n">Op. Profit</th>
                   <th>Books</th>
@@ -757,7 +757,7 @@
                 <tr class="clickable-row" data-jump-co="${key}">
                   <td><b>${label}</b></td>
                   <td class="n">${fmtUSD(kk.sales_ttc, 0)}</td>
-                  <td class="n">${fmtNum(kk.loads)}</td>
+                  <td class="n hide-xs">${fmtNum(kk.loads)}</td>
                   <td class="n">${fmtPct(kk.gm_pct, kk.gross_margin, kk.net_sales)}</td>
                   <td class="n">${fmtUSD(kk.operating_profit, 0)}</td>
                   <td><span class="m-chip ${t.ok === false ? 'crit' : 'closed'}">${esc(t.label)}</span></td>
@@ -766,15 +766,15 @@
                 <tr class="clickable-row" data-jump-co="lionstransport">
                   <td><b>Lions Transport</b></td>
                   <td class="n">${ltHasLedger ? fmtUSD(ltK.sales_ttc, 0) : '—'}</td>
-                  <td class="n">${ltHasLedger ? fmtNum(ltK.loads) : '—'}</td>
+                  <td class="n hide-xs">${ltHasLedger ? fmtNum(ltK.loads) : '—'}</td>
                   <td class="n">${ltHasLedger ? fmtPct(ltK.gm_pct, ltK.gross_margin, ltK.net_sales) : 'Fleet'}</td>
                   <td class="n">${ltHasLedger ? fmtUSD(ltK.operating_profit, 0) : '—'}</td>
-                  <td><span class="m-chip ${ltHasLedger ? 'closed' : ''}">${ltHasLedger ? 'Balanced' : 'No ledger yet'}</span></td>
+                  <td><span class="m-chip ${ltHasLedger ? 'closed' : ''}">${ltHasLedger ? 'Balanced' : 'No ledger'}</span></td>
                 </tr>
                 <tr class="total">
                   <td>Group Total<span class="hide-xs"> (${ltHasLedger ? 3 : 2} live BUs)</span></td>
                   <td class="n">${fmtUSD(k.sales_ttc, 0)}</td>
-                  <td class="n">${fmtNum(k.loads)}</td>
+                  <td class="n hide-xs">${fmtNum(k.loads)}</td>
                   <td class="n">${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</td>
                   <td class="n">${fmtUSD(k.operating_profit, 0)}</td>
                   <td><span class="m-chip ${tb.ok === false ? 'crit' : 'brass'}">${tb.ok === false ? 'TB ' + tb.label : 'Audited'}</span></td>
@@ -792,8 +792,8 @@
               <thead>
                 <tr>
                   <th>Aggregate Grade</th>
-                  <th>UoM</th>
-                  <th class="n">Loads</th>
+                  <th class="hide-xs">UoM</th>
+                  <th class="n hide-xs">Loads</th>
                   <th class="n">Tons</th>
                   <th class="n">Avg TTC</th>
                   <th class="n">Revenue TTC</th>
@@ -803,8 +803,8 @@
                 ${(m.products || []).slice(0, 4).map(p => `
                   <tr>
                     <td><b>${esc(p.Product)}</b></td>
-                    <td class="mu">${esc(p.UoM || 'm³')}</td>
-                    <td class="n">${fmtNum(p.loads)}</td>
+                    <td class="mu hide-xs">${esc(p.UoM || 'm³')}</td>
+                    <td class="n hide-xs">${fmtNum(p.loads)}</td>
                     <td class="n">${fmtNum(p.tons_sold, 0)}</td>
                     <td class="n">${fmtUSD(p.avg_price_ttc, 2)}</td>
                     <td class="n"><b>${fmtUSD(p.sales_ttc, 0)}</b></td>
@@ -3254,7 +3254,7 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '3.2'
+      appVersion: '3.3'
     };
   }
 
@@ -3405,6 +3405,29 @@
     gl: 'Lebanese CoA Trial Balance & SOA Journal Stream',
     statements: '22 Printable A4 Financial & Operational Statements',
     users: 'Multi-Device Team Authentication, RLS & Cloud Sync'
+  };
+  const VIEW_MOBILE_TITLES = {
+    overview: 'Command & Ledger Overview',
+    sentinels: 'AI Sentinel Audit (m280)',
+    sales: 'Sales & Deliveries',
+    raw: 'Quarry Intake (2-Leg AP)',
+    fleet: 'Fleet & Diesel Control',
+    pricing: 'Price Matrix & Rules',
+    customers: 'Customers & AR Aging',
+    ar: 'Customers & AR Aging',
+    suppliers: 'Suppliers & 3-Leg AP',
+    ap: 'Suppliers & 3-Leg AP',
+    expenses: 'Expenses & Payroll',
+    ledger: 'Trial Balance & SOA GL',
+    gl: 'Trial Balance & SOA GL',
+    statements: '22 Financial Statements',
+    users: 'Team Auth & Cloud Sync'
+  };
+  const COMPANY_MOBILE_LABELS = {
+    'manufacturing-group': 'All Group (WTC · BBC · Lions)',
+    wtc: 'WTC (World Trading)',
+    bbconstruction: 'BBConstruction',
+    lionstransport: 'Lions Transport'
   };
 
   function getInitials(name) {
@@ -3653,19 +3676,19 @@
       exec: [
         { view: 'overview', label: 'Overview', pill: 'Live' },
         { view: 'sentinels', label: 'Sentinels', pill: String(sentinelsOpen) },
-        { view: 'statements', label: '22 Statements', pill: 'A4' },
-        { view: 'users', label: 'Team & Cloud', pill: String(STATE.users.length) }
+        { view: 'statements', label: 'Statements', pill: '22' },
+        { view: 'users', label: 'Team', pill: String(STATE.users.length) }
       ],
       dispatch: [
         { view: 'sales', label: 'Sales', pill: k.loads != null ? fmtNum(k.loads) : '' },
         { view: 'raw', label: 'Quarries', pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
-        { view: 'fleet', label: 'Fleet & Diesel', pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
+        { view: 'fleet', label: 'Fleet', pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
         { view: 'pricing', label: 'Pricing', pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
       ],
       books: [
-        { view: 'customers', match: ['customers', 'ar'], label: 'Customers AR', pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
-        { view: 'suppliers', match: ['suppliers', 'ap'], label: 'Suppliers AP', pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
-        { view: 'expenses', label: 'Expenses & Pay', pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
+        { view: 'customers', match: ['customers', 'ar'], label: 'AR Aging', pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
+        { view: 'suppliers', match: ['suppliers', 'ap'], label: 'AP 3-Leg', pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
+        { view: 'expenses', label: 'Expenses', pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
         { view: 'ledger', match: ['ledger', 'gl'], label: 'GL & SOA', pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
       ]
     };
@@ -3708,8 +3731,17 @@
 
     const eyeEl = $('topbarEyebrow');
     const titEl = $('topbarTitle');
-    if (eyeEl) eyeEl.textContent = `${COMPANY_LABELS[STATE.company]} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
-    if (titEl) titEl.textContent = VIEW_TITLES[STATE.view] || VIEW_TITLES.overview;
+    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 860;
+    if (eyeEl) {
+      eyeEl.textContent = isMobileViewport
+        ? `${COMPANY_MOBILE_LABELS[STATE.company] || COMPANY_LABELS[STATE.company]} · ${STATE.basis === 'rep' ? 'Rep Date' : 'Tx Date'}`
+        : `${COMPANY_LABELS[STATE.company]} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
+    }
+    if (titEl) {
+      titEl.textContent = isMobileViewport
+        ? (VIEW_MOBILE_TITLES[STATE.view] || VIEW_TITLES[STATE.view] || VIEW_MOBILE_TITLES.overview)
+        : (VIEW_TITLES[STATE.view] || VIEW_TITLES.overview);
+    }
     document.title = `${(VIEW_TITLES[STATE.view] || 'Overview').split('&')[0].trim()} · ISABI Mfg`;
 
     const aiScope = $('aiDrawerScope');

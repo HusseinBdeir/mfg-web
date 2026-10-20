@@ -1431,6 +1431,12 @@ table.m-grid tfoot tr td {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+}
+
+.modal-header > div:first-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .modal-eyebrow {
@@ -1449,6 +1455,7 @@ table.m-grid tfoot tr td {
   border-radius: 5px;
   width: 30px;
   height: 30px;
+  flex-shrink: 0;
 }
 
 .modal-tabs {
@@ -2481,8 +2488,8 @@ body.locked .app-shell { pointer-events: none; }
   .mobile-subnav {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 5px;
+    padding: 5px 10px;
     background: var(--surface-2);
     border-bottom: 1px solid var(--line);
     overflow-x: auto;
@@ -2494,22 +2501,22 @@ body.locked .app-shell { pointer-events: none; }
   .m-subnav-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 4.5px 10px;
+    gap: 4px;
+    padding: 4px 8.5px;
     border-radius: 999px;
     border: 1px solid var(--line);
     background: var(--surface);
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     white-space: nowrap;
     flex-shrink: 0;
   }
   .m-subnav-pill em {
     font-style: normal;
-    font-size: 10px;
+    font-size: 9.8px;
     font-weight: 700;
-    padding: 1px 5.5px;
+    padding: 1px 5px;
     border-radius: 999px;
     background: var(--m-chip);
     color: var(--muted);
@@ -2634,8 +2641,8 @@ body.locked .app-shell { pointer-events: none; }
   .chart-ftr-cell { padding: 8px 10px; border-bottom: 1px solid var(--line); }
   .chart-ftr-cell:nth-child(2n) { border-right: 0; }
   .chart-ftr-cell:nth-last-child(-n+2) { border-bottom: 0; }
-  table.m-grid th, table.m-grid td { padding: 6px 5.5px; font-size: 10.8px; }
-  .m-chip { font-size: 10px; padding: 2px 6px; }
+  table.m-grid th, table.m-grid td { padding: 6px 4.5px; font-size: 10.5px; }
+  .m-chip { font-size: 9.8px; padding: 2px 5.5px; }
   .att li { padding: 9px 12px; }
 
   /* Sub-module Cockpit Banners & Toolbars */
@@ -2691,8 +2698,8 @@ body.locked .app-shell { pointer-events: none; }
     overflow: hidden;
   }
   .modal-header { padding: 11px 14px; flex-shrink: 0; }
-  .modal-header h2 { font-size: 15px; line-height: 1.25; }
-  .modal-eyebrow { font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-header h2 { font-size: 14.5px; line-height: 1.25; }
+  .modal-eyebrow { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .modal-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -2703,7 +2710,7 @@ body.locked .app-shell { pointer-events: none; }
   }
   .modal-tabs::-webkit-scrollbar { display: none; }
   .modal-tab { flex-shrink: 0; white-space: nowrap; padding: 5.5px 10px; font-size: 11.5px; }
-  .modal-body { padding: 12px 14px calc(14px + var(--safe-bottom)); overflow-y: auto; flex: 1; }
+  .modal-body { padding: 12px 14px 0; overflow-y: auto; flex: 1; min-height: 0; }
   .rule-banner { font-size: 11px; padding: 7px 10px; margin-bottom: 10px; }
   .form-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .form-field.span-3, .form-field.check-field { grid-column: 1 / -1; }
@@ -2713,10 +2720,12 @@ body.locked .app-shell { pointer-events: none; }
     position: sticky;
     bottom: 0;
     background: var(--surface);
-    padding: 10px 0 2px;
-    margin-top: 12px;
+    margin: 12px -14px 0;
+    padding: 10px 14px calc(12px + var(--safe-bottom));
+    border-top: 1px solid var(--line);
     z-index: 5;
   }
+  .modal-foot .form-note { font-size: 10.5px; width: 100%; }
   .modal-foot > div { width: 100%; display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
 
   .app-strip { padding: 8px 12px; }
@@ -2724,7 +2733,7 @@ body.locked .app-shell { pointer-events: none; }
   .auth-left, .auth-right { padding: 18px 16px; }
   .auth-heading { font-size: 21px; }
   .quick-seat-list { max-height: 220px; }
-  .toast { left: 12px; right: 12px; bottom: calc(66px + var(--safe-bottom)); }
+  .toast { left: 12px; right: 12px; bottom: calc(64px + var(--safe-bottom)); padding: 9px 12px; font-size: 12px; }
 }
 
 @media (max-width: 480px) {
