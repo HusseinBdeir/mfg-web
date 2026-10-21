@@ -536,6 +536,15 @@ try {
       const railWideW = Math.round(sidebar.getBoundingClientRect().width);
       resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       const railResetW = Math.round(sidebar.getBoundingClientRect().width);
+      // Verify brand header buttons never touch or overlap "MANUFACTURING COMMAND" or "ISABI SYSTEMS"
+      const wmRect = document.querySelector('.brand-wordmark').getBoundingClientRect();
+      const subRect = document.querySelector('.brand-sub').getBoundingClientRect();
+      const actRect = document.querySelector('.rail-head-actions').getBoundingClientRect();
+      const btnRect = collapseBtn.getBoundingClientRect();
+      const brandClearanceOk = (actRect.left - wmRect.right >= 12) && (subRect.top - actRect.bottom >= 6) && (btnRect.left - subRect.right >= 8);
+      // Verify sticky tfoot uses separate border-collapse with zero bottom bleed-through gap
+      const sampleTable = document.querySelector('table.ledger-table');
+      const borderCollapseMode = sampleTable ? getComputedStyle(sampleTable).borderCollapse : '';
       const wBefore = main.getBoundingClientRect().width;
       collapseBtn.click();
       const collapsedClass = shell.classList.contains('rail-collapsed');
@@ -549,6 +558,8 @@ try {
         railNarrowW,
         railWideW,
         railResetW,
+        brandClearanceOk,
+        borderCollapseMode,
         collapsedClass,
         restoredClass,
         gainedPx: Math.round(wCollapsed - wBefore),
@@ -556,8 +567,8 @@ try {
         overflowCollapsed
       };
     })()`);
-    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0 && railToggleProbe.railNarrowW < railToggleProbe.railDefaultW && railToggleProbe.railWideW > railToggleProbe.railDefaultW && railToggleProbe.railResetW === railToggleProbe.railDefaultW
-      ? pass('desktop sidebar resize & toggle · wider/narrower + drag resizer + collapse', `narrow ${railToggleProbe.railNarrowW}px · default ${railToggleProbe.railDefaultW}px · wide ${railToggleProbe.railWideW}px · +${railToggleProbe.gainedPx}px collapsed`)
+    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0 && railToggleProbe.railNarrowW < railToggleProbe.railDefaultW && railToggleProbe.railWideW > railToggleProbe.railDefaultW && railToggleProbe.railResetW === railToggleProbe.railDefaultW && railToggleProbe.brandClearanceOk && railToggleProbe.borderCollapseMode === 'separate'
+      ? pass('desktop sidebar resize & toggle · wider/narrower + drag resizer + collapse + brand clearance + sticky tfoot', `narrow ${railToggleProbe.railNarrowW}px · default ${railToggleProbe.railDefaultW}px · wide ${railToggleProbe.railWideW}px · +${railToggleProbe.gainedPx}px collapsed`)
       : fail('desktop sidebar resize & toggle', JSON.stringify(railToggleProbe));
   }
 
