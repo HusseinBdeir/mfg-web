@@ -462,22 +462,47 @@
     `;
   }
 
-  // 10. Power BI Table with Inline Data Bars, Red Negatives, Amber/Navy Row Highlights & Sticky Totals
+  let _activePbiState = null;
+
+  // 10. Power BI Table with Inline Data Bars, Red Negatives, Amber/Navy Row Highlights, Sticky Totals & Interactive Pagination
   function pbiTable(title, cols, rows, opts = {}) {
     const list = rows || [];
-    const shown = list.slice(0, opts.limit || 80);
+    const tableKey = opts.id || ('t_' + String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 48));
+    const pageSize = Number((_activePbiState && _activePbiState.pbiPageSize) || opts.pageSize || 15);
+    const totalRows = list.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    const rawPage = (_activePbiState && _activePbiState.pbiTablePage && _activePbiState.pbiTablePage[tableKey]) || 0;
+    const curPage = Math.min(totalPages - 1, Math.max(0, Number(rawPage) || 0));
+    const startIdx = curPage * pageSize;
+    const shown = list.slice(startIdx, startIdx + pageSize);
+
     // Compute max per bar column for proportional inline data bars
     const barMax = {};
     cols.forEach((c, ci) => {
       if (c.bar) {
         let m = 1;
-        shown.forEach(r => {
-          const v = Math.abs(Number(typeof c.raw === 'function' ? c.raw(r) : r[c.key] || 0));
+        shown.forEach((r, idx) => {
+          const v = Math.abs(Number(typeof c.raw === 'function' ? c.raw(r, startIdx + idx) : r[c.key] || 0));
           if (v > m) m = v;
         });
         barMax[ci] = m;
       }
     });
+
+    const pagerHtml = totalRows > 10 ? `
+      <div class="pbi-pager">
+        <span class="pbi-pager-info">Showing <b>${totalRows ? fmtNum(startIdx + 1) : 0}–${fmtNum(startIdx + shown.length)}</b> of <b>${fmtNum(totalRows)}</b> ${esc(opts.unitLabel || 'rows')} · Page <b>${fmtNum(curPage + 1)}</b> of <b>${fmtNum(totalPages)}</b></span>
+        <div class="pbi-pager-controls">
+          <select class="pbi-page-size-sel" data-pbi-page-size="${esc(tableKey)}" aria-label="Rows per page" title="Rows per page">
+            ${[15, 25, 50, 100].map(sz => `<option value="${sz}" ${pageSize === sz ? 'selected' : ''}>${sz} / page</option>`).join('')}
+          </select>
+          <button type="button" class="pbi-page-btn" data-pbi-page-btn="${esc(tableKey)}" data-pbi-page-target="0" ${curPage <= 0 ? 'disabled' : ''} title="First Page">⟪</button>
+          <button type="button" class="pbi-page-btn" data-pbi-page-btn="${esc(tableKey)}" data-pbi-page-target="${curPage - 1}" ${curPage <= 0 ? 'disabled' : ''} title="Previous Page">◀ Prev</button>
+          <button type="button" class="pbi-page-btn" data-pbi-page-btn="${esc(tableKey)}" data-pbi-page-target="${curPage + 1}" ${curPage >= totalPages - 1 ? 'disabled' : ''} title="Next Page">Next ▶</button>
+          <button type="button" class="pbi-page-btn" data-pbi-page-btn="${esc(tableKey)}" data-pbi-page-target="${totalPages - 1}" ${curPage >= totalPages - 1 ? 'disabled' : ''} title="Last Page">⟫</button>
+        </div>
+      </div>
+    ` : '';
 
     const tableHtml = `
       <div class="table-wrap">
@@ -487,14 +512,15 @@
           </thead>
           <tbody>
             ${shown.map((r, idx) => {
+              const absIdx = startIdx + idx;
               const rowClass = [
                 opts.rowAmber && opts.rowAmber(r) ? 'pbi-row-amber' : '',
                 opts.rowNavy && opts.rowNavy(r) ? 'pbi-row-navy' : '',
-                opts.rkey && r.id ? 'rrow' : ''
+                (opts.rkey || r.rkey) && r.id ? 'rrow' : ''
               ].filter(Boolean).join(' ');
-              const rowAttrs = opts.rkey && r.id ? `data-rkey="${esc(opts.rkey)}" data-rid="${esc(r.id)}"` : '';
+              const rowAttrs = (opts.rkey || r.rkey) && r.id ? `data-rkey="${esc(opts.rkey || r.rkey)}" data-rid="${esc(r.id)}"` : '';
               return `<tr class="${rowClass}" ${rowAttrs}>${cols.map((c, ci) => {
-                const rawVal = typeof c.raw === 'function' ? c.raw(r, idx) : (c.key ? r[c.key] : null);
+                const rawVal = typeof c.raw === 'function' ? c.raw(r, absIdx) : (c.key ? r[c.key] : null);
                 const numVal = Number(rawVal || 0);
                 const isNeg = (c.negRed || c.bar) && rawVal != null && rawVal !== '' && numVal < -0.0001;
                 const cellAmber = typeof c.amberIf === 'function' && c.amberIf(r);
@@ -511,7 +537,7 @@
                   const bTone = numVal < 0 ? 'neg' : (c.bar === 'brass' ? 'brass' : 'pos');
                   barHtml = `<span class="pbi-bar-bg ${bTone}" style="width:${w}%"></span>`;
                 }
-                const formatted = c.fmt ? c.fmt(rawVal, r, idx) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal));
+                const formatted = c.fmt ? c.fmt(rawVal, r, absIdx) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal));
                 return `<td class="${cls}">${barHtml}${formatted}</td>`;
               }).join('')}</tr>`;
             }).join('') || `<tr><td colspan="${cols.length}" class="empty-row" style="text-align:center;padding:18px;color:var(--muted)">${esc(opts.emptyMsg || 'No matching rows for the selected filters')}</td></tr>`}
@@ -519,11 +545,12 @@
           ${opts.foot ? `<tfoot><tr>${opts.foot.map(f => `<td class="${f.r ? 'r' : ''} ${f.neg ? 'pbi-neg' : ''}" ${f.span ? `colspan="${f.span}"` : ''}>${f.v}</td>`).join('')}</tr></tfoot>` : ''}
         </table>
       </div>
+      ${pagerHtml}
     `;
 
     return pbiPanel(title, tableHtml, {
       subtitle: opts.subtitle,
-      meta: `${fmtNum(list.length)} ${opts.unitLabel || 'rows'}${list.length > shown.length ? ` (top ${shown.length})` : ''}`,
+      meta: `${fmtNum(totalRows)} ${opts.unitLabel || 'rows'}${totalPages > 1 ? ` · p.${curPage + 1}/${totalPages}` : ''}`,
       id: opts.id
     });
   }
@@ -670,9 +697,12 @@
   // ==================== 20-PAGE POWER BI STUDIO RENDERER ====================
   function renderPbiStudio(ctx) {
     const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn } = ctx;
+    _activePbiState = STATE;
     const m = getModel();
     const k = getKPI();
     const today = ctx.SEED_DATE || String(SEED.generated_at || '').slice(0, 10) || '2026-10-19';
+    const minDate = ctx.MIN_DATE || '2024-01-01';
+    const activeRange = ctx.periodRange ? ctx.periodRange(STATE.period) : null;
     const activePageId = STATE.pbiPage || 'p01_overview';
     const activePage = PBI_PAGES.find(p => p.id === activePageId) || PBI_PAGES[0];
 
@@ -699,19 +729,19 @@
     const coDriverSet = new Set((rec.company_drivers || []).map(d => norm(d.driver || d.name)));
     (rec.drivers || []).forEach(d => { if (d.is_company_driver) coDriverSet.add(norm(d.name)); });
 
-    // Option pools for dynamic per-page slicers
+    // Full option pools for dynamic per-page slicers (all customers, suppliers, products, sites, equipment, drivers, staff)
     const slicerPools = {
-      prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name))).slice(0, 60),
-      custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name))).slice(0, 90),
-      suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name))).slice(0, 90),
-      siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name))).slice(0, 70),
-      equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name))).slice(0, 90),
-      driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver))).slice(0, 80),
-      staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff))).slice(0, 80),
-      catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category))).slice(0, 50),
-      subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name)).slice(0, 60),
-      regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region))).slice(0, 40),
-      cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty')))).slice(0, 60)
+      prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name))),
+      custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name))),
+      suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name))),
+      siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name))),
+      equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name))),
+      driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver))),
+      staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff))),
+      catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category))),
+      subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name)),
+      regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region))),
+      cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty'))))
     };
 
     const pageSlicerDefs = buildPageSlicerDefs(activePageId, slicerPools);
@@ -741,38 +771,6 @@
       return matchSearch(r);
     };
 
-    const prodRows = (m.products || []).filter(matchCommon);
-    const custRows = (m.customers || []).filter(c => {
-      if (!matchCommon(c)) return false;
-      if (sl.creditOnly === 'Credit Customers' && !(Number(c.credit_sales || 0) > 0 || Number(c.ar_balance || 0) !== 0)) return false;
-      if (sl.creditOnly === 'Has Open Balance' && Math.abs(Number(c.ar_balance || 0)) < 0.01) return false;
-      if (sl.creditOnly === 'Overdue (>30d)' && Number(c.ar_overdue || 0) <= 0) return false;
-      if (sl.creditOnly === 'On Account (<$0)' && Number(c.ar_balance || 0) >= -0.01 && Number(c.ar_advances || 0) <= 0) return false;
-      if (sl.agingBucket) {
-        if (sl.agingBucket === 'Current' && Number(c.ar_current || 0) <= 0) return false;
-        if (sl.agingBucket === '1-10 Days' && Number(c.ar_1_10 || 0) <= 0) return false;
-        if (sl.agingBucket === '11-30 Days' && Number(c.ar_11_30 || 0) <= 0) return false;
-        if (sl.agingBucket === '31-60 Days' && Number(c.ar_31_60 || 0) <= 0) return false;
-        if (sl.agingBucket === '60+ Days' && Number(c.ar_60_plus || 0) <= 0) return false;
-        if (sl.agingBucket === 'On Account' && Number(c.ar_balance || 0) >= 0 && Number(c.ar_advances || 0) <= 0) return false;
-      }
-      return true;
-    });
-    const suppRows = (m.suppliers || []).filter(s => {
-      if (!matchCommon(s)) return false;
-      if (sl.payableLeg === 'Material' && Number(s.ap_material || s.raw_mat_cost || 0) <= 0) return false;
-      if (sl.payableLeg === 'Haulage' && Number(s.ap_haulage || s.raw_haulage || 0) <= 0) return false;
-      if (sl.payableLeg === 'Supplies & services' && Number(s.ap_expense || s.expenses || 0) <= 0) return false;
-      return true;
-    });
-    const siteRows = (m.sites || []).filter(matchCommon);
-    const equipRows = (m.equipment || []).filter(e => {
-      if (!matchCommon(e)) return false;
-      if (sl.equipType && norm(e.Type) !== norm(sl.equipType)) return false;
-      if (sl.ownership && norm(e.Ownership) !== norm(sl.ownership)) return false;
-      if (sl.equipStatus && norm(e.Status) !== norm(sl.equipStatus)) return false;
-      return true;
-    });
     const salesRows = filterRecords(rec.sales_tickets, { ignoreSearch: true }).filter(r => {
       if (!matchCommon(r)) return false;
       if (sl.shift) {
@@ -811,10 +809,164 @@
       return true;
     });
 
+    // When a specific date window is active, overlay period-scoped flow metrics on products, customers, suppliers & sites
+    let baseProds = m.products || [];
+    let baseCusts = m.customers || [];
+    let baseSupps = m.suppliers || [];
+    let baseSites = m.sites || [];
+    if (activeRange) {
+      const pMap = new Map();
+      salesRows.forEach(s => {
+        const pk = norm(s.product);
+        if (!pk) return;
+        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+        const q = Number(s.qty || 0);
+        const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+        const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
+        cur.loads += 1;
+        cur.qty_sold += q;
+        cur.tons_sold += (s.uom === 'm³' ? q * 1.5 : q);
+        cur.sales_ttc += ttc;
+        cur.net_sales += net;
+        cur.trans_rev += Number(s.trans_price || 0);
+        pMap.set(pk, cur);
+      });
+      baseProds = baseProds.map(p => {
+        const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+        return Object.assign({}, p, {
+          loads: st.loads,
+          qty_sold: round2(st.qty_sold),
+          tons_sold: round2(st.tons_sold),
+          sales_ttc: round2(st.sales_ttc),
+          net_sales: round2(st.net_sales),
+          trans_rev: round2(st.trans_rev),
+          avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
+          avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net
+        });
+      });
+
+      const cMap = new Map();
+      salesRows.forEach(s => {
+        const ck = norm(s.customer);
+        if (!ck) return;
+        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+        const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
+        cur.loads += 1;
+        cur.sales_ttc += ttc;
+        cur.net_sales += net;
+        if (s.method === 'Cash') cur.cash_sales += ttc;
+        else cur.credit_sales += ttc;
+        if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
+        cMap.set(ck, cur);
+      });
+      recRows.forEach(r => {
+        const ck = norm(r.customer);
+        if (!ck) return;
+        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        cur.receipts += Number(r.amount || 0);
+        cMap.set(ck, cur);
+      });
+      baseCusts = baseCusts.map(c => {
+        const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        return Object.assign({}, c, {
+          loads: st.loads,
+          sales_ttc: round2(st.sales_ttc),
+          net_sales: round2(st.net_sales),
+          credit_sales: round2(st.credit_sales),
+          cash_sales: round2(st.cash_sales),
+          receipts: round2(st.receipts),
+          last_sale: st.last_sale || c.last_sale
+        });
+      });
+
+      const sMap = new Map();
+      const ensureSup = name => {
+        const sk = norm(name);
+        if (!sMap.has(sk)) sMap.set(sk, { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
+        return sMap.get(sk);
+      };
+      rawRows.forEach(r => {
+        if (r.site_owner) {
+          const st = ensureSup(r.site_owner);
+          st.raw_loads += 1;
+          st.raw_mat_cost += Number(r.cost || 0);
+          st.raw_cost += Number(r.cost || 0);
+        }
+        if (r.truck_owner && Number(r.trans_cost || 0) > 0) {
+          const st = ensureSup(r.truck_owner);
+          if (norm(r.truck_owner) !== norm(r.site_owner)) st.raw_loads += 1;
+          st.raw_haulage += Number(r.trans_cost || 0);
+          st.raw_cost += Number(r.trans_cost || 0);
+        }
+      });
+      expRows.forEach(x => {
+        if (x.supplier) {
+          const st = ensureSup(x.supplier);
+          st.expenses += Number(x.amount || 0);
+        }
+      });
+      setRows.forEach(sp => {
+        if (sp.supplier) {
+          const st = ensureSup(sp.supplier);
+          st.settlements_paid += Number(sp.amount || 0);
+        }
+      });
+      baseSupps = baseSupps.map(s => {
+        const st = sMap.get(norm(s.Supplier)) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
+        return Object.assign({}, s, {
+          raw_loads: st.raw_loads,
+          raw_mat_cost: round2(st.raw_mat_cost),
+          raw_haulage: round2(st.raw_haulage),
+          raw_cost: round2(st.raw_cost),
+          settlements_paid: round2(st.settlements_paid)
+        });
+      });
+    }
+
+    const prodRows = baseProds.filter(matchCommon);
+    const custRows = baseCusts.filter(c => {
+      if (!matchCommon(c)) return false;
+      if (sl.creditOnly === 'Credit Customers' && !(Number(c.credit_sales || 0) > 0 || Number(c.ar_balance || 0) !== 0)) return false;
+      if (sl.creditOnly === 'Has Open Balance' && Math.abs(Number(c.ar_balance || 0)) < 0.01) return false;
+      if (sl.creditOnly === 'Overdue (>30d)' && Number(c.ar_overdue || 0) <= 0) return false;
+      if (sl.creditOnly === 'On Account (<$0)' && Number(c.ar_balance || 0) >= -0.01 && Number(c.ar_advances || 0) <= 0) return false;
+      if (sl.agingBucket) {
+        if (sl.agingBucket === 'Current' && Number(c.ar_current || 0) <= 0) return false;
+        if (sl.agingBucket === '1-10 Days' && Number(c.ar_1_10 || 0) <= 0) return false;
+        if (sl.agingBucket === '11-30 Days' && Number(c.ar_11_30 || 0) <= 0) return false;
+        if (sl.agingBucket === '31-60 Days' && Number(c.ar_31_60 || 0) <= 0) return false;
+        if (sl.agingBucket === '60+ Days' && Number(c.ar_60_plus || 0) <= 0) return false;
+        if (sl.agingBucket === 'On Account' && Number(c.ar_balance || 0) >= 0 && Number(c.ar_advances || 0) <= 0) return false;
+      }
+      return true;
+    });
+    const suppRows = baseSupps.filter(s => {
+      if (!matchCommon(s)) return false;
+      if (sl.payableLeg === 'Material' && Number(s.ap_material || s.raw_mat_cost || 0) <= 0) return false;
+      if (sl.payableLeg === 'Haulage' && Number(s.ap_haulage || s.raw_haulage || 0) <= 0) return false;
+      if (sl.payableLeg === 'Supplies & services' && Number(s.ap_expense || s.expenses || 0) <= 0) return false;
+      return true;
+    });
+    const siteRows = baseSites.filter(matchCommon);
+    const equipRows = (m.equipment || []).filter(e => {
+      if (!matchCommon(e)) return false;
+      if (sl.equipType && norm(e.Type) !== norm(sl.equipType)) return false;
+      if (sl.ownership && norm(e.Ownership) !== norm(sl.ownership)) return false;
+      if (sl.equipStatus && norm(e.Status) !== norm(sl.equipStatus)) return false;
+      return true;
+    });
+
     const activeSlicerEntries = Object.entries(sl).filter(([kKey, vVal]) => Boolean(vVal));
     const activeSlicerCount = activeSlicerEntries.length;
 
-    // Studio Header + Page Strip + Dynamic Per-Page Slicer Bar
+    const grainCat = ctx.getDateGrainCatalog ? ctx.getDateGrainCatalog() : { all: [] };
+    const activeGrainOpts = grainCat[STATE.dateGrain] || grainCat.all || [];
+    const curFrom = activeRange ? activeRange.from : minDate;
+    const curTo = activeRange ? activeRange.to : today;
+    const isDateFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
+
+    // Studio Header + Page Strip + Embedded Date Grain/Range Slicer + Dynamic Per-Page Slicer Bar
     const headerHtml = `
       <div class="pbi-studio-hdr">
         <div class="pbi-studio-top">
@@ -841,6 +993,36 @@
 
         <!-- Page-Specific Slicer Strip (adapts dynamically to each of the 20 pages) -->
         <div class="pbi-slicer-wrap">
+          <!-- Power BI / Power Apps Date Grain (All | Year | Month | Week | Day) + Period (between) Range Bar -->
+          <div class="pbi-date-slicer-row">
+            <div class="pbi-date-left">
+              <span class="pbi-date-lbl">Period Grain</span>
+              <div class="pbi-grain-group" role="group" aria-label="Power BI Date Grain">
+                ${[
+                  ['all', 'All'],
+                  ['year', 'Year'],
+                  ['month', 'Month'],
+                  ['week', 'Week'],
+                  ['day', 'Day']
+                ].map(([gKey, gLbl]) => `
+                  <button type="button" class="pbi-grain-btn ${STATE.dateGrain === gKey ? 'active' : ''}" data-pbi-grain="${gKey}">${gLbl}</button>
+                `).join('')}
+              </div>
+              <select id="pbiPeriodSelect" class="pbi-period-select" aria-label="Power BI Period Value">
+                ${STATE.period === 'custom' ? `<option value="custom" selected>Range: ${esc(curFrom)} → ${esc(curTo)}</option>` : ''}
+                ${activeGrainOpts.map(o => `<option value="${esc(o.value)}" ${STATE.period === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+                ${STATE.dateGrain !== 'all' && grainCat.all ? `<optgroup label="Quick Presets">${grainCat.all.map(o => `<option value="${esc(o.value)}" ${STATE.period === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</optgroup>` : ''}
+              </select>
+            </div>
+            <div class="pbi-date-right">
+              <span class="pbi-date-lbl">Period (Between)</span>
+              <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2026-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
+              <span style="color:rgba(244,242,238,0.6);font-weight:700">–</span>
+              <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2026-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
+              ${isDateFiltered ? '<button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px">✕ All-Time</button>' : ''}
+            </div>
+          </div>
+
           <div class="pbi-slicer-meta">
             <span>Page ${esc(activePage.num)} Slicers · <b>${esc(activePage.label)}</b> (${pageSlicerDefs.length} page filters + cross-search)</span>
             <span>Period: <b>${esc(k.label || 'All-Time')}</b> · Basis: <b>${STATE.basis === 'rep' ? 'Reporting Date' : 'Transaction Date'}</b></span>
@@ -873,7 +1055,7 @@
     `;
 
     // Scale factor when a slicer narrows the active page
-    const totalProdSales = (m.products || []).reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
+    const totalProdSales = baseProds.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
     const filtProdSales = prodRows.reduce((a, r) => a + Number(r.sales_ttc || 0), 0);
     const hasSalesSlicer = Boolean(sl.product || sl.customer || sl.saleType || sl.method || sl.iva);
     const sampleAllTtc = filterRecords(rec.sales_tickets, { ignoreSearch: true }).reduce((a, r) => a + Number(r.total_ttc || 0), 0) || 1;
@@ -882,7 +1064,8 @@
       ? (filtProdSales / totalProdSales)
       : (hasSalesSlicer ? (sampleFiltTtc / sampleAllTtc) : 1);
     const sc = v => round2(Number(v || 0) * (hasSalesSlicer ? sRatio : 1));
-    const months = (m.monthly || []).slice(-14).map(r => hasSalesSlicer ? ({
+    const baseMonths = ctx.getScopedMonthly ? ctx.getScopedMonthly(m.monthly, 14) : (m.monthly || []).slice(-14);
+    const months = baseMonths.map(r => hasSalesSlicer ? ({
       ...r,
       sales_ttc: sc(r.sales_ttc), net_sales: sc(r.net_sales), credit_sales: sc(r.credit_sales),
       cash_sales: sc(r.cash_sales), raw_cost: sc(r.raw_cost), expenses: sc(r.expenses),
@@ -1439,13 +1622,13 @@
         { label: 'On account', value: onAcctSigned, color: '#1E7A6E' }
       ];
 
-      // Build Customer Running Statement (tickets + receipts in chronological order with running balance)
+      // Build Customer Running Statement (every ticket + receipt in chronological order with running balance)
       const stmtItems = [];
-      salesRows.filter(s => s.method === 'Credit' || sl.customer).slice(0, 60).forEach(s => {
-        stmtItems.push({ date: s.date, type: 'Sale Ticket', doc: '#' + (s.ticket_no || '—'), customer: s.customer, detail: `${s.product || ''} (${fmtNum(s.qty, 1)} ${s.uom || ''})`, debit: Number(s.total_ttc || 0), credit: 0 });
+      salesRows.filter(s => s.method === 'Credit' || sl.customer).forEach(s => {
+        stmtItems.push({ id: s.id, rkey: 'sales_tickets', date: s.date, type: 'Sale Ticket', doc: '#' + (s.ticket_no || '—'), customer: s.customer, detail: `${s.product || ''} (${fmtNum(s.qty, 1)} ${s.uom || ''})`, debit: Number(s.total_ttc || 0), credit: 0 });
       });
-      recRows.slice(0, 50).forEach(r => {
-        stmtItems.push({ date: r.date, type: 'Receipt (' + (r.method || 'Cash') + ')', doc: r.reference || r.name || 'RCPT', customer: r.customer, detail: r.kind || 'Payment', debit: 0, credit: Number(r.amount || 0) });
+      recRows.forEach(r => {
+        stmtItems.push({ id: r.id, rkey: 'receipts', date: r.date, type: 'Receipt (' + (r.method || 'Cash') + ')', doc: r.reference || r.name || 'RCPT', customer: r.customer, detail: r.kind || 'Payment', debit: 0, credit: Number(r.amount || 0) });
       });
       stmtItems.sort((a, b) => String(a.date).localeCompare(String(b.date)));
       let runBal = 0;
@@ -2854,9 +3037,10 @@
             { label: 'Product / Item', key: 'product' },
             { label: 'Qty', key: 'qty', r: true, fmt: v => fmtNum(v, 1) },
             { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], salesRows.slice(0, 30).map(r => ({ pad: 'Sales Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.customer, product: r.product, qty: r.qty, amount: r.total_ttc }))
-            .concat(rawRows.slice(0, 25).map(r => ({ pad: 'Quarry Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.site_owner || r.site, product: r.product, qty: r.qty, amount: r.total }))),
-          { limit: 55, unitLabel: 'tickets' })}
+          ], salesRows.map(r => ({ id: r.id, rkey: 'sales_tickets', pad: 'Sales Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.customer, product: r.product, qty: r.qty, amount: r.total_ttc }))
+            .concat(rawRows.map(r => ({ id: r.id, rkey: 'raw_purchases', pad: 'Quarry Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.site_owner || r.site, product: r.product, qty: r.qty, amount: r.total })))
+            .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+          { unitLabel: 'tickets' })}
         </div>
       `;
     }
@@ -3001,7 +3185,7 @@
             { label: 'Credit Sales ($)', key: 'credit_sales', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Receipts ($)', key: 'receipts', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AR ($)', key: 'ar_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], custRows.slice(0, 25), { unitLabel: 'customers' })}
+          ], custRows, { unitLabel: 'customers' })}
 
           ${pbiTable('Top Supplier Sub-Account Reconciliation (3-Leg Accruals vs Settlements vs Closing AP)', [
             { label: 'Supplier / Hauler', key: 'Supplier', bold: true },
@@ -3009,7 +3193,7 @@
             { label: 'Total Accrued ($)', raw: r => Number(r.raw_cost || 0) + Number(r.ap_expense || 0), r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Settled ($)', key: 'settlements_paid', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AP ($)', key: 'ap_balance', r: true, bar: 'brass', negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], suppRows.slice(0, 25), { unitLabel: 'suppliers' })}
+          ], suppRows, { unitLabel: 'suppliers' })}
         </div>
       `;
     }

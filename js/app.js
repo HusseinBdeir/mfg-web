@@ -728,14 +728,21 @@
     const s = STATE.sortBy[view] || { key: defKey, dir: defDir || 'desc' };
     if (!s.key) return rows;
     const dir = s.dir === 'asc' ? 1 : -1;
+    const useRecDate = s.key === 'date';
     return rows.slice().sort((a, b) => {
-      const av = a[s.key], bv = b[s.key];
+      const av = useRecDate ? recordDate(a) : a[s.key];
+      const bv = useRecDate ? recordDate(b) : b[s.key];
       if ((av == null || av === '') && (bv == null || bv === '')) return 0;
       if (av == null || av === '') return 1;
       if (bv == null || bv === '') return -1;
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
       if (typeof av === 'boolean' && typeof bv === 'boolean') return ((av ? 1 : 0) - (bv ? 1 : 0)) * dir;
-      return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+      const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+      if (cmp !== 0) return cmp;
+      if (useRecDate && (a.ticket_no || b.ticket_no)) {
+        return String(a.ticket_no || '').localeCompare(String(b.ticket_no || ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+      }
+      return 0;
     });
   }
 
@@ -759,11 +766,11 @@
 
   function periodEmptyMsg(list, what) {
     const range = periodRange(STATE.period);
-    const dates = (list || []).filter(r => r && !r.voided).map(r => String(r.date || '').slice(0, 10)).filter(Boolean).sort();
+    const dates = (list || []).filter(r => r && !r.voided).map(r => recordDate(r)).filter(Boolean).sort();
     const span = dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : 'none';
     if (STATE.search) return `No ${what} match "${STATE.search}"${range ? ' in ' + range.from + ' → ' + range.to : ''}.`;
-    if (range) return `No ${what} dated ${range.from} → ${range.to} in the web sample (the sample holds ${span}; earlier rows live in the SQL archive and are already inside the KPI totals above).`;
-    return `No ${what} in the web sample yet.`;
+    if (range) return `No ${what} dated ${range.from} → ${range.to} in the register (full ledger span: ${span}).`;
+    return `No ${what} in the register yet.`;
   }
 
   function isAppRecord(r) {

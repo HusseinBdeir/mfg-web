@@ -384,6 +384,65 @@ try {
     ? pass('authGate Face ID · 1-look biometric sign-in unlocks RLS session')
     : fail('authGate 1-look Face ID', JSON.stringify(authFaceFlow));
 
+  // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
+  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);
+  await evaluate(`document.querySelector('[data-pbi-page="p06_ar"]').click()`); await sleep(250);
+  const pbiHistoryProbe = await evaluate(`(() => {
+    const rec = window.MFG_SEED.records;
+    const salesCnt = (rec.sales_tickets || []).length;
+    const rawCnt = (rec.raw_purchases || []).length;
+    const minSalesDate = (rec.sales_tickets || []).reduce((m, r) => (r.date && r.date < m ? r.date : m), '9999-99-99');
+
+    // Check compact paginated tables on P06
+    const tables = Array.from(document.querySelectorAll('#pbiCanvasPanel table.ledger-table'));
+    const maxBodyRows = Math.max(...tables.map(t => t.querySelectorAll('tbody tr').length));
+    const pagers = document.querySelectorAll('#pbiCanvasPanel .pbi-pager').length;
+    const wrapMaxH = getComputedStyle(document.querySelector('#pbiCanvasPanel .table-wrap')).maxHeight;
+
+    // Click Next page on the first paginated table on P06
+    const nextBtn = document.querySelector('#pbiCanvasPanel .pbi-pager [data-pbi-page-target="1"]');
+    if (nextBtn) nextBtn.click();
+    const page2Text = (document.querySelector('#pbiCanvasPanel .pbi-pager .pbi-pager-info') || {}).textContent || '';
+
+    // Test grain buttons (Year, Month, Week, Day) & custom From-To range
+    document.querySelector('[data-pbi-grain="year"]').click();
+    const yearOpts = document.getElementById('pbiPeriodSelect').options.length;
+    document.querySelector('[data-pbi-grain="month"]').click();
+    const monthOpts = document.getElementById('pbiPeriodSelect').options.length;
+    document.querySelector('[data-pbi-grain="week"]').click();
+    const weekOpts = document.getElementById('pbiPeriodSelect').options.length;
+    document.querySelector('[data-pbi-grain="day"]').click();
+    const dayOpts = document.getElementById('pbiPeriodSelect').options.length;
+
+    // Test custom date range 2024-06-01 .. 2024-06-30
+    const df = document.getElementById('pbiDateFrom');
+    const dt = document.getElementById('pbiDateTo');
+    df.value = '2024-06-01'; df.dispatchEvent(new Event('change', { bubbles: true }));
+    dt.value = '2024-06-30'; dt.dispatchEvent(new Event('change', { bubbles: true }));
+    const rangeMeta = (document.querySelector('.pbi-slicer-meta') || {}).textContent || '';
+
+    // Reset back to All-Time
+    const rst = document.getElementById('pbiDateResetBtn');
+    if (rst) rst.click();
+    const overflowP06 = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    return {
+      salesCnt, rawCnt, minSalesDate,
+      maxBodyRows, pagers, wrapMaxH, page2Text,
+      yearOpts, monthOpts, weekOpts, dayOpts,
+      rangeMeta, overflowP06
+    };
+  })()`);
+  pbiHistoryProbe.salesCnt >= 25000 && pbiHistoryProbe.rawCnt >= 24000 && pbiHistoryProbe.minSalesDate.startsWith('2024-01-')
+    ? pass('history · full 2024–2026 Dataverse transactions unpacked', `sales=${pbiHistoryProbe.salesCnt}, raw=${pbiHistoryProbe.rawCnt}, earliest=${pbiHistoryProbe.minSalesDate}`)
+    : fail('history coverage', JSON.stringify(pbiHistoryProbe));
+  pbiHistoryProbe.maxBodyRows <= 15 && pbiHistoryProbe.pagers >= 3 && /Page 2/.test(pbiHistoryProbe.page2Text) && pbiHistoryProbe.wrapMaxH !== 'none'
+    ? pass('pbiTable · compact 15-row pages, bounded scroll & interactive pager', `${pbiHistoryProbe.pagers} pagers, maxRows=${pbiHistoryProbe.maxBodyRows}, maxH=${pbiHistoryProbe.wrapMaxH}`)
+    : fail('pbiTable pagination', JSON.stringify(pbiHistoryProbe));
+  pbiHistoryProbe.yearOpts >= 3 && pbiHistoryProbe.monthOpts >= 34 && pbiHistoryProbe.weekOpts >= 140 && pbiHistoryProbe.dayOpts >= 700 && /2024-06-01/.test(pbiHistoryProbe.rangeMeta) && pbiHistoryProbe.overflowP06 === 0
+    ? pass('date slicer · Year/Month/Week/Day grains + From–To date range (0px overflow)', `Y=${pbiHistoryProbe.yearOpts}, M=${pbiHistoryProbe.monthOpts}, W=${pbiHistoryProbe.weekOpts}, D=${pbiHistoryProbe.dayOpts}`)
+    : fail('date slicer grains/range', JSON.stringify(pbiHistoryProbe));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

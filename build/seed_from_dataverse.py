@@ -13,9 +13,12 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -52,11 +55,23 @@ def run_dax(model_key, query):
 
 
 FMT_PREFER = 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+_TLS = threading.local()
+
+
+def _thread_session():
+    s = getattr(_TLS, "session", None)
+    if s is None:
+        base = mlib.session()
+        s = requests.Session()
+        s.headers.update(base.headers)
+        s.headers["Prefer"] = FMT_PREFER
+        _TLS.session = s
+    return s
 
 
 def get_all_fmt(path):
     rows, url = [], f"{mlib.API}/{path}"
-    S = mlib.session()
+    S = _thread_session()
     while url:
         r = S.get(url, timeout=120, headers={"Prefer": FMT_PREFER})
         r.raise_for_status()
@@ -71,7 +86,7 @@ def safe_get_fmt(table_or_path, query="", by_logical=False, top_only=False):
         es = entityset(table_or_path) if by_logical else table_or_path
         path = f"{es}?{query}" if query else es
         if top_only:
-            S = mlib.session()
+            S = _thread_session()
             r = S.get(f"{mlib.API}/{path}", timeout=120, headers={"Prefer": FMT_PREFER})
             r.raise_for_status()
             return r.json().get("value", [])
@@ -114,6 +129,7 @@ def fetch_model_analytics(model_key):
         "q3_2026": ('DATE(2026, 7, 1)', 'DATE(2026, 9, 30)', 'Q3 2026'),
         "ytd": ('DATE(2026, 1, 1)', 'DATE(2026, 10, 31)', 'FY 2026 (YTD)'),
         "fy2025": ('DATE(2025, 1, 1)', 'DATE(2025, 12, 31)', 'FY 2025'),
+        "fy2024": ('DATE(2024, 1, 1)', 'DATE(2024, 12, 31)', 'FY 2024'),
         "all": ('DATE(2024, 1, 1)', 'DATE(2026, 12, 31)', 'All-Time (2024-2026)'),
     }
 
@@ -250,7 +266,7 @@ def fetch_model_analytics(model_key):
             "raw_rep", [Raw Cost (reporting date)],
             "exp_rep", [Expenses (reporting date)]
         ),
-        Dates[YearMonthNo] >= 202501 && Dates[YearMonthNo] <= 202610
+        Dates[YearMonthNo] >= 202401 && Dates[YearMonthNo] <= 202610
     )
     ORDER BY Dates[YearMonthNo] ASC
     """
@@ -259,7 +275,7 @@ def fetch_model_analytics(model_key):
     q_prod = """
     EVALUATE
     TOPN(
-        30,
+        200,
         FILTER(
             SUMMARIZECOLUMNS(
                 Products[Product],
@@ -289,7 +305,7 @@ def fetch_model_analytics(model_key):
     q_cust = """
     EVALUATE
     TOPN(
-        60,
+        500,
         FILTER(
             SUMMARIZECOLUMNS(
                 Customers[Customer],
@@ -325,7 +341,7 @@ def fetch_model_analytics(model_key):
     q_sup = """
     EVALUATE
     TOPN(
-        60,
+        500,
         FILTER(
             SUMMARIZECOLUMNS(
                 Suppliers[Supplier],
@@ -353,7 +369,7 @@ def fetch_model_analytics(model_key):
     q_sites = """
     EVALUATE
     TOPN(
-        40,
+        250,
         FILTER(
             SUMMARIZECOLUMNS(
                 Sites[Site],
@@ -381,7 +397,7 @@ def fetch_model_analytics(model_key):
     q_equip = """
     EVALUATE
     TOPN(
-        45,
+        300,
         FILTER(
             SUMMARIZECOLUMNS(
                 Equipment[Equipment],
@@ -428,7 +444,7 @@ def fetch_model_analytics(model_key):
     q_soa = """
     EVALUATE
     TOPN(
-        100,
+        400,
         SELECTCOLUMNS(
             SOA,
             "date", SOA[Date],
@@ -815,19 +831,102 @@ def fetch_dataverse_records():
         })
     print(f"  Credit Terms: {len(credit_terms)} · VAT Invoices: {len(vat_invoices)}", flush=True)
 
-    # 6. Recent Sales Tickets (latest 500 across BUs)
-    r_sales = safe_get_fmt(
-        "bhf_salesticket",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_salesticketid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_saletype,bhf_transportby,"
-        "bhf_quantity,bhf_externalquantity,bhf_unitprice,bhf_price,bhf_transunitprice,bhf_transprice,bhf_tip,bhf_discount,bhf_total,"
-        "bhf_time,bhf_overtime,bhf_externalinvoice,bhf_reference,bhf_notes,"
-        "_bhf_customer_value,_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
-        "_bhf_unit_value,_bhf_method_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=500",
-        by_logical=True,
-        top_only=True,
-    )
+    # 6–12. Fetch all operational & treasury tables in parallel (full 2024–2026 history)
+    queries = {
+        "r_sales": (
+            "bhf_salesticket",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_salesticketid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_saletype,bhf_transportby,"
+            "bhf_quantity,bhf_externalquantity,bhf_unitprice,bhf_price,bhf_transunitprice,bhf_transprice,bhf_tip,bhf_discount,bhf_total,"
+            "bhf_time,bhf_overtime,bhf_externalinvoice,bhf_reference,bhf_notes,"
+            "_bhf_customer_value,_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
+            "_bhf_unit_value,_bhf_method_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "r_raw": (
+            "bhf_rawpurchase",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_rawpurchaseid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_transportby,"
+            "bhf_quantity,bhf_unitcost,bhf_cost,bhf_transunitcost,bhf_transcost,bhf_discount,bhf_time,bhf_overtime,"
+            "bhf_externalinvoice,bhf_reference,bhf_notes,"
+            "_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
+            "_bhf_unit_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "r_fuel": (
+            "bhf_fuelintake",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_fuelintakeid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_reportingdate,bhf_fueltype,bhf_intake,bhf_odometer,bhf_hours,bhf_notes,"
+            "_bhf_product_value,_bhf_equipment_value,_bhf_driver_value,_bhf_site_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "ec_raw": ("bhf_expensecategory", "$filter=statecode eq 0&$select=bhf_expensecategoryid,bhf_name", False),
+        "esc_raw": ("bhf_expensesubcategory", "$filter=statecode eq 0&$select=bhf_expensesubcategoryid,bhf_name,_bhf_category_value", False),
+        "r_exp": (
+            "bhf_expense",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_expenseid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_quantity,bhf_reference,bhf_notes,"
+            "_bhf_category_value,_bhf_subcategory_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_method_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "r_rcpt": (
+            "bhf_customerreceipt",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_customerreceiptid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_discount,bhf_reference,bhf_notes,"
+            "_bhf_customer_value,_bhf_method_value,_bhf_salesticket_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "r_spay": (
+            "bhf_supplierpayment",
+            f"$filter=statecode eq 0 and ({bu_filter})"
+            "&$select=bhf_supplierpaymentid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_difference,bhf_reference,bhf_notes,"
+            "_bhf_supplier_value,_bhf_method_value,_bhf_expense_value,_bhf_rawpurchase_value,_owningbusinessunit_value"
+            "&$orderby=bhf_transactiondate desc",
+            False,
+        ),
+        "cust_raw": (
+            "bhf_customer",
+            "$filter=statecode eq 0&$select=bhf_customerid,bhf_name,bhf_officialname,bhf_phone,bhf_address,bhf_method,"
+            "bhf_vatregistered,bhf_mofno,bhf_externalinvoice,bhf_customerdeclaredquantity,bhf_notes",
+            False,
+        ),
+        "sup_raw": ("bhf_supplier", "$filter=statecode eq 0", False),
+        "r_sal": ("bhf_salarypayment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "emp_raw": ("bhf_employment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", False),
+        "att_raw": ("bhf_attendance", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=createdon desc", False),
+        "flw_raw": ("bhf_freelancework", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "flp_raw": ("bhf_freelancepayment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "log_raw": ("bhf_logistics", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", False),
+        "tr_raw": ("bhf_triprate", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", False),
+        "ext_raw": ("bhf_external", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "ln_raw": ("bhf_borrowingagreement", f"$filter=statecode eq 0 and ({bu_filter})", False),
+        "lns_raw": ("bhf_borrowing", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "cv_raw": ("bhf_conversion", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "jvp_raw": ("bhf_jvpartnership", f"$filter=statecode eq 0 and ({bu_filter})", False),
+        "jvd_raw": ("bhf_jvdistribution", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
+        "stm_raw": ("bhf_statement", f"$filter=statecode eq 0 and ({bu_filter})", False),
+        "stml_raw": ("bhf_statementline", f"$filter=statecode eq 0 and ({bu_filter})", False),
+        "dt_raw": ("bhf_dailytotal", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_date desc&$top=400", True),
+    }
+
+    print(f"  Fetching {len(queries)} Dataverse tables concurrently (6 workers)...", flush=True)
+    fetched = {}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futs = {
+            ex.submit(safe_get_fmt, tbl, q, True, top): k
+            for k, (tbl, q, top) in queries.items()
+        }
+        for fut in futs:
+            k = futs[fut]
+            fetched[k] = fut.result()
+            print(f"    -> {k}: {len(fetched[k])} rows", flush=True)
+
+    r_sales = fetched["r_sales"]
     sales_tickets = []
     for r in r_sales:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -877,21 +976,9 @@ def fetch_dataverse_records():
             "time": r.get("bhf_time") or "12:00",
             "overtime": bool(r.get("bhf_overtime")),
         })
-    print(f"  Recent Sales Tickets: {len(sales_tickets)}", flush=True)
+    print(f"  All Sales Tickets: {len(sales_tickets)}", flush=True)
 
-    # 7. Recent Raw Material Tickets (latest 400)
-    r_raw = safe_get_fmt(
-        "bhf_rawpurchase",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_rawpurchaseid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_transportby,"
-        "bhf_quantity,bhf_unitcost,bhf_cost,bhf_transunitcost,bhf_transcost,bhf_discount,bhf_time,bhf_overtime,"
-        "bhf_externalinvoice,bhf_reference,bhf_notes,"
-        "_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
-        "_bhf_unit_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=400",
-        by_logical=True,
-        top_only=True,
-    )
+    r_raw = fetched["r_raw"]
     raw_purchases = []
     for r in r_raw:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -934,18 +1021,9 @@ def fetch_dataverse_records():
             "time": r.get("bhf_time") or "12:00",
             "overtime": bool(r.get("bhf_overtime")),
         })
-    print(f"  Recent Raw Purchases: {len(raw_purchases)}", flush=True)
+    print(f"  All Raw Purchases: {len(raw_purchases)}", flush=True)
 
-    # 8. Recent Fuel Intakes (latest 300)
-    r_fuel = safe_get_fmt(
-        "bhf_fuelintake",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_fuelintakeid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_reportingdate,bhf_fueltype,bhf_intake,bhf_odometer,bhf_hours,bhf_notes,"
-        "_bhf_product_value,_bhf_equipment_value,_bhf_driver_value,_bhf_site_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=300",
-        by_logical=True,
-        top_only=True,
-    )
+    r_fuel = fetched["r_fuel"]
     fuel_intakes = []
     for r in r_fuel:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -967,21 +1045,12 @@ def fetch_dataverse_records():
             "location": fmt_val(r, "_bhf_site_value", ""),
             "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Fuel Intakes: {len(fuel_intakes)}", flush=True)
+    print(f"  All Fuel Intakes: {len(fuel_intakes)}", flush=True)
 
-    # 9. Expense Categories, Subcategories & Recent Expenses (latest 300)
-    ec_raw = safe_get_fmt(
-        "bhf_expensecategory",
-        "$filter=statecode eq 0&$select=bhf_expensecategoryid,bhf_name",
-        by_logical=True,
-    )
+    ec_raw = fetched["ec_raw"]
     expense_categories = [{"id": c["bhf_expensecategoryid"], "name": c.get("bhf_name") or ""} for c in ec_raw]
 
-    esc_raw = safe_get_fmt(
-        "bhf_expensesubcategory",
-        "$filter=statecode eq 0&$select=bhf_expensesubcategoryid,bhf_name,_bhf_category_value",
-        by_logical=True,
-    )
+    esc_raw = fetched["esc_raw"]
     expense_subcategories = [
         {
             "id": sc["bhf_expensesubcategoryid"],
@@ -992,15 +1061,7 @@ def fetch_dataverse_records():
         for sc in esc_raw
     ]
 
-    r_exp = safe_get_fmt(
-        "bhf_expense",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_expenseid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_quantity,bhf_reference,bhf_notes,"
-        "_bhf_category_value,_bhf_subcategory_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_method_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=300",
-        by_logical=True,
-        top_only=True,
-    )
+    r_exp = fetched["r_exp"]
     expenses = []
     for r in r_exp:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1026,18 +1087,9 @@ def fetch_dataverse_records():
             "reference": r.get("bhf_reference") or "",
             "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Expenses: {len(expenses)} · Categories: {len(expense_categories)} · Subcategories: {len(expense_subcategories)}", flush=True)
+    print(f"  All Expenses: {len(expenses)} · Categories: {len(expense_categories)} · Subcategories: {len(expense_subcategories)}", flush=True)
 
-    # 10. Recent Customer Receipts & Supplier Payments
-    r_rcpt = safe_get_fmt(
-        "bhf_customerreceipt",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_customerreceiptid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_discount,bhf_reference,bhf_notes,"
-        "_bhf_customer_value,_bhf_method_value,_bhf_salesticket_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=250",
-        by_logical=True,
-        top_only=True,
-    )
+    r_rcpt = fetched["r_rcpt"]
     receipts = []
     for r in r_rcpt:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1061,17 +1113,9 @@ def fetch_dataverse_records():
             "reference": r.get("bhf_reference") or "",
             "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Customer Receipts: {len(receipts)}", flush=True)
+    print(f"  All Customer Receipts: {len(receipts)}", flush=True)
 
-    r_spay = safe_get_fmt(
-        "bhf_supplierpayment",
-        f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_supplierpaymentid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_difference,bhf_reference,bhf_notes,"
-        "_bhf_supplier_value,_bhf_method_value,_bhf_expense_value,_bhf_rawpurchase_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=250",
-        by_logical=True,
-        top_only=True,
-    )
+    r_spay = fetched["r_spay"]
     settlements = []
     for r in r_spay:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1096,15 +1140,9 @@ def fetch_dataverse_records():
             "reference": r.get("bhf_reference") or "",
             "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Supplier Settlements: {len(settlements)}", flush=True)
+    print(f"  All Supplier Settlements: {len(settlements)}", flush=True)
 
-    # 10b. Customers (bhf_customer) & Suppliers (bhf_supplier) master records
-    cust_raw = safe_get_fmt(
-        "bhf_customer",
-        "$filter=statecode eq 0&$select=bhf_customerid,bhf_name,bhf_officialname,bhf_phone,bhf_address,bhf_method,"
-        "bhf_vatregistered,bhf_mofno,bhf_externalinvoice,bhf_customerdeclaredquantity,bhf_notes",
-        by_logical=True,
-    )
+    cust_raw = fetched["cust_raw"]
     customers_master = []
     for c in cust_raw:
         cname = c.get("bhf_name") or ""
@@ -1132,11 +1170,7 @@ def fetch_dataverse_records():
                 "notes": c.get("bhf_notes") or "",
             })
 
-    sup_raw = safe_get_fmt(
-        "bhf_supplier",
-        "$filter=statecode eq 0",
-        by_logical=True,
-    )
+    sup_raw = fetched["sup_raw"]
     for s in sites:
         if s.get("supplier"):
             mfg_sup_names.add(s["supplier"])
@@ -1173,13 +1207,7 @@ def fetch_dataverse_records():
             })
     print(f"  Master Customers (Mfg): {len(customers_master)} · Master Suppliers (Mfg): {len(suppliers_master)}", flush=True)
 
-    # 11. Payroll, Attendance, Freelance, Employments, Logistics Allowances & Overtime Rates
-    r_sal = safe_get_fmt(
-        "bhf_salarypayment",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    r_sal = fetched["r_sal"]
     salaries = []
     for r in r_sal:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1199,11 +1227,7 @@ def fetch_dataverse_records():
             "notes": r.get("bhf_notes") or "",
         })
 
-    emp_raw = safe_get_fmt(
-        "bhf_employment",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
-        by_logical=True,
-    )
+    emp_raw = fetched["emp_raw"]
     employments = []
     mfg_staff_names = set()
     for e in emp_raw:
@@ -1226,12 +1250,7 @@ def fetch_dataverse_records():
             "notes": e.get("bhf_notes") or "",
         })
 
-    att_raw = safe_get_fmt(
-        "bhf_attendance",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=createdon desc&$top=250",
-        by_logical=True,
-        top_only=True,
-    )
+    att_raw = fetched["att_raw"]
     attendance_records = []
     for a in att_raw:
         bu = ID_TO_BU.get((a.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1251,12 +1270,7 @@ def fetch_dataverse_records():
             "notes": a.get("bhf_notes") or "",
         })
 
-    flw_raw = safe_get_fmt(
-        "bhf_freelancework",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    flw_raw = fetched["flw_raw"]
     freelance_entries = []
     for f in flw_raw:
         bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1275,12 +1289,7 @@ def fetch_dataverse_records():
             "notes": f.get("bhf_notes") or "",
         })
 
-    flp_raw = safe_get_fmt(
-        "bhf_freelancepayment",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    flp_raw = fetched["flp_raw"]
     freelance_payments = []
     for f in flp_raw:
         bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1301,11 +1310,7 @@ def fetch_dataverse_records():
             "notes": f.get("bhf_notes") or "",
         })
 
-    log_raw = safe_get_fmt(
-        "bhf_logistics",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
-        by_logical=True,
-    )
+    log_raw = fetched["log_raw"]
     logistics_allowances = []
     for lg in log_raw:
         bu = ID_TO_BU.get((lg.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1337,11 +1342,7 @@ def fetch_dataverse_records():
             "notes": lg.get("bhf_notes") or "",
         })
 
-    tr_raw = safe_get_fmt(
-        "bhf_triprate",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
-        by_logical=True,
-    )
+    tr_raw = fetched["tr_raw"]
     overtime_rates = []
     for tr in tr_raw:
         bu = ID_TO_BU.get((tr.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1357,13 +1358,7 @@ def fetch_dataverse_records():
         })
     print(f"  Payroll: {len(salaries)} salaries · {len(employments)} employments · {len(attendance_records)} attendance · {len(logistics_allowances)} allowances · {len(overtime_rates)} OT rates", flush=True)
 
-    # 12. Treasury, Loans, Conversions, JVs & Statements
-    ext_raw = safe_get_fmt(
-        "bhf_external",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    ext_raw = fetched["ext_raw"]
     external_movements = []
     for ex in ext_raw:
         bu = ID_TO_BU.get((ex.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1382,11 +1377,7 @@ def fetch_dataverse_records():
             "notes": ex.get("bhf_notes") or "",
         })
 
-    ln_raw = safe_get_fmt(
-        "bhf_borrowingagreement",
-        f"$filter=statecode eq 0 and ({bu_filter})",
-        by_logical=True,
-    )
+    ln_raw = fetched["ln_raw"]
     loans = []
     for ln in ln_raw:
         bu = ID_TO_BU.get((ln.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1402,12 +1393,7 @@ def fetch_dataverse_records():
             "notes": ln.get("bhf_notes") or "",
         })
 
-    lns_raw = safe_get_fmt(
-        "bhf_borrowing",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    lns_raw = fetched["lns_raw"]
     loan_settlements = []
     for ls in lns_raw:
         bu = ID_TO_BU.get((ls.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1426,12 +1412,7 @@ def fetch_dataverse_records():
             "notes": ls.get("bhf_notes") or "",
         })
 
-    cv_raw = safe_get_fmt(
-        "bhf_conversion",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=150",
-        by_logical=True,
-        top_only=True,
-    )
+    cv_raw = fetched["cv_raw"]
     conversions = []
     for cv in cv_raw:
         bu = ID_TO_BU.get((cv.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1448,11 +1429,7 @@ def fetch_dataverse_records():
             "notes": cv.get("bhf_notes") or "",
         })
 
-    jvp_raw = safe_get_fmt(
-        "bhf_jvpartnership",
-        f"$filter=statecode eq 0 and ({bu_filter})",
-        by_logical=True,
-    )
+    jvp_raw = fetched["jvp_raw"]
     jv_partnerships = []
     for jp in jvp_raw:
         bu = ID_TO_BU.get((jp.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1468,11 +1445,7 @@ def fetch_dataverse_records():
             "notes": jp.get("bhf_notes") or "",
         })
 
-    jvd_raw = safe_get_fmt(
-        "bhf_jvdistribution",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc",
-        by_logical=True,
-    )
+    jvd_raw = fetched["jvd_raw"]
     jv_distributions = []
     for jd in jvd_raw:
         bu = ID_TO_BU.get((jd.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1492,11 +1465,7 @@ def fetch_dataverse_records():
             "notes": jd.get("bhf_notes") or "",
         })
 
-    stm_raw = safe_get_fmt(
-        "bhf_statement",
-        f"$filter=statecode eq 0 and ({bu_filter})",
-        by_logical=True,
-    )
+    stm_raw = fetched["stm_raw"]
     statements = []
     for st in stm_raw:
         bu = ID_TO_BU.get((st.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1521,12 +1490,7 @@ def fetch_dataverse_records():
             "notes": st.get("bhf_notes") or "",
         })
 
-    stml_raw = safe_get_fmt(
-        "bhf_statementline",
-        f"$filter=statecode eq 0 and ({bu_filter})&$top=300",
-        by_logical=True,
-        top_only=True,
-    )
+    stml_raw = fetched["stml_raw"]
     statement_lines = []
     for sl in stml_raw:
         bu = ID_TO_BU.get((sl.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1553,12 +1517,7 @@ def fetch_dataverse_records():
             "notes": sl.get("bhf_notes") or "",
         })
 
-    dt_raw = safe_get_fmt(
-        "bhf_dailytotal",
-        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_date desc&$top=200",
-        by_logical=True,
-        top_only=True,
-    )
+    dt_raw = fetched["dt_raw"]
     daily_totals = []
     for d in dt_raw:
         bu = ID_TO_BU.get((d.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -1980,30 +1939,158 @@ def main():
     }
 
     # The browser bundle / JSON snapshot drop empty values and the lookup GUID / option-set code twins
-    # (`customer_id`, `rule_type_code`, …) the web app never reads — 2.6 MB less to parse on a phone.
-    # The SQLite loader indexes the FULL dicts, so it gets the uncompacted snapshot.
+    # (`customer_id`, `rule_type_code`, …) the web app never reads.
+    # High-volume historical tables are columnar + string-pool encoded in `js/seed_data.js` and unpacked
+    # synchronously on load in ~35ms so all 93,000+ historical transactions (2024–2026) are available offline.
+    import re as _re
+    _WB_TAG_RE = _re.compile(r"\s*\[wb:[^\]]+\]")
+
     def _compact_row(row):
         out = {}
         for k, v in row.items():
             if k != "id" and (k.endswith("_id") or k.endswith("_code")):
                 continue
-            if v is None or v == "" or v == [] or v == {}:
+            if k == "notes" and isinstance(v, str) and "[wb:" in v:
+                v = _WB_TAG_RE.sub("", v).strip()
+            if k == "usd_amount" and v == row.get("amount"):
                 continue
+            if v is None or v == "" or v == [] or v == {} or v is False or v == 0 or v == 0.0:
+                if k not in ("total", "total_ttc", "amount", "qty", "litres"):
+                    continue
             out[k] = v
         return out
 
-    compact = dict(snapshot)
-    compact["records"] = {k: ([_compact_row(r) for r in v] if isinstance(v, list) else v) for k, v in records.items()}
+    compact_records = {k: ([_compact_row(r) for r in v] if isinstance(v, list) else v) for k, v in records.items()}
 
-    snap_path.write_text(json.dumps(compact, ensure_ascii=False, indent=1), encoding="utf-8")
+    # Build columnar + string-pool packed representation for both mfg_snapshot.json and js/seed_data.js
+    TX_PREFIX = {
+        "sales_tickets": "st",
+        "raw_purchases": "rp",
+        "fuel_intakes": "fi",
+        "expenses": "ex",
+        "receipts": "rc",
+        "settlements": "sp",
+        "salaries": "sa",
+        "attendance": "at",
+        "external_movements": "em",
+        "loan_settlements": "ls",
+        "conversions": "cv",
+        "daily_totals": "dt",
+    }
+    OMIT_AUTO_NAME = {"sales_tickets", "raw_purchases", "fuel_intakes", "attendance"}
+
+    str_counts = Counter()
+    prepped_tables = {}
+    for k, rows in compact_records.items():
+        if not isinstance(rows, list) or not rows:
+            prepped_tables[k] = rows
+            continue
+        pf = TX_PREFIX.get(k)
+        omit_name = k in OMIT_AUTO_NAME
+        has_rep = any("rep_date" in r for r in rows)
+        is_sales = k == "sales_tickets"
+        col_set = []
+        seen_cols = set()
+        for r in rows:
+            for ck in r.keys():
+                if pf and ck == "id":
+                    continue
+                if omit_name and ck == "name":
+                    continue
+                if ck not in seen_cols:
+                    seen_cols.add(ck)
+                    col_set.append(ck)
+        sc = [
+            1 if all(isinstance(r.get(c), str) or r.get(c) is None for r in rows) else 0
+            for c in col_set
+        ]
+        for r in rows:
+            for ci, c in enumerate(col_set):
+                if not sc[ci]:
+                    continue
+                v = r.get(c)
+                if c == "rep_date" and v == r.get("date"):
+                    continue
+                if isinstance(v, str) and len(v) >= 2:
+                    str_counts[v] += 1
+        prepped_tables[k] = (col_set, sc, pf, has_rep, is_sales, rows)
+
+    pool = [s for s, cnt in str_counts.most_common() if cnt >= 2]
+    pool_idx = {s: i for i, s in enumerate(pool)}
+
+    packed_records = {}
+    for k, item in prepped_tables.items():
+        if not isinstance(item, tuple):
+            packed_records[k] = item
+            continue
+        col_set, sc, pf, has_rep, is_sales, rows = item
+        out_rows = []
+        for r in rows:
+            arr = []
+            for ci, c in enumerate(col_set):
+                v = r.get(c)
+                if c == "rep_date" and v == r.get("date"):
+                    v = None
+                elif is_sales and c == "total_ttc" and v == r.get("total"):
+                    v = None
+                elif sc[ci] and isinstance(v, str) and v in pool_idx:
+                    v = pool_idx[v]
+                arr.append(v)
+            while arr and arr[-1] is None:
+                arr.pop()
+            out_rows.append(arr)
+        t_obj = {"c": col_set, "sc": sc, "r": out_rows}
+        if pf:
+            t_obj["p"] = pf
+        if has_rep:
+            t_obj["hr"] = 1
+        packed_records[k] = t_obj
+
+    packed_payload = {
+        "generated_at": snapshot["generated_at"],
+        "models": models,
+        "sentinels": sentinels,
+        "_s": pool,
+        "records": packed_records,
+    }
+
+    snap_path.write_text(json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)
 
-    js_path = JS_DIR / "seed_data.js"
-    js_path.write_text(
-        "// Auto-generated from live Manufacturing Operations Dataverse + Semantic Models\n"
-        "window.MFG_SEED = " + json.dumps(compact, ensure_ascii=False, separators=(",", ":")) + ";\n",
-        encoding="utf-8",
+    unpacker_js = (
+        "// Auto-generated from live Manufacturing Operations Dataverse + Semantic Models (Full 2024-2026 History)\n"
+        "(function(){\n"
+        "const P=" + json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")) + ";\n"
+        "const S=P._s||[],R={};\n"
+        "for(const[k,t]of Object.entries(P.records||{})){\n"
+        "  if(!t||!t.c){R[k]=t||[];continue;}\n"
+        "  const cols=t.c,sc=t.sc,pf=t.p,hr=t.hr,isSales=k==='sales_tickets',isRaw=k==='raw_purchases';\n"
+        "  R[k]=t.r.map((row,idx)=>{\n"
+        "    const o=pf?{id:pf+idx}:{};\n"
+        "    for(let i=0;i<row.length;i++){\n"
+        "      let v=row[i];\n"
+        "      if(v===null||v===undefined)continue;\n"
+        "      if(sc[i]&&typeof v==='number')v=S[v];\n"
+        "      o[cols[i]]=v;\n"
+        "    }\n"
+        "    if(hr&&!o.rep_date&&o.date)o.rep_date=o.date;\n"
+        "    if(o.amount!==undefined&&o.usd_amount===undefined)o.usd_amount=o.amount;\n"
+        "    if(isSales){\n"
+        "      if(o.vat==null)o.vat=0;\n"
+        "      if(o.total_ttc==null&&o.total!=null)o.total_ttc=o.total;\n"
+        "      if(!o.sale_type)o.sale_type='Delivery';\n"
+        "      if(!o.method)o.method='Credit';\n"
+        "    }\n"
+        "    if(isRaw&&!o.method)o.method='Credit';\n"
+        "    if(pf&&!o.name)o.name=o.ticket_no?('#'+o.ticket_no+' · '+(o.date||'')):(pf.toUpperCase()+'-'+idx);\n"
+        "    return o;\n"
+        "  });\n"
+        "}\n"
+        "window.MFG_SEED={generated_at:P.generated_at,models:P.models,records:R,sentinels:P.sentinels};\n"
+        "})();\n"
     )
+    js_path = JS_DIR / "seed_data.js"
+    js_path.write_text(unpacker_js, encoding="utf-8")
     print(f"  Browser bundle saved -> {js_path} ({js_path.stat().st_size // 1024} KB)", flush=True)
 
     build_sqlite_and_postgres(snapshot)
