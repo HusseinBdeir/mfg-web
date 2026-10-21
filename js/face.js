@@ -20,7 +20,7 @@ const MFG_FACE_CONFIG = {
     unknownFrames: 3,         // unknown face across 3 consecutive frames before PIN hint
     minFaceFrac: 0.14,        // ignore background faces narrower than 14% of frame width
     detectorInputSize: 320,
-    detectorScore: 0.50,
+    detectorScore: 0.24,      // single-pass backlit-friendly threshold (avoids duplicate SSD pass)
     enrolScore: 0.70,
     poses: [
       "Look straight at the camera",
@@ -54,6 +54,63 @@ const Face = (() => {
     return new faceapi.TinyFaceDetectorOptions({ inputSize: M().detectorInputSize, scoreThreshold: M().detectorScore });
   }
 
+  let earlyStreamObj = null;
+  let earlyStreamPromise = null;
+
+  function prewarm() {
+    if (typeof window === "undefined" || navigator.webdriver || window.__MFG_HEADLESS_TEST) return;
+    // 1. Start loading WebGL + 128-d recognition models immediately (before 10.4 MB seed_data.js parses)
+    load().catch(() => {});
+    // 2. Request webcam stream immediately if #authGate is visible so the video feed appears in <150ms
+    const gate = document.getElementById("authGate");
+    const videoEl = document.getElementById("authFaceVideo");
+    if (!gate || gate.hidden || !videoEl || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    if (!earlyStreamPromise) {
+      earlyStreamPromise = navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      }).then(s => {
+        earlyStreamObj = s;
+        const gNow = document.getElementById("authGate");
+        const vNow = document.getElementById("authFaceVideo");
+        if (gNow && !gNow.hidden && vNow) {
+          if (vNow.srcObject !== s) vNow.srcObject = s;
+          vNow.play().catch(() => {});
+          const dot = document.getElementById("authFacePulse");
+          if (dot) dot.className = "auth-face-pulse live";
+          const btn = document.getElementById("authCamToggleBtn");
+          if (btn) btn.textContent = "📷 Camera On";
+          const hint = document.getElementById("authFaceHint");
+          if (hint && /Loading Face ID/i.test(hint.textContent || "")) {
+            hint.textContent = "Camera active — scanning Face ID…";
+            hint.className = "auth-face-hint ok";
+          }
+        } else {
+          try { s.getTracks().forEach(t => t.stop()); } catch (_) {}
+          earlyStreamObj = null;
+        }
+        return earlyStreamObj;
+      }).catch(() => null);
+    }
+  }
+
+  async function consumeEarlyStream() {
+    if (earlyStreamObj && earlyStreamObj.getVideoTracks && earlyStreamObj.getVideoTracks().some(t => t.readyState === "live")) {
+      const s = earlyStreamObj;
+      earlyStreamObj = null;
+      earlyStreamPromise = null;
+      return s;
+    }
+    if (earlyStreamPromise) {
+      const p = earlyStreamPromise;
+      earlyStreamPromise = null;
+      const s = await p;
+      earlyStreamObj = null;
+      if (s && s.getVideoTracks && s.getVideoTracks().some(t => t.readyState === "live")) return s;
+    }
+    return null;
+  }
+
   async function load() {
     if (ready) return;
     if (loading) return loading;
@@ -68,25 +125,25 @@ const Face = (() => {
         await faceapi.tf.ready();
       }
       backend = faceapi.tf.getBackend();
-      await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-      if (M().detector === "ssd") {
-        try {
-          await faceapi.nets.ssdMobilenetv1.loadFromUri(base);
-          detector = "ssd";
-        } catch (e) {
-          console.warn("SSD detector unavailable, using tiny", e);
-          detector = "tiny";
-        }
-      }
-      try {
-        await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+      // Load all neural nets in parallel: become ready as soon as Tiny + Landmarks + Recognition finish,
+      // and upgrade detector to SSD MobileNet v1 as soon as its weights resolve.
+      const tinyP = faceapi.nets.tinyFaceDetector.loadFromUri(base);
+      const lmP = faceapi.nets.faceLandmark68Net.loadFromUri(base).then(() => {
         landmarksTiny = false;
-      } catch (e) {
+      }).catch(async e => {
         console.warn("full landmark net unavailable, using tiny", e);
         await faceapi.nets.faceLandmark68TinyNet.loadFromUri(base);
         landmarksTiny = true;
-      }
-      await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      });
+      const recP = faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      const ssdP = M().detector === "ssd"
+        ? faceapi.nets.ssdMobilenetv1.loadFromUri(base).then(() => { detector = "ssd"; }).catch(e => {
+            console.warn("SSD detector unavailable, using tiny", e);
+            detector = "tiny";
+          })
+        : Promise.resolve();
+
+      await Promise.all([tinyP, lmP, recP, ssdP]);
       ready = true;
     })();
     return loading;
@@ -160,15 +217,11 @@ const Face = (() => {
     if (!ready) return null;
     const frame = frameToCanvas(src);
     if (!frame) return null;
+    // Pass 1: Primary detector (SSD MobileNet v1 at minConfidence 0.24 handles normal + backlit frames in 1 pass)
     let r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
     if (!r && detector === "ssd") {
-      // Fallback 1a: Low-threshold SSD MobileNet v1 on raw frame (handles dim/backlit faces)
-      const lowSsdOpts = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.24 });
-      r = await faceapi.detectSingleFace(frame, lowSsdOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
-    }
-    if (!r && detector === "ssd") {
-      // Fallback 1b: TinyFaceDetector on raw frame
-      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 });
+      // Fallback 1: TinyFaceDetector on raw frame
+      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.26 });
       r = await faceapi.detectSingleFace(frame, fallbackOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
     }
     if (!r) {
@@ -481,6 +534,8 @@ const Face = (() => {
     config: MFG_FACE_CONFIG,
     CONFIG: MFG_FACE_CONFIG.match,
     load,
+    prewarm,
+    consumeEarlyStream,
     isReady: () => ready,
     getBackend: () => backend,
     detectOne,
@@ -503,3 +558,4 @@ const Face = (() => {
   };
 })();
 window.Face = Face;
+Face.prewarm();

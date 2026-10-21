@@ -1,15 +1,25 @@
-const CACHE = 'isabi-mfg-v5.9';
+const CACHE = 'isabi-mfg-v6.0';
 const SHELL = [
   './',
   './index.html',
-  './css/app.css?v=5.9',
-  './vendor/face-api.js?v=5.9',
-  './js/face.js?v=5.9',
-  './js/endpoints.js?v=5.9',
-  './js/seed_data.js?v=5.9',
-  './js/forms_engine.js?v=5.9',
-  './js/pbi_pages.js?v=5.9',
-  './js/app.js?v=5.9',
+  './css/app.css?v=6.0',
+  './vendor/face-api.js?v=6.0',
+  './vendor/models/tiny_face_detector_model-weights_manifest.json',
+  './vendor/models/tiny_face_detector_model.bin',
+  './vendor/models/ssd_mobilenetv1_model-weights_manifest.json',
+  './vendor/models/ssd_mobilenetv1_model.bin',
+  './vendor/models/face_landmark_68_model-weights_manifest.json',
+  './vendor/models/face_landmark_68_model.bin',
+  './vendor/models/face_landmark_68_tiny_model-weights_manifest.json',
+  './vendor/models/face_landmark_68_tiny_model.bin',
+  './vendor/models/face_recognition_model-weights_manifest.json',
+  './vendor/models/face_recognition_model.bin',
+  './js/face.js?v=6.0',
+  './js/endpoints.js?v=6.0',
+  './js/seed_data.js?v=6.0',
+  './js/forms_engine.js?v=6.0',
+  './js/pbi_pages.js?v=6.0',
+  './js/app.js?v=6.0',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -47,6 +57,25 @@ self.addEventListener('fetch', event => {
   if (url.pathname.endsWith('/reset.html') || url.pathname.includes('/api/')) return;
 
   const isNav = event.request.mode === 'navigate';
+  // Cache-first for immutable neural network weights (/vendor/) and cache-busted (?v=...) assets so
+  // 12.4 MB of Face ID models + 10.4 MB of seed data load in <30ms instead of re-downloading
+  const isCacheFirst = !isNav && (url.pathname.includes('/vendor/') || url.searchParams.has('v'));
+  if (isCacheFirst) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(res => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE).then(c => c.put(event.request, clone));
+          }
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then(res => {

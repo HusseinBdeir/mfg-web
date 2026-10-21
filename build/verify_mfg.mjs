@@ -4,7 +4,7 @@
 // the GL totals render (v4.0 showed $0.00 on P16), and the Tier adjustment is applied per load.
 //   node build/verify_mfg.mjs            (desktop 1366×768)
 //   node build/verify_mfg.mjs --mobile   (390×844 emulation)
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -44,7 +44,7 @@ function send(method, params = {}, timeoutMs = 15000) {
     const timer = setTimeout(() => {
       if (pending.has(id)) {
         pending.delete(id);
-        reject(new Error(`CDP timeout (${timeoutMs}ms): ${method}`));
+        reject(new Error(`CDP timeout (${timeoutMs}ms): ${method} [${String(params.expression || "").replace(/\s+/g, " ").slice(0, 140)}]`));
       }
     }, timeoutMs);
     pending.set(id, {
@@ -449,12 +449,24 @@ try {
     ? pass('face calibration · 128-d Euclidean separation matrix', `d=${enrolFlow.calMinDist.toFixed(3)}`)
     : fail('face calibration', JSON.stringify(enrolFlow));
 
-  // Sign out to #authGate and test Step-Up 2FA + 3-frame Biometric Sign-In
+  // Sign out to #authGate and test Step-Up 2FA + 3-frame Biometric Sign-In + 1024x514 scaled laptop viewport fit
+  let scaledFit = { topOk: true, fitsAll: true, h: 0 };
+  if (!MOBILE) {
+    await evaluate(`window.MFG_FACE_TEST.signOut()`);
+    await send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 514, deviceScaleFactor: 1, mobile: false });
+    await sleep(80);
+    scaledFit = await evaluate(`(() => { const r = document.querySelector('.auth-card').getBoundingClientRect(); return { topOk: r.top >= 0, fitsAll: r.top >= 0 && r.bottom <= window.innerHeight, h: Math.round(r.height), top: Math.round(r.top), bot: Math.round(r.bottom) }; })()`);
+    await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+    await sleep(60);
+  }
   const authFaceFlow = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
     T.signOut();
     const gateOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
     const stageVisible = !!document.getElementById('authFaceStage') && !document.getElementById('authGate').hidden;
+    const cardRect = document.querySelector('.auth-card').getBoundingClientRect();
+    const cardTopOk = cardRect.top >= 0;
+    const cardFitsDesktop = window.innerHeight < 520 || (cardRect.top >= 0 && cardRect.bottom <= window.innerHeight);
 
     // 1. Entering PIN for an enrolled seat triggers Step-Up 2FA instead of unlocking immediately
     const pinStep = await T.performLogin('husseinbdeir@bhfirms.com', '1111');
@@ -488,6 +500,9 @@ try {
     return {
       gateOverflow,
       stageVisible,
+      cardTopOk,
+      cardFitsDesktop,
+      cardHeight: Math.round(cardRect.height),
       pinStep,
       bannerVisible,
       stillLockedAfterPin,
@@ -503,8 +518,8 @@ try {
       unlockedPinOnly
     };
   })()`);
-  authFaceFlow.stageVisible && authFaceFlow.gateOverflow === 0
-    ? pass('authGate · Face ID scanner stage visible & 0px overflow')
+  authFaceFlow.stageVisible && authFaceFlow.gateOverflow === 0 && authFaceFlow.cardTopOk && (MOBILE || authFaceFlow.cardFitsDesktop)
+    && scaledFit.topOk && scaledFit.fitsAll ? pass('authGate · Face ID scanner stage visible, 0px overflow & 0px top/bottom cutoff (1366×768 & 1024×514)', `1366x768=${authFaceFlow.cardHeight}px · 1024x514=${scaledFit.h}px`)
     : fail('authGate Face ID stage', JSON.stringify(authFaceFlow));
   authFaceFlow.pinStep === '2fa_pending' && authFaceFlow.bannerVisible && authFaceFlow.stillLockedAfterPin && authFaceFlow.wrongPerson === '2fa-mismatch'
     ? pass('authGate 2FA · enrolled seat requires Face ID after PIN & rejects wrong face')
@@ -687,8 +702,8 @@ try {
   fail('harness', e.message);
 } finally {
   try { ws && ws.close(); } catch (_) {}
-  try { edge.kill(); } catch (_) {}
-  try { server.kill(); } catch (_) {}
+  try { execFileSync('taskkill', ['/F', '/T', '/PID', String(edge.pid)], { stdio: 'ignore', windowsHide: true }); } catch (_) { try { edge.kill(); } catch (__) {} }
+  try { execFileSync('taskkill', ['/F', '/T', '/PID', String(server.pid)], { stdio: 'ignore', windowsHide: true }); } catch (_) { try { server.kill(); } catch (__) {} }
   await sleep(400);
   try { fs.rmSync(udd, { recursive: true, force: true }); } catch (_) {}
   const failed = results.filter(r => !r.ok);

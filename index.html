@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=5.9">
+  <link rel="stylesheet" href="css/app.css?v=6.0">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -463,7 +463,7 @@
           <div class="auth-form-row">
             <label class="auth-label">
               <span>Team Email Address <em>Or tap seat on right</em></span>
-              <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com (optional if PIN is unique)" autocomplete="username">
+              <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com (or PIN only)" autocomplete="username">
             </label>
             <label class="auth-label">
               <span>Access PIN <em>4–8 Digits</em></span>
@@ -477,7 +477,7 @@
             </button>
             <button type="button" class="btn auth-enrol-btn" id="authEnrolJumpBtn" title="Sign in with your PIN and immediately launch 3-pose Face ID Auto-Enrolment">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></svg>
-              Sign In &amp; Auto-Enrol Face ID (3 Poses)
+              Sign In &amp; Enrol Face ID
             </button>
           </div>
         </form>
@@ -504,13 +504,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=5.9"></script>
-  <script src="js/face.js?v=5.9"></script>
-  <script src="js/endpoints.js?v=5.9"></script>
-  <script src="js/seed_data.js?v=5.9"></script>
-  <script src="js/forms_engine.js?v=5.9"></script>
-  <script src="js/pbi_pages.js?v=5.9"></script>
-  <script src="js/app.js?v=5.9"></script>
+  <script src="vendor/face-api.js?v=6.0"></script>
+  <script src="js/face.js?v=6.0"></script>
+  <script src="js/endpoints.js?v=6.0"></script>
+  <script src="js/seed_data.js?v=6.0"></script>
+  <script src="js/forms_engine.js?v=6.0"></script>
+  <script src="js/pbi_pages.js?v=6.0"></script>
+  <script src="js/app.js?v=6.0"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

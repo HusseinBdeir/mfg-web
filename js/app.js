@@ -3398,9 +3398,10 @@
   ];
 
   function stTable(cols, rows, foot) {
+    const displayRows = rows.length > 250 ? rows.slice(0, 250) : rows;
     return `<table class="ledger-table">
       <thead><tr>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${c.label}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null || r[c.key] === '' ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'No rows for this entity / period')}</tbody>
+      <tbody>${displayRows.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null || r[c.key] === '' ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'No rows for this entity / period')}</tbody>
       ${foot ? `<tfoot><tr>${foot.map(f => `<td class="${f.r ? 'r' : ''}" ${f.span ? `colspan="${f.span}"` : ''}>${f.v}</td>`).join('')}</tr></tfoot>` : ''}
     </table>`;
   }
@@ -6292,6 +6293,12 @@
   async function startFaceCamera(videoEl) {
     if (!videoEl) return false;
     try {
+      if (!streamAlive() && window.Face && typeof window.Face.consumeEarlyStream === 'function') {
+        const early = window.Face.consumeEarlyStream();
+        if (early && early.getVideoTracks && early.getVideoTracks().some(t => t.readyState === 'live')) {
+          FACE_STATE.stream = early;
+        }
+      }
       if (!streamAlive()) {
         if (FACE_STATE.stream) { try { FACE_STATE.stream.getTracks().forEach(t => t.stop()); } catch (_) {} }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
@@ -6417,7 +6424,7 @@
       card.hidden = false;
     }
 
-    await new Promise(r => setTimeout(r, navigator.webdriver ? 80 : 520));
+    await new Promise(r => setTimeout(r, (navigator.webdriver || window.__MFG_HEADLESS_TEST) ? 60 : 220));
     if (card) card.hidden = true;
     return performLogin(user.email, user.pin_code || '1111', {
       bypass2FA: true,
@@ -6427,13 +6434,13 @@
   }
 
   // Evaluates a single 128-d face detection against enrolled seats (used by live camera loop AND headless tests)
-  async function handleAuthDescriptor(det, snapshotUrl) {
-    const needed = Math.max(1, Number(STATE.faceSettings.confirmFrames || 3));
+  async function handleAuthDescriptor(det, snapshotUrl, opts = {}) {
+    const baseNeeded = Math.max(1, Number(STATE.faceSettings.confirmFrames || 3));
     const enrolled = usableFaces();
     if (!enrolled.length) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
-      setAuthStreak(0, needed);
+      setAuthStreak(0, baseNeeded);
       setAuthHint('No Face ID seats enrolled yet — sign in with PIN below, then open Team Auth to enrol your 3 poses.', 'warn');
       return { status: 'no-enrolled' };
     }
@@ -6442,7 +6449,7 @@
       if (!FACE_STATE.streakCount || FACE_STATE.missedFrames >= 3) {
         FACE_STATE.streakUser = null;
         FACE_STATE.streakCount = 0;
-        setAuthStreak(0, needed);
+        setAuthStreak(0, baseNeeded);
         setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for instant Face ID sign-in', '');
       }
       return { status: 'no-face' };
@@ -6451,7 +6458,7 @@
     if (det.multiple) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
-      setAuthStreak(0, needed);
+      setAuthStreak(0, baseNeeded);
       setAuthHint('One person at a time in front of the camera', 'warn');
       return { status: 'multiple' };
     }
@@ -6464,6 +6471,10 @@
     });
     const m = window.Face.match(det.descriptor, enrolled);
     const dec = window.Face.decide(m, cfg, { faceSizeFrac: det.faceSizeFrac != null ? det.faceSizeFrac : 0.25 });
+    const strongLiveMatch = !!(opts && opts.liveCamera && m.bestDist <= 0.44 && (m.secondDist - m.bestDist) >= 0.12);
+    const needed = (opts && opts.liveCamera)
+      ? (strongLiveMatch ? 1 : Math.min(2, baseNeeded))
+      : baseNeeded;
 
     if (!dec.ok) {
       FACE_STATE.streakUser = null;
@@ -6513,6 +6524,9 @@
     const matchedUser = STATE.users.find(u => norm(u.email) === norm(dec.best.email));
     const methodLabel = FACE_STATE.pending2faUser ? 'PIN + Face ID 2FA' : 'Face ID';
     setAuthHint(`✓ Verified ${dec.best.name} (${methodLabel})`, 'ok');
+    if (!snapshotUrl && opts && opts.videoEl && window.Face && window.Face.snapshot) {
+      try { snapshotUrl = window.Face.snapshot(opts.videoEl); } catch (_) {}
+    }
     await completeFaceLogin(matchedUser, m.bestDist, snapshotUrl, methodLabel);
     return { status: 'verified', user: matchedUser, dist: m.bestDist, method: methodLabel };
   }
@@ -6522,7 +6536,7 @@
     const videoEl = $('authFaceVideo');
     const overlayEl = $('authFaceOverlay');
     if (!videoEl || Date.now() < FACE_STATE.cooldownUntil) {
-      FACE_STATE.loopTimer = setTimeout(authFaceTick, 240);
+      FACE_STATE.loopTimer = setTimeout(authFaceTick, 120);
       return;
     }
     if (!FACE_STATE.busy && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
@@ -6534,10 +6548,7 @@
           const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#B8883B') : '#DC2626';
           window.Face.drawOverlay(overlayEl, videoEl, det, color, FACE_STATE.streakUser ? FACE_STATE.streakUser.name : '');
         }
-        const snap = (det && !det.multiple && FACE_STATE.streakCount + 1 >= Number(STATE.faceSettings.confirmFrames || 3) && window.Face.snapshot)
-          ? window.Face.snapshot(videoEl)
-          : '';
-        await handleAuthDescriptor(det, snap);
+        await handleAuthDescriptor(det, '', { liveCamera: true, videoEl });
       } catch (_) {
         /* ignore transient frame error */
       } finally {
@@ -6545,22 +6556,20 @@
       }
     }
     if (!STATE.authed && FACE_STATE.camActive) {
-      FACE_STATE.loopTimer = setTimeout(authFaceTick, 210);
+      FACE_STATE.loopTimer = setTimeout(authFaceTick, 75);
     }
   }
 
   async function startAuthFaceScanner(forceStart = false) {
     updateAuthFaceUi();
-    if (navigator.webdriver && !forceStart) {
+    if ((navigator.webdriver || window.__MFG_HEADLESS_TEST) && !forceStart) {
       setAuthHint('Biometric Face ID Scanner ready · Look at the camera or sign in with Email + PIN below', '');
       return false;
     }
     const videoEl = $('authFaceVideo');
     if (!videoEl) return false;
     setAuthHint('Starting camera & loading 128-d neural models…', '');
-    try {
-      await ensureFaceModelsLoaded();
-    } catch (_) {}
+    const modelPromise = ensureFaceModelsLoaded().catch(() => false);
     const camOk = await startFaceCamera(videoEl);
     FACE_STATE.camActive = camOk;
     updateAuthFaceUi();
@@ -6577,8 +6586,9 @@
           : 'Camera active · Sign in with PIN below, then open Team Auth to enrol your 3 Face ID poses'),
       enrolled.length ? 'ok' : ''
     );
+    modelPromise.then(() => { if (!STATE.authed) updateAuthFaceUi(); });
     if (FACE_STATE.loopTimer) clearTimeout(FACE_STATE.loopTimer);
-    FACE_STATE.loopTimer = setTimeout(authFaceTick, 180);
+    FACE_STATE.loopTimer = setTimeout(authFaceTick, 25);
     return true;
   }
 
@@ -8368,7 +8378,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         syncWithCloud(false);
-        if (!STATE.authed && !FACE_STATE.authCamStoppedByUser && !streamAlive() && !navigator.webdriver) {
+        if (!STATE.authed && !FACE_STATE.authCamStoppedByUser && !streamAlive() && !navigator.webdriver && !window.__MFG_HEADLESS_TEST) {
           startAuthFaceScanner(false);
         }
       }
@@ -8416,7 +8426,11 @@
       signOut: () => signOut()
     };
 
-    renderApp();
+    if (!STATE.authed && !navigator.webdriver && !window.__MFG_HEADLESS_TEST) {
+      setTimeout(() => { if (!STATE.authed) renderApp(); }, 180);
+    } else {
+      renderApp();
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
