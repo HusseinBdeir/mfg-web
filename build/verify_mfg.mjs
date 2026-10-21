@@ -36,13 +36,40 @@ const udd = fs.mkdtempSync(path.join(os.tmpdir(), 'mfg-verify-'));
 const edge = spawn(EDGE, [`--headless=new`, `--remote-debugging-port=${DBG}`, `--user-data-dir=${udd}`, '--no-first-run', '--disable-gpu', '--window-size=1366,768', 'about:blank'], { stdio: 'ignore', windowsHide: true });
 
 let ws, msgId = 0; const pending = new Map(); const events = [];
-function send(method, params = {}) {
-  return new Promise((resolve, reject) => { const id = ++msgId; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
+function send(method, params = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const id = ++msgId;
+    const timer = setTimeout(() => {
+      if (pending.has(id)) {
+        pending.delete(id);
+        reject(new Error(`CDP timeout (${timeoutMs}ms): ${method}`));
+      }
+    }, timeoutMs);
+    pending.set(id, {
+      resolve: val => { clearTimeout(timer); resolve(val); },
+      reject: err => { clearTimeout(timer); reject(err); }
+    });
+    ws.send(JSON.stringify({ id, method, params }));
+  });
 }
-async function evaluate(expr) {
-  const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+async function evaluate(expr, timeoutMs = 15000) {
+  const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }, timeoutMs);
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception ? r.exceptionDetails.exception.description : JSON.stringify(r.exceptionDetails));
   return r.result.value;
+}
+async function waitPageReady(timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const ok = await evaluate(
+        `Boolean(document.readyState === 'complete' && window.MFG_SEED && window.MFG_PBI && window.MFG_FACE_TEST && document.getElementById('workspace'))`,
+        3000
+      );
+      if (ok) return true;
+    } catch {}
+    await sleep(200);
+  }
+  throw new Error('Page ready timeout');
 }
 
 try {
@@ -60,8 +87,8 @@ try {
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   if (MOBILE) await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?demo=1&nosse=1` });
-  await sleep(1500);
-  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && window.MFG_PBI && window.MFG_FACE_TEST && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
+  await sleep(600);
+  await waitPageReady();
 
   // 0. Always starts on the login gate (#authGate visible, body.locked, no #overview hash), even if a legacy localStorage email exists
   const initialGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), hash: location.hash }))()`);
@@ -69,9 +96,9 @@ try {
     ? pass('authGate · opens on login screen first (no auto-open)')
     : fail('authGate initial state', JSON.stringify(initialGate));
   await evaluate(`localStorage.setItem('isabi_mfg_active_email', 'husseinbdeir@bhfirms.com')`);
-  await send('Page.reload', { ignoreCache: true });
-  await sleep(1200);
-  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && window.MFG_PBI && window.MFG_FACE_TEST && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
+  await send('Page.reload', { ignoreCache: false });
+  await sleep(500);
+  await waitPageReady();
   const reloadGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), purged: localStorage.getItem('isabi_mfg_active_email') === null }))()`);
   reloadGate.gateOpen && reloadGate.locked && reloadGate.purged
     ? pass('authGate · legacy localStorage email purged & still requires login first')
