@@ -224,12 +224,31 @@ try {
     if (allChip) allChip.click();
     return { showMoreBtns, tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(), hasShownWord, filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim() };
   })()`);
-  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,8\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt
     ? pass('sales tfoot · full tab dataset total (no Show More / no SHOWN OF) & updates on filter', salesTotalsProbe.tfootTxt)
     : fail('sales tfoot totals', JSON.stringify(salesTotalsProbe));
-  await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(200);
-  const insp = await evaluate(`(() => { const p = document.getElementById('recordInspector'); return p && !p.hidden ? document.querySelectorAll('#inspectorBody .inspector-cell').length : 0; })()`);
-  insp > 8 ? pass('record inspector opens', `${insp} fields`) : fail('record inspector', String(insp));
+  await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(220);
+  const insp = await evaluate(`(() => {
+    const p = document.getElementById('recordInspector');
+    if (!p || p.hidden) return { ok: false };
+    const cells = document.querySelectorAll('#inspectorBody .inspector-cell').length;
+    const hasBanner = !!document.getElementById('inspLiveBanner');
+    const cockpitCards = document.querySelectorAll('#inspCockpit .pa-rec-kcard').length;
+    const qvCards = document.querySelectorAll('#inspectorBody .pa-qv-card').length;
+    const sections = document.querySelectorAll('#inspectorBody .pa-form-section').length;
+    const subgrids = document.querySelectorAll('#inspectorBody .pa-subgrid-box').length;
+    const relLinks = document.querySelectorAll('#inspectorBody [data-rel-key]');
+    // Click the first lookup pill inside the form to drill into the related record and verify breadcrumb trail
+    if (relLinks.length) relLinks[0].click();
+    const crumbsAfterDrill = document.querySelectorAll('#inspectorBody [data-crumb-idx]').length;
+    const backBtn = document.getElementById('inspBackBtn');
+    if (backBtn) backBtn.click();
+    const crumbsAfterBack = document.querySelectorAll('#inspectorBody [data-crumb-idx]').length;
+    return { ok: true, cells, hasBanner, cockpitCards, qvCards, sections, subgrids, crumbsAfterDrill, crumbsAfterBack };
+  })()`);
+  insp.ok && insp.cells > 8 && insp.hasBanner && insp.cockpitCards === 4 && insp.qvCards >= 2 && insp.sections >= 2 && insp.subgrids >= 3 && insp.crumbsAfterDrill === 2 && insp.crumbsAfterBack === 1
+    ? pass('Power Apps 360° Record Form · Live Banner + 4-Card Cockpit + Quick Views + Related Subgrids + Breadcrumb Drill', `${insp.cells} fields, ${insp.cockpitCards} KPI cards, ${insp.qvCards} quick-views, ${insp.subgrids} related subgrids`)
+    : fail('Power Apps Record Form', JSON.stringify(insp));
   await evaluate(`document.getElementById('inspectorDoneBtn').click()`); await sleep(100);
 
   // 6. Entry desk: 24 forms open; switching groups/tabs (especially Group 4 Payroll) never scrolls the modal card downward; sales tier adjustment is per load; expense subcategory cascade

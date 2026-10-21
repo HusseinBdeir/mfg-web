@@ -5031,3 +5031,617 @@ table.ledger-table tfoot tr td:last-child {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   v5.3 — POWER APPS RECORD FORM, RELATIONAL SUBGRIDS, CLICKABLE LOOKUPS,
+          LIVE NOTIFICATION BANNER & 4-CARD NAVY EXECUTIVE COCKPIT (m12 / m283)
+   ========================================================================== */
+.inspector-card {
+  width: min(1140px, 96vw) !important;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 3px solid var(--brass);
+}
+#recordInspector .modal-header {
+  padding: 10px 18px;
+  background: #0B1730;
+  color: #F4F2EE;
+  border-bottom: 1px solid rgba(217, 165, 74, 0.35);
+}
+#recordInspector .modal-eyebrow {
+  color: #D9A54A;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+}
+#recordInspector #inspectorTitle {
+  color: #F4F2EE;
+  font-size: 18px;
+  font-weight: 800;
+}
+#recordInspector .modal-close-btn {
+  color: #F4F2EE;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+#recordInspector .modal-body {
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Top Command & Relational Breadcrumb Trail */
+.pa-cmd-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+.pa-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 11.5px;
+}
+.pa-crumb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--brass-border);
+  background: var(--brass-tint);
+  color: var(--brass);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pa-crumb-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pa-crumb-btn:hover {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.pa-crumb-btn.current {
+  color: var(--ink);
+  font-weight: 800;
+  background: var(--surface);
+  border-color: var(--line);
+  cursor: default;
+}
+.pa-crumb-sep {
+  color: var(--muted);
+  font-size: 11px;
+}
+.pa-cmd-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pa-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pa-cmd-btn:hover {
+  border-color: var(--brass);
+  color: var(--brass);
+}
+
+/* Live Contextual Notification Bar (Screenshot 2 top bar) */
+.pa-rec-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-left: 4px solid #2563EB;
+  border-radius: 6px;
+  color: #1E3A8A;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+:root[data-theme="dark"] .pa-rec-banner {
+  background: rgba(37, 99, 235, 0.14);
+  border-color: rgba(96, 165, 250, 0.35);
+  border-left-color: #60A5FA;
+  color: #DBEAFE;
+}
+.pa-rec-banner.warn {
+  background: #FFFBEB;
+  border-color: #FDE68A;
+  border-left-color: #D97706;
+  color: #92400E;
+}
+:root[data-theme="dark"] .pa-rec-banner.warn {
+  background: rgba(217, 119, 6, 0.16);
+  border-color: rgba(251, 191, 36, 0.35);
+  border-left-color: #FBBF24;
+  color: #FEF3C7;
+}
+.pa-rec-banner-ico {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* Power Apps Form Tabs (General | Related + Subgrid Quick-Jump Tabs) */
+.pa-rec-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 12px;
+}
+.pa-rec-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -2px;
+  padding: 7px 12px;
+  font-family: "Archivo", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pa-rec-tab:hover {
+  color: var(--ink);
+}
+.pa-rec-tab.active {
+  color: var(--brass);
+  border-bottom-color: var(--brass);
+}
+.pa-rec-tab em {
+  font-style: normal;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 4-Card Navy Executive Telemetry & Control Cockpit (Screenshot 2 bhf_mfgCockpit.htm parity) */
+.pa-rec-cockpit {
+  background: #0F1E36;
+  color: #F4F2EE;
+  border: 1px solid rgba(217, 165, 74, 0.42);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  box-shadow: 0 6px 18px rgba(8, 17, 36, 0.16);
+}
+.pa-rec-cockpit-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  background: #091326;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.pa-rec-cockpit-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: #F4F2EE;
+}
+.pa-rec-bu-pill {
+  background: #D9A54A;
+  color: #091326;
+  font-family: "Archivo", sans-serif;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+.pa-rec-val-pill {
+  background: rgba(92, 224, 139, 0.16);
+  border: 1px solid rgba(92, 224, 139, 0.45);
+  color: #5CE08B;
+  font-family: "Archivo", sans-serif;
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.pa-rec-cockpit-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  background: #F8FAFC;
+  color: #0F172A;
+}
+:root[data-theme="dark"] .pa-rec-cockpit-cards {
+  background: #111F38;
+  color: #F4F2EE;
+}
+.pa-rec-kcard {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  padding: 10px 12px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+}
+:root[data-theme="dark"] .pa-rec-kcard {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.pa-rec-kcard-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pa-rec-kcard-lbl {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748B;
+}
+:root[data-theme="dark"] .pa-rec-kcard-lbl {
+  color: rgba(244, 242, 238, 0.64);
+}
+.pa-rec-kcard-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.pa-rec-kcard-tag.good { background: #DCFCE7; color: #166534; }
+.pa-rec-kcard-tag.info { background: #DBEAFE; color: #1E40AF; }
+.pa-rec-kcard-tag.warn { background: #FEF3C7; color: #92400E; }
+.pa-rec-kcard-tag.crit { background: #FEE2E2; color: #991B1B; }
+:root[data-theme="dark"] .pa-rec-kcard-tag.good { background: rgba(34, 197, 94, 0.22); color: #86EFAC; }
+:root[data-theme="dark"] .pa-rec-kcard-tag.info { background: rgba(59, 130, 246, 0.22); color: #93C5FD; }
+:root[data-theme="dark"] .pa-rec-kcard-tag.warn { background: rgba(245, 158, 11, 0.22); color: #FCD34D; }
+:root[data-theme="dark"] .pa-rec-kcard-tag.crit { background: rgba(239, 68, 68, 0.22); color: #FCA5A5; }
+.pa-rec-kcard-val {
+  font-family: "Archivo", sans-serif;
+  font-stretch: 112%;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0F172A;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+:root[data-theme="dark"] .pa-rec-kcard-val {
+  color: #F4F2EE;
+}
+.pa-rec-kcard-sub {
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.35;
+}
+:root[data-theme="dark"] .pa-rec-kcard-sub {
+  color: rgba(244, 242, 238, 0.72);
+}
+.pa-rec-kcard-bar {
+  height: 4px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+:root[data-theme="dark"] .pa-rec-kcard-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+.pa-rec-kcard-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #16A34A;
+}
+.pa-rec-kcard-bar > i.info { background: #2563EB; }
+.pa-rec-kcard-bar > i.warn { background: #D97706; }
+.pa-rec-kcard-bar > i.crit { background: #DC2626; }
+
+/* Power Apps Structured Form Sections & Locked Quick-View Cards (m12_forms.py) */
+.pa-form-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pa-form-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.pa-form-sec-hdr {
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-family: "Archivo", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pa-form-sec-hdr span {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.pa-form-sec-body {
+  padding: 10px 12px;
+}
+
+/* Quick-View Cards Grid inside Record Form (qv_customer, qv_truck, qv_site, qv_rule, qv_supplier) */
+.pa-qv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pa-qv-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3.5px solid var(--brass);
+  border-radius: 7px;
+  padding: 9px 12px;
+  min-width: 0;
+}
+.pa-qv-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.pa-qv-card-lbl {
+  font-family: "Archivo", sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brass);
+}
+.pa-qv-card-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pa-qv-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
+}
+.pa-qv-kv small {
+  display: block;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pa-qv-kv b {
+  font-size: 11.5px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clickable Relational Lookup Links across Forms, Subgrids & Registers */
+.rel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #1D4ED8;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(29, 78, 216, 0.45);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+:root[data-theme="dark"] .rel-link {
+  color: #60A5FA;
+  border-bottom-color: rgba(96, 165, 250, 0.45);
+}
+.rel-link:hover {
+  color: var(--brass);
+  border-bottom-color: var(--brass);
+  background: var(--brass-tint);
+}
+.rel-link .rel-arr {
+  font-size: 9.5px;
+  opacity: 0.75;
+}
+
+/* Interactive Related Subgrids inside Record Inspector (bhf_related_subgrids.py parity) */
+.pa-subgrids-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+.pa-subgrid-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.pa-subgrid-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: #0B1730;
+  color: #F4F2EE;
+  border-bottom: 2px solid var(--brass);
+}
+.pa-subgrid-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-family: "Archivo", sans-serif;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #F4F2EE;
+}
+.pa-subgrid-rel {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  background: rgba(217, 165, 74, 0.22);
+  color: #D9A54A;
+  border: 1px solid rgba(217, 165, 74, 0.45);
+}
+.pa-subgrid-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pa-subgrid-search {
+  padding: 3.5px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F2EE;
+  font-size: 11px;
+  min-width: 155px;
+}
+.pa-subgrid-search::placeholder {
+  color: rgba(244, 242, 238, 0.55);
+}
+.pa-subgrid-jump {
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(217, 165, 74, 0.5);
+  background: rgba(217, 165, 74, 0.16);
+  color: #D9A54A;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pa-subgrid-jump:hover {
+  background: #D9A54A;
+  color: #0B1730;
+}
+
+/* Connected Tables & System Views Strip on 34-Table Hub */
+.pa-hub-rel-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.pa-hub-views, .pa-hub-conns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pa-hub-lbl {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+@media (max-width: 860px) {
+  .pa-rec-cockpit-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pa-qv-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 768px) {
+  .inspector-card {
+    width: 100% !important;
+    max-height: calc(100dvh - var(--safe-top) - 6px);
+  }
+  .pa-rec-cockpit-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 9px 10px;
+    gap: 8px;
+  }
+  .pa-rec-kcard-val {
+    font-size: 16px;
+  }
+  .pa-subgrid-search {
+    min-width: 120px;
+    flex: 1;
+  }
+}

@@ -33,47 +33,230 @@
     { id: 'p20_recon', num: '20', label: 'Statement Recon', title: 'Counterparty Statement Reconciliation Bridge & 22 A4 PDF Statements' }
   ];
 
-  // All 34 Power Apps Sitemap Tables (m14_sitemap.py)
+  // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — enriched with live relational columns & connected tables
   const TABLE_CATALOG = [
-    { key: 'sales_tickets', group: '1 · Plant & Dispatch', label: 'Sales Tickets', dvn: 'bhf_salesticket', form: 'sales', cols: ['date', 'rep_date', 'ticket_no', 'company', 'sale_type', 'customer', 'product', 'site', 'truck', 'driver', 'qty', 'uom', 'unit_price', 'price', 'trans_price', 'vat', 'total_ttc', 'method'] },
-    { key: 'raw_purchases', group: '1 · Plant & Dispatch', label: 'Raw Material Purchases', dvn: 'bhf_rawpurchase', form: 'raw', cols: ['date', 'rep_date', 'ticket_no', 'company', 'site', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'driver', 'product', 'qty', 'uom', 'unit_cost', 'cost', 'trans_cost', 'total'] },
-    { key: 'fuel_intakes', group: '1 · Plant & Dispatch', label: 'Fuel & Lubricant Intakes', dvn: 'bhf_fuelintake', form: 'fuel', cols: ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer', 'hours', 'notes'] },
-    { key: 'receipts', group: '1 · Plant & Dispatch', label: 'Customer Receipts (AR)', dvn: 'bhf_mfgcustomerreceipt', form: 'receipt', cols: ['date', 'company', 'customer', 'method', 'kind', 'amount', 'vat_invoice', 'reference', 'notes'] },
-    { key: 'settlements', group: '1 · Plant & Dispatch', label: 'Supplier Settlements (AP)', dvn: 'bhf_mfgsupplierpayment', form: 'settlement', cols: ['date', 'company', 'supplier', 'payable_leg', 'method', 'kind', 'amount', 'reference', 'notes'] },
-    { key: 'expenses', group: '1 · Plant & Dispatch', label: 'General & Fleet Expenses', dvn: 'bhf_mfgexpense', form: 'expense', cols: ['date', 'rep_date', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'amount', 'vat', 'total_ttc', 'reference'] },
-    { key: 'price_rules', group: '2 · Commercial & Pricing', label: 'Price & Commission Agreements', dvn: 'bhf_pricerule', form: 'pricerule', cols: ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'qty1', 'adj1', 'total1', 'qty2', 'adj2', 'total2', 'indiff_price', 'start_date', 'end_date'] },
-    { key: 'credit_terms', group: '2 · Commercial & Pricing', label: 'Customer Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['name', 'company', 'customer', 'credit_days', 'credit_limit', 'start_date', 'end_date', 'notes'] },
-    { key: 'vat_invoices', group: '2 · Commercial & Pricing', label: 'VAT 11% Tax Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['invoice_no', 'date', 'company', 'customer', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc', 'notes'] },
-    { key: 'customers', group: '2 · Commercial & Pricing', label: 'Customers Master', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'company', 'vat_registered', 'tax_no', 'phone', 'address'] },
-    { key: 'suppliers', group: '2 · Commercial & Pricing', label: 'Suppliers & Haulers Master', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'company', 'iva', 'financial_no', 'category', 'phone', 'contact'] },
-    { key: 'products', group: '3 · Master Data & Fleet', label: 'Products & Aggregate Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product'] },
-    { key: 'product_types', group: '3 · Master Data & Fleet', label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code'] },
-    { key: 'uoms', group: '3 · Master Data & Fleet', label: 'Units of Measure (UoM)', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code'] },
-    { key: 'sites', group: '3 · Master Data & Fleet', label: 'Quarries & Customer Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'company', 'region', 'owner_supplier', 'is_jv', 'customer_declared_qty', 'latitude', 'longitude'] },
-    { key: 'regions', group: '3 · Master Data & Fleet', label: 'Regions & Delivery Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code'] },
-    { key: 'equipment', group: '3 · Master Data & Fleet', label: 'Equipment & Trucks Registry', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'type', 'ownership', 'owner_supplier', 'status', 'capacity', 'uom', 'plate_no', 'driver'] },
-    { key: 'company_equipment', group: '3 · Master Data & Fleet', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['name', 'company', 'equipment', 'ownership', 'status', 'start_date', 'end_date'] },
-    { key: 'drivers', group: '3 · Master Data & Fleet', label: 'Drivers & Operators Registry', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'company', 'is_company_driver', 'truck', 'phone'] },
-    { key: 'company_drivers', group: '3 · Master Data & Fleet', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['name', 'company', 'driver', 'start_date', 'end_date'] },
-    { key: 'expense_categories', group: '3 · Master Data & Fleet', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class'] },
-    { key: 'expense_subcategories', group: '3 · Master Data & Fleet', label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category'] },
-    { key: 'salaries', group: '4 · Workforce & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'rep_date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'] },
-    { key: 'employments', group: '4 · Workforce & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'type', 'status', 'salary_usd', 'daily_rate', 'start_date', 'end_date', 'notes'] },
-    { key: 'attendance', group: '4 · Workforce & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'] },
-    { key: 'freelance_entries', group: '4 · Workforce & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'] },
-    { key: 'logistics_allowances', group: '4 · Workforce & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'] },
-    { key: 'overtime_rates', group: '4 · Workforce & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'] },
-    { key: 'external_movements', group: '5 · Treasury, Loans & JV', label: 'External Treasury Movements', dvn: 'bhf_mfgexternal', form: 'treasury', cols: ['date', 'company', 'counterparty', 'direction', 'method', 'usd_amount', 'notes'] },
-    { key: 'loans', group: '5 · Treasury, Loans & JV', label: 'Loans & Partner Advances', dvn: 'bhf_mfgloan', form: 'treasury', cols: ['name', 'company', 'counterparty', 'direction', 'principal', 'interest_rate', 'start_date', 'notes'] },
-    { key: 'loan_settlements', group: '5 · Treasury, Loans & JV', label: 'Loan Repayments & Drawdowns', dvn: 'bhf_mfgloansettlement', form: 'treasury', cols: ['date', 'company', 'loan', 'type', 'method', 'usd_amount', 'notes'] },
-    { key: 'conversions', group: '5 · Treasury, Loans & JV', label: 'USD ↔ LBP FX Conversions', dvn: 'bhf_mfgconversion', form: 'treasury', cols: ['date', 'company', 'from_currency', 'to_currency', 'usd_amount', 'lbp_amount', 'exchange_rate', 'notes'] },
-    { key: 'jv_partnerships', group: '5 · Treasury, Loans & JV', label: 'JV Site Partnerships', dvn: 'bhf_mfgjvpartnership', form: 'jv', cols: ['name', 'company', 'site', 'partner', 'percentage', 'notes'] },
-    { key: 'jv_distributions', group: '5 · Treasury, Loans & JV', label: 'JV Profit Distributions', dvn: 'bhf_mfgjvdistribution', form: 'jv', cols: ['date', 'rep_date', 'company', 'site', 'partner', 'basis', 'amount', 'total', 'notes'] }
+    { key: 'sales_tickets', group: '1 · Plant & Dispatch', label: 'Sales Tickets', dvn: 'bhf_salesticket', form: 'sales', cols: ['date', 'rep_date', 'ticket_no', 'company', 'sale_type', 'customer', 'product', 'site', 'truck', 'driver', 'qty', 'uom', 'unit_price', 'price', 'trans_price', 'vat', 'total_ttc', 'method'], relTables: ['customers', 'price_rules', 'products', 'sites', 'equipment', 'drivers', 'receipts', 'vat_invoices'], views: [{ id: 'all', label: 'All Sales Tickets' }, { id: 'delivery', label: 'Delivery Loads', fn: r => /deliv/i.test(r.sale_type) }, { id: 'pickup', label: 'Pickup (Ex-Quarry)', fn: r => /pick/i.test(r.sale_type) }, { id: 'credit', label: 'Credit / Account', fn: r => !/cash/i.test(r.method) }, { id: 'iva', label: 'IVA / VAT 11%', fn: r => r.iva || Number(r.vat || 0) > 0 }] },
+    { key: 'raw_purchases', group: '1 · Plant & Dispatch', label: 'Raw Material Purchases', dvn: 'bhf_rawpurchase', form: 'raw', cols: ['date', 'rep_date', 'ticket_no', 'company', 'site', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'driver', 'product', 'qty', 'uom', 'unit_cost', 'cost', 'trans_cost', 'total'], relTables: ['sites', 'suppliers', 'price_rules', 'equipment', 'drivers', 'products', 'settlements'], views: [{ id: 'all', label: 'All Raw Purchases' }, { id: 'supplier_haul', label: 'Third-Party Haulage', fn: r => Number(r.trans_cost || 0) > 0 }, { id: 'company_haul', label: 'Company Fleet Haul', fn: r => /company/i.test(r.transport_by) }] },
+    { key: 'fuel_intakes', group: '1 · Plant & Dispatch', label: 'Fuel & Lubricant Intakes', dvn: 'bhf_fuelintake', form: 'fuel', cols: ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer', 'hours', 'notes'], relTables: ['equipment', 'company_equipment', 'drivers', 'products'], views: [{ id: 'all', label: 'All Fuel & Lube Fills' }, { id: 'diesel', label: 'Diesel Only', fn: r => /diesel|fuel|mazout/i.test(r.item || '') }, { id: 'lube', label: 'Oils & Lubricants', fn: r => !/diesel|fuel|mazout/i.test(r.item || '') }] },
+    { key: 'receipts', group: '1 · Plant & Dispatch', label: 'Customer Receipts (AR)', dvn: 'bhf_mfgcustomerreceipt', form: 'receipt', cols: ['date', 'rep_date', 'name', 'company', 'customer', 'method', 'kind', 'amount', 'discount', 'vat_invoice', 'record_ticket', 'reference', 'notes'], relTables: ['customers', 'sales_tickets', 'vat_invoices', 'credit_terms'], views: [{ id: 'all', label: 'All Customer Receipts' }, { id: 'cash', label: 'Cash / Check', fn: r => /cash|check|cheque/i.test(r.method || '') }, { id: 'disc', label: 'With Discount / Rebate', fn: r => Number(r.discount || 0) > 0 }] },
+    { key: 'settlements', group: '1 · Plant & Dispatch', label: 'Supplier Settlements (AP)', dvn: 'bhf_mfgsupplierpayment', form: 'settlement', cols: ['date', 'rep_date', 'name', 'company', 'supplier', 'payable_leg', 'method', 'kind', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference', 'notes'], relTables: ['suppliers', 'raw_purchases', 'expenses', 'price_rules'], views: [{ id: 'all', label: 'All Supplier Settlements' }, { id: 'raw_leg', label: 'Raw / Haulage Leg', fn: r => Boolean(r.raw_ticket) }, { id: 'exp_leg', label: 'Expense Leg', fn: r => Boolean(r.expense_record) }] },
+    { key: 'expenses', group: '1 · Plant & Dispatch', label: 'General & Fleet Expenses', dvn: 'bhf_mfgexpense', form: 'expense', cols: ['date', 'rep_date', 'name', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'qty', 'amount', 'vat', 'total_ttc', 'invoice', 'reference', 'notes'], relTables: ['expense_categories', 'expense_subcategories', 'suppliers', 'equipment', 'settlements'], views: [{ id: 'all', label: 'All Expenses' }, { id: 'fleet', label: 'Equipment & Fleet Tagged', fn: r => Boolean(r.equipment) }, { id: 'overhead', label: 'Plant & General Overhead', fn: r => !r.equipment }] },
+    { key: 'price_rules', group: '2 · Commercial & Pricing', label: 'Price & Commission Agreements', dvn: 'bhf_pricerule', form: 'pricerule', cols: ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'qty1', 'adj1', 'total1', 'qty2', 'adj2', 'total2', 'indiff_price', 'start_date', 'end_date', 'matched_tickets'], relTables: ['customers', 'suppliers', 'products', 'sites', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Price Agreements' }, { id: 'active', label: 'Active Agreements', fn: r => !r.end_date }, { id: 'sales', label: 'Customer Sales Rules', fn: r => /sale|pickup|deliv/i.test(r.rule_type || '') }, { id: 'transport', label: 'Transport & Raw Rules', fn: r => /trans|raw|purch/i.test(r.rule_type || '') }, { id: 'list', label: 'List Prices', fn: r => /list/i.test(r.rule_type || '') }] },
+    { key: 'credit_terms', group: '2 · Commercial & Pricing', label: 'Customer Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['name', 'company', 'customer', 'credit_days', 'credit_limit', 'ar_balance', 'start_date', 'end_date', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All Credit Terms' }, { id: 'active', label: 'Active Policies', fn: r => !r.end_date }] },
+    { key: 'vat_invoices', group: '2 · Commercial & Pricing', label: 'VAT 11% Tax Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['invoice_no', 'date', 'company', 'customer', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc', 'tickets_count', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All VAT Invoices' }] },
+    { key: 'customers', group: '2 · Commercial & Pricing', label: 'Customers Master', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'official_name', 'vat_registered', 'mof_no', 'phone', 'address', 'method', 'credit_days', 'credit_limit', 'active_rules', 'sales_loads', 'ar_balance'], relTables: ['sales_tickets', 'receipts', 'price_rules', 'credit_terms', 'vat_invoices'], views: [{ id: 'all', label: 'All Customers' }, { id: 'open_ar', label: 'Open AR Balance > $0', fn: (r, rel) => ((rel.custByName[norm(r.name)] || {}).ar_balance || 0) > 1 }, { id: 'vat', label: 'VAT Registered (MOF)', fn: r => Boolean(r.vat_registered || r.mof_no) }] },
+    { key: 'suppliers', group: '2 · Commercial & Pricing', label: 'Suppliers & Haulers Master', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'official_name', 'category1', 'is_truck_owner', 'iva', 'financial_no', 'contact', 'location', 'trucks_count', 'active_rules', 'raw_loads', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Suppliers & Haulers' }, { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 }, { id: 'haulers', label: 'Truck Owners / Haulers', fn: r => Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0) }] },
+    { key: 'products', group: '3 · Master Data & Fleet', label: 'Products & Aggregate Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product', 'active_rules', 'sales_loads', 'revenue_account'], relTables: ['sales_tickets', 'raw_purchases', 'price_rules', 'fuel_intakes', 'product_types', 'uoms'], views: [{ id: 'all', label: 'All Products & Grades' }, { id: 'agg', label: 'Ticket / Aggregate Grades', fn: r => Boolean(r.ticket_product) }, { id: 'fuel', label: 'Fuel & Lube Items', fn: r => Boolean(r.fuel_item) }] },
+    { key: 'product_types', group: '3 · Master Data & Fleet', label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code', 'products_count', 'sales_loads'], relTables: ['products', 'sales_tickets'], views: [{ id: 'all', label: 'All Product Families' }] },
+    { key: 'uoms', group: '3 · Master Data & Fleet', label: 'Units of Measure (UoM)', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code', 'products_count', 'tickets_count'], relTables: ['products', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Units of Measure' }] },
+    { key: 'sites', group: '3 · Master Data & Fleet', label: 'Quarries & Customer Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Quarries & Sites' }, { id: 'jv', label: 'JV 50/50 Quarries', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
+    { key: 'regions', group: '3 · Master Data & Fleet', label: 'Regions & Delivery Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code', 'sites_count', 'overtime_rate', 'sales_loads'], relTables: ['sites', 'overtime_rates', 'sales_tickets'], views: [{ id: 'all', label: 'All Regions' }] },
+    { key: 'equipment', group: '3 · Master Data & Fleet', label: 'Equipment & Trucks Registry', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier', 'default_driver', 'companies_list', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'company', label: 'Company Fleet', fn: r => /company/i.test(r.ownership || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company/i.test(r.ownership || '') }] },
+    { key: 'company_equipment', group: '3 · Master Data & Fleet', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
+    { key: 'drivers', group: '3 · Master Data & Fleet', label: 'Drivers & Operators Registry', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'assigned_trucks', 'companies_list', 'phone', 'loads_hauled', 'fuel_fills'], relTables: ['company_drivers', 'equipment', 'suppliers', 'sales_tickets', 'raw_purchases', 'fuel_intakes'], views: [{ id: 'all', label: 'All Drivers & Operators' }] },
+    { key: 'company_drivers', group: '3 · Master Data & Fleet', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'assigned_trucks', 'loads_hauled', 'start_date', 'end_date', 'notes'], relTables: ['drivers', 'employments', 'equipment', 'sales_tickets'], views: [{ id: 'all', label: 'All Driver Assignments' }] },
+    { key: 'expense_categories', group: '3 · Master Data & Fleet', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [{ id: 'all', label: 'All Expense Categories' }] },
+    { key: 'expense_subcategories', group: '3 · Master Data & Fleet', label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
+    { key: 'salaries', group: '4 · Workforce & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'rep_date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], relTables: ['employments', 'attendance', 'logistics_allowances', 'freelance_entries'], views: [{ id: 'all', label: 'All Salary Payments' }] },
+    { key: 'employments', group: '4 · Workforce & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => /active/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
+    { key: 'attendance', group: '4 · Workforce & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Attendance Rows' }, { id: 'ot', label: 'With Overtime Hours', fn: r => Number(r.overtime_hours || 0) > 0 }] },
+    { key: 'freelance_entries', group: '4 · Workforce & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Freelance Entries' }] },
+    { key: 'logistics_allowances', group: '4 · Workforce & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'], relTables: ['employments', 'sites', 'equipment', 'salaries'], views: [{ id: 'all', label: 'All Site Allowances' }] },
+    { key: 'overtime_rates', group: '4 · Workforce & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'], relTables: ['regions', 'drivers', 'sales_tickets'], views: [{ id: 'all', label: 'All Trip & Overtime Rates' }] },
+    { key: 'external_movements', group: '5 · Treasury, Loans & JV', label: 'External Treasury Movements', dvn: 'bhf_mfgexternal', form: 'treasury', cols: ['date', 'company', 'counterparty', 'direction', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'loan_settlements'], views: [{ id: 'all', label: 'All External Movements' }] },
+    { key: 'loans', group: '5 · Treasury, Loans & JV', label: 'Loans & Partner Advances', dvn: 'bhf_mfgloan', form: 'treasury', cols: ['name', 'company', 'counterparty', 'direction', 'principal', 'settled_amount', 'interest_rate', 'start_date', 'notes'], relTables: ['loan_settlements', 'external_movements'], views: [{ id: 'all', label: 'All Loans & Advances' }] },
+    { key: 'loan_settlements', group: '5 · Treasury, Loans & JV', label: 'Loan Repayments & Drawdowns', dvn: 'bhf_mfgloansettlement', form: 'treasury', cols: ['date', 'company', 'loan', 'type', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'external_movements'], views: [{ id: 'all', label: 'All Loan Settlements' }] },
+    { key: 'conversions', group: '5 · Treasury, Loans & JV', label: 'USD ↔ LBP FX Conversions', dvn: 'bhf_mfgconversion', form: 'treasury', cols: ['date', 'company', 'from_currency', 'to_currency', 'usd_amount', 'lbp_amount', 'exchange_rate', 'notes'], relTables: ['external_movements'], views: [{ id: 'all', label: 'All FX Conversions' }] },
+    { key: 'jv_partnerships', group: '5 · Treasury, Loans & JV', label: 'JV Site Partnerships', dvn: 'bhf_mfgjvpartnership', form: 'jv', cols: ['name', 'company', 'site', 'partner', 'percentage', 'distributions_total', 'notes'], relTables: ['sites', 'jv_distributions', 'raw_purchases'], views: [{ id: 'all', label: 'All JV Partnerships' }] },
+    { key: 'jv_distributions', group: '5 · Treasury, Loans & JV', label: 'JV Profit Distributions', dvn: 'bhf_mfgjvdistribution', form: 'jv', cols: ['date', 'rep_date', 'company', 'site', 'partner', 'basis', 'amount', 'total', 'notes'], relTables: ['jv_partnerships', 'sites'], views: [{ id: 'all', label: 'All JV Distributions' }] }
   ];
 
-  function cellValue(r, c) {
+  // Lookup column target table map (renders clickable relational pills in 34-Table Hub)
+  const HUB_LOOKUP_TARGETS = {
+    customer: 'customers',
+    supplier: 'suppliers',
+    site_owner: 'suppliers',
+    truck_owner: 'suppliers',
+    product: 'products',
+    item: 'products',
+    input_product: 'products',
+    site: 'sites',
+    region: 'regions',
+    truck: 'equipment',
+    equipment: 'equipment',
+    driver: 'drivers',
+    default_driver: 'drivers',
+    day_operator: 'drivers',
+    night_operator: 'drivers',
+    staff: 'employments',
+    vat_invoice: 'vat_invoices',
+    category: 'expense_categories',
+    subcategory: 'expense_subcategories'
+  };
+
+  let _hubRelCache = null;
+  let _hubRelStamp = '';
+  function getHubRelIndex(SEED) {
+    const rec = (SEED && SEED.records) || {};
+    const stamp = `${(rec.sales_tickets || []).length}:${(rec.raw_purchases || []).length}:${(rec.price_rules || []).length}:${(rec.receipts || []).length}:${(rec.settlements || []).length}`;
+    if (_hubRelCache && _hubRelStamp === stamp) return _hubRelCache;
+    _hubRelStamp = stamp;
+    const rel = {
+      custByName: {}, suppByName: {}, prodByName: {}, typeByName: {}, uomByName: {},
+      siteByName: {}, regByName: {}, equipByName: {}, drvByName: {}, catByName: {},
+      subcatByName: {}, staffByName: {}, vatInvByNo: {}, loanByName: {}
+    };
+    const ensure = (map, k, init) => { const nk = norm(k); if (!nk) return null; if (!map[nk]) map[nk] = init(); return map[nk]; };
+
+    // Seed from semantic model AR / AP summaries first
+    (((SEED && SEED.semantic_model) || {}).customer_ar_summary || []).forEach(c => {
+      const e = ensure(rel.custByName, c.Customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
+      if (e) { e.sales_loads = Number(c.loads || 0); e.ar_balance = Number(c.ar_balance || 0); }
+    });
+    (((SEED && SEED.semantic_model) || {}).supplier_ap_summary || []).forEach(s => {
+      const e = ensure(rel.suppByName, s.Supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
+      if (e) { e.raw_loads = Number(s.raw_loads || 0); e.ap_balance = Number(s.ap_balance || 0); }
+    });
+
+    (rec.credit_terms || []).forEach(ct => {
+      const e = ensure(rel.custByName, ct.customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
+      if (e) {
+        if (ct.credit_days != null) e.credit_days = ct.credit_days;
+        if (ct.credit_limit != null) e.credit_limit = ct.credit_limit;
+      }
+    });
+
+    (rec.price_rules || []).forEach(pr => {
+      if (pr.customer) {
+        const e = ensure(rel.custByName, pr.customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
+        if (e && !pr.end_date) e.active_rules++;
+      }
+      if (pr.supplier) {
+        const e = ensure(rel.suppByName, pr.supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
+        if (e && !pr.end_date) e.active_rules++;
+      }
+      if (pr.product) {
+        const e = ensure(rel.prodByName, pr.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0 }));
+        if (e) {
+          if (!pr.end_date) e.active_rules++;
+          if (/list/i.test(pr.rule_type || '') && pr.unit_price != null) e.list_price = pr.unit_price;
+          else if (e.list_price == null && pr.unit_price != null && /sale/i.test(pr.rule_type || '')) e.list_price = pr.unit_price;
+        }
+      }
+      if (pr.site) {
+        const e = ensure(rel.siteByName, pr.site, () => ({ active_rules: 0, sales_loads: 0, raw_loads: 0 }));
+        if (e && !pr.end_date) e.active_rules++;
+      }
+    });
+
+    (rec.products || []).forEach(p => {
+      const te = ensure(rel.typeByName, p.type, () => ({ products_count: 0, sales_loads: 0 }));
+      if (te) te.products_count++;
+      const ue = ensure(rel.uomByName, p.uom, () => ({ products_count: 0, tickets_count: 0 }));
+      if (ue) ue.products_count++;
+    });
+
+    (rec.sites || []).forEach(s => {
+      const re = ensure(rel.regByName, s.region, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
+      if (re) re.sites_count++;
+    });
+    (rec.overtime_rates || []).forEach(ot => {
+      const re = ensure(rel.regByName, ot.region, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
+      if (re && ot.amount != null && (!ot.end_date || re.overtime_rate == null)) re.overtime_rate = ot.amount;
+    });
+
+    (rec.company_equipment || []).forEach(ce => {
+      const ee = ensure(rel.equipByName, ce.equipment, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee && ce.company) ee.companies.add(ce.company);
+      if (ce.default_driver) {
+        const de = ensure(rel.drvByName, ce.default_driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+        if (de && ce.equipment) de.trucks.add(ce.equipment);
+      }
+    });
+    (rec.equipment || []).forEach(eq => {
+      if (eq.default_driver) {
+        const de = ensure(rel.drvByName, eq.default_driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+        if (de && eq.name) de.trucks.add(eq.name);
+      }
+      if (eq.supplier) {
+        const se = ensure(rel.suppByName, eq.supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
+        if (se && eq.name) se.trucks.add(eq.name);
+      }
+    });
+    (rec.company_drivers || []).forEach(cd => {
+      const de = ensure(rel.drvByName, cd.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (de && cd.company) de.companies.add(cd.company);
+    });
+
+    (rec.sales_tickets || []).forEach(t => {
+      const pe = ensure(rel.prodByName, t.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0 }));
+      if (pe) pe.sales_loads++;
+      const ue = ensure(rel.uomByName, t.uom, () => ({ products_count: 0, tickets_count: 0 }));
+      if (ue) ue.tickets_count++;
+      const se = ensure(rel.siteByName, t.site, () => ({ active_rules: 0, sales_loads: 0, raw_loads: 0 }));
+      if (se) se.sales_loads++;
+      const ee = ensure(rel.equipByName, t.truck, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
+      const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+      if (t.vat_invoice) rel.vatInvByNo[norm(t.vat_invoice)] = (rel.vatInvByNo[norm(t.vat_invoice)] || 0) + 1;
+    });
+
+    (rec.raw_purchases || []).forEach(t => {
+      const ue = ensure(rel.uomByName, t.uom, () => ({ products_count: 0, tickets_count: 0 }));
+      if (ue) ue.tickets_count++;
+      const se = ensure(rel.siteByName, t.site, () => ({ active_rules: 0, sales_loads: 0, raw_loads: 0 }));
+      if (se) se.raw_loads++;
+      const ee = ensure(rel.equipByName, t.truck, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
+      const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+    });
+
+    (rec.fuel_intakes || []).forEach(f => {
+      const ee = ensure(rel.equipByName, f.equipment, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee) ee.fuel_fills++;
+      const de = ensure(rel.drvByName, f.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (de) de.fuel_fills++;
+    });
+
+    (rec.expense_subcategories || []).forEach(sc => {
+      const ce = ensure(rel.catByName, sc.category, () => ({ subcategories_count: 0, expenses_count: 0, total_spent: 0 }));
+      if (ce) ce.subcategories_count++;
+    });
+    (rec.expenses || []).forEach(ex => {
+      const amt = Number(ex.amount || ex.usd_amount || 0);
+      const ce = ensure(rel.catByName, ex.category, () => ({ subcategories_count: 0, expenses_count: 0, total_spent: 0 }));
+      if (ce) { ce.expenses_count++; ce.total_spent += amt; }
+      const se = ensure(rel.subcatByName, ex.subcategory, () => ({ expenses_count: 0, total_spent: 0 }));
+      if (se) { se.expenses_count++; se.total_spent += amt; }
+    });
+
+    (rec.salaries || []).forEach(sal => {
+      const st = ensure(rel.staffByName, sal.staff, () => ({ payments_count: 0, total_paid: 0 }));
+      if (st) { st.payments_count++; st.total_paid += Number(sal.amount || sal.usd_amount || 0); }
+    });
+
+    rel.loanSettledByCp = {};
+    (rec.loan_settlements || []).forEach(ls => {
+      const cp = cellValue(ls, 'loan') || ls.loan || '';
+      if (cp) rel.loanSettledByCp[norm(cp)] = (rel.loanSettledByCp[norm(cp)] || 0) + Number(ls.usd_amount || ls.amount || 0);
+    });
+    rel.jvDistBySite = {};
+    (rec.jv_distributions || []).forEach(jd => {
+      if (jd.site) rel.jvDistBySite[norm(jd.site)] = (rel.jvDistBySite[norm(jd.site)] || 0) + Number(jd.total || jd.amount || 0);
+    });
+
+    _hubRelCache = rel;
+    return rel;
+  }
+
+  function cellValue(r, c, tableKey, rel) {
     if (!r) return null;
-    if (r[c] != null && r[c] !== '') return r[c];
+    if (r[c] != null && r[c] !== '') {
+      if (Array.isArray(r[c])) return r[c].join(', ');
+      return r[c];
+    }
     const nm = String(r.name || '');
     if (c === 'counterparty') {
       const m = nm.match(/^(?:Loan|EXT|BRW)\s+\d{4}-\d{2}-\d{2}\s+(.+?)(?:\s+#\d+)?$/i);
@@ -87,6 +270,93 @@
     if (c === 'start_date') {
       const m = nm.match(/\b(\d{4}-\d{2}-\d{2})\b/);
       return m ? m[1] : r.date;
+    }
+    if (c === 'kind') {
+      if (Number(r.discount || 0) > 0 && Number(r.amount || 0) === 0) return 'Discount / Rebate';
+      return r.vat_invoice ? 'VAT Invoice Receipt' : (r.record_ticket || r.raw_ticket ? 'Ticket Settlement' : 'Account Payment');
+    }
+    if (c === 'payable_leg') {
+      if (r.expense_record) return '3 · General Expense';
+      if (r.raw_ticket) return '1/2 · Quarry & Haulage';
+      return 'Account Settlement';
+    }
+    if (c === 'total_ttc') return round2(Number(r.amount || r.net_amount || r.price || 0) + Number(r.vat || r.vat_amount || 0));
+    if (c === 'vat') return Number(r.vat_amount || 0);
+    if (c === 'code') return nm ? nm.toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 12) : '—';
+    if (c === 'cost_class') return /fuel|maint|tire|truck|fleet|oil|spare/i.test(nm) ? 'Direct Fleet & Plant' : (/sal|food|allow|staff|med/i.test(nm) ? 'Workforce & Site' : 'General & Admin');
+    if (c === 'gps_status') return (r.latitude != null && r.longitude != null) ? 'Verified Pin' : 'Pending GPS';
+
+    if (rel) {
+      if (tableKey === 'customers' || tableKey === 'credit_terms') {
+        const ce = rel.custByName[norm(r.customer || r.name)];
+        if (ce && ce[c] != null) return ce[c];
+      }
+      if (tableKey === 'suppliers') {
+        const se = rel.suppByName[norm(r.name)];
+        if (c === 'trucks_count') return r.trucks_count != null ? r.trucks_count : (se ? se.trucks.size : 0);
+        if (se && se[c] != null) return se[c];
+      }
+      if (tableKey === 'products') {
+        const pe = rel.prodByName[norm(r.name)];
+        if (pe && pe[c] != null) return pe[c];
+      }
+      if (tableKey === 'product_types') {
+        const te = rel.typeByName[norm(r.name)];
+        if (te && te[c] != null) return te[c];
+      }
+      if (tableKey === 'uoms') {
+        const ue = rel.uomByName[norm(r.name)];
+        if (ue && ue[c] != null) return ue[c];
+      }
+      if (tableKey === 'sites') {
+        const se = rel.siteByName[norm(r.name)];
+        if (se && se[c] != null) return se[c];
+      }
+      if (tableKey === 'regions') {
+        const re = rel.regByName[norm(r.name)];
+        if (re && re[c] != null) return re[c];
+      }
+      if (tableKey === 'equipment') {
+        const ee = rel.equipByName[norm(r.name)];
+        if (ee) {
+          if (c === 'companies_list') return Array.from(ee.companies).join(', ') || 'Shared';
+          if (ee[c] != null) return ee[c];
+        }
+      }
+      if (tableKey === 'drivers' || tableKey === 'company_drivers') {
+        const de = rel.drvByName[norm(r.driver || r.name)];
+        if (de) {
+          if (c === 'assigned_trucks') return Array.from(de.trucks).join(', ') || '—';
+          if (c === 'companies_list') return Array.from(de.companies).join(', ') || '—';
+          if (de[c] != null) return de[c];
+        }
+      }
+      if (tableKey === 'expense_categories') {
+        const ce = rel.catByName[norm(r.name)];
+        if (ce && ce[c] != null) return ce[c];
+      }
+      if (tableKey === 'expense_subcategories') {
+        const se = rel.subcatByName[norm(r.name)];
+        if (se && se[c] != null) return se[c];
+      }
+      if (tableKey === 'employments') {
+        const st = rel.staffByName[norm(r.staff || r.name)];
+        if (st && st[c] != null) return st[c];
+      }
+      if (tableKey === 'vat_invoices' && c === 'tickets_count') {
+        return rel.vatInvByNo[norm(r.invoice_no || r.name)] || 0;
+      }
+      if (tableKey === 'price_rules' && c === 'matched_tickets') {
+        const pe = r.product ? rel.prodByName[norm(r.product)] : null;
+        return pe ? pe.sales_loads : 0;
+      }
+      if (tableKey === 'loans' && c === 'settled_amount') {
+        const cp = cellValue(r, 'counterparty');
+        return cp ? (rel.loanSettledByCp[norm(cp)] || 0) : 0;
+      }
+      if (tableKey === 'jv_partnerships' && c === 'distributions_total') {
+        return r.site ? (rel.jvDistBySite[norm(r.site)] || 0) : 0;
+      }
     }
     return null;
   }
@@ -3289,25 +3559,32 @@
     const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm } = ctx;
     const activeKey = STATE.activeTableKey || 'price_rules';
     const meta = TABLE_CATALOG.find(t => t.key === activeKey) || TABLE_CATALOG[0];
+    const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
-    const filtered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key) });
+    const baseFiltered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key) });
+    const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
+    const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
+    const activeView = views.find(v => v.id === activeViewId) || views[0];
+    const filtered = activeView && activeView.fn ? baseFiltered.filter(r => activeView.fn(r, rel)) : baseFiltered;
     const dateCol = meta.cols.includes('date') ? 'date' : (meta.cols.includes('start_date') ? 'start_date' : null);
     const defSort = dateCol || (meta.cols[0] || 'name');
     const rows = sortRows(filtered, 'tbl_' + meta.key, defSort, dateCol ? 'desc' : 'asc');
     const shown = rows.slice(0, shownCount('tbl_' + meta.key));
 
     const groups = Array.from(new Set(TABLE_CATALOG.map(t => t.group)));
+    const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">POWER APPS SITEMAP PARITY (m14_sitemap.py) · ALL 34 DATAVERSE TABLES &amp; REGISTERS</div>
           <div class="cockpit-title">${esc(meta.label)} <span class="mono" style="font-size:13px;color:var(--brass)">(${esc(meta.dvn)})</span></div>
-          <div class="cockpit-sub">Browse, search, sort, export CSV, or post new records across every operational, pricing, master-data, payroll, logistics, treasury, and JV table.</div>
+          <div class="cockpit-sub">Browse, search, sort, switch Power Apps System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Table</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Connected Tables</div><div class="cockpit-pill-val">${fmtNum(relTablesMeta.length)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Snapshot</div><div class="cockpit-pill-val emerald">${fmtNum(rawList.length)}</div></div>
         </div>
       </div>
@@ -3328,6 +3605,26 @@
       </div>
 
       <div class="panel-card" id="tablesHubPanel">
+        <!-- Power Apps System Views & Connected Tables Relational Bar -->
+        <div class="pa-hub-rel-strip">
+          <div class="pa-hub-views">
+            <span class="pa-hub-lbl">System Views (m13):</span>
+            ${views.map(vw => {
+              const vCnt = vw.fn ? baseFiltered.filter(r => vw.fn(r, rel)).length : baseFiltered.length;
+              return `<button type="button" class="filter-chip ${vw.id === activeView.id ? 'active' : ''}" data-tbl-view="${esc(vw.id)}" data-tbl-key="${esc(meta.key)}">${esc(vw.label)} <span class="mono" style="opacity:.75">(${fmtNum(vCnt)})</span></button>`;
+            }).join('')}
+          </div>
+          ${relTablesMeta.length ? `
+            <div class="pa-hub-conns">
+              <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
+              ${relTablesMeta.map(rt => {
+                const rCnt = ((SEED.records && SEED.records[rt.key]) || []).length;
+                return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)} (${esc(rt.dvn)})">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
+              }).join('')}
+            </div>
+          ` : ''}
+        </div>
+
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${searchBox('Search ' + meta.label + ' (' + meta.dvn + ')...')}
@@ -3341,44 +3638,51 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('tbl_' + meta.key, c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|count/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('tbl_' + meta.key, c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
               ${shown.map(r => `
                 <tr class="rrow" data-rkey="${esc(meta.key)}" data-rid="${esc(r.id)}">
                   ${meta.cols.map((c, ci) => {
-                    const v = cellValue(r, c);
+                    const v = cellValue(r, c, meta.key, rel);
                     const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
-                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till/.test(c) && !/rate$/.test(c);
-                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|count|odometer|interest_rate|exchange_rate|^lat|^long/.test(c);
+                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
                     else if (/date/.test(c) && v) cell = String(v).slice(0, 10);
-                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${esc(cell)}</b>${appCell(r, meta.key)}` : esc(cell)}</td>`;
+
+                    const lkTarget = HUB_LOOKUP_TARGETS[c];
+                    const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
+                    const innerHtml = isLookup
+                      ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
+                      : esc(cell);
+                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
               `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}
+              ${showMoreRow('tbl_' + meta.key, rows.length, meta.cols.length)}
             </tbody>
             <tfoot>
               <tr>
                 ${meta.cols.map((c, ci) => {
                   if (ci === 0) return `<td><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`;
                   const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c);
-                  const isMoney = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till/.test(c) && !/rate$/.test(c);
-                  const isNum = !isBoolCol && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|count|odometer|interest_rate|exchange_rate/.test(c);
+                  const isMoney = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
+                  const isNum = !isBoolCol && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(c);
                   if (!isMoney && !isNum) return `<td></td>`;
                   let sum = 0, cnt = 0;
                   rows.forEach(r => {
-                    const v = cellValue(r, c);
+                    const v = cellValue(r, c, meta.key, rel);
                     if (v != null && v !== '' && typeof v !== 'boolean') {
                       const n = Number(v);
                       if (Number.isFinite(n)) { sum += n; cnt++; }
                     }
                   });
                   if (!cnt) return `<td class="r">—</td>`;
-                  const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price)$/.test(c);
+                  const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
                   const val = isAvg ? (sum / cnt) : sum;
                   const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
                   return `<td class="r">${isAvg ? '<span class="mu" style="font-size:10px">Avg </span>' : ''}<b>${txt}</b></td>`;
@@ -3394,6 +3698,8 @@
   window.MFG_PBI = {
     PBI_PAGES,
     TABLE_CATALOG,
+    getHubRelIndex,
+    cellValue,
     renderPbiStudio,
     renderTablesHub
   };
