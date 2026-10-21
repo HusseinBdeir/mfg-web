@@ -2357,7 +2357,7 @@ html.ios-standalone .main-area {
 .stmt-quick-select option { background: #0B1730; color: #F4F2EE; }
 
 .rail-backdrop { position: fixed; inset: 0; background: rgba(8, 17, 36, .55); z-index: 35; }
-body.locked .app-shell { pointer-events: none; }
+body.locked .app-shell { pointer-events: none; user-select: none; visibility: hidden; }
 .toast.toast-err { border-color: var(--crit); border-left-color: var(--crit); }
 .toast.toast-ok { border-left-color: #3DB36A; }
 .auth-cloud-warn { color: #F09045; font-weight: 600; }

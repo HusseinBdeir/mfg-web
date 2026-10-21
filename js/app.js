@@ -3608,7 +3608,7 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '4.1'
+      appVersion: '4.2'
     };
   }
 
@@ -3692,6 +3692,7 @@
         STATE.users = next;
         const idx = STATE.users.findIndex(u => norm(u.email) === myEmail);
         if (idx >= 0) STATE.activeUserIdx = idx;
+        if (!STATE.authed) renderQuickSeatsInAuthGate();
       }
 
       if (Array.isArray(remote.sessions) && remote.sessions.length) {
@@ -3853,6 +3854,7 @@
 
   function openAuthGate(prefillEmail) {
     STATE.authed = false;
+    window.__mfgAuthedEmail = '';
     renderQuickSeatsInAuthGate();
     updateCloudBadges();
     const emEl = $('authEmailInput');
@@ -3869,15 +3871,26 @@
 
   function closeAuthGate() {
     STATE.authed = true;
+    window.__mfgAuthedEmail = activeUser().email;
     const gate = $('authGate');
     if (gate) gate.hidden = true;
     document.body.classList.remove('locked');
+    const keep = new URLSearchParams();
+    ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
+    const targetUrl = location.pathname + (keep.toString() ? '?' + keep.toString() : '') + (VIEW_TITLES[STATE.view] ? '#' + STATE.view : '');
+    if (location.pathname + location.search + location.hash !== targetUrl) {
+      history.replaceState({ view: STATE.view }, '', targetUrl);
+    }
   }
 
   function signOut() {
     const email = activeUser().email;
-    localStorage.removeItem('isabi_mfg_active_email');
+    try { localStorage.removeItem('isabi_mfg_active_email'); } catch (_) {}
+    try { sessionStorage.removeItem('isabi_mfg_sw_resume'); } catch (_) {}
     closeEntryModal(true);
+    const keep = new URLSearchParams();
+    ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
+    history.replaceState({ view: STATE.view }, '', location.pathname + (keep.toString() ? '?' + keep.toString() : ''));
     openAuthGate(email);
     toast('Session locked — sign in to continue');
   }
@@ -3919,7 +3932,7 @@
 
     user.last_login_at = nowStr.slice(0, 16);
     STATE.activeUserIdx = idx;
-    localStorage.setItem('isabi_mfg_active_email', user.email);
+    try { localStorage.removeItem('isabi_mfg_active_email'); } catch (_) {}
     STATE.sessions.unshift({ id: uid('sess'), full_name: user.full_name, email: user.email, role: user.role, companies: user.companies, device: devLabel + (standalone ? ' · Home Screen app' : ''), logged_in_at: nowStr });
     STATE.sessions = STATE.sessions.slice(0, 50);
     saveLocalAuthAndRecords();
@@ -3928,9 +3941,9 @@
       try { await fetch('./api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, pin, device: devLabel }) }); } catch (_) { /* no server.py */ }
     }
 
-    closeAuthGate();
     if (!getAllowedCompanyKeys(user).includes(STATE.company)) STATE.company = getAllowedCompanyKeys(user)[0];
     if (!canViewView(STATE.view, user)) STATE.view = defaultViewFor(user);
+    closeAuthGate();
     STATE.search = '';
     STATE.showAddUserForm = false;
     renderApp();
@@ -4450,29 +4463,35 @@
 
     const inviteEmail = PARAMS.get('email');
     const invitePin = PARAMS.get('pin');
-    const savedEmail = localStorage.getItem('isabi_mfg_active_email');
-    const wantsLogin = PARAMS.get('login') === '1' || location.hash === '#login';
+    // Purge legacy auto-login key from localStorage so opening the app always presents #authGate first
+    try { localStorage.removeItem('isabi_mfg_active_email'); } catch (_) {}
+    let swResumeEmail = '';
+    try {
+      const rawSw = sessionStorage.getItem('isabi_mfg_sw_resume');
+      sessionStorage.removeItem('isabi_mfg_sw_resume');
+      if (rawSw) {
+        const parsedSw = JSON.parse(rawSw);
+        if (parsedSw && parsedSw.email && (Date.now() - Number(parsedSw.ts || 0)) < 8000) swResumeEmail = parsedSw.email;
+      }
+    } catch (_) {}
     const qView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
     if (qView && VIEW_TITLES[qView]) STATE.view = qView;
-    // Keep harmless flags (demo, reset) but strip credentials / one-shot params from the address bar
+    // Keep harmless flags (demo, nosse) but strip credentials / one-shot params; do not append #<view> while locked on #authGate
     const keep = new URLSearchParams();
     ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
-    const cleanUrl = location.pathname + (keep.toString() ? '?' + keep.toString() : '') + (VIEW_TITLES[STATE.view] ? '#' + STATE.view : '');
+    const lockedCleanUrl = location.pathname + (keep.toString() ? '?' + keep.toString() : '');
 
-    const savedIdx = savedEmail ? STATE.users.findIndex(u => norm(u.email) === norm(savedEmail)) : -1;
+    const swIdx = swResumeEmail ? STATE.users.findIndex(u => norm(u.email) === norm(swResumeEmail)) : -1;
     if (inviteEmail && invitePin) {
-      history.replaceState({ view: STATE.view }, '', cleanUrl); // never leave the PIN in the address bar / history
+      history.replaceState({ view: STATE.view }, '', lockedCleanUrl); // never leave the PIN in the address bar / history
       performLogin(inviteEmail, invitePin).then(ok => { if (!ok) openAuthGate(inviteEmail); });
-    } else if (wantsLogin) {
-      history.replaceState({ view: STATE.view }, '', cleanUrl);
-      openAuthGate(savedIdx >= 0 ? STATE.users[savedIdx].email : '');
-    } else if (savedIdx >= 0 && STATE.users[savedIdx].status !== 'Suspended') {
-      STATE.activeUserIdx = savedIdx;
+    } else if (swIdx >= 0 && STATE.users[swIdx].status !== 'Suspended') {
+      STATE.activeUserIdx = swIdx;
       closeAuthGate();
     } else {
+      history.replaceState({ view: STATE.view }, '', lockedCleanUrl);
       openAuthGate(inviteEmail || '');
     }
-    if (!history.state) history.replaceState({ view: STATE.view }, '', cleanUrl);
 
     const signOutBtn = $('signOutBtn');
     if (signOutBtn) signOutBtn.addEventListener('click', signOut);
@@ -4569,13 +4588,19 @@
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { const s = $('tableSearchInput'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
     });
 
-    // History: back / forward + hash links move between modules
+    // History: back / forward + hash links move between modules (only after sign-in)
     window.addEventListener('popstate', e => {
+      if (!STATE.authed) return;
       const v = (e.state && e.state.view) || (location.hash || '').replace(/^#/, '') || 'overview';
       if (VIEW_TITLES[v]) setView(v, { noPush: true });
     });
     window.addEventListener('hashchange', () => {
       const v = (location.hash || '').replace(/^#/, '');
+      if (!STATE.authed) {
+        if (VIEW_TITLES[v]) STATE.view = v;
+        history.replaceState({ view: STATE.view }, '', lockedCleanUrl);
+        return;
+      }
       if (VIEW_TITLES[v] && v !== STATE.view) setView(v, { noPush: true });
     });
 

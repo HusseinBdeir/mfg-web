@@ -63,6 +63,20 @@ try {
   await sleep(2500);
   await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
 
+  // 0. Always starts on the login gate (#authGate visible, body.locked, no #overview hash), even if a legacy localStorage email exists
+  const initialGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), hash: location.hash }))()`);
+  initialGate.gateOpen && initialGate.locked && initialGate.hash === ''
+    ? pass('authGate · opens on login screen first (no auto-open)')
+    : fail('authGate initial state', JSON.stringify(initialGate));
+  await evaluate(`localStorage.setItem('isabi_mfg_active_email', 'husseinbdeir@bhfirms.com')`);
+  await send('Page.reload', { ignoreCache: true });
+  await sleep(1500);
+  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
+  const reloadGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), purged: localStorage.getItem('isabi_mfg_active_email') === null }))()`);
+  reloadGate.gateOpen && reloadGate.locked && reloadGate.purged
+    ? pass('authGate · legacy localStorage email purged & still requires login first')
+    : fail('authGate legacy localStorage', JSON.stringify(reloadGate));
+
   // 1. Login (demo mode fills the PIN on tap)
   await evaluate(`(() => { const b = document.querySelector('[data-quick-seat="husseinbdeir@bhfirms.com"]'); b && b.click(); return 1; })()`);
   await sleep(600);
