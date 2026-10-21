@@ -6320,3 +6320,27 @@ table.ledger-table tfoot tr td:last-child {
     grid-template-columns: 1fr;
   }
 }
+
+/* v6.3 — Module Toolbar Consistency: Search + Filter Chips Left, CSV + Primary Action Pinned Right */
+@media (min-width: 861px) {
+  .table-toolbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .table-toolbar > div:first-child {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+  .table-toolbar > div:last-child {
+    flex-shrink: 0;
+    margin-left: auto;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .table-toolbar .search-input {
+    min-width: 190px;
+    width: 220px;
+    max-width: 100%;
+  }
+}

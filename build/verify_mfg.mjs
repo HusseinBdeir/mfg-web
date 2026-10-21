@@ -131,6 +131,46 @@ try {
     await overflow(v);
   }
 
+  // 2b. Operational module toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll)
+  const moduleToolbarSpecs = [
+    { view: 'sales', panel: '#salesPanel', modal: 'sales' },
+    { view: 'raw', panel: '#rawPanel', modal: 'raw' },
+    { view: 'fleet', panel: '#equipPanel', modal: 'fuel' },
+    { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule' },
+    { view: 'customers', panel: '#custPanel', modal: 'receipt' },
+    { view: 'suppliers', panel: '#supPanel', modal: 'settlement' },
+    { view: 'expenses', panel: '#expPanel', modal: 'expense' },
+    { view: 'payroll', panel: '#workspace .panel-card', modal: 'salary' }
+  ];
+  for (const spec of moduleToolbarSpecs) {
+    await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="${spec.view}"]').click()`);
+    await sleep(220);
+    const tb = await evaluate(`(() => {
+      const panel = document.querySelector('${spec.panel}');
+      if (!panel) return { ok: false, reason: 'missing panel' };
+      const toolbar = panel.querySelector('.table-toolbar');
+      if (!toolbar) return { ok: false, reason: 'missing .table-toolbar' };
+      const search = panel.querySelector('#tableSearchInput');
+      const chips = panel.querySelectorAll('.chip-bar .filter-chip').length;
+      const csvBtn = panel.querySelector('[data-export-csv]') || document.querySelector('#workspace [data-export-csv]');
+      const newBtn = panel.querySelector('.btn-primary[data-open-modal="${spec.modal}"]');
+      const dupSearch = document.querySelectorAll('#tableSearchInput').length;
+      const tbRect = toolbar.getBoundingClientRect();
+      const newRect = newBtn ? newBtn.getBoundingClientRect() : null;
+      const rightAligned = newRect ? (tbRect.right - newRect.right <= 200) : false;
+      return {
+        ok: Boolean(search && chips >= 4 && csvBtn && newBtn && dupSearch === 1),
+        chips,
+        dupSearch,
+        btnText: newBtn ? newBtn.textContent.trim() : '',
+        rightAligned
+      };
+    })()`);
+    tb.ok && (MOBILE || tb.rightAligned)
+      ? pass(`toolbar parity · ${spec.view}`, `${tb.chips} filter chips + CSV + "${tb.btnText}"`)
+      : fail(`toolbar parity · ${spec.view}`, JSON.stringify(tb));
+  }
+
   // 3. Every PBI page + GL totals on P16 + pricing active-count on P05 + dynamic per-page slicers + header button contrast
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`);
   await sleep(300);

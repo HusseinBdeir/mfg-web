@@ -2310,10 +2310,16 @@
     const allFuel = filterRecords(SEED.records.fuel_intakes, { ignoreSearch: true, ignorePeriod: true });
     const guards = meterGuardMap(allFuel);
     const base = filterRecords(SEED.records.fuel_intakes);
+    const isOwnEquip = e => /^own/i.test(String((e && (e.Ownership || e.ownership)) || ''));
+    const isTruckEquip = e => /truck/i.test(String((e && (e.Type || e.type)) || 'Truck'));
     const fuelRows = sortRows(base.filter(f => {
       if (STATE.chipFilter === 'flag') { const g = guards.get(f.id); return g && g.cls !== 'badge-ok' && g.cls !== ''; }
       if (STATE.chipFilter === 'diesel') return /diesel/i.test(f.item || f.fuel_type || '');
       if (STATE.chipFilter === 'lube') return !/diesel/i.test(f.item || f.fuel_type || '');
+      if (STATE.chipFilter === 'own') { const eq = equipInfo(f.equipment); return !eq || isOwnEquip(eq); }
+      if (STATE.chipFilter === 'transporter') { const eq = equipInfo(f.equipment); return !!(eq && !isOwnEquip(eq)); }
+      if (STATE.chipFilter === 'truck') { const eq = equipInfo(f.equipment); return !eq || isTruckEquip(eq); }
+      if (STATE.chipFilter === 'machinery') { const eq = equipInfo(f.equipment); return !!(eq && !isTruckEquip(eq)); }
       if (STATE.chipFilter === 'app') return isAppRecord(f);
       return true;
     }), 'fuel', 'date', 'desc');
@@ -2322,9 +2328,32 @@
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const flagged = allFuel.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
     const tank = fleet.diesel_stock_balance_l != null ? Number(fleet.diesel_stock_balance_l) : Number(k.diesel_in_tank || 0);
-    const equipRows = sortRows((m.equipment || []).filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'equip', 'total_cost', 'desc');
+    const equipAll = m.equipment || [];
+    const ownCount = equipAll.filter(isOwnEquip).length;
+    const transCount = equipAll.length - ownCount;
+    const equipBase = equipAll.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
+    const equipRows = sortRows(equipBase.filter(e => {
+      if (STATE.chipFilter === 'own') return isOwnEquip(e);
+      if (STATE.chipFilter === 'transporter') return !isOwnEquip(e);
+      if (STATE.chipFilter === 'truck') return isTruckEquip(e);
+      if (STATE.chipFilter === 'machinery') return !isTruckEquip(e);
+      if (STATE.chipFilter === 'diesel') return Number(e.diesel_litres || 0) > 0;
+      if (STATE.chipFilter === 'app') {
+        const eqRec = equipInfo(e.Equipment);
+        return isAppRecord(e) || Boolean(eqRec && isAppRecord(eqRec));
+      }
+      return true;
+    }), 'equip', 'total_cost', 'desc');
     const shownEquip = equipRows.slice(0, shownCount('equip'));
-    const eqRegRows = sortRows(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'eqreg', 'name', 'asc');
+    const eqRegBase = SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
+    const eqRegRows = sortRows(eqRegBase.filter(e => {
+      if (STATE.chipFilter === 'own') return isOwnEquip(e);
+      if (STATE.chipFilter === 'transporter') return !isOwnEquip(e);
+      if (STATE.chipFilter === 'truck') return isTruckEquip(e);
+      if (STATE.chipFilter === 'machinery') return !isTruckEquip(e);
+      if (STATE.chipFilter === 'app') return isAppRecord(e);
+      return true;
+    }), 'eqreg', 'name', 'asc');
 
     return `
       <div class="cockpit-banner">
@@ -2346,9 +2375,15 @@
 
       <div class="split-grid-2">
         <div class="panel-card" id="equipPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>UNIT PROFITABILITY &amp; TELEMETRY (TOP ${fmtNum((m.equipment || []).length)} ACTIVE UNITS)</span></div>
-            <span class="panel-meta">Running + Driver Cost Allocated ${exportBtn('equipPanel', 'Equipment_Costs')}</span>
+          <div class="table-toolbar">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${searchBox('Search equipment, plate, type, ownership, driver, ticket #...')}
+              <div class="chip-bar">${chip('all', `All (${equipAll.length})`)}${chip('own', `Own Fleet (${ownCount})`)}${chip('transporter', `Transporter (${transCount})`)}${chip('truck', 'Trucks')}${chip('machinery', 'Machinery')}${chip('app', 'App-entered')}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              ${exportBtn('equipPanel', 'Equipment_Costs')}
+              ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
+            </div>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -2393,13 +2428,13 @@
 
         <div class="panel-card" id="fuelPanel">
           <div class="table-toolbar">
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              ${searchBox('Search equipment, driver, ticket #, item...')}
-              <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('diesel', 'Diesel')}${chip('lube', 'Lubricants')}${chip('flag', `Guard flags (${flagged})`)}${chip('app', 'App-entered')}</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <div class="panel-title"><span>FUEL, DIESEL &amp; LUBRICANT INTAKES (${fmtNum(fuelRows.length)})</span></div>
+              <div class="chip-bar">${chip('all', `All Intakes (${base.length})`)}${chip('diesel', 'Diesel')}${chip('lube', 'Lubricants')}${chip('flag', `Guard flags (${flagged})`)}${chip('app', 'App-entered')}</div>
             </div>
             <div style="display:flex;gap:6px">
               ${exportBtn('fuelPanel', 'Fuel_Intakes')}
-              ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ Log Fuel Intake</button>' : ''}
+              ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
             </div>
           </div>
           <div class="table-wrap">
@@ -2436,7 +2471,7 @@
         <div class="panel-card" id="driverPanel">
           <div class="panel-head">
             <div class="panel-title"><span>UNIVERSAL EQUIPMENT &amp; DRIVER REGISTRY (${fmtNum(SEED.records.equipment.length)} UNITS · ${fmtNum(SEED.records.drivers.length)} DRIVERS)</span></div>
-            <span class="panel-meta">M99 + M107 Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}</span>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">M99 + M107 Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}${canEnterForm('equipment') ? '<button class="btn btn-primary" data-open-modal="equipment">+ New Equipment</button>' : ''}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -2488,13 +2523,21 @@
       if (STATE.chipFilter === 'lapsed') return !isActive(r);
       if (STATE.chipFilter === 'customer') return !!r.customer;
       if (STATE.chipFilter === 'quarry') return !r.customer && (r.supplier || r.site);
+      if (STATE.chipFilter === 'app') return isAppRecord(r);
       if (types.includes(STATE.chipFilter)) return r.rule_type === STATE.chipFilter;
       return true;
     }), 'pricing', 'start_date', 'desc');
     const shown = rules.slice(0, shownCount('pricing'));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const activeCount = base.filter(isActive).length;
-    const typeChips = types.length ? types.map(t => chip(t, t)).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Quarry / hauler rules');
+    const shortRuleType = t => ({
+      'Sales (Delivery)': 'Delivery',
+      'Sales (Pickup)': 'Pickup',
+      'Purchase Price (Site)': 'Purchase (Site)',
+      'Transport Price (Site)': 'Transport (Site)',
+      'List Price': 'List Price'
+    }[t] || t);
+    const typeChips = types.length ? types.map(t => chip(t, shortRuleType(t))).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Quarry / hauler rules');
 
     return `
       <div class="cockpit-banner">
@@ -2507,6 +2550,7 @@
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Agreements</div><div class="cockpit-pill-val brass">${fmtNum(k.active_agreements != null ? k.active_agreements : activeCount)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total SQL Rules</div><div class="cockpit-pill-val">${fmtNum(base.length)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Commission Due</div><div class="cockpit-pill-val amber">${fmtUSD(k.commission_due, 0)}</div></div>
+          ${appPill('price_rules', 'unit_price', 'agreements')}
         </div>
       </div>
 
@@ -2514,9 +2558,12 @@
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${searchBox('Search customer, quarry supplier, product, site, agreement code...')}
-            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${typeChips}</div>
+            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${typeChips}${chip('app', 'App-entered')}</div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center"><span class="panel-meta">${fmtNum(rules.length)} Agreements</span>${exportBtn('pricingPanel', 'Price_Agreements')}</div>
+          <div style="display:flex;gap:6px">
+            ${exportBtn('pricingPanel', 'Price_Agreements')}
+            ${canEnterForm('pricerule') ? '<button class="btn btn-primary" data-open-modal="pricerule">+ New Price Agreement</button>' : ''}
+          </div>
         </div>
         <div class="table-wrap">
           <table class="ledger-table">
@@ -2608,10 +2655,18 @@
     const k = getKPI();
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
-    const custs = sortRows((m.customers || []).filter(c => !q || String(c.Customer || '').toLowerCase().includes(q)), 'custs', 'ar_balance', 'desc');
+    const custAll = m.customers || [];
+    const custs = sortRows(custAll.filter(c => {
+      if (q && !String(c.Customer || '').toLowerCase().includes(q)) return false;
+      if (STATE.chipFilter === 'open_ar') return Number(c.ar_balance || 0) > 0;
+      if (STATE.chipFilter === 'overdue60') return Number(c.ar_60_plus || 0) > 0;
+      if (STATE.chipFilter === 'vat_reg') return c['VAT Registered'] === 'Yes';
+      return true;
+    }), 'custs', 'ar_balance', 'desc');
     const shownCusts = custs.slice(0, shownCount('custs'));
     const base = filterRecords(SEED.records.receipts);
-    const rcpts = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'receipts', 'date', 'desc');
+    const isCustChip = ['open_ar', 'overdue60', 'vat_reg'].includes(STATE.chipFilter);
+    const rcpts = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || isCustChip || r.method === STATE.chipFilter)), 'receipts', 'date', 'desc');
     const shown = rcpts.slice(0, shownCount('receipts'));
     const methods = uniqSorted(SEED.records.receipts.map(r => r.method));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
@@ -2638,7 +2693,10 @@
       <div class="split-grid-2">
         <div class="panel-card" id="custPanel">
           <div class="table-toolbar">
-            ${searchBox('Search customer...')}
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${searchBox('Search customer, voucher, reference...')}
+              <div class="chip-bar">${chip('all', `All (${custAll.length})`)}${chip('open_ar', 'Open AR')}${chip('overdue60', 'Overdue 60+')}${chip('vat_reg', '11% VAT')}${chip('app', 'App-entered')}</div>
+            </div>
             <div style="display:flex;gap:6px">
               ${exportBtn('custPanel', 'AR_Aging')}
               ${canEnterForm('receipt') ? '<button class="btn btn-primary" data-open-modal="receipt">+ Customer Receipt (FIFO)</button>' : ''}
@@ -2725,10 +2783,20 @@
     const k = getKPI();
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
-    const sups = sortRows((m.suppliers || []).filter(s => !q || String(s.Supplier || '').toLowerCase().includes(q)), 'sups', 'ap_balance', 'desc');
+    const supAll = m.suppliers || [];
+    const sups = sortRows(supAll.filter(s => {
+      if (q && !String(s.Supplier || '').toLowerCase().includes(q)) return false;
+      if (STATE.chipFilter === 'open_ap') return Number(s.ap_balance || 0) > 0;
+      if (STATE.chipFilter === 'mat_leg') return Number(s.ap_material || 0) > 0;
+      if (STATE.chipFilter === 'haul_leg') return Number(s.ap_haulage || 0) > 0;
+      if (STATE.chipFilter === 'exp_leg') return Number(s.ap_expense || 0) > 0;
+      if (STATE.chipFilter === 'iva_sup') return s.IVA === 'Yes';
+      return true;
+    }), 'sups', 'ap_balance', 'desc');
     const shownSups = sups.slice(0, shownCount('sups'));
     const base = filterRecords(SEED.records.settlements);
-    const spays = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'settle', 'date', 'desc');
+    const isSupChip = ['open_ap', 'mat_leg', 'haul_leg', 'exp_leg', 'iva_sup'].includes(STATE.chipFilter);
+    const spays = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || isSupChip || r.method === STATE.chipFilter)), 'settle', 'date', 'desc');
     const shown = spays.slice(0, shownCount('settle'));
     const methods = uniqSorted(SEED.records.settlements.map(r => r.method));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
@@ -2755,7 +2823,10 @@
       <div class="split-grid-2">
         <div class="panel-card" id="supPanel">
           <div class="table-toolbar">
-            ${searchBox('Search supplier / hauler...')}
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${searchBox('Search supplier / hauler, voucher, reference...')}
+              <div class="chip-bar">${chip('all', `All (${supAll.length})`)}${chip('open_ap', 'Open AP')}${chip('mat_leg', 'Material Leg')}${chip('haul_leg', 'Haulage Leg')}${chip('exp_leg', 'Expense Leg')}${chip('iva_sup', 'IVA')}${chip('app', 'App-entered')}</div>
+            </div>
             <div style="display:flex;gap:6px">
               ${exportBtn('supPanel', 'AP_Legs')}
               ${canEnterForm('settlement') ? '<button class="btn btn-primary" data-open-modal="settlement">+ Supplier Settlement</button>' : ''}
