@@ -3156,3 +3156,20 @@ body.locked .app-shell { pointer-events: none; }
   .pa-group-btn { flex-shrink: 0; white-space: nowrap; }
   .pa-qv-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* v4.1 — clickable KPI cards, record inspector, tier hints */
+.kpi-link { cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
+.kpi-link:hover, .kpi-link:focus-visible { background: var(--surface-2); outline: none; box-shadow: inset 0 -2px 0 var(--brass); }
+.kpi-link:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.inspector-card { width: min(820px, 100%); }
+.inspector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; padding: 4px 0 2px; }
+.inspector-cell { min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.inspector-cell small { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
+.inspector-cell b { display: block; font-size: 12.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+tr.rrow { cursor: pointer; }
+tr.rrow:focus-visible td { outline: 2px solid var(--brass); outline-offset: -2px; }
+.btn.armed { border-color: var(--crit); color: var(--crit); background: var(--crit-bg); }
+.pbi-page-tab:focus-visible, .filter-chip:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+@media (max-width: 860px) {
+  .inspector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

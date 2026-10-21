@@ -57,34 +57,48 @@
     { key: 'fuel_intakes', group: '1. Dispatch & Settlements', label: 'Fuel & Lubricant Intakes', dvn: 'bhf_fuelintake', form: 'fuel', cols: ['date', 'ticket_no', 'company', 'fuel_type', 'item', 'equipment', 'driver', 'litres', 'odometer', 'hours', 'location'] },
     { key: 'expenses', group: '1. Dispatch & Settlements', label: 'Operating Expenses', dvn: 'bhf_expense', form: 'expense', cols: ['date', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'qty', 'amount', 'reference'] },
     { key: 'price_rules', group: '2. Sales & Pricing Setup', label: 'Price Agreements', dvn: 'bhf_pricerule', form: 'pricerule', cols: ['company', 'rule_type', 'name', 'customer', 'supplier', 'site', 'product', 'unit', 'unit_price', 'trans_unit_price', 'qty1', 'adj1', 'qty2', 'adj2', 'start_date', 'end_date'] },
-    { key: 'vat_invoices', group: '2. Sales & Pricing Setup', label: 'VAT Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['date', 'invoice_no', 'company', 'customer', 'net_amount', 'vat_amount', 'total_ttc', 'status'] },
-    { key: 'credit_terms', group: '2. Sales & Pricing Setup', label: 'Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['company', 'customer', 'name', 'payment_days', 'credit_limit', 'start_date'] },
-    { key: 'customers', group: '3. HQ Master Data', label: 'Customers (MFG)', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'company', 'method', 'vat_registered', 'mof_no', 'customer_declared_qty', 'external_invoice', 'phone'] },
-    { key: 'suppliers', group: '3. HQ Master Data', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'company', 'is_truck_owner', 'iva', 'trucks_count', 'phone', 'mof_no'] },
-    { key: 'products', group: '3. HQ Master Data', label: 'Products & Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'uom', 'type', 'ton_factor', 'ticket_product', 'fuel_item', 'input_product'] },
-    { key: 'sites', group: '3. HQ Master Data', label: 'Sites & Quarries', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'] },
-    { key: 'regions', group: '3. HQ Master Data', label: 'Regions', dvn: 'bhf_region', form: 'site', cols: ['name', 'code'] },
-    { key: 'uoms', group: '3. HQ Master Data', label: 'Units of Measure', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code'] },
-    { key: 'product_types', group: '3. HQ Master Data', label: 'Product Types', dvn: 'bhf_producttype', form: 'product', cols: ['name'] },
+    { key: 'vat_invoices', group: '2. Sales & Pricing Setup', label: 'VAT Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['date', 'start_date', 'end_date', 'invoice_no', 'company', 'customer', 'net_amount', 'vat_amount', 'total_ttc', 'status'] },
+    { key: 'credit_terms', group: '2. Sales & Pricing Setup', label: 'Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['company', 'customer', 'name', 'credit_days', 'credit_limit', 'start_date'] },
+    { key: 'customers', group: '3. HQ Master Data', label: 'Customers (MFG)', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'official_name', 'method', 'vat_registered', 'customer_declared_qty', 'external_invoice', 'mof_no', 'phone', 'notes'] },
+    { key: 'suppliers', group: '3. HQ Master Data', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'official_name', 'method', 'category1', 'is_truck_owner', 'iva', 'trucks_count', 'phone', 'notes'] },
+    { key: 'products', group: '3. HQ Master Data', label: 'Products & Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'official_name', 'uom', 'type', 'ton_factor', 'ticket_product', 'fuel_item', 'revenue_account', 'purchase_account'] },
+    { key: 'sites', group: '3. HQ Master Data', label: 'Sites & Quarries', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude', 'notes'] },
+    { key: 'regions', group: '3. HQ Master Data', label: 'Regions', dvn: 'bhf_region', form: 'site', cols: ['name', 'places_count'] },
+    { key: 'uoms', group: '3. HQ Master Data', label: 'Units of Measure', dvn: 'bhf_uom', form: 'product', cols: ['name'] },
+    { key: 'product_types', group: '3. HQ Master Data', label: 'Product Types', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'ticket_product', 'fuel_item', 'revenue_account', 'purchase_account', 'notes'] },
     { key: 'equipment', group: '3. HQ Master Data', label: 'Equipment (All / 3P)', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'plate_no', 'type', 'capacity', 'ownership', 'supplier', 'default_driver'] },
-    { key: 'company_equipment', group: '3. HQ Master Data', label: 'Company Fleet Units', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['name', 'company', 'plate_no', 'type', 'capacity', 'ownership', 'default_driver'] },
+    { key: 'company_equipment', group: '3. HQ Master Data', label: 'Company Fleet Units', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'is_company_fleet', 'status', 'supplier', 'start_date'] },
     { key: 'drivers', group: '3. HQ Master Data', label: 'Drivers (All)', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'phone'] },
-    { key: 'company_drivers', group: '3. HQ Master Data', label: 'Company Drivers', dvn: 'bhf_companydriver', form: 'driver', cols: ['name', 'company', 'driver', 'truck', 'status'] },
-    { key: 'expense_categories', group: '3. HQ Master Data', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'code'] },
+    { key: 'company_drivers', group: '3. HQ Master Data', label: 'Company Drivers', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'truck', 'notes'] },
+    { key: 'expense_categories', group: '3. HQ Master Data', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name'] },
     { key: 'expense_subcategories', group: '3. HQ Master Data', label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category'] },
     { key: 'salaries', group: '4. Payroll, Logistics & Treasury', label: 'Salary Payments', dvn: 'bhf_salarypayment', form: 'salary', cols: ['date', 'payroll_month', 'company', 'staff', 'equipment', 'method', 'amount', 'notes'] },
-    { key: 'employments', group: '4. Payroll, Logistics & Treasury', label: 'Employment Contracts', dvn: 'bhf_employment', form: 'employment', cols: ['staff', 'company', 'role', 'pay_type', 'base_salary', 'start_date', 'status'] },
-    { key: 'attendance', group: '4. Payroll, Logistics & Treasury', label: 'Attendance Logs', dvn: 'bhf_attendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'site', 'overtime_hours'] },
-    { key: 'logistics_allowances', group: '4. Payroll, Logistics & Treasury', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_logistics', form: 'logistics', cols: ['date', 'company', 'staff', 'site', 'days_count', 'usd_amount', 'lbp_amount', 'amount'] },
-    { key: 'overtime_rates', group: '4. Payroll, Logistics & Treasury', label: 'Overtime Trip Rates', dvn: 'bhf_triprate', form: 'triprate', cols: ['name', 'company', 'site', 'category', 'rate_usd'] },
-    { key: 'external_movements', group: '4. Payroll, Logistics & Treasury', label: 'External Cash Movements', dvn: 'bhf_external', form: 'treasury', cols: ['date', 'company', 'name', 'counterparty', 'direction', 'amount'] },
-    { key: 'loans', group: '4. Payroll, Logistics & Treasury', label: 'Partner & Entity Loans', dvn: 'bhf_loan', form: 'treasury', cols: ['date', 'company', 'name', 'lender', 'borrower', 'amount', 'balance'] },
-    { key: 'loan_settlements', group: '4. Payroll, Logistics & Treasury', label: 'Loan Settlements', dvn: 'bhf_loansettlement', form: 'treasury', cols: ['date', 'company', 'name', 'loan', 'amount'] },
-    { key: 'conversions', group: '4. Payroll, Logistics & Treasury', label: 'Currency Conversions', dvn: 'bhf_conversion', form: 'treasury', cols: ['date', 'company', 'name', 'from_currency', 'usd_amount', 'lbp_amount', 'fx_rate'] },
-    { key: 'jv_partnerships', group: '4. Payroll, Logistics & Treasury', label: 'JV Partnerships', dvn: 'bhf_jvpartnership', form: 'jv', cols: ['name', 'company', 'site', 'partner', 'share_pct'] },
-    { key: 'jv_distributions', group: '4. Payroll, Logistics & Treasury', label: 'JV Distributions', dvn: 'bhf_jvdistribution', form: 'jv', cols: ['date', 'company', 'name', 'site', 'partner', 'amount'] },
-    { key: 'daily_totals', group: '4. Payroll, Logistics & Treasury', label: 'Daily Till & Scale Totals', dvn: 'bhf_dailytotal', form: 'sales', cols: ['date', 'company', 'name', 'sales_total', 'cash_in', 'cash_out', 'closing_till'] }
+    { key: 'employments', group: '4. Payroll, Logistics & Treasury', label: 'Employment Contracts', dvn: 'bhf_employment', form: 'employment', cols: ['staff', 'company', 'type', 'role', 'salary_usd', 'daily_rate', 'start_date', 'status'] },
+    { key: 'attendance', group: '4. Payroll, Logistics & Treasury', label: 'Attendance Logs', dvn: 'bhf_attendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'site', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'] },
+    { key: 'logistics_allowances', group: '4. Payroll, Logistics & Treasury', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_logistics', form: 'logistics', cols: ['start_date', 'end_date', 'company', 'staff', 'site', 'equipment', 'working_days', 'daily_usd', 'lbp_amount', 'amount'] },
+    { key: 'overtime_rates', group: '4. Payroll, Logistics & Treasury', label: 'Overtime Trip Rates', dvn: 'bhf_triprate', form: 'triprate', cols: ['name', 'company', 'region', 'category', 'amount', 'start_date'] },
+    { key: 'external_movements', group: '4. Payroll, Logistics & Treasury', label: 'External Cash Movements', dvn: 'bhf_external', form: 'treasury', cols: ['date', 'company', 'name', 'counterparty', 'direction', 'method', 'usd_amount', 'amount'] },
+    { key: 'loans', group: '4. Payroll, Logistics & Treasury', label: 'Partner & Entity Loans', dvn: 'bhf_loan', form: 'treasury', cols: ['start_date', 'company', 'name', 'lender', 'principal', 'interest_rate', 'notes'] },
+    { key: 'loan_settlements', group: '4. Payroll, Logistics & Treasury', label: 'Loan Settlements', dvn: 'bhf_loansettlement', form: 'treasury', cols: ['date', 'company', 'name', 'type', 'method', 'usd_amount', 'amount'] },
+    { key: 'conversions', group: '4. Payroll, Logistics & Treasury', label: 'Currency Conversions', dvn: 'bhf_conversion', form: 'treasury', cols: ['date', 'company', 'name', 'from_currency', 'to_currency', 'usd_amount', 'lbp_amount', 'exchange_rate'] },
+    { key: 'jv_partnerships', group: '4. Payroll, Logistics & Treasury', label: 'JV Partnerships', dvn: 'bhf_jvpartnership', form: 'jv', cols: ['name', 'company', 'site', 'partner', 'percentage'] },
+    { key: 'jv_distributions', group: '4. Payroll, Logistics & Treasury', label: 'JV Distributions', dvn: 'bhf_jvdistribution', form: 'jv', cols: ['date', 'company', 'name', 'site', 'partner', 'basis', 'amount', 'difference', 'total'] },
+    { key: 'daily_totals', group: '4. Payroll, Logistics & Treasury', label: 'Daily Totals Ledger', dvn: 'bhf_dailytotal', form: 'sales', cols: ['date', 'company', 'domain', 'kind', 'origin', 'value', 'previous_value', 'change', 'row_count', 'version'] }
   ];
+
+  // Column aliases: the Dataverse snapshot and the web entry desk spell a few fields differently — read both so an
+  // app-entered Loan (amount / date) and a book Loan (principal / start_date) land in the same column.
+  const COL_ALT = {
+    date: ['start_date', 'rep_date'], start_date: ['date'], principal: ['amount'], amount: ['principal', 'rate_usd', 'value'],
+    lender: ['counterparty', 'loan'], credit_days: ['payment_days'], percentage: ['share_pct'], exchange_rate: ['fx_rate'],
+    region: ['site'], type: ['pay_type'], salary_usd: ['base_salary'], working_days: ['days_count'], category1: ['category'],
+    equipment: ['name', 'truck'], driver: ['name'], counterparty: ['name'], official_name: [], daily_usd: [], to_currency: []
+  };
+  function cellValue(r, c) {
+    if (r[c] != null && r[c] !== '') return r[c];
+    for (const a of (COL_ALT[c] || [])) if (r[a] != null && r[a] !== '') return r[a];
+    return r[c];
+  }
 
   function esc(str) {
     return String(str == null ? '' : str)
@@ -245,9 +259,11 @@
     const setRows = filterRecords(rec.settlements, { ignoreSearch: true }).filter(matchSlicer);
 
     const prodOpts = Array.from(new Set((rec.products || []).map(p => p.name).filter(Boolean))).sort();
-    const custOpts = Array.from(new Set((m.customers || []).map(c => c.Customer).filter(Boolean))).slice(0, 120);
-    const supOpts = Array.from(new Set((m.suppliers || []).map(s => s.Supplier).filter(Boolean))).slice(0, 120);
-    const siteOpts = Array.from(new Set((rec.sites || []).map(s => s.name).filter(Boolean))).slice(0, 120);
+    // slicer members = the model's top-60 + every name on a sample row, so a slicer pick always hits something
+    const custOpts = Array.from(new Set((m.customers || []).map(c => c.Customer).concat((rec.sales_tickets || []).map(r => r.customer), (rec.receipts || []).map(r => r.customer)).filter(Boolean))).sort();
+    const supOpts = Array.from(new Set((m.suppliers || []).map(s => s.Supplier).concat((rec.raw_purchases || []).flatMap(r => [r.site_owner, r.truck_owner]), (rec.settlements || []).map(r => r.supplier), (rec.expenses || []).map(r => r.supplier)).filter(Boolean))).sort();
+    const siteOpts = Array.from(new Set((rec.sales_tickets || []).map(r => r.site).concat((rec.raw_purchases || []).map(r => r.site), (rec.sites || []).map(s => s.name)).filter(Boolean))).sort();
+    const activeSlicers = [['product', 'Product'], ['customer', 'Customer'], ['supplier', 'Supplier'], ['site', 'Site'], ['saleType', 'Sale type'], ['method', 'Method'], ['search', 'Search']].filter(([key]) => slicer[key]);
 
     // Top 20-Page Bar + Interactive Slicer Bar
     const headerHtml = `
@@ -258,9 +274,10 @@
             <h2 class="pbi-studio-title">${esc(pageMeta.title)}</h2>
           </div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <button type="button" class="btn" id="pbiResetSlicersBtn">↺ Reset Slicers</button>
+            ${activeSlicers.length ? `<span class="badge badge-warn" title="${esc(activeSlicers.map(([k, l]) => l + ': ' + slicer[k]).join(' · '))}">${activeSlicers.length} slicer${activeSlicers.length === 1 ? '' : 's'} on · ${fmtNum(salesRows.length)} tickets</span>` : ''}
+            <button type="button" class="btn ${activeSlicers.length ? 'btn-primary' : ''}" id="pbiResetSlicersBtn" ${activeSlicers.length ? '' : 'disabled'}>↺ Reset Slicers</button>
             ${exportBtn('pbiCanvasPanel', 'PBI_' + pageMeta.id)}
-            <button type="button" class="btn btn-brass" data-open-modal="sales">+ New Entry</button>
+            ${ctx.canEnterForm && ctx.canEnterForm('sales') ? '<button type="button" class="btn btn-brass" data-open-modal="sales">+ New Entry</button>' : ''}
           </div>
         </div>
 
@@ -490,22 +507,24 @@
 
     // ---- PAGE 05: PRICING & COMMISSIONS ----
     else if (activePageId === 'p05_pricing') {
-      const rules = filterRecords(rec.price_rules, { ignorePeriod: true }).filter(matchSlicer);
-      const byType = groupBySum(rules, r => r.rule_type || 'Sales (Delivery)', r => r.unit_price, 'rules');
+      const allRules = filterRecords(rec.price_rules, { ignorePeriod: true }).filter(matchSlicer);
+      const today = ctx.SEED_DATE || String(SEED.generated_at || '').slice(0, 10);
+      const isLive = r => (!r.end_date || String(r.end_date) >= today) && (!r.start_date || String(r.start_date) <= today);
+      const rules = allRules.filter(isLive).sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
       const tiered = rules.filter(r => r.qty1 != null || r.qty2 != null);
       bodyHtml = `
         ${kpiSection('Price Agreements, Tier 1/2 Truck Adjustments & Commissions', [
-          { label: 'Active Price Agreements', value: fmtNum(rules.length), sub: 'Across 6 rule types', tone: 'brass' },
-          { label: 'Tier 1 / Tier 2 Truck Rules', value: fmtNum(tiered.length), sub: 'Capacity-adjusted agreements', tone: 'good' },
+          { label: 'Active Price Agreements', value: fmtNum(rules.length), sub: `of ${fmtNum(allRules.length)} rules in scope · book ${fmtNum(k.active_agreements || 0)}`, tone: 'brass' },
+          { label: 'Tier 1 / Tier 2 Truck Rules', value: fmtNum(tiered.length), sub: 'Per-load adjustments by truck capacity', tone: 'good' },
           { label: 'Sales Delivery Rules', value: fmtNum(rules.filter(r => /Delivery/i.test(r.rule_type || '')).length), sub: 'Customer + Site + Grade' },
           { label: 'Sales Pickup Rules', value: fmtNum(rules.filter(r => /Pickup/i.test(r.rule_type || '')).length), sub: 'Ex-quarry customer rules' },
           { label: 'Quarry Purchase & Haul Rules', value: fmtNum(rules.filter(r => /Purchase|Transport|Haulage/i.test(r.rule_type || '')).length), sub: 'Site material & transport' },
-          { label: 'Commission Due', value: fmtUSD(k.commission_due, 0), sub: 'Sales commissions' }
+          { label: 'Commission Due', value: fmtUSD(k.commission_due, 0), sub: fmtNum(rules.filter(r => /Commission/i.test(r.rule_type || '')).length) + ' commission rules' }
         ])}
         <div class="panel-card" style="margin-top:12px">
-          <div class="panel-head"><div class="panel-title"><span>PRICE AGREEMENT MATRIX (WITH TIER 1 / TIER 2 TRUCK CAPACITIES &amp; INDIFFERENCE PRICES)</span></div><button class="btn btn-primary" data-open-modal="pricerule">+ New Price Agreement</button></div>
+          <div class="panel-head"><div class="panel-title"><span>ACTIVE PRICE AGREEMENT MATRIX AT ${esc(today)} (TIER 1 / TIER 2 = PER-LOAD ADJUSTMENT BY TRUCK SIZE · LOCKED TOTAL PER LOAD)</span></div>${ctx.canEnterForm && ctx.canEnterForm('pricerule') ? '<button class="btn btn-primary" data-open-modal="pricerule">+ New Price Agreement</button>' : ''}</div>
           <div class="table-wrap"><table class="ledger-table">
-            <thead><tr><th>Co.</th><th>Rule Type</th><th>Customer / Supplier</th><th>Site</th><th>Product</th><th>Unit</th><th class="r">Unit Price</th><th class="r">Trans Price</th><th class="r">Tier 1 (m³ / Adj)</th><th class="r">Tier 2 (m³ / Adj)</th><th>Valid From</th></tr></thead>
+            <thead><tr><th>Co.</th><th>Rule Type</th><th>Customer / Supplier</th><th>Site</th><th>Product</th><th>Unit</th><th class="r">Unit Price</th><th class="r">Trans Price</th><th class="r">Tier 1 (size · adj → load)</th><th class="r">Tier 2 (size · adj → load)</th><th>Valid From</th><th>Valid To</th></tr></thead>
             <tbody>
               ${rules.slice(0, 80).map(r => `
                 <tr>
@@ -516,12 +535,14 @@
                   <td>${esc(r.product || 'All')}</td>
                   <td class="mono">${esc(r.unit || 'm³')}</td>
                   <td class="r"><b>${fmtUSD(r.unit_price, 2)}</b></td>
-                  <td class="r">${fmtUSD(r.trans_unit_price, 2)}</td>
-                  <td class="r mono">${r.qty1 != null ? `${r.qty1}m³ (${fmtUSD(r.adj1, 2)})` : '—'}</td>
-                  <td class="r mono">${r.qty2 != null ? `${r.qty2}m³ (${fmtUSD(r.adj2, 2)})` : '—'}</td>
+                  <td class="r">${Number(r.trans_unit_price || 0) ? fmtUSD(r.trans_unit_price, 2) : '—'}</td>
+                  <td class="r mono">${r.qty1 != null ? `${r.qty1} · ${fmtUSD(r.adj1, 2)} → ${fmtUSD(r.total1 != null ? r.total1 : Number(r.qty1) * Number(r.unit_price || 0) + Number(r.adj1 || 0), 2)}` : '—'}</td>
+                  <td class="r mono">${r.qty2 != null ? `${r.qty2} · ${fmtUSD(r.adj2, 2)} → ${fmtUSD(r.total2 != null ? r.total2 : Number(r.qty2) * Number(r.unit_price || 0) + Number(r.adj2 || 0), 2)}` : '—'}</td>
                   <td class="mono">${esc(String(r.start_date || '').slice(0, 10))}</td>
+                  <td class="mono">${esc(String(r.end_date || '').slice(0, 10) || 'Open')}</td>
                 </tr>
               `).join('')}
+              ${rules.length > 80 ? `<tr><td colspan="12" class="mu">Showing 80 of ${fmtNum(rules.length)} active rules — open <b>Pricing &amp; Commissions</b> for paging, sorting and CSV.</td></tr>` : ''}
             </tbody>
           </table></div>
         </div>
@@ -596,21 +617,23 @@
         ])}
         <div class="row2" style="margin-top:12px">
           <div class="panel"><div class="ph"><h3>3-Leg Payable Architecture vs Settlements</h3></div><div style="padding:10px 14px">${buildHorizontalRankChart(legBars, 'leg', 'amount', 'sub', true)}</div></div>
-          <div class="panel"><div class="ph"><h3>Top Suppliers &amp; Quarries by Volume</h3></div><div style="padding:10px 14px">${buildHorizontalRankChart(sups, 'Supplier', 'total_billed', 'Category', true)}</div></div>
+          <div class="panel"><div class="ph"><h3>Top Suppliers &amp; Quarries by Billed Volume</h3></div><div style="padding:10px 14px">${buildHorizontalRankChart(sups.map(s => ({ ...s, total_billed: Number(s.ap_material || 0) + Number(s.ap_haulage || 0) + Number(s.ap_expense || 0), IVA: s.IVA === 'Yes' ? 'IVA' : '' })).sort((a, b) => b.total_billed - a.total_billed), 'Supplier', 'total_billed', 'IVA', true)}</div></div>
         </div>
         <div class="panel-card" style="margin-top:12px">
-          <div class="panel-head"><div class="panel-title"><span>3-LEG SUPPLIER &amp; HAULER PAYABLE MATRIX (${sups.length} SUPPLIERS)</span></div><button class="btn btn-primary" data-open-modal="settlement">+ Post Supplier Settlement</button></div>
+          <div class="panel-head"><div class="panel-title"><span>3-LEG SUPPLIER &amp; HAULER PAYABLE MATRIX (${sups.length} SUPPLIERS)</span></div>${ctx.canEnterForm && ctx.canEnterForm('settlement') ? '<button class="btn btn-primary" data-open-modal="settlement">+ Post Supplier Settlement</button>' : ''}</div>
           <div class="table-wrap"><table class="ledger-table">
-            <thead><tr><th>Supplier / Hauler</th><th class="r">Material Leg ($)</th><th class="r">Haulage Leg ($)</th><th class="r">Expense Leg ($)</th><th class="r">Total Billed ($)</th><th class="r">Paid ($)</th><th class="r">Net AP Balance ($)</th></tr></thead>
+            <thead><tr><th>Supplier / Hauler</th><th>IVA</th><th class="r">Raw Loads</th><th class="r">Material Leg ($)</th><th class="r">Haulage Leg ($)</th><th class="r">Expense Leg ($)</th><th class="r">Total Billed ($)</th><th class="r">Paid ($)</th><th class="r">Net AP Balance ($)</th></tr></thead>
             <tbody>
               ${sups.slice(0, 80).map(s => `
                 <tr>
                   <td><b>${esc(s.Supplier)}</b></td>
-                  <td class="r">${fmtUSD(s.material_leg, 0)}</td>
-                  <td class="r">${fmtUSD(s.haulage_leg, 0)}</td>
-                  <td class="r">${fmtUSD(s.expense_leg, 0)}</td>
-                  <td class="r">${fmtUSD(s.total_billed, 0)}</td>
-                  <td class="r">${fmtUSD(s.settlements, 0)}</td>
+                  <td>${s.IVA === 'Yes' ? '<span class="badge badge-info">IVA</span>' : '—'}</td>
+                  <td class="r">${fmtNum(s.raw_loads)}</td>
+                  <td class="r">${fmtUSD(s.ap_material, 0)}</td>
+                  <td class="r">${fmtUSD(s.ap_haulage, 0)}</td>
+                  <td class="r">${fmtUSD(s.ap_expense, 0)}</td>
+                  <td class="r">${fmtUSD(Number(s.ap_material || 0) + Number(s.ap_haulage || 0) + Number(s.ap_expense || 0), 0)}</td>
+                  <td class="r">${fmtUSD(s.settlements_paid, 0)}</td>
                   <td class="r"><b>${fmtUSD(s.ap_balance, 2)}</b></td>
                 </tr>
               `).join('')}
@@ -686,18 +709,22 @@
         <div class="panel-card" style="margin-top:12px">
           <div class="panel-head"><div class="panel-title"><span>EQUIPMENT UNIT ECONOMICS MATRIX (LOADS · DIESEL · MAINTENANCE · DRIVER PAYROLL)</span></div><button class="btn btn-primary" data-open-modal="companyequipment">+ New Fleet Unit</button></div>
           <div class="table-wrap"><table class="ledger-table">
-            <thead><tr><th>Equipment / Plate</th><th>Category</th><th>Ownership</th><th class="r">Sales Loads</th><th class="r">Raw Loads</th><th class="r">Diesel (L)</th><th class="r">Repairs &amp; Exp ($)</th><th class="r">Driver Pay ($)</th></tr></thead>
+            <thead><tr><th>Equipment / Plate</th><th>Category</th><th>Ownership</th><th class="r">Sales Loads</th><th class="r">Raw Loads</th><th class="r">Diesel (L)</th><th class="r">Km Run</th><th class="r">L/100km</th><th class="r">Running ($)</th><th class="r">Driver Pay ($)</th><th class="r">Total Cost ($)</th><th class="r">$/Ton</th></tr></thead>
             <tbody>
               ${eqList.slice(0, 80).map(e => `
                 <tr>
                   <td class="mono"><b>${esc(e.Equipment)}</b></td>
-                  <td>${esc(e.Category || 'Truck')}</td>
+                  <td>${esc(e.Type || 'Truck')}</td>
                   <td><span class="badge ${/^own/i.test(e.Ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(e.Ownership || 'Fleet')}</span></td>
-                  <td class="r">${fmtNum(e.sales_loads)}</td>
+                  <td class="r">${fmtNum(e.loads)}</td>
                   <td class="r">${fmtNum(e.raw_loads)}</td>
                   <td class="r">${fmtNum(e.diesel_litres, 0)} L</td>
-                  <td class="r">${fmtUSD(e.expenses, 0)}</td>
-                  <td class="r">${fmtUSD(e.driver_pay, 0)}</td>
+                  <td class="r">${fmtNum(e.km_run, 0)}</td>
+                  <td class="r">${e.l_per_100km ? fmtNum(e.l_per_100km, 1) : '—'}</td>
+                  <td class="r">${fmtUSD(e.running_cost, 0)}</td>
+                  <td class="r">${fmtUSD(e.driver_cost, 0)}</td>
+                  <td class="r"><b>${fmtUSD(e.total_cost, 0)}</b></td>
+                  <td class="r">${e.cost_per_ton ? fmtUSD(e.cost_per_ton, 2) : '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -725,9 +752,9 @@
           <div class="panel-card">
             <div class="panel-head"><div class="panel-title"><span>OVERTIME TRIP RATE SCHEDULE (bhf_triprate)</span></div><button class="btn btn-primary" data-open-modal="triprate">+ New Overtime Rate</button></div>
             <div class="table-wrap"><table class="ledger-table">
-              <thead><tr><th>Co.</th><th>Rate Name</th><th>Site / Route</th><th>Category</th><th class="r">Bonus / Trip ($)</th></tr></thead>
+              <thead><tr><th>Co.</th><th>Rate Name</th><th>Region / Route</th><th>Effective From</th><th class="r">Bonus / Trip ($)</th></tr></thead>
               <tbody>
-                ${(rec.overtime_rates || []).map(r => `<tr><td><span class="badge badge-brass">${esc(r.company || 'WTC')}</span></td><td><b>${esc(r.name)}</b></td><td>${esc(r.site || 'All')}</td><td>${esc(r.category || 'Truck')}</td><td class="r"><b>${fmtUSD(r.rate_usd || r.amount || 10, 2)}</b></td></tr>`).join('')}
+                ${(rec.overtime_rates || []).slice().sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))).map(r => `<tr><td><span class="badge badge-brass">${esc(r.company || 'WTC')}</span></td><td><b>${esc(r.name)}</b></td><td>${esc(r.region || r.site || 'All')}</td><td class="mono">${esc(String(r.start_date || r.date || '').slice(0, 10) || '—')}</td><td class="r"><b>${fmtUSD(r.amount != null ? r.amount : r.rate_usd, 2)}</b></td></tr>`).join('')}
               </tbody>
             </table></div>
           </div>
@@ -754,15 +781,18 @@
           <div class="panel-card">
             <div class="panel-head"><div class="panel-title"><span>EMPLOYMENT CONTRACTS (${empRows.length})</span></div><button class="btn btn-primary" data-open-modal="employment">+ New Contract</button></div>
             <div class="table-wrap" style="max-height:280px;overflow:auto"><table class="ledger-table">
-              <thead><tr><th>Co.</th><th>Staff Member</th><th>Role</th><th>Pay Type</th><th class="r">Base Salary ($)</th><th>Status</th></tr></thead>
-              <tbody>${empRows.slice(0, 60).map(e => `<tr><td><span class="badge badge-brass">${esc(e.company)}</span></td><td><b>${esc(e.staff || e.name)}</b></td><td>${esc(e.role || 'Staff')}</td><td>${esc(e.pay_type || 'Monthly')}</td><td class="r"><b>${fmtUSD(e.base_salary || e.amount, 2)}</b></td><td><span class="badge badge-ok">${esc(e.status || 'Active')}</span></td></tr>`).join('')}</tbody>
+              <thead><tr><th>Co.</th><th>Staff Member</th><th>Contract Type</th><th>Start</th><th class="r">Monthly Salary ($)</th><th class="r">Daily Rate ($)</th><th>Status</th></tr></thead>
+              <tbody>${empRows.slice(0, 60).map(e => `<tr><td><span class="badge badge-brass">${esc(e.company)}</span></td><td><b>${esc(e.staff || e.name)}</b></td><td>${esc(e.type || e.pay_type || e.role || 'Regular')}${e.role && e.type ? ` <span class="mu">· ${esc(e.role)}</span>` : ''}</td><td class="mono">${esc(String(e.start_date || '').slice(0, 10) || '—')}</td><td class="r"><b>${Number(e.salary_usd || e.base_salary || 0) ? fmtUSD(e.salary_usd || e.base_salary, 2) : '—'}</b></td><td class="r">${Number(e.daily_rate || 0) ? fmtUSD(e.daily_rate, 2) : '—'}</td><td><span class="badge ${/active/i.test(e.status || 'Active') ? 'badge-ok' : 'badge-warn'}">${esc(e.status || 'Active')}</span></td></tr>`).join('')}</tbody>
             </table></div>
           </div>
           <div class="panel-card">
             <div class="panel-head"><div class="panel-title"><span>WEEKLY SITE ALLOWANCES (MON–SUN · ${logRows.length})</span></div><button class="btn btn-primary" data-open-modal="logistics">+ New Site Allowance</button></div>
             <div class="table-wrap" style="max-height:280px;overflow:auto"><table class="ledger-table">
-              <thead><tr><th>Date</th><th>Co.</th><th>Staff</th><th>Site</th><th class="r">Days</th><th class="r">USD Value ($)</th></tr></thead>
-              <tbody>${logRows.slice(0, 60).map(l => `<tr><td class="mono">${esc(String(l.date || '').slice(0, 10))}</td><td><span class="badge badge-brass">${esc(l.company)}</span></td><td><b>${esc(l.staff || l.name)}</b></td><td>${esc(l.site || '—')}</td><td class="r mono">${fmtNum(l.days_count || 6)}d</td><td class="r"><b>${fmtUSD(l.amount, 2)}</b></td></tr>`).join('')}</tbody>
+              <thead><tr><th>Week</th><th>Co.</th><th>Staff</th><th>Site</th><th>Days</th><th class="r">LBP / Day</th><th class="r">USD / Day</th></tr></thead>
+              <tbody>${logRows.slice(0, 60).map(l => {
+                const days = l.working_days || (l.days_count != null ? l.days_count + ' days' : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].filter(d => l[d]).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', '));
+                return `<tr><td class="mono">${esc(String(l.start_date || l.date || '').slice(0, 10))}${l.end_date && l.end_date !== l.start_date ? ' → ' + esc(String(l.end_date).slice(0, 10)) : ''}</td><td><span class="badge badge-brass">${esc(l.company)}</span></td><td><b>${esc(l.staff || l.name)}</b></td><td>${esc(l.site || l.equipment || '—')}</td><td class="mono">${esc(days || '—')}</td><td class="r mono">${Number(l.lbp_amount || 0) ? fmtNum(l.lbp_amount, 0) : '—'}</td><td class="r"><b>${fmtUSD(l.daily_usd != null ? l.daily_usd : l.amount, 2)}</b></td></tr>`;
+              }).join('')}</tbody>
             </table></div>
           </div>
         </div>
@@ -784,20 +814,22 @@
         <div class="panel-card" style="margin-top:12px">
           <div class="panel-head"><div class="panel-title"><span>OFFICIAL VAT INVOICES REGISTER (${vatInvs.length} INVOICES)</span></div><button class="btn btn-primary" data-open-modal="vatinvoice">+ New VAT Invoice</button></div>
           <div class="table-wrap"><table class="ledger-table">
-            <thead><tr><th>Date</th><th>Co.</th><th>Invoice No.</th><th>Customer</th><th class="r">Net Ex-VAT ($)</th><th class="r">11% VAT ($)</th><th class="r">Total TTC ($)</th><th>Status</th></tr></thead>
+            <thead><tr><th>Invoice Date</th><th>Period</th><th>Co.</th><th>Invoice No.</th><th>Customer</th><th class="r">Net Ex-VAT ($)</th><th class="r">11% VAT ($)</th><th class="r">Total TTC ($)</th><th>Status</th></tr></thead>
             <tbody>
               ${vatInvs.slice(0, 80).map(v => `
                 <tr>
-                  <td class="mono">${esc(String(v.date || '').slice(0, 10))}</td>
+                  <td class="mono">${esc(String(v.date || v.end_date || v.start_date || '').slice(0, 10) || '—')}</td>
+                  <td class="mono">${v.start_date ? esc(String(v.start_date).slice(0, 10)) + (v.end_date ? ' → ' + esc(String(v.end_date).slice(0, 10)) : '') : '—'}</td>
                   <td><span class="badge badge-brass">${esc(v.company)}</span></td>
                   <td class="mono"><b>${esc(v.invoice_no || v.name)}</b></td>
                   <td><b>${esc(v.customer || '—')}</b></td>
-                  <td class="r">${fmtUSD(v.net_amount, 2)}</td>
-                  <td class="r">${fmtUSD(v.vat_amount, 2)}</td>
-                  <td class="r"><b>${fmtUSD(v.total_ttc, 2)}</b></td>
+                  <td class="r">${v.net_amount != null ? fmtUSD(v.net_amount, 2) : '—'}</td>
+                  <td class="r">${v.vat_amount != null ? fmtUSD(v.vat_amount, 2) : '—'}</td>
+                  <td class="r"><b>${v.total_ttc != null ? fmtUSD(v.total_ttc, 2) : (v.net_amount != null ? fmtUSD(Number(v.net_amount || 0) + Number(v.vat_amount || 0), 2) : '—')}</b></td>
                   <td><span class="badge badge-ok">${esc(v.status || 'Issued')}</span></td>
                 </tr>
               `).join('')}
+              <tr class="total"><td colspan="5"><b>${fmtNum(vatInvs.length)} INVOICES</b></td><td class="r"><b>${fmtUSD(vatInvs.reduce((a, v) => a + Number(v.net_amount || 0), 0), 2)}</b></td><td class="r"><b>${fmtUSD(vatInvs.reduce((a, v) => a + Number(v.vat_amount || 0), 0), 2)}</b></td><td class="r"><b>${fmtUSD(vatInvs.reduce((a, v) => a + Number(v.total_ttc != null ? v.total_ttc : Number(v.net_amount || 0) + Number(v.vat_amount || 0)), 0), 2)}</b></td><td></td></tr>
             </tbody>
           </table></div>
         </div>
@@ -819,10 +851,10 @@
         <div class="row2" style="margin-top:12px">
           <div class="panel"><div class="ph"><h3>Monthly Cash Profit vs Expenses Trajectory</h3></div><div class="chartwrap">${buildMonthlyComboSvg(m.monthly, 'operating_profit', 'expenses', 'Operating Profit', 'Expenses', true)}</div></div>
           <div class="panel-card">
-            <div class="panel-head"><div class="panel-title"><span>DAILY TILL &amp; SCALE TOTALS (bhf_dailytotal · ${dtRows.length})</span></div></div>
+            <div class="panel-head"><div class="panel-title"><span>DAILY TOTALS LEDGER (bhf_dailytotal · m117 · ${dtRows.length})</span></div><span class="panel-meta">Power BI vs SharePoint daily parity rows</span></div>
             <div class="table-wrap" style="max-height:260px;overflow:auto"><table class="ledger-table">
-              <thead><tr><th>Date</th><th>Co.</th><th>Reference</th><th class="r">Sales ($)</th><th class="r">Cash In ($)</th><th class="r">Cash Out ($)</th><th class="r">Closing Till ($)</th></tr></thead>
-              <tbody>${dtRows.slice(0, 50).map(d => `<tr><td class="mono">${esc(String(d.date || '').slice(0, 10))}</td><td><span class="badge badge-brass">${esc(d.company)}</span></td><td>${esc(d.name)}</td><td class="r">${fmtUSD(d.sales_total, 0)}</td><td class="r">${fmtUSD(d.cash_in, 0)}</td><td class="r">${fmtUSD(d.cash_out, 0)}</td><td class="r"><b>${fmtUSD(d.closing_till, 2)}</b></td></tr>`).join('')}</tbody>
+              <thead><tr><th>Date</th><th>Co.</th><th>Domain</th><th>Kind</th><th>Origin</th><th class="r">Value ($)</th><th class="r">Previous ($)</th><th class="r">Change ($)</th><th class="r">Rows</th></tr></thead>
+              <tbody>${dtRows.slice(0, 50).map(d => `<tr><td class="mono">${esc(String(d.date || '').slice(0, 10))}</td><td><span class="badge badge-brass">${esc(d.company)}</span></td><td><b>${esc(d.domain || d.name)}</b></td><td>${esc(d.kind || '—')}</td><td class="mu">${esc(d.origin || '—')}</td><td class="r"><b>${fmtUSD(d.value, 2)}</b></td><td class="r">${fmtUSD(d.previous_value, 2)}</td><td class="r ${Number(d.change || 0) < 0 ? 'crit-text' : ''}">${fmtUSD(d.change, 2)}</td><td class="r mono">${fmtNum(d.row_count)}</td></tr>`).join('')}</tbody>
             </table></div>
           </div>
         </div>
@@ -837,7 +869,7 @@
       const conv = filterRecords(rec.conversions, { ignoreSearch: true });
       bodyHtml = `
         ${kpiSection('Treasury, Partner Loans, Settlements & FX Conversions', [
-          { label: 'Partner & Entity Loans', value: fmtNum(loans.length), sub: fmtUSD(loans.reduce((a, r) => a + Number(r.amount || 0), 0), 0), tone: 'brass' },
+          { label: 'Partner & Entity Loans', value: fmtNum(loans.length), sub: fmtUSD(loans.reduce((a, r) => a + Number(r.principal != null ? r.principal : r.amount || 0), 0), 0) + ' principal', tone: 'brass' },
           { label: 'Loan Settlements', value: fmtNum(lSet.length), sub: fmtUSD(lSet.reduce((a, r) => a + Number(r.amount || 0), 0), 0), tone: 'good' },
           { label: 'External Cash Movements', value: fmtNum(ext.length), sub: fmtUSD(ext.reduce((a, r) => a + Number(r.amount || 0), 0), 0) },
           { label: 'FX Conversions (USD ↔ LBP)', value: fmtNum(conv.length), sub: 'At 90,000 LBP/USD peg' },
@@ -848,8 +880,8 @@
           <div class="panel-card">
             <div class="panel-head"><div class="panel-title"><span>PARTNER &amp; INTERCOMPANY LOANS (bhf_loan · ${loans.length})</span></div><button class="btn btn-primary" data-open-modal="treasury">+ New Treasury Entry</button></div>
             <div class="table-wrap" style="max-height:280px;overflow:auto"><table class="ledger-table">
-              <thead><tr><th>Date</th><th>Co.</th><th>Loan Ref</th><th>Lender / Partner</th><th class="r">Amount ($)</th></tr></thead>
-              <tbody>${loans.slice(0, 60).map(l => `<tr><td class="mono">${esc(String(l.date || '').slice(0, 10))}</td><td><span class="badge badge-brass">${esc(l.company)}</span></td><td><b>${esc(l.name)}</b></td><td>${esc(l.lender || l.counterparty || 'Partner')}</td><td class="r"><b>${fmtUSD(l.amount, 2)}</b></td></tr>`).join('')}</tbody>
+              <thead><tr><th>Date</th><th>Co.</th><th>Loan Ref</th><th>Lender / Partner</th><th class="r">Principal ($)</th><th class="r">Rate %</th></tr></thead>
+              <tbody>${loans.slice(0, 60).map(l => `<tr><td class="mono">${esc(String(l.start_date || l.date || '').slice(0, 10))}</td><td><span class="badge badge-brass">${esc(l.company)}</span></td><td><b>${esc(l.name)}</b></td><td>${esc(l.lender || l.counterparty || String(l.name || '').replace(/^Loan \d{4}-\d{2}-\d{2}\s*/, '').replace(/\s*#\d+$/, '') || 'Partner')}</td><td class="r"><b>${fmtUSD(l.principal != null ? l.principal : l.amount, 2)}</b></td><td class="r mono">${fmtNum(l.interest_rate || 0, 2)}</td></tr>`).join('')}</tbody>
             </table></div>
           </div>
           <div class="panel-card">
@@ -884,7 +916,8 @@
           <div class="table-wrap"><table class="ledger-table">
             <thead><tr><th>CoA Code</th><th>Account Name</th><th>Class</th><th class="r">Total Debit ($)</th><th class="r">Total Credit ($)</th><th class="r">Net Balance ($)</th></tr></thead>
             <tbody>
-              ${tbRows.map(r => `<tr><td class="mono"><b>${esc(r.Code)}</b></td><td><b>${esc(r.Account)}</b></td><td>${esc(r.Class || '')}</td><td class="r">${fmtUSD(r.Debit, 2)}</td><td class="r">${fmtUSD(r.Credit, 2)}</td><td class="r"><b>${fmtUSD(r.Balance, 2)}</b></td></tr>`).join('')}
+              ${tbRows.map(r => `<tr><td class="mono"><b>${esc(r.Code)}</b></td><td><b>${esc(r.Account)}</b></td><td>${esc(r.Class || '')}</td><td class="r">${fmtUSD(r.debit, 2)}</td><td class="r">${fmtUSD(r.credit, 2)}</td><td class="r"><b>${fmtUSD(r.balance, 2)}</b></td></tr>`).join('')}
+              <tr class="total"><td colspan="3"><b>TOTAL (${tbRows.length} ACCOUNTS)</b></td><td class="r"><b>${fmtUSD(tbRows.reduce((a, r) => a + Number(r.debit || 0), 0), 2)}</b></td><td class="r"><b>${fmtUSD(tbRows.reduce((a, r) => a + Number(r.credit || 0), 0), 2)}</b></td><td class="r"><b>${fmtUSD(tbRows.reduce((a, r) => a + Number(r.balance || 0), 0), 2)}</b></td></tr>
             </tbody>
           </table></div>
         </div>
@@ -907,7 +940,7 @@
             <div class="panel-head"><div class="panel-title"><span>JV PARTNERSHIPS (${jvParts.length})</span></div><button class="btn btn-primary" data-open-modal="jv">+ New JV Entry</button></div>
             <div class="table-wrap"><table class="ledger-table">
               <thead><tr><th>Co.</th><th>Partnership</th><th>JV Site</th><th>Partner</th><th class="r">Partner Share %</th></tr></thead>
-              <tbody>${jvParts.map(p => `<tr><td><span class="badge badge-brass">${esc(p.company)}</span></td><td><b>${esc(p.name)}</b></td><td>${esc(p.site || '—')}</td><td>${esc(p.partner || '—')}</td><td class="r mono">${fmtNum(p.share_pct || 50, 1)}%</td></tr>`).join('')}</tbody>
+              <tbody>${jvParts.map(p => `<tr><td><span class="badge badge-brass">${esc(p.company)}</span></td><td><b>${esc(p.name)}</b></td><td>${esc(p.site || '—')}</td><td>${esc(p.partner || '—')}</td><td class="r mono">${fmtNum(p.percentage != null ? p.percentage : (p.share_pct != null ? p.share_pct : 50), 1)}%</td></tr>`).join('')}</tbody>
             </table></div>
           </div>
           <div class="panel-card">
@@ -931,7 +964,7 @@
           { label: 'Incomplete Ticket Books', value: fmtNum(prSn.incomplete_ticket_books || 0), sub: '50-ticket physical pads' },
           { label: 'Missing Numbers in Books', value: fmtNum(prSn.missing_tickets_in_books || 0), sub: 'Gaps in pad sequence' },
           { label: 'Entry Desk Duplicate Guard', value: 'Enforced', sub: 'Blocks repeated ticket # per BU', tone: 'good' },
-          { label: 'Next Suggested WTC Ticket #', value: '#' + (salesRows[0] ? (parseInt(salesRows[0].ticket_no, 10) + 1 || 'Auto') : 'Auto'), sub: 'Auto-Increment on modal open', tone: 'brass' }
+          { label: 'Next Suggested Ticket #', value: (() => { const co = STATE.company === 'bbconstruction' ? 'BBConstruction' : 'WTC'; const n = ctx.nextTicketNo ? ctx.nextTicketNo(co, [rec.sales_tickets]) : ''; return n ? '#' + n + ' · ' + co : 'Auto'; })(), sub: 'Follows the latest dated ticket of the pad', tone: 'brass' }
         ])}
         <div class="panel-card" style="margin-top:12px">
           <div class="panel-head"><div class="panel-title"><span>RECENT WEIGHBRIDGE TICKET SERIAL AUDIT (SALES &amp; QUARRY PADS)</span></div></div>
@@ -1010,9 +1043,10 @@
     const activeKey = STATE.activeTableKey || 'price_rules';
     const meta = TABLE_CATALOG.find(t => t.key === activeKey) || TABLE_CATALOG[0];
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
-    const filtered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance'].includes(meta.key) });
-    const defSort = meta.cols.includes('date') ? 'date' : (meta.cols[0] || 'name');
-    const rows = sortRows(filtered, 'tbl_' + meta.key, defSort, meta.cols.includes('date') ? 'desc' : 'asc');
+    const filtered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key) });
+    const dateCol = meta.cols.includes('date') ? 'date' : (meta.cols.includes('start_date') ? 'start_date' : null);
+    const defSort = dateCol || (meta.cols[0] || 'name');
+    const rows = sortRows(filtered, 'tbl_' + meta.key, defSort, dateCol ? 'desc' : 'asc');
     const shown = rows.slice(0, shownCount('tbl_' + meta.key));
 
     const groups = Array.from(new Set(TABLE_CATALOG.map(t => t.group)));
@@ -1065,15 +1099,17 @@
             </thead>
             <tbody>
               ${shown.map((r, idx) => `
-                <tr>
+                <tr class="rrow" data-rkey="${esc(meta.key)}" data-rid="${esc(r.id)}">
                   ${meta.cols.map((c, ci) => {
-                    const v = r[c];
-                    const isMoney = /price|cost|amount|total|vat|limit|salary|balance|adj|indiff|rate_usd|cash_in|cash_out|closing_till/.test(c);
-                    const isNum = !isMoney && /qty|litres|capacity|factor|pct|days|hours|count|odometer/.test(c);
-                    let cell = v == null || v === '' ? '—' : (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v));
+                    const v = cellValue(r, c);
+                    const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
+                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|count|odometer|interest_rate|exchange_rate|^lat|^long/.test(c);
+                    let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
-                    else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity/.test(c) ? 2 : 0);
-                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|no|plate/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${esc(cell)}</b>${appCell(r, meta.key)}` : esc(cell)}</td>`;
+                    else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
+                    else if (/date/.test(c) && v) cell = String(v).slice(0, 10);
+                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${esc(cell)}</b>${appCell(r, meta.key)}` : esc(cell)}</td>`;
                   }).join('')}
                 </tr>
               `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}

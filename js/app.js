@@ -296,7 +296,8 @@
   }
 
   function isAppRecord(r) {
-    return !!(r && (r.source === 'app' || /^(st|rw|rc|fu|ex|sp)-/.test(String(r.id || ''))));
+    // app ids = uid(form.slice(0, 2)) → "sa-<ts36>-<rnd6>"; Dataverse ids are GUIDs
+    return !!(r && (r.source === 'app' || /^[a-z]{2}-[0-9a-z]+-[0-9a-z]{6}$/.test(String(r.id || ''))));
   }
 
   function appCell(r, crKey) {
@@ -514,7 +515,10 @@
       method: (dvn && dvn.method) || (mdl && mdl.Method) || 'Credit',
       'VAT Registered': ((mdl && mdl['VAT Registered'] === 'Yes') || (dvn && dvn.vat_registered)) ? 'Yes' : 'No',
       customer_declared_qty: !!(dvn && dvn.customer_declared_qty),
-      external_invoice: !!(dvn && dvn.external_invoice)
+      external_invoice: !!(dvn && dvn.external_invoice),
+      // the AR book only carries the model's top-60 customers — null = "not in the sample", never $0.00
+      ar_balance: mdl ? Number(mdl.ar_balance || 0) : null,
+      in_ar_book: !!mdl
     });
   }
   function supplierInfo(name) {
@@ -529,8 +533,10 @@
     if (!dvn && !mdl) return null;
     return Object.assign({}, dvn || {}, mdl || {}, {
       Supplier: (mdl && mdl.Supplier) || (dvn && dvn.name) || name,
-      iva: !!(dvn && dvn.iva),
-      is_truck_owner: !!(dvn && dvn.is_truck_owner)
+      iva: !!((dvn && dvn.iva) || (mdl && mdl.IVA === 'Yes')),
+      is_truck_owner: !!(dvn && dvn.is_truck_owner),
+      ap_balance: mdl ? Number(mdl.ap_balance || 0) : null,
+      in_ap_book: !!mdl
     });
   }
   function productInfo(name) {
@@ -621,11 +627,11 @@
 
   function openArBalance(customer) {
     const c = customerInfo(customer);
-    return c ? Number(c.ar_balance || 0) : null;
+    return c && c.in_ar_book ? Number(c.ar_balance || 0) : null;
   }
   function openApBalance(supplier) {
     const s = supplierInfo(supplier);
-    return s ? Number(s.ap_balance || 0) : null;
+    return s && s.in_ap_book ? Number(s.ap_balance || 0) : null;
   }
 
   function isOvertimeTime(hhmm) {
@@ -755,32 +761,32 @@
     return `
       <!-- 1. UNIFIED 6-COLUMN EXECUTIVE KPI BAND (REV 10 "LEDGER" SURFACE) -->
       <section class="kpis" aria-label="Executive Key Performance Indicators">
-        <div class="kpi">
+        <div class="kpi kpi-link" data-nav-jump="sales" role="button" tabindex="0" title="Open the Sales & Deliveries register">
           <span class="k">Consolidated Revenue (TTC)</span>
           <span class="v num">${fmtUSD(salesVal, 0)}</span>
           <span class="d good">Net Ex-VAT: ${fmtUSD(k.net_sales, 0)} · 11% VAT Incl.</span>
         </div>
-        <div class="kpi">
+        <div class="kpi kpi-link" data-nav-jump="raw" role="button" tabindex="0" title="Open the Raw Material & Quarries register">
           <span class="k">Realized Gross Margin</span>
           <span class="v num">${fmtUSD(k.gross_margin, 0)}<small>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</small></span>
           <span class="d good">Raw Quarry Cost: ${fmtUSD(rawVal, 0)}</span>
         </div>
-        <div class="kpi">
+        <div class="kpi kpi-link" data-nav-jump="expenses" role="button" tabindex="0" title="Open Expenses & Payroll">
           <span class="k">Operating Cash Profit</span>
           <span class="v num">${fmtUSD(opProfit, 0)}<small>${fmtPct(k.op_margin_pct, opProfit, k.net_sales)}</small></span>
           <span class="d">Expenses: ${fmtUSD(expVal, 0)} · Payroll: ${fmtUSD(k.salaries_paid, 0)}</span>
         </div>
-        <div class="kpi">
+        <div class="kpi kpi-link" data-nav-jump="ledger" role="button" tabindex="0" title="Open the General Ledger & till">
           <span class="k">Cash Till &amp; Net Flow (5300)</span>
           <span class="v num">${fmtUSD(k.cash_till, 2)}</span>
           <span class="d">In: ${fmtUSD(k.cash_inflow, 0)} · Out: ${fmtUSD(k.cash_outflow, 0)}</span>
         </div>
-        <div class="kpi">
+        <div class="kpi kpi-link" data-nav-jump="customers" role="button" tabindex="0" title="Open Customers & AR Aging">
           <span class="k">Open AR Receivables (FIFO)</span>
           <span class="v num">${fmtUSD(k.ar_balance, 0)}</span>
           <span class="d ${Number(k.ar_overdue || 0) > 0 ? 'crit' : 'good'}">Overdue &gt;30d: ${fmtUSD(k.ar_overdue, 0)} · DSO ${fmtNum(k.dso_days, 0)}d</span>
         </div>
-        <div class="kpi books">
+        <div class="kpi books kpi-link" data-nav-jump="sentinels" role="button" tabindex="0" title="Open the AI Sentinels & Trial Balance audit">
           <span class="k">Operating Books Status</span>
           <span class="v num">${booksCount}<small>${booksUnit}</small></span>
           <span class="d ${tb.ok === false ? 'crit' : 'good'}">Trial Balance ${tb.ok === false ? 'variance ' + fmtUSD(k.tb_check, 2) : '$0.00 Variance'}</span>
@@ -789,12 +795,12 @@
 
       <!-- 2. SECONDARY OPERATIONAL PROOF STRIP -->
       <section class="ops-strip" aria-label="Operational Unit Economics">
-        <div class="ops-cell"><span>Sales Loads &amp; Volume</span><b class="num">${fmtNum(k.loads)} (${fmtNum(k.tons_sold, 0)} t)</b></div>
-        <div class="ops-cell"><span>Avg Selling Price (TTC)</span><b class="num">${fmtUSD(k.avg_price_ttc, 2)} / unit</b></div>
-        <div class="ops-cell"><span>Raw Quarry Intake</span><b class="num">${fmtNum(k.raw_loads)} loads (${fmtUSD(k.avg_raw_cost, 2)}/u)</b></div>
-        <div class="ops-cell"><span>Active Fleet &amp; Cost/Ton</span><b class="num">${fmtNum(k.active_equip)} units · ${fmtUSD(k.cost_per_ton, 2)}/t</b></div>
-        <div class="ops-cell"><span>Customer Price Matrix</span><b class="num">${fmtNum(k.active_agreements)} active rules</b></div>
-        <div class="ops-cell"><span>3-Leg AP Open Balance</span><b class="num">${fmtUSD(k.ap_balance, 0)}</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="sales" role="button" tabindex="0"><span>Sales Loads &amp; Volume</span><b class="num">${fmtNum(k.loads)} (${fmtNum(k.tons_sold, 0)} t)</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="pricing" role="button" tabindex="0"><span>Avg Selling Price (TTC)</span><b class="num">${fmtUSD(k.avg_price_ttc, 2)} / unit</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="raw" role="button" tabindex="0"><span>Raw Quarry Intake</span><b class="num">${fmtNum(k.raw_loads)} loads (${fmtUSD(k.avg_raw_cost, 2)}/u)</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="fleet" role="button" tabindex="0"><span>Active Fleet &amp; Cost/Ton</span><b class="num">${fmtNum(k.active_equip)} units · ${fmtUSD(k.cost_per_ton, 2)}/t</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="pricing" role="button" tabindex="0"><span>Customer Price Matrix</span><b class="num">${fmtNum(k.active_agreements)} active rules</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="suppliers" role="button" tabindex="0"><span>3-Leg AP Open Balance</span><b class="num">${fmtUSD(k.ap_balance, 0)}</b></div>
       </section>
       ${appStrip()}
 
@@ -1189,7 +1195,7 @@
     const sumMat = shown.reduce((a, r) => a + Number(r.price || 0), 0);
     const sumTr = shown.reduce((a, r) => a + Number(r.trans_price || 0), 0);
     const sumTtc = shown.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
 
     return `
       <div class="cockpit-banner">
@@ -1232,7 +1238,7 @@
             </thead>
             <tbody>
               ${shown.map(r => `
-                <tr>
+                <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDate(r))}${appCell(r, 'sales_tickets')}</td>
                   <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''}</td>
                   <td><span class="badge badge-brass">${esc(r.company)}</span></td>
@@ -1345,7 +1351,7 @@
       return true;
     }), 'raw', 'date', 'desc');
     const shown = rows.slice(0, shownCount('raw'));
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const sumMat = shown.reduce((a, r) => a + Number(r.cost || 0), 0);
     const sumHaul = shown.reduce((a, r) => a + Number(r.trans_cost || 0), 0);
 
@@ -1388,7 +1394,7 @@
               </thead>
               <tbody>
                 ${shown.map(r => `
-                  <tr>
+                  <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDate(r))}${appCell(r, 'raw_purchases')}</td>
                     <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong></td>
                     <td><span class="badge badge-brass">${esc(r.company)}</span></td>
@@ -1491,7 +1497,7 @@
     }), 'fuel', 'date', 'desc');
     const shownFuel = fuelRows.slice(0, shownCount('fuel'));
     const litres = shownFuel.reduce((a, f) => a + Number(f.litres || 0), 0);
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const flagged = allFuel.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
     const tank = fleet.diesel_stock_balance_l != null ? Number(fleet.diesel_stock_balance_l) : Number(k.diesel_in_tank || 0);
     const equipRows = sortRows((m.equipment || []).filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'equip', 'total_cost', 'desc');
@@ -1571,7 +1577,7 @@
                 ${shownFuel.map(f => {
                   const g = guards.get(f.id) || { cls: 'badge-ok', label: '● OK' };
                   return `
-                  <tr>
+                  <tr class="rrow" data-rkey="fuel_intakes" data-rid="${esc(f.id)}">
                     <td class="mono">${esc(recordDate(f))}${appCell(f, 'fuel_intakes')}</td>
                     <td class="mono">${esc(f.ticket_no || '—')}</td>
                     <td><span class="badge badge-brass">${esc(f.company)}</span></td>
@@ -1642,7 +1648,7 @@
       return true;
     }), 'pricing', 'start_date', 'desc');
     const shown = rules.slice(0, shownCount('pricing'));
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const activeCount = base.filter(isActive).length;
     const typeChips = types.length ? types.map(t => chip(t, t)).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Quarry / hauler rules');
 
@@ -1678,8 +1684,8 @@
             </thead>
             <tbody>
               ${shown.map(pr => `
-                <tr>
-                  <td class="mono"><strong>${esc(pr.name)}</strong></td>
+                <tr class="rrow" data-rkey="price_rules" data-rid="${esc(pr.id)}">
+                  <td class="mono"><strong>${esc(pr.name)}</strong>${appCell(pr, 'price_rules')}</td>
                   <td><span class="badge badge-brass">${esc(pr.company)}</span></td>
                   <td><span class="badge badge-info">${esc(pr.rule_type || '—')}</span></td>
                   <td><strong>${esc(pr.customer || pr.supplier || (pr.site ? pr.site + ' (site)' : 'Standard List'))}</strong></td>
@@ -1745,7 +1751,7 @@
     const rcpts = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'receipts', 'date', 'desc');
     const shown = rcpts.slice(0, shownCount('receipts'));
     const methods = uniqSorted(SEED.records.receipts.map(r => r.method));
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const sumAmt = shown.reduce((a, r) => a + Number(r.amount || 0), 0);
 
     return `
@@ -1815,7 +1821,7 @@
               </thead>
               <tbody>
                 ${shown.map(r => `
-                  <tr>
+                  <tr class="rrow" data-rkey="receipts" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDate(r))}${appCell(r, 'receipts')}</td>
                     <td class="mono">${esc(r.name)}${r.reference ? ` <span class="mu">· ${esc(r.reference)}</span>` : ''}</td>
                     <td><span class="badge badge-brass">${esc(r.company)}</span></td>
@@ -1847,7 +1853,7 @@
     const spays = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'settle', 'date', 'desc');
     const shown = spays.slice(0, shownCount('settle'));
     const methods = uniqSorted(SEED.records.settlements.map(r => r.method));
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const sumAmt = shown.reduce((a, r) => a + Number(r.amount || 0), 0);
 
     return `
@@ -1916,7 +1922,7 @@
               </thead>
               <tbody>
                 ${shown.map(sp => `
-                  <tr>
+                  <tr class="rrow" data-rkey="settlements" data-rid="${esc(sp.id)}">
                     <td class="mono">${esc(recordDate(sp))}${appCell(sp, 'settlements')}</td>
                     <td class="mono">${esc(sp.name)}${sp.reference ? ` <span class="mu">· ${esc(sp.reference)}</span>` : ''}</td>
                     <td><span class="badge badge-brass">${esc(sp.company)}</span></td>
@@ -1951,7 +1957,7 @@
     const shownExp = expRows.slice(0, shownCount('expenses'));
     const salRows = sortRows(filterRecords(SEED.records.salaries), 'salaries', 'date', 'desc');
     const shownSal = salRows.slice(0, shownCount('salaries'));
-    const chip = (key, label) => `<button class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${key}">${label}</button>`;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const sumExp = shownExp.reduce((a, r) => a + Number(r.amount || 0), 0);
     const sumSal = shownSal.reduce((a, r) => a + Number(r.amount || 0), 0);
 
@@ -1992,7 +1998,7 @@
               </thead>
               <tbody>
                 ${shownExp.map(x => `
-                  <tr>
+                  <tr class="rrow" data-rkey="expenses" data-rid="${esc(x.id)}">
                     <td class="mono">${esc(recordDate(x))}${appCell(x, 'expenses')}</td>
                     <td><span class="badge badge-brass">${esc(x.company)}</span></td>
                     <td><strong>${esc(x.category)}</strong></td>
@@ -2024,8 +2030,8 @@
               </thead>
               <tbody>
                 ${shownSal.map(s => `
-                  <tr>
-                    <td class="mono">${esc(recordDate(s))}</td>
+                  <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
+                    <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
                     <td class="mono">${esc(s.payroll_month)}</td>
                     <td><span class="badge badge-brass">${esc(s.company)}</span></td>
                     <td><strong>${esc(s.staff)}</strong></td>
@@ -2832,7 +2838,7 @@
   }
 
   // ---- live rule engine -------------------------------------------------------
-  const FORM_UI = { priceManual: false, otManual: false, ticketManual: false, qtyManual: false, lastCompany: '' };
+  const FORM_UI = { priceManual: false, transManual: false, otManual: false, ticketManual: false, qtyManual: false, lastCompany: '' };
   const $ = id => document.getElementById(id);
   const qtyEl = () => document.getElementById('f_qty');
   const val = id => { const el = $(id); return el ? String(el.value == null ? '' : el.value).trim() : ''; };
@@ -2895,8 +2901,14 @@
     // Customer: AR + VAT status
     const cust = customerInfo(customer);
     const vatReg = !!(cust && cust['VAT Registered'] === 'Yes');
-    const ar = cust ? Number(cust.ar_balance || 0) : null;
-    setHint('hint_customer', cust ? `Open AR ${fmtUSD(ar, 2)}${vatReg ? ' · VAT-registered (11%)' : ''}` : (customer ? 'New customer — not in the AR book yet' : ''), cust && ar > 0 ? 'warn' : '');
+    const ar = cust && cust.in_ar_book ? Number(cust.ar_balance || 0) : null;
+    const custMethod = cust ? String(cust.method || 'Credit') : '';
+    setHint('hint_customer', cust
+      ? `${ar != null ? 'Open AR ' + fmtUSD(ar, 2) : 'Registered · outside the top-60 AR sample'}${custMethod ? ' · ' + custMethod + ' customer' : ''}${vatReg ? ' · VAT-registered (11%)' : ''}`
+      : (customer ? 'New customer — not in the AR book yet' : ''), ar > 0 ? 'warn' : '');
+    // m50 / m58: the customer's default payment method locks the ticket method (a Cash customer never posts to AR)
+    const methEl = $('f_method');
+    if (methEl && cust && custMethod && !FORM_UI.methodManual && (custMethod === 'Cash' || custMethod === 'Credit')) methEl.value = custMethod;
     const vatWrap = $('wrap_vatinvoice');
     if (vatWrap) vatWrap.hidden = !vatReg;
 
@@ -2909,7 +2921,7 @@
     if (!FORM_UI.priceManual && upEl) {
       if (rule) {
         upEl.value = Number(rule.unit_price || 0).toFixed(2);
-        if (tpEl && saleType === 'Delivery') tpEl.value = Number(rule.trans_unit_price || 0).toFixed(2);
+        if (tpEl && saleType === 'Delivery' && !FORM_UI.transManual) tpEl.value = Number(rule.trans_unit_price || 0).toFixed(2);
         setText('lbl_pricelock', 'AGREEMENT');
         setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${rule.unit && rule.unit !== uom ? ' · priced per ' + rule.unit : ''}`, 'ok');
         if (/truck/i.test(rule.unit || '') && qtyEl() && !FORM_UI.qtyManual) qtyEl().value = '1'; // m229: sold per load → Quantity 1
@@ -2934,13 +2946,11 @@
     const qvWrap = $('paTruckQvWrap');
     if (qvWrap && window.MFG_FORMS) qvWrap.innerHTML = window.MFG_FORMS.renderTruckQuickView(truckRow, transportBy === 'Company fleet');
     if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
-    if (rule && truckRow && truckRow.capacity && !FORM_UI.priceManual && upEl && window.MFG_FORMS) {
-      const tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
-      if (tier.tier > 0) {
-        upEl.value = (Number(rule.unit_price || 0) + tier.adj).toFixed(2);
-        if (tpEl && saleType === 'Delivery') tpEl.value = (Number(rule.trans_unit_price || 0) + tier.transAdj).toFixed(2);
-      }
-    }
+    // m103 / m125: the agreement tier whose Truck Size equals the truck's capacity supplies a PER-LOAD Adjustment that
+    // rides into the Material Total (bhf_price = qty × unit price + adjustment − discount) — never a per-unit change
+    let tier = { tier: 0, adj: 0, transAdj: 0 };
+    if (rule && truckRow && truckRow.capacity && window.MFG_FORMS) tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
+    else if (rule && !truckRow && window.MFG_FORMS && rule.qty1 != null && saleType !== 'Pickup') tier = window.MFG_FORMS.matchTier(rule, null); // m103 fallback: Truck Size 1
     if (saleType === 'Delivery' && !truckName) setHint('hint_truck', 'Required on Delivery', 'crit');
     else if (truckName && transportBy === 'Company fleet' && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is a third-party unit (${truckRow.supplier || 'hauler'}) — switch Transported By or pick an own truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && ownTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
@@ -2954,14 +2964,16 @@
     if (otEl && !FORM_UI.otManual) otEl.checked = otSuggest;
     setHint('hint_time', otSuggest ? 'Outside the day shift → overtime allowance' : 'Day shift 06:00–17:59', otSuggest ? 'warn' : '');
 
-    // Money
+    // Money (mirrors the Dataverse recompute: Material = qty × unit price + tier adjustment; VAT 11% on the net total, m268)
     const qty = num('f_qty'), up = num('f_unitprice'), tp = saleType === 'Pickup' ? 0 : num('f_transunitprice'), disc = num('f_discount');
-    const mat = round2(qty * up), tr = round2(qty * tp);
+    const tierAdj = FORM_UI.priceManual ? 0 : Number(tier.adj || 0);
+    const tierTrAdj = (FORM_UI.transManual || saleType === 'Pickup') ? 0 : Number(tier.transAdj || 0);
+    const mat = round2(qty * up + tierAdj), tr = round2(qty * tp + tierTrAdj);
     const net = round2(mat + tr - disc);
     const vat = vatReg ? round2(net * VAT_RATE) : 0;
     const ttc = round2(net + vat);
-    setText('calc_mat', fmtUSD(mat, 2));
-    setText('calc_tr', fmtUSD(tr, 2));
+    setText('calc_mat', fmtUSD(mat, 2) + (tierAdj ? ` (tier ${tier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : ''));
+    setText('calc_tr', fmtUSD(tr, 2) + (tierTrAdj ? ` (tier ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : ''));
     setText('calc_vat', vatReg ? fmtUSD(vat, 2) : '—');
     setText('calc_total', fmtUSD(ttc, 2));
     setHint('hint_qty', qty > 0 && prod && Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `≈ ${fmtNum(qty * Number(prod.ton_factor), 2)} t` : (qty <= 0 && val('f_qty') ? 'Must be above zero' : ''), qty <= 0 && val('f_qty') ? 'crit' : '');
@@ -2971,7 +2983,7 @@
 
     commonDateChecks(warnings);
     dupCheck(company);
-    return { company, saleType, transportBy, customer, product, site, date, prod, uom, cust, vatReg, rule, qty, up, tp, disc, mat, tr, net, vat, ttc };
+    return { company, saleType, transportBy, customer, product, site, date, prod, uom, cust, vatReg, rule, tier, tierAdj, tierTrAdj, qty, up, tp, disc, mat, tr, net, vat, ttc, method: val('f_method') };
   }
 
   function recalcRaw() {
@@ -3001,7 +3013,7 @@
     if (!FORM_UI.priceManual && upEl) {
       if (rule) { upEl.value = Number(rule.unit_price || 0).toFixed(2); setText('lbl_pricelock', 'AGREEMENT'); setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}`, 'ok'); }
       else { const lpRule = product ? listPriceRule(company, product, date) : null; if (lpRule) { upEl.value = Number(lpRule.unit_price || 0).toFixed(2); setText('lbl_pricelock', 'LIST PRICE'); setHint('hint_price', 'No purchase agreement — ' + lpRule.name, 'warn'); } else { setText('lbl_pricelock', 'MANUAL'); setHint('hint_price', product ? 'No purchase-price agreement for this owner / site' : '', ''); } }
-      if (tpEl && transportBy !== 'Company fleet' && haulRule) tpEl.value = Number(haulRule.trans_unit_price || haulRule.unit_price || 0).toFixed(2);
+      if (tpEl && transportBy !== 'Company fleet' && haulRule && !FORM_UI.transManual) tpEl.value = Number(haulRule.trans_unit_price || haulRule.unit_price || 0).toFixed(2);
     } else if (upEl) { setText('lbl_pricelock', 'MANUAL'); setHint('hint_price', rule ? `Overrides ${rule.name} (${fmtUSD(rule.unit_price, 2)})` : '', rule ? 'warn' : ''); }
 
     if (tpEl) {
@@ -3032,9 +3044,11 @@
   function recalcReceipt() {
     const customer = val('f_customer');
     const cust = customerInfo(customer);
-    const before = cust ? Number(cust.ar_balance || 0) : null;
+    const before = openArBalance(customer);
     const amount = num('f_amount'), disc = num('f_discount');
-    setHint('hint_customer', cust ? `${cust['VAT Registered'] === 'Yes' ? 'VAT-registered · ' : ''}${fmtNum(cust.loads)} loads · last sale ${String(cust.last_sale || '').slice(0, 10)}` : (customer ? 'Not in the AR book — check the spelling' : ''), customer && !cust ? 'warn' : '');
+    setHint('hint_customer', cust
+      ? (cust.in_ar_book ? `${cust['VAT Registered'] === 'Yes' ? 'VAT-registered · ' : ''}${fmtNum(cust.loads)} loads · last sale ${String(cust.last_sale || '').slice(0, 10) || '—'}` : 'Registered customer · outside the top-60 AR sample (balance unknown here)')
+      : (customer ? 'Not in the customer master — check the spelling' : ''), customer && !cust ? 'warn' : '');
     setText('calc_before', before == null ? '—' : fmtUSD(before, 2));
     setText('calc_total', fmtUSD(amount + disc, 2));
     setText('calc_after', before == null ? '—' : fmtUSD(before - amount - disc, 2));
@@ -3083,11 +3097,25 @@
     const bbcTankNegative = company === 'BBConstruction' && /diesel/i.test(val('f_item')) && Number((((SEED.sentinels.fleet_fuel_overtime_auditor || {}).by_model || {}).BBConstruction || {}).diesel_stock_balance_l || 0) < 0;
     setHint('hint_qty', bbcTankNegative ? 'BBConstruction tank is negative — diesel intakes are refused until the history is corrected (m212)' : (litres <= 0 && val('f_qty') ? 'Must be above zero' : ''), bbcTankNegative || (litres <= 0 && val('f_qty')) ? 'crit' : '');
     commonDateChecks([]);
+    if (val('f_ticketno')) dupCheck(company); else setHint('hint_ticket', 'Optional — leave blank for an unnumbered intake', '');
     return { company, equipment, date, type, reading, litres, prev, delta, guard, bbcTankNegative };
   }
 
   function recalcExpense() {
     const method = val('f_method'), supplier = val('f_supplier'), amount = num('f_amount');
+    // bhf_subcatFilter.js: the Subcategory list follows the Category (strict cascade); a category without subs keeps the full list
+    const catNow = val('f_category');
+    const dlSub = $('dl_subcats');
+    if (dlSub && FORM_UI.lastCategory !== catNow) {
+      FORM_UI.lastCategory = catNow;
+      const cats = FORM_UI.catCache || (FORM_UI.catCache = expenseCategories());
+      const hit = cats.find(c => c.category === catNow);
+      const subs = hit && hit.subs.length ? hit.subs : uniqSorted(cats.flatMap(c => c.subs));
+      dlSub.innerHTML = subs.map(s => `<option value="${esc(s)}">`).join('');
+      const subEl = $('f_subcategory');
+      if (subEl && subEl.value && hit && hit.subs.length && !hit.subs.includes(subEl.value)) subEl.value = '';
+      if (subEl) subEl.placeholder = hit && hit.subs.length ? `${hit.subs.length} subcategories under ${catNow}` : 'Subcategory...';
+    }
     setText('calc_total', fmtUSD(amount, 2));
     setText('calc_post', method === 'Cash' ? 'Cash till 5300' : 'Supplier credit 4011');
     const ap = openApBalance(supplier);
@@ -3129,8 +3157,9 @@
       if (STATE.modalForm === 'pricerule') {
         const up = num('f_unitprice'), tp = num('f_transunitprice'), q1 = num('f_qty1'), a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
         setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}`);
-        setText('calc_tr', q1 > 0 ? `${q1}m³ → ${fmtUSD(up + a1 + tp + ta1, 2)}` : '—');
-        setText('calc_vat', q2 > 0 ? `${q2}m³ → ${fmtUSD(up + a2 + tp + ta2, 2)}` : '—');
+        // m71 / m73: Total N = Price × Truck Size N + Adjustment N (per load); transport total the same way
+        setText('calc_tr', q1 > 0 ? `${q1} ${val('f_uom') || 'm³'} → ${fmtUSD(q1 * up + a1, 2)}${tp ? ' + trans ' + fmtUSD(q1 * tp + ta1, 2) : ''}` : '—');
+        setText('calc_vat', q2 > 0 ? `${q2} ${val('f_uom') || 'm³'} → ${fmtUSD(q2 * up + a2, 2)}${tp ? ' + trans ' + fmtUSD(q2 * tp + ta2, 2) : ''}` : '—');
         setText('calc_total', fmtUSD(up + tp, 2));
         return { up, tp };
       }
@@ -3159,15 +3188,19 @@
   function wireModalLiveCalc() {
     const body = $('modalBody');
     if (!body) return;
-    FORM_UI.priceManual = false; FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.lastCompany = val('f_company');
+    FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false;
+    FORM_UI.lastCompany = val('f_company'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
     body.querySelectorAll('input, select').forEach(el => {
       const handler = () => {
         if (el.id === 'f_unitprice') FORM_UI.priceManual = true;
+        if (el.id === 'f_transunitprice') FORM_UI.transManual = true;
+        if (el.id === 'f_method') FORM_UI.methodManual = true;
         if (el.id === 'f_qty') FORM_UI.qtyManual = !!el.value;
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
         // a new counterparty / product / site re-runs the agreement lookup; sale type, date or quantity never override a typed price
-        if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_company'].includes(el.id)) FORM_UI.priceManual = false;
+        if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_company'].includes(el.id)) { FORM_UI.priceManual = false; FORM_UI.transManual = false; }
+        if (el.id === 'f_customer') FORM_UI.methodManual = false;
         recalcForm();
       };
       el.addEventListener('input', handler);
@@ -3219,7 +3252,7 @@
       if (c.disc > c.mat && c.mat > 0) errors.push('Discount exceeds the material subtotal.');
       if (c.mat > 0 && c.disc > c.mat * 0.2 && !notes) errors.push('Discount above 20% of material needs a note.');
       if (c.vatReg && !val('f_vatinvoice') && c.method !== 'Cash' && val('f_method') !== 'Cash') { /* VAT invoice number optional — the book links it later */ }
-      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: date, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : '', truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, unit_price: c.up, price: c.mat, trans_unit_price: c.tp, trans_price: c.tr, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!dup };
+      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: date, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : '', truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!dup };
     } else if (f === 'raw') {
       const ticket = val('f_ticketno');
       if (!ticket) errors.push('Ticket number is required.');
@@ -3260,15 +3293,20 @@
     } else if (f === 'pricerule') {
       const prod = val('f_product'), rt = val('f_ruletype') || 'Sales (Delivery)';
       if (!prod) errors.push('Product / Grade is required.');
-      record = { ...base, name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod}`, rule_type: rt, customer: val('f_customer'), supplier: val('f_supplier'), site: val('f_site'), product: prod, unit: val('f_uom') || 'm³', rate_per: val('f_rateper') || 'm³', unit_price: round2(num('f_unitprice')), trans_unit_price: round2(num('f_transunitprice')), indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null, qty1: val('f_qty1') ? num('f_qty1') : null, adj1: round2(num('f_adj1')), trans_adj1: round2(num('f_transadj1')), qty2: val('f_qty2') ? num('f_qty2') : null, adj2: round2(num('f_adj2')), trans_adj2: round2(num('f_transadj2')), start_date: date, end_date: val('f_enddate') || '' };
+      const up0 = round2(num('f_unitprice')), tp0 = round2(num('f_transunitprice'));
+      const q1v = val('f_qty1') ? num('f_qty1') : null, q2v = val('f_qty2') ? num('f_qty2') : null;
+      if (val('f_enddate') && val('f_enddate') < date) errors.push('End Date cannot be before the Start Date.');
+      if (/Sales/.test(rt) && !val('f_customer')) errors.push('A Sales rule needs the Customer it is agreed with.');
+      if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) errors.push('A quarry Purchase / Transport rule needs the Supplier or the Site.');
+      record = { ...base, name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod}`, rule_type: rt, customer: val('f_customer'), supplier: val('f_supplier'), site: val('f_site'), product: prod, unit: val('f_uom') || 'm³', rate_per: val('f_rateper') || 'm³', unit_price: up0, price: up0, trans_unit_price: tp0, indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null, qty1: q1v, adj1: round2(num('f_adj1')), total1: q1v != null ? round2(q1v * up0 + num('f_adj1')) : null, trans_adj1: round2(num('f_transadj1')), qty2: q2v, adj2: round2(num('f_adj2')), total2: q2v != null ? round2(q2v * up0 + num('f_adj2')) : null, trans_adj2: round2(num('f_transadj2')), start_date: date, end_date: val('f_enddate') || '' };
     } else if (f === 'vatinvoice') {
       const inv = val('f_ticketno'), cust = val('f_customer'), net = round2(num('f_amount')), vat = round2(num('f_vat'));
       if (!inv || !cust || !(net > 0)) errors.push('Invoice Serial No., Customer, and Net Amount are required.');
-      record = { ...base, name: inv, invoice_no: inv, rep_date: val('f_repdate') || date, customer: cust, net_amount: net, vat_amount: vat, total_ttc: round2(net + vat), status: val('f_status') || 'Open' };
+      record = { ...base, name: inv, invoice_no: inv, rep_date: val('f_repdate') || date, start_date: date, end_date: date, customer: cust, net_amount: net, vat_amount: vat, total_ttc: round2(net + vat), status: val('f_status') || 'Open' };
     } else if (f === 'creditterm') {
       const cust = val('f_customer'), days = num('f_days');
       if (!cust) errors.push('Customer is required.');
-      record = { ...base, name: `${cust} · Net ${days}d`, customer: cust, payment_days: days, credit_limit: round2(num('f_amount')), start_date: date };
+      record = { ...base, name: `${cust} · Net ${days}d`, customer: cust, payment_days: days, credit_days: days, credit_limit: round2(num('f_amount')), start_date: date };
     } else if (f === 'customer') {
       const nm = val('f_customer');
       if (!nm) errors.push('Customer Name is required.');
@@ -3304,26 +3342,31 @@
     } else if (f === 'freelance' || f === 'employment') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
       if (!st || !(amt > 0)) errors.push('Staff Name and Salary/Rate > 0 are required.');
-      record = { ...base, name: `${f === 'employment' ? 'EMP' : 'FRL'} ${st}`, staff: st, role: val('f_role'), pay_type: val('f_paytype'), base_salary: amt, amount: amt, start_date: date, status: 'Active' };
+      const payType = val('f_paytype');
+      // seed / SQLite keys (type · salary_usd · daily_rate) beside the form keys so the registers and mfg.db read both
+      record = { ...base, name: `${f === 'employment' ? 'EMP' : 'FRL'} ${st}`, staff: st, role: val('f_role'), pay_type: payType, type: f === 'employment' ? (payType === 'Daily' ? 'Daily' : 'Regular') : 'Freelance', salary_usd: /Monthly/i.test(payType) ? amt : 0, daily_rate: /Daily/i.test(payType) ? amt : 0, base_salary: amt, amount: amt, start_date: date, status: 'Active' };
     } else if (f === 'logistics') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
       if (!st || !(amt > 0)) errors.push('Staff Member and Allowance > 0 are required.');
-      const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].filter(d => $('f_day_' + d) && $('f_day_' + d).checked).length;
-      record = { ...base, name: `ALLOW ${date} ${st}`, staff: st, site: val('f_site'), days_count: days, usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), amount: amt };
+      const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      const dayFlags = Object.fromEntries(dayKeys.map(d => [d, !!($('f_day_' + d) && $('f_day_' + d).checked)]));
+      const days = dayKeys.filter(d => dayFlags[d]).length;
+      record = { ...base, name: `ALLOW ${date} ${st}`, staff: st, site: val('f_site'), equipment: '', days_count: days, working_days: dayKeys.filter(d => dayFlags[d]).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', '), ...dayFlags, start_date: date, end_date: date, usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), daily_usd: days ? round2(amt / days) : amt, amount: amt };
     } else if (f === 'triprate') {
       const nm = val('f_name') || val('f_site'), amt = round2(num('f_amount'));
       if (!nm || !(amt > 0)) errors.push('Route/Site and Rate > 0 are required.');
-      record = { ...base, name: nm, site: val('f_site'), category: val('f_category') || 'Truck', rate_usd: amt };
+      record = { ...base, name: nm, site: val('f_site'), region: val('f_site'), category: val('f_category') || 'Truck', rate_usd: amt, amount: amt, start_date: date };
     } else if (f === 'treasury') {
       const trt = val('f_trtype') || 'loan', cp = val('f_counterparty'), amt = round2(num('f_amount'));
       if (!cp || !(amt > 0)) errors.push('Counterparty and Amount > 0 are required.');
       crKey = trt === 'loan_settlement' ? 'loan_settlements' : (trt === 'external' ? 'external_movements' : (trt === 'conversion' ? 'conversions' : 'loans'));
-      record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: val('f_direction') || 'Inflow', from_currency: 'LBP → USD', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, amount: amt, balance: amt, reference: val('f_reference') };
+      const dirn = val('f_direction') || 'Inflow';
+      record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: dirn, method: dirn, type: trt === 'loan_settlement' ? 'Repayment' : (trt === 'loan' ? 'Drawdown' : ''), from_currency: trt === 'conversion' ? 'LBP' : 'USD', to_currency: trt === 'conversion' ? 'USD' : '', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, exchange_rate: 90000, amount: amt, principal: amt, interest_rate: 0, balance: amt, start_date: date, reference: val('f_reference') };
     } else if (f === 'jv') {
       const jvt = val('f_jvtype') || 'distribution', st = val('f_site'), pt = val('f_counterparty');
       if (!st || !pt) errors.push('JV Site and JV Partner are required.');
       crKey = jvt === 'partnership' ? 'jv_partnerships' : 'jv_distributions';
-      record = { ...base, name: `JV ${st} · ${pt}`, site: st, partner: pt, share_pct: num('f_share') || 50, amount: round2(num('f_amount')) };
+      record = { ...base, name: `JV ${st} · ${pt}`, site: st, partner: pt, share_pct: num('f_share') || 50, percentage: num('f_share') || 50, basis: 'Revenue', amount: round2(num('f_amount')), difference: 0, total: round2(num('f_amount')), rep_date: date };
     }
     return { errors, record, crKey };
   }
@@ -3437,7 +3480,10 @@
       const sBtn = $('dynSaveModalBtn');
       if (cBtn) cBtn.addEventListener('click', () => closeEntryModal());
       if (sBtn) sBtn.addEventListener('click', saveModalEntry);
-      body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') { e.preventDefault(); saveModalEntry(); } });
+      if (!body.dataset.enterWired) { // #modalBody persists across opens — bind once or Enter posts N times after N opens
+        body.dataset.enterWired = '1';
+        body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list) { e.preventDefault(); saveModalEntry(); } });
+      }
     }
     if (modal) { modal.hidden = false; modal.scrollTop = 0; }
     document.body.classList.add('modal-open');
@@ -3449,6 +3495,60 @@
     const modal = $('entryModal');
     if (modal) modal.hidden = true;
     document.body.classList.remove('modal-open');
+    if (STATE.renderPending) { STATE.renderPending = false; renderApp(); }
+  }
+
+  // ---- record inspector (read-only field sheet for any register row) ---------------
+  const INSPECT_LABELS = { sales_tickets: 'Sales Ticket', raw_purchases: 'Raw Material Ticket', fuel_intakes: 'Fuel Intake', expenses: 'Expense', receipts: 'Customer Settlement', settlements: 'Supplier Settlement', salaries: 'Salary Payment', price_rules: 'Price Agreement' };
+  function inspectorValue(key, v) {
+    if (v == null || v === '') return '—';
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
+    if (typeof v === 'object') return JSON.stringify(v);
+    if (typeof v === 'number') {
+      if (/price|cost|amount|total|vat|discount|tip|limit|salary|balance|adj|principal|value|change|rate_usd|daily_usd/.test(key) && !/rate$|pct|factor|ton_factor|exchange/.test(key)) return fmtUSD(v, 2);
+      return fmtNum(v, Number.isInteger(v) ? 0 : 2);
+    }
+    return String(v);
+  }
+  function showRecordInspector(key, id) {
+    const row = (SEED.records[key] || []).find(r => r && String(r.id) === String(id)) || (STATE.customRecords[key] || []).find(r => r && String(r.id) === String(id));
+    if (!row) { toast('Row not found in this snapshot', 'err'); return; }
+    let panel = $('recordInspector');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'recordInspector';
+      panel.className = 'modal-backdrop';
+      panel.innerHTML = '<div class="modal-card inspector-card" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle"><div class="modal-header"><div><span class="modal-eyebrow" id="inspectorEyebrow"></span><h2 id="inspectorTitle"></h2></div><button type="button" class="modal-close-btn" id="inspectorCloseBtn" aria-label="Close">✕</button></div><div class="modal-body" id="inspectorBody"></div></div>';
+      document.body.appendChild(panel);
+      panel.addEventListener('click', e => { if (e.target === panel) closeRecordInspector(); });
+      $('inspectorCloseBtn').addEventListener('click', closeRecordInspector);
+    }
+    const hidden = new Set(['id', 'customer_id', 'sale_type_code', 'transport_by_code', 'fuel_type_code', 'rule_type_code', 'rate_per_code', 'category_code', 'ownership_code', 'entered_by_email']);
+    const keys = Object.keys(row).filter(k => !hidden.has(k) && row[k] !== '' && row[k] != null && !(typeof row[k] === 'number' && row[k] === 0 && /tip|discount|tier|adj|difference/.test(k)));
+    const app = isAppRecord(row);
+    $('inspectorEyebrow').textContent = `${INSPECT_LABELS[key] || key.replace(/_/g, ' ')} · ${app ? 'entered in this web app' : 'book row (Dataverse snapshot ' + SEED_DATE + ')'}`;
+    $('inspectorTitle').textContent = row.name || row.ticket_no || id;
+    $('inspectorBody').innerHTML = `
+      <div class="inspector-grid">${keys.map(k => `<div class="inspector-cell"><small>${esc(k.replace(/_/g, ' '))}</small><b>${esc(inspectorValue(k, row[k]))}</b></div>`).join('')}</div>
+      <div class="modal-foot">
+        <span class="form-note">${app ? `Posted by <b>${esc(row.entered_by || '—')}</b> · ${esc(row.entered_at || '')}${row.voided ? ' · <b>VOIDED</b>' : ''}` : 'Book rows are corrected in the workbook / Dataverse, never here.'}</span>
+        <div>
+          ${app && !row.voided && canVoid() ? `<button type="button" class="btn" id="inspectorVoidBtn">Void this entry</button>` : ''}
+          <button type="button" class="btn btn-brass" id="inspectorDoneBtn">Close</button>
+        </div>
+      </div>`;
+    $('inspectorDoneBtn').addEventListener('click', closeRecordInspector);
+    const vb = $('inspectorVoidBtn');
+    if (vb) vb.addEventListener('click', () => { if (vb.dataset.armed === '1') { closeRecordInspector(); voidRecord(key, id); } else { vb.dataset.armed = '1'; vb.textContent = 'Confirm void?'; vb.classList.add('armed'); } });
+    panel.hidden = false;
+    document.body.classList.add('modal-open');
+  }
+  function closeRecordInspector() {
+    const panel = $('recordInspector');
+    if (panel) panel.hidden = true;
+    const m = $('entryModal');
+    if (!m || m.hidden) document.body.classList.remove('modal-open');
     if (STATE.renderPending) { STATE.renderPending = false; renderApp(); }
   }
 
@@ -3508,13 +3608,15 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '4.0'
+      appVersion: '4.1'
     };
   }
 
   function uiBusy() {
     const m = $('entryModal');
     if (m && !m.hidden) return true;
+    const ins = $('recordInspector');
+    if (ins && !ins.hidden) return true;
     if (STATE.showAddUserForm) return true;
     const a = document.activeElement;
     return !!(a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName) && a.id !== 'aiInput');
@@ -3915,7 +4017,11 @@
   function contextFormForView(view, user) {
     user = user || activeUser();
     const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', tables: 'pricerule' };
-    const preferred = map[view] || 'sales';
+    let preferred = map[view] || 'sales';
+    if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
+      const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
+      if (meta && meta.form && FORM_TITLES[meta.form]) preferred = meta.form;
+    }
     if (canEnterForm(preferred, user)) return preferred;
     if (canEnterForm('sales', user)) return 'sales';
     if (canEnterForm('receipt', user)) return 'receipt';
@@ -4041,8 +4147,8 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn }) : renderOverview(); break;
-      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm }) : renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE }) : renderOverview(); break;
+      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;
       case 'raw': container.innerHTML = renderRaw(); break;
@@ -4149,10 +4255,21 @@
       if (getAllowedCompanyKeys(activeUserRow).includes(targetCo)) { STATE.company = targetCo; renderApp(); }
       else toast('Your seat is not scoped to that entity', 'err');
     }));
-    container.querySelectorAll('[data-nav-jump]').forEach(btn => btn.addEventListener('click', () => {
-      const stmt = btn.getAttribute('data-stmt-jump');
-      if (stmt) STATE.activeStatement = stmt;
-      setView(btn.getAttribute('data-nav-jump'));
+    container.querySelectorAll('[data-nav-jump]').forEach(btn => {
+      const go = () => {
+        const stmt = btn.getAttribute('data-stmt-jump');
+        if (stmt) STATE.activeStatement = stmt;
+        setView(btn.getAttribute('data-nav-jump'));
+      };
+      btn.addEventListener('click', go);
+      if (btn.getAttribute('role') === 'button') btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    // Record inspector: click any register row to see every field of that row (book or app-entered)
+    container.querySelectorAll('tr.rrow[data-rid]').forEach(tr => tr.addEventListener('click', e => {
+      if (e.target.closest('button, a, input, select')) return;
+      const sel = String(window.getSelection && window.getSelection() || '');
+      if (sel.length > 1) return; // the user is copying text, not opening the row
+      showRecordInspector(tr.getAttribute('data-rkey'), tr.getAttribute('data-rid'));
     }));
     container.querySelectorAll('[data-open-modal]').forEach(btn => btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-open-modal'))));
     container.querySelectorAll('[data-stmt]').forEach(card => {
@@ -4317,6 +4434,20 @@
   function init() {
     applyCustomRecordsToSeed();
 
+    // Period picker labels follow the snapshot (the DAX windows live in build/seed_from_dataverse.py)
+    const periodSelInit = $('periodSelect');
+    const gp = ((SEED.models['manufacturing-group'] || {}).periods) || {};
+    if (periodSelInit) Array.from(periodSelInit.options).forEach(o => { const lbl = gp[o.value] && gp[o.value].label; if (lbl) o.textContent = lbl; });
+    const snapEl = $('railRlsScope');
+    if (snapEl) snapEl.title = `Snapshot generated ${String(SEED.generated_at || '')}`;
+
+    // Mobile ↔ desktop titles follow the viewport (debounced; never while a form is open)
+    let lastMobile = window.innerWidth <= 860, resizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { const nowMobile = window.innerWidth <= 860; if (nowMobile !== lastMobile) { lastMobile = nowMobile; safeRender(); } }, 180);
+    });
+
     const inviteEmail = PARAMS.get('email');
     const invitePin = PARAMS.get('pin');
     const savedEmail = localStorage.getItem('isabi_mfg_active_email');
@@ -4427,6 +4558,8 @@
     // Keyboard: Escape closes the modal / drawer / rail; Ctrl+K focuses search
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
+        const ins = $('recordInspector');
+        if (ins && !ins.hidden) { closeRecordInspector(); return; }
         const m = $('entryModal');
         if (m && !m.hidden) { closeEntryModal(); return; }
         if (askDrawer && askDrawer.classList.contains('open')) { closeDrawer(); return; }

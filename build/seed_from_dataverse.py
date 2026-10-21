@@ -786,7 +786,7 @@ def fetch_dataverse_records():
     vi_raw = safe_get_fmt(
         "bhf_vatinvoice",
         f"$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_vatinvoiceid,bhf_name,bhf_invoiceno,_bhf_customer_value,bhf_startdate,bhf_enddate,bhf_notes,_owningbusinessunit_value",
+        "&$select=bhf_vatinvoiceid,bhf_name,bhf_invoiceno,_bhf_customer_value,bhf_invoicedate,bhf_startdate,bhf_enddate,bhf_netamount,bhf_vatamount,bhf_notes,_owningbusinessunit_value",
         by_logical=True,
     )
     vat_invoices = []
@@ -795,6 +795,9 @@ def fetch_dataverse_records():
         cname = fmt_val(vi, "_bhf_customer_value", "")
         if cname:
             mfg_cust_names.add(cname)
+        net = float(vi.get("bhf_netamount") or 0)
+        vat = float(vi.get("bhf_vatamount") or 0)
+        inv_date = str(vi.get("bhf_invoicedate") or vi.get("bhf_enddate") or vi.get("bhf_startdate") or "")[:10]   # Power BI VATInvoices[Date] (m18a t_vatinvoices)
         vat_invoices.append({
             "id": vi["bhf_vatinvoiceid"],
             "name": vi.get("bhf_name") or "",
@@ -802,8 +805,12 @@ def fetch_dataverse_records():
             "invoice_no": vi.get("bhf_invoiceno") or vi.get("bhf_name") or "",
             "customer_id": vi.get("_bhf_customer_value") or "",
             "customer": cname,
+            "date": inv_date,
             "start_date": str(vi.get("bhf_startdate") or "")[:10],
             "end_date": str(vi.get("bhf_enddate") or "")[:10],
+            "net_amount": round(net, 2),
+            "vat_amount": round(vat, 2),
+            "total_ttc": round(net + vat, 2),
             "notes": vi.get("bhf_notes") or "",
         })
     print(f"  Credit Terms: {len(credit_terms)} · VAT Invoices: {len(vat_invoices)}", flush=True)
@@ -1614,8 +1621,68 @@ def fetch_dataverse_records():
     }
 
 
+def _preserve_app_state(db_path):
+    """Rows the web entry desk wrote into mfg.db (source = 'app'), the edited team seats and the sign-in log must
+    survive a rebuild — the snapshot only carries Dataverse / Power BI data."""
+    keep = {"tables": {}, "users": [], "auth_sessions": []}
+    if not db_path.exists():
+        return keep
+    try:
+        old = sqlite3.connect(str(db_path))
+        old.row_factory = sqlite3.Row
+        names = [r[0] for r in old.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()]
+        for t in names:
+            cols = {r[1] for r in old.execute(f"PRAGMA table_info({t})").fetchall()}
+            if t == "users":
+                keep["users"] = [dict(r) for r in old.execute("SELECT * FROM users").fetchall()]
+            elif t == "auth_sessions":
+                keep["auth_sessions"] = [dict(r) for r in old.execute("SELECT * FROM auth_sessions").fetchall()]
+            elif "source" in cols:
+                rows = [dict(r) for r in old.execute(f"SELECT * FROM {t} WHERE source = 'app'").fetchall()]
+                if rows:
+                    keep["tables"][t] = rows
+        old.close()
+    except Exception as e:  # a corrupt / locked db must never block the rebuild
+        print(f"  [WARN] could not read app state from the old mfg.db: {e}", flush=True)
+    n = sum(len(v) for v in keep["tables"].values())
+    print(f"  Preserving {n} app-entered rows across {len(keep['tables'])} tables, {len(keep['users'])} seats, {len(keep['auth_sessions'])} sessions", flush=True)
+    return keep
+
+
+def _restore_app_state(cur, keep):
+    app_cols = (("source", "TEXT DEFAULT ''"), ("entered_by", "TEXT DEFAULT ''"), ("entered_at", "TEXT DEFAULT ''"),
+                ("voided", "INTEGER DEFAULT 0"), ("voided_by", "TEXT DEFAULT ''"), ("voided_at", "TEXT DEFAULT ''"), ("notes", "TEXT DEFAULT ''"))
+    for t, rows in keep["tables"].items():
+        cols = {r[1] for r in cur.execute(f"PRAGMA table_info({t})").fetchall()}
+        if not cols:
+            continue
+        for col, ddl in app_cols:
+            if col not in cols:
+                cur.execute(f"ALTER TABLE {t} ADD COLUMN {col} {ddl}")
+                cols.add(col)
+        for row in rows:
+            valid = {k: v for k, v in row.items() if k in cols}
+            if not valid:
+                continue
+            cur.execute(f"INSERT OR REPLACE INTO {t} ({','.join(valid)}) VALUES ({','.join('?' for _ in valid)})", tuple(valid.values()))
+    ucols = {r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()}
+    for col, ddl in (("pin_code", "TEXT DEFAULT '1111'"), ("last_login_at", "TEXT DEFAULT ''")):
+        if col not in ucols:
+            cur.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
+            ucols.add(col)
+    for u in keep["users"]:
+        valid = {k: v for k, v in u.items() if k in ucols}
+        cur.execute(f"INSERT OR REPLACE INTO users ({','.join(valid)}) VALUES ({','.join('?' for _ in valid)})", tuple(valid.values()))
+    if keep["auth_sessions"]:
+        cur.execute("CREATE TABLE IF NOT EXISTS auth_sessions (id TEXT PRIMARY KEY, user_id TEXT, email TEXT, full_name TEXT, role TEXT, companies TEXT, device TEXT, logged_in_at TEXT)")
+        for s in keep["auth_sessions"]:
+            cur.execute("INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?)",
+                        (s.get("id"), s.get("user_id"), s.get("email"), s.get("full_name"), s.get("role"), s.get("companies"), s.get("device"), s.get("logged_in_at")))
+
+
 def build_sqlite_and_postgres(snapshot):
     db_path = DATA_DIR / "mfg.db"
+    keep = _preserve_app_state(db_path)
     if db_path.exists():
         db_path.unlink()
     conn = sqlite3.connect(str(db_path))
@@ -1881,6 +1948,7 @@ def build_sqlite_and_postgres(snapshot):
         cur.execute("INSERT OR IGNORE INTO salary_payments VALUES (?,?,?,?,?,?,?,?)",
                     (sl["id"], sl["name"], sl["date"], sl["payroll_month"], sl["company"], sl["staff"], sl["method"], sl["amount"]))
 
+    _restore_app_state(cur, keep)
     conn.commit()
     conn.close()
     print(f"  SQLite DB created -> {db_path} ({db_path.stat().st_size // 1024} KB)", flush=True)
@@ -1911,13 +1979,29 @@ def main():
         "sentinels": sentinels,
     }
 
-    snap_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
+    # The browser bundle / JSON snapshot drop empty values and the lookup GUID / option-set code twins
+    # (`customer_id`, `rule_type_code`, …) the web app never reads — 2.6 MB less to parse on a phone.
+    # The SQLite loader indexes the FULL dicts, so it gets the uncompacted snapshot.
+    def _compact_row(row):
+        out = {}
+        for k, v in row.items():
+            if k != "id" and (k.endswith("_id") or k.endswith("_code")):
+                continue
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            out[k] = v
+        return out
+
+    compact = dict(snapshot)
+    compact["records"] = {k: ([_compact_row(r) for r in v] if isinstance(v, list) else v) for k, v in records.items()}
+
+    snap_path.write_text(json.dumps(compact, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)
 
     js_path = JS_DIR / "seed_data.js"
     js_path.write_text(
         "// Auto-generated from live Manufacturing Operations Dataverse + Semantic Models\n"
-        "window.MFG_SEED = " + json.dumps(snapshot, ensure_ascii=False) + ";\n",
+        "window.MFG_SEED = " + json.dumps(compact, ensure_ascii=False, separators=(",", ":")) + ";\n",
         encoding="utf-8",
     )
     print(f"  Browser bundle saved -> {js_path} ({js_path.stat().st_size // 1024} KB)", flush=True)

@@ -235,6 +235,8 @@
   }
 
   // ==================== PRICE AGREEMENT & TIER 1/2 ENGINE (m70 / m73 / m103 / m106 / m125 / m136) ====================
+  // A tier's Adjustment is a PER-LOAD amount (bhf_total1 = Price × Truck Size 1 + Adjustment 1) that rides into the
+  // ticket's Material Total (bhf_price = qty × unit price + adjustment − discount) — the unit price itself never changes.
   function matchTier(rule, truckCap) {
     if (!rule) return { tier: 0, qty: truckCap, adj: 0, transAdj: 0 };
     const q1 = rule.qty1 != null && rule.qty1 !== '' ? Number(rule.qty1) : null;
@@ -508,9 +510,9 @@
         </div>
         <div class="live-calc">
           <div><small>Base Material + Trans</small><b id="calc_mat">$0.00 / u</b></div>
-          <div><small>Tier 1 Effective</small><b id="calc_tr">—</b></div>
-          <div><small>Tier 2 Effective</small><b id="calc_vat">—</b></div>
-          <div><small>Delivered Total / u</small><b id="calc_total">$0.00</b></div>
+          <div><small>Tier 1 Total per Load (bhf_total1)</small><b id="calc_tr">—</b></div>
+          <div><small>Tier 2 Total per Load (bhf_total2)</small><b id="calc_vat">—</b></div>
+          <div><small>Delivered Unit Price Total</small><b id="calc_total">$0.00</b></div>
         </div>
       `;
     }

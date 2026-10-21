@@ -127,13 +127,16 @@ def ensure_auth_schema():
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     for u in DEFAULT_USERS:
         uid, fname, email, pin, role, comps, pbi, stmts, status, llogin = u
-        cur.execute("SELECT id, pin_code FROM users WHERE LOWER(email) = LOWER(?)", (email,))
+        cur.execute("SELECT id, pin_code, last_login_at FROM users WHERE LOWER(email) = LOWER(?)", (email,))
         existing = cur.fetchone()
         if existing:
-            cur.execute(
-                "UPDATE users SET full_name=?, pin_code=?, role=?, companies=?, pbi_access=?, statements_access=?, status=? WHERE LOWER(email)=LOWER(?)",
-                (fname, pin, role, comps, pbi, stmts, status, email),
-            )
+            # Never overwrite a seat the owner has edited in the web app (PIN / role / scope / suspension) on a
+            # server restart — only back-fill a seat that still carries the schema placeholder PIN and has never
+            # signed in (a fresh build inserts users without a PIN, so the column default '1111' lands on everyone).
+            cur_pin = (existing[1] or "").strip()
+            never_logged = not (existing[2] or "").strip()
+            if not cur_pin or (cur_pin == "1111" and pin != "1111" and never_logged):
+                cur.execute("UPDATE users SET pin_code=? WHERE LOWER(email)=LOWER(?)", (pin, email))
         else:
             cur.execute(
                 "INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -212,13 +215,15 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            if company and company not in ("all", "manufacturing-group"):
+            tcols = {r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+            order = "ORDER BY date DESC" if "date" in tcols else ("ORDER BY start_date DESC" if "start_date" in tcols else "ORDER BY rowid DESC")
+            if company and company not in ("all", "manufacturing-group") and "company" in tcols:
                 rows = cur.execute(
-                    f"SELECT * FROM {table} WHERE lower(company) = lower(?) LIMIT ?",
+                    f"SELECT * FROM {table} WHERE lower(company) = lower(?) {order} LIMIT ?",
                     (company, limit),
                 ).fetchall()
             else:
-                rows = cur.execute(f"SELECT * FROM {table} LIMIT ?", (limit,)).fetchall()
+                rows = cur.execute(f"SELECT * FROM {table} {order} LIMIT ?", (limit,)).fetchall()
             conn.close()
             return self._send_json({"ok": True, "table": table, "rows": [dict(r) for r in rows]})
 
