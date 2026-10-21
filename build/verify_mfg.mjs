@@ -478,6 +478,7 @@ try {
     const unlockedDirect = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
 
     // Clean up test enrolments and test blank-email + unique-PIN sign-in
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
     T.selectEnrolSeat('husseinbdeir@bhfirms.com'); await T.clearEnrolment();
     T.selectEnrolSeat('zeinabrkein@bhfirms.com'); await T.clearEnrolment();
     T.signOut();

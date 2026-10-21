@@ -235,6 +235,8 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 elif not isinstance(raw_ft, list):
                     d["face_thumbs"] = []
                 d["face_required"] = bool(d.get("face_required"))
+                if not d["face_samples"] and d.get("face_updated_at"):
+                    d["face_cleared"] = True
                 rows.append(d)
             sessions = [dict(r) for r in conn.execute("SELECT * FROM auth_sessions ORDER BY logged_in_at DESC LIMIT 25").fetchall()]
             conn.close()
