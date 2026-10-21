@@ -435,6 +435,8 @@ try {
   let stOk = 0;
   for (const c of codes) { await evaluate(`document.querySelector('.stmt-card[data-stmt="${c}"]').click()`); await sleep(120); const n = await evaluate(`document.querySelectorAll('#printableSheet table').length`); if (n) stOk++; }
   stOk === 22 ? pass('statements · 22 sheets render') : fail('statements', `${stOk}/22`);
+  const rdlParity = await evaluate(`(() => { document.querySelector('.stmt-card[data-stmt="08"]').click(); const salesParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(','); document.querySelector('.stmt-card[data-stmt="20"]').click(); const invParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(','); const cats = document.querySelectorAll('[data-rdl-cat]').length; const hasViewBtn = !!document.getElementById('rdlViewReportBtn'); const titleTxt = (document.querySelector('#printableSheet .rdl-title-text') || {}).textContent || ''; return { ok: salesParams === 'from,to,customer,product,site' && invParams === 'invoiceNo' && cats === 8 && hasViewBtn && titleTxt.includes('Sales Invoice'), salesParams, invParams, cats, titleTxt }; })()`);
+  rdlParity.ok ? pass('statements · RDL Paginated Suite parity (8 category pills, per-report parameter bar & bilingual headers)', `${rdlParity.salesParams} | ${rdlParity.invParams}`) : fail('statements RDL parity', JSON.stringify(rdlParity));
 
   // 7b. Biometric Face ID (Attendance PWA parity: 128-d models, 3-pose enrolment, duplicate guard, 2FA step-up, 3-frame biometric sign-in)
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(250);

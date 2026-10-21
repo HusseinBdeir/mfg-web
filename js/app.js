@@ -3239,8 +3239,8 @@
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button type="button" class="btn btn-brass" data-pbi-jump="p12_payroll">📊 Open P12 · Payroll BI Studio</button>
-            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="19">🖨 Print Payroll A4 Statement (#19)</button>
-            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="15">🖨 Driver Overtime Sheet (#15)</button>
+            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="10">🖨 Payroll Register RDL (#10)</button>
+            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="17">🖨 Driver Statement RDL (#17)</button>
             ${canEnterForm('salary') ? '<button type="button" class="btn btn-primary" data-open-modal="salary">+ Pay Salary</button>' : ''}
             ${canEnterForm('attendance') ? '<button type="button" class="btn" data-open-modal="attendance">+ Log Attendance</button>' : ''}
           </div>
@@ -3492,7 +3492,7 @@
       <div class="panel-card" id="glPanel">
         <div class="table-toolbar">
           ${searchBox('Search GL code, account, class...')}
-          <div style="display:flex;gap:6px">${exportBtn('glPanel', 'Trial_Balance')}<button class="btn" data-nav-jump="statements" data-stmt-jump="02">Print Official Trial Balance PDF →</button></div>
+          <div style="display:flex;gap:6px">${exportBtn('glPanel', 'Trial_Balance')}<button class="btn" data-nav-jump="statements" data-stmt-jump="05">Print Official Trial Balance RDL (#05) →</button></div>
         </div>
         <div class="table-wrap">
           <table class="ledger-table">
@@ -3570,28 +3570,28 @@
   // VIEW 11: 22 PRINTABLE STATEMENTS HUB (A4 / PDF / CSV EXPORT)
   // ==========================================================================
   const STATEMENT_CATALOG = [
-    { code: '01', name: 'Statement of Account (SOA)', cat: 'Financial' },
-    { code: '02', name: 'Trial Balance (Lebanese CoA)', cat: 'Financial' },
-    { code: '03', name: 'Income Statement (Profit & Loss)', cat: 'Financial' },
-    { code: '04', name: 'Balance Sheet (Classes 1–5)', cat: 'Financial' },
-    { code: '05', name: 'Cash Flow & Till Statement', cat: 'Financial' },
-    { code: '06', name: 'Daily Operations Executive Digest', cat: 'Executive' },
-    { code: '07', name: 'Sales & Deliveries Register (TTC)', cat: 'Operations' },
-    { code: '08', name: 'Raw Material & Quarry Intake Register', cat: 'Operations' },
-    { code: '09', name: 'Customer Sub-Account Statement (FIFO)', cat: 'Receivables' },
-    { code: '10', name: 'Supplier & Hauler Sub-Account Statement', cat: 'Payables' },
-    { code: '11', name: 'AR Aging Schedule (Current to 60+d)', cat: 'Receivables' },
-    { code: '12', name: 'AP Open Legs Schedule (Mat / Haul / Exp)', cat: 'Payables' },
-    { code: '13', name: 'Equipment Cost & Tonnage Profitability', cat: 'Fleet' },
-    { code: '14', name: 'Diesel Tank & Fuel Consumption Ledger', cat: 'Fleet' },
-    { code: '15', name: 'Driver Trips & Overtime Allowance Sheet', cat: 'Workforce' },
-    { code: '16', name: 'Quarry & Customer Site Tonnage Summary', cat: 'Operations' },
-    { code: '17', name: 'Active Price & Commission Agreements', cat: 'Commercial' },
-    { code: '18', name: 'VAT 11% Output vs Input Declaration', cat: 'Tax & Compliance' },
-    { code: '19', name: 'Staff Payroll & Monthly Disbursements', cat: 'Workforce' },
-    { code: '20', name: 'Joint Venture (JV) Site Profit Split', cat: 'Commercial' },
-    { code: '21', name: 'Treasury, Loans & Partner Current Acct', cat: 'Treasury' },
-    { code: '22', name: 'Consolidated Group Board Pack', cat: 'Executive' }
+    { code: '01', name: 'Daily Operations', cat: 'Digest' },
+    { code: '02', name: 'Balance Sheet', cat: 'Statements' },
+    { code: '03', name: 'Income Statement', cat: 'Statements' },
+    { code: '04', name: 'Cash Flow Statement', cat: 'Statements' },
+    { code: '05', name: 'Trial Balance', cat: 'General Ledger' },
+    { code: '06', name: 'General Journal', cat: 'General Ledger' },
+    { code: '07', name: 'Sub-Account Statement', cat: 'General Ledger' },
+    { code: '08', name: 'Sales Register', cat: 'Registers' },
+    { code: '09', name: 'Expense Register', cat: 'Registers' },
+    { code: '10', name: 'Payroll Register', cat: 'Registers' },
+    { code: '11', name: 'Raw Material', cat: 'Registers' },
+    { code: '12', name: 'Fuel Log', cat: 'Registers' },
+    { code: '13', name: 'Aged Receivables', cat: 'Counterparties' },
+    { code: '14', name: 'Customer Statement', cat: 'Counterparties' },
+    { code: '15', name: 'Supplier Balances', cat: 'Counterparties' },
+    { code: '16', name: 'Supplier Statement', cat: 'Counterparties' },
+    { code: '17', name: 'Driver Statement', cat: 'Counterparties' },
+    { code: '18', name: 'VAT Return', cat: 'Tax & Recon' },
+    { code: '19', name: 'P&L Reconciliation', cat: 'Tax & Recon' },
+    { code: '20', name: 'Sales Invoice', cat: 'Documents' },
+    { code: '21', name: 'Delivery Ticket', cat: 'Documents' },
+    { code: '22', name: 'Receipt Voucher', cat: 'Documents' }
   ];
 
   function stTable(cols, rows, foot) {
@@ -3821,54 +3821,11 @@
   }
 
   function renderStatements() {
+    if (window.MFG_RDL && typeof window.MFG_RDL.renderStatementsView === 'function') {
+      return window.MFG_RDL.renderStatementsView(SEED, STATE);
+    }
     const st = STATEMENT_CATALOG.find(x => x.code === STATE.activeStatement) || STATEMENT_CATALOG[0];
-    const cats = ['all', 'Workforce', 'Financial', 'Receivables', 'Payables', 'Operations', 'Fleet', 'Commercial', 'Tax & Compliance', 'Treasury', 'Executive'];
-    const catFilter = STATE.stmtCatFilter || 'all';
-    const filteredCatalog = STATEMENT_CATALOG.filter(s => catFilter === 'all' || s.cat === catFilter);
-    return `
-      <div class="cockpit-banner no-print">
-        <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">REPLACES 22 PAGINATED POWER BI RDL REPORTS · ZERO PPU LICENSES</div>
-          <div class="cockpit-title">22 Printable A4 Statements &amp; Exports</div>
-          <div class="cockpit-sub">Every statement follows the entity, period and date basis selected above. Print to A4 PDF or download the sheet as CSV / Excel.</div>
-        </div>
-        <div class="stmt-banner-actions">
-          <select id="stmtQuickSelect" class="pill-select stmt-quick-select" aria-label="Select Statement">
-            ${STATEMENT_CATALOG.map(s => `<option value="${s.code}" ${STATE.activeStatement === s.code ? 'selected' : ''}>RDL-${s.code} · ${esc(s.name)}</option>`).join('')}
-          </select>
-          <button class="btn btn-brass" id="printStmtBtn">🖨 Print / Save A4 PDF</button>
-          <button class="btn btn-outline-bar" id="exportCsvBtn">⬇ Export CSV (Excel)</button>
-        </div>
-      </div>
-
-      <div class="stmt-filter-bar no-print">
-        <div class="chip-bar">
-          ${cats.map(c => {
-            const count = c === 'all' ? STATEMENT_CATALOG.length : STATEMENT_CATALOG.filter(s => s.cat === c).length;
-            const lbl = c === 'all' ? `All Statements (${count})` : (c === 'Workforce' ? `👷 Workforce & Payroll (${count})` : `${c} (${count})`);
-            return `<button type="button" class="filter-chip ${catFilter === c ? 'active' : ''}" data-stmt-cat="${esc(c)}">${esc(lbl)}</button>`;
-          }).join('')}
-        </div>
-        <div style="display:flex;gap:6px">
-          <button type="button" class="btn" style="padding:4px 10px;font-size:11px" data-stmt="19">👷 #19 Staff Payroll &amp; Contracts</button>
-          <button type="button" class="btn" style="padding:4px 10px;font-size:11px" data-stmt="15">🚛 #15 Driver Overtime Sheet</button>
-        </div>
-      </div>
-
-      <div class="stmt-catalog-grid no-print">
-        ${filteredCatalog.map(s => `
-          <div class="stmt-card ${STATE.activeStatement === s.code ? 'active' : ''}" data-stmt="${s.code}" role="button" tabindex="0">
-            <div>
-              <div class="stmt-code">RDL-${s.code} · ${esc(s.cat)}</div>
-              <div class="stmt-name">${esc(s.name)}</div>
-            </div>
-            <span class="mono" style="font-size:11px;color:var(--text-muted)">A4 →</span>
-          </div>
-        `).join('')}
-      </div>
-
-      ${renderStatementSheet(st.code)}
-    `;
+    return renderStatementSheet(st.code);
   }
 
   // ==========================================================================
@@ -7983,21 +7940,25 @@
       showRecordInspector(tr.getAttribute('data-rkey'), tr.getAttribute('data-rid'));
     }));
     container.querySelectorAll('[data-open-modal]').forEach(btn => btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-open-modal'))));
-    container.querySelectorAll('[data-stmt]').forEach(card => {
-      const go = () => {
-        STATE.activeStatement = card.getAttribute('data-stmt');
+    if (STATE.view === 'statements' && window.MFG_RDL && typeof window.MFG_RDL.wireStatementsEvents === 'function') {
+      window.MFG_RDL.wireStatementsEvents(container, SEED, STATE, renderApp);
+    } else {
+      container.querySelectorAll('[data-stmt]').forEach(card => {
+        const go = () => {
+          STATE.activeStatement = card.getAttribute('data-stmt');
+          renderApp();
+          const sheet = $('printableSheet');
+          if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        card.addEventListener('click', go);
+        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      });
+      const stmtSel = $('stmtQuickSelect');
+      if (stmtSel) stmtSel.addEventListener('change', e => {
+        STATE.activeStatement = e.target.value;
         renderApp();
-        const sheet = $('printableSheet');
-        if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
-      card.addEventListener('click', go);
-      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-    });
-    const stmtSel = $('stmtQuickSelect');
-    if (stmtSel) stmtSel.addEventListener('change', e => {
-      STATE.activeStatement = e.target.value;
-      renderApp();
-    });
+      });
+    }
     container.querySelectorAll('th.sortable').forEach(h => h.addEventListener('click', () => {
       const view = h.getAttribute('data-sort-view'), key = h.getAttribute('data-sort-key');
       const cur = STATE.sortBy[view] || {};
@@ -8049,17 +8010,19 @@
       setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = '✕'; btn.classList.remove('armed'); } }, 4000);
     }));
 
-    const printBtn = $('printStmtBtn');
-    if (printBtn) printBtn.addEventListener('click', () => window.print());
-    const csvBtn = $('exportCsvBtn');
-    if (csvBtn) csvBtn.addEventListener('click', () => {
-      const sheet = $('printableSheet');
-      const tables = sheet ? Array.from(sheet.querySelectorAll('table')) : [];
-      if (!tables.length) { toast('Nothing to export', 'err'); return; }
-      const title = (STATEMENT_CATALOG.find(s => s.code === STATE.activeStatement) || {}).name || 'Statement';
-      downloadCsv(`ISABI_MFG_Statement_${STATE.activeStatement}_${STATE.company}_${STATE.period}.csv`, `"${title}","${COMPANY_LABELS[STATE.company]}","${(getKPI().label || 'All-Time')}"\r\n\r\n` + tables.map(tableToCsv).join('\r\n\r\n'));
-      toast('Statement CSV downloaded');
-    });
+    if (!(STATE.view === 'statements' && window.MFG_RDL)) {
+      const printBtn = $('printStmtBtn');
+      if (printBtn) printBtn.addEventListener('click', () => window.print());
+      const csvBtn = $('exportCsvBtn');
+      if (csvBtn) csvBtn.addEventListener('click', () => {
+        const sheet = $('printableSheet');
+        const tables = sheet ? Array.from(sheet.querySelectorAll('table')) : [];
+        if (!tables.length) { toast('Nothing to export', 'err'); return; }
+        const title = (STATEMENT_CATALOG.find(s => s.code === STATE.activeStatement) || {}).name || 'Statement';
+        downloadCsv(`ISABI_MFG_Statement_${STATE.activeStatement}_${STATE.company}_${STATE.period}.csv`, `"${title}","${COMPANY_LABELS[STATE.company]}","${(getKPI().label || 'All-Time')}"\r\n\r\n` + tables.map(tableToCsv).join('\r\n\r\n'));
+        toast('Statement CSV downloaded');
+      });
+    }
 
     // Users view (owner tools + Biometric Face ID Enrolment Studio)
     if (STATE.view === 'users' && FACE_STATE.enrolCamActive && streamAlive()) {
