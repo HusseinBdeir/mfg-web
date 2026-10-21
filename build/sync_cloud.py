@@ -31,13 +31,24 @@ def main():
     custom = cur_doc.get("customRecords") or {}
     for k in ("sales_tickets", "raw_purchases", "receipts", "fuel_intakes", "expenses", "settlements"):
         custom.setdefault(k, [])
+    remote_users = {str(u.get("email", "")).strip().lower(): u for u in (cur_doc.get("users") or []) if isinstance(u, dict)}
+    merged_users = []
+    for u in users_res["users"]:
+        em = str(u.get("email", "")).strip().lower()
+        ru = remote_users.get(em) or {}
+        if not u.get("face_samples") and ru.get("face_samples") and not u.get("face_cleared"):
+            u["face_samples"] = ru["face_samples"]
+            u["face_thumbs"] = ru.get("face_thumbs") or []
+            u["face_required"] = bool(ru.get("face_required", True))
+            u["face_updated_at"] = ru.get("face_updated_at") or ""
+        merged_users.append(u)
     now_iso = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     payload = {
         "key": cloud_key,
         "op": "patch",
         "patch": {
             "mfg_web_store": {
-                "users": users_res["users"],
+                "users": merged_users,
                 "sessions": users_res["sessions"],
                 "customRecords": custom,
                 "updatedAt": now_iso,

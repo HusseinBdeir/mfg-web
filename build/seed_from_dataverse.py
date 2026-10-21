@@ -1625,7 +1625,14 @@ def _restore_app_state(cur, keep):
                 continue
             cur.execute(f"INSERT OR REPLACE INTO {t} ({','.join(valid)}) VALUES ({','.join('?' for _ in valid)})", tuple(valid.values()))
     ucols = {r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()}
-    for col, ddl in (("pin_code", "TEXT DEFAULT '1111'"), ("last_login_at", "TEXT DEFAULT ''")):
+    for col, ddl in (
+        ("pin_code", "TEXT DEFAULT '1111'"),
+        ("last_login_at", "TEXT DEFAULT ''"),
+        ("face_samples", "TEXT DEFAULT '[]'"),
+        ("face_thumbs", "TEXT DEFAULT '[]'"),
+        ("face_required", "INTEGER DEFAULT 0"),
+        ("face_updated_at", "TEXT DEFAULT ''"),
+    ):
         if col not in ucols:
             cur.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
             ucols.add(col)
@@ -1633,10 +1640,10 @@ def _restore_app_state(cur, keep):
         valid = {k: v for k, v in u.items() if k in ucols}
         cur.execute(f"INSERT OR REPLACE INTO users ({','.join(valid)}) VALUES ({','.join('?' for _ in valid)})", tuple(valid.values()))
     if keep["auth_sessions"]:
-        cur.execute("CREATE TABLE IF NOT EXISTS auth_sessions (id TEXT PRIMARY KEY, user_id TEXT, email TEXT, full_name TEXT, role TEXT, companies TEXT, device TEXT, logged_in_at TEXT)")
+        cur.execute("CREATE TABLE IF NOT EXISTS auth_sessions (id TEXT PRIMARY KEY, user_id TEXT, email TEXT, full_name TEXT, role TEXT, companies TEXT, device TEXT, logged_in_at TEXT, method TEXT DEFAULT 'PIN', confidence REAL)")
         for s in keep["auth_sessions"]:
-            cur.execute("INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?)",
-                        (s.get("id"), s.get("user_id"), s.get("email"), s.get("full_name"), s.get("role"), s.get("companies"), s.get("device"), s.get("logged_in_at")))
+            cur.execute("INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (s.get("id"), s.get("user_id"), s.get("email"), s.get("full_name"), s.get("role"), s.get("companies"), s.get("device"), s.get("logged_in_at"), s.get("method") or "PIN", s.get("confidence")))
 
 
 def build_sqlite_and_postgres(snapshot):
@@ -1661,11 +1668,17 @@ def build_sqlite_and_postgres(snapshot):
         id TEXT PRIMARY KEY,
         full_name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
+        pin_code TEXT DEFAULT '1111',
         role TEXT NOT NULL,
         companies TEXT NOT NULL,
         pbi_access TEXT DEFAULT 'full',
         statements_access TEXT DEFAULT 'full',
-        status TEXT DEFAULT 'Active'
+        status TEXT DEFAULT 'Active',
+        last_login_at TEXT DEFAULT '',
+        face_samples TEXT DEFAULT '[]',
+        face_thumbs TEXT DEFAULT '[]',
+        face_required INTEGER DEFAULT 0,
+        face_updated_at TEXT DEFAULT ''
     );
 
     CREATE TABLE products (

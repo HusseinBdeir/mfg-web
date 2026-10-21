@@ -162,8 +162,13 @@ const Face = (() => {
     if (!frame) return null;
     let r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
     if (!r && detector === "ssd") {
-      // Fallback 1: TinyFaceDetector on raw frame
-      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.30 });
+      // Fallback 1a: Low-threshold SSD MobileNet v1 on raw frame (handles dim/backlit faces)
+      const lowSsdOpts = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.24 });
+      r = await faceapi.detectSingleFace(frame, lowSsdOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+    }
+    if (!r && detector === "ssd") {
+      // Fallback 1b: TinyFaceDetector on raw frame
+      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 });
       r = await faceapi.detectSingleFace(frame, fallbackOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
     }
     if (!r) {
@@ -178,8 +183,14 @@ const Face = (() => {
         bctx.filter = "brightness(1.42) contrast(1.22)";
         bctx.drawImage(frame, 0, 0, bw, bh);
         bctx.filter = "none";
-        const boostOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.24 });
-        r = await faceapi.detectSingleFace(bcv, boostOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+        if (detector === "ssd") {
+          const boostSsdOpts = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.22 });
+          r = await faceapi.detectSingleFace(bcv, boostSsdOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+        }
+        if (!r) {
+          const boostOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.22 });
+          r = await faceapi.detectSingleFace(bcv, boostOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+        }
       } catch (_) {}
     }
     if (r) return pack(r, frame, false);

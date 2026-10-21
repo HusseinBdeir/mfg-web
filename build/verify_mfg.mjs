@@ -310,6 +310,83 @@ try {
   // Enter-key listener bound once
   const wired = await evaluate(`document.getElementById('modalBody').dataset.enterWired`);
   wired === '1' ? pass('modal Enter listener bound once') : fail('modal Enter', String(wired));
+
+  // Blank ticket number on New Entry + per-table duplicate ticket isolation + custom Rev 10 suggestion popover (no native [list] or scrollbar)
+  const ticketAndSuggestProbe = await evaluate(`(() => {
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    const salesBlankOnOpen = document.getElementById('f_ticketno').value === '';
+    const salesHintOnOpen = (document.getElementById('hint_ticket') || {}).textContent || '';
+    // Switching company must NOT auto-fill a ticket number
+    const coEl = document.getElementById('f_company');
+    coEl.value = 'BBConstruction';
+    coEl.dispatchEvent(new Event('change', { bubbles: true }));
+    const salesBlankAfterCoChange = document.getElementById('f_ticketno').value === '';
+    coEl.value = 'WTC';
+    coEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Ticket 19950 exists in WTC raw_purchases (2026-02-28) but NOT in WTC sales_tickets
+    const tEl = document.getElementById('f_ticketno');
+    tEl.value = '19950';
+    tEl.dispatchEvent(new Event('input', { bubbles: true }));
+    const sales19950Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const sales19950DupWrapHidden = document.getElementById('wrap_dupok').hidden === true;
+
+    // Custom suggestion popover on f_truck when typing '10'
+    const nativeListCount = document.querySelectorAll('#modalBody input[list]').length;
+    const suggestWrapCount = document.querySelectorAll('#modalBody .pa-suggest-wrap').length;
+    const trk = document.getElementById('f_truck');
+    trk.value = '10';
+    trk.dispatchEvent(new Event('input', { bubbles: true }));
+    const menu = trk.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
+    const menuOpen = menu && !menu.hidden;
+    const menuItems = menu ? menu.querySelectorAll('.pa-suggest-item').length : 0;
+    const menuOverflowY = menu ? getComputedStyle(menu).overflowY : '';
+    const firstItem = menu ? menu.querySelector('.pa-suggest-item') : null;
+    if (firstItem) firstItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const pickedTruck = trk.value;
+    const menuClosedAfterPick = menu ? menu.hidden === true : false;
+
+    // Now switch to Raw Quarry Purchase form: 1) f_ticketno starts blank; 2) typing 19950 DOES flag duplicate in raw_purchases
+    document.querySelector('.modal-tab[data-form="raw"]').click();
+    const rawBlankOnOpen = document.getElementById('f_ticketno').value === '';
+    const rawCo = document.getElementById('f_company');
+    rawCo.value = 'WTC';
+    rawCo.dispatchEvent(new Event('change', { bubbles: true }));
+    const rawT = document.getElementById('f_ticketno');
+    rawT.value = '19950';
+    rawT.dispatchEvent(new Event('input', { bubbles: true }));
+    const raw19950Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const raw19950DupWrapVisible = document.getElementById('wrap_dupok').hidden === false;
+
+    return {
+      salesBlankOnOpen,
+      salesHintOnOpen,
+      salesBlankAfterCoChange,
+      sales19950Hint,
+      sales19950DupWrapHidden,
+      nativeListCount,
+      suggestWrapCount,
+      menuOpen,
+      menuItems,
+      menuOverflowY,
+      pickedTruck,
+      menuClosedAfterPick,
+      rawBlankOnOpen,
+      raw19950Hint,
+      raw19950DupWrapVisible
+    };
+  })()`);
+  ticketAndSuggestProbe.salesBlankOnOpen && ticketAndSuggestProbe.rawBlankOnOpen && ticketAndSuggestProbe.salesBlankAfterCoChange && ticketAndSuggestProbe.salesHintOnOpen === ''
+    ? pass('entry desk · Ticket Number starts blank on New Entry & stays blank on company switch')
+    : fail('entry desk blank ticket number', JSON.stringify(ticketAndSuggestProbe));
+  /Number is free/i.test(ticketAndSuggestProbe.sales19950Hint) && ticketAndSuggestProbe.sales19950DupWrapHidden && /Already used on Raw Material Ticket 19950/i.test(ticketAndSuggestProbe.raw19950Hint) && ticketAndSuggestProbe.raw19950DupWrapVisible
+    ? pass('entry desk · duplicate ticket check isolated per table (Sales 19950 free vs Raw 19950 flagged)', `${ticketAndSuggestProbe.sales19950Hint} | ${ticketAndSuggestProbe.raw19950Hint}`)
+    : fail('entry desk per-table duplicate check', JSON.stringify(ticketAndSuggestProbe));
+  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 4 && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^10/.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
+    ? pass('entry desk · Rev 10 custom suggestion popover (0 native <datalist> popups, 0 scrollbars)', `${ticketAndSuggestProbe.menuItems} items · picked ${ticketAndSuggestProbe.pickedTruck}`)
+    : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
+
   await evaluate(`document.getElementById('closeModalBtn').click()`); await sleep(150);
 
   // 7. Statements all 22
@@ -326,6 +403,8 @@ try {
 
   const enrolFlow = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
+    // Start from a clean slate in the isolated test browser
+    for (const em of T.state().enrolledSeats) { T.selectEnrolSeat(em); await T.clearEnrolment(); }
     const vidBefore = document.getElementById('enrolFaceVideo');
     const cbWidth = document.getElementById('enrolRequire2faCb') ? document.getElementById('enrolRequire2faCb').getBoundingClientRect().width : 999;
     T.selectEnrolSeat('husseinbdeir@bhfirms.com');
@@ -398,10 +477,12 @@ try {
     const zLogin = await T.feedAuthFrame(T.makeSyntheticVector(2, 0.003));
     const unlockedDirect = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
 
-    // Clean up test enrolments and restore owner session
-    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    // Clean up test enrolments and test blank-email + unique-PIN sign-in
     T.selectEnrolSeat('husseinbdeir@bhfirms.com'); await T.clearEnrolment();
     T.selectEnrolSeat('zeinabrkein@bhfirms.com'); await T.clearEnrolment();
+    T.signOut();
+    const pinOnlyLogin = await T.performLogin('', '1111');
+    const unlockedPinOnly = pinOnlyLogin === true && document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
 
     return {
       gateOverflow,
@@ -417,7 +498,8 @@ try {
       unlocked2FA,
       zLogin: zLogin.status,
       zMethod: zLogin.method,
-      unlockedDirect
+      unlockedDirect,
+      unlockedPinOnly
     };
   })()`);
   authFaceFlow.stageVisible && authFaceFlow.gateOverflow === 0
@@ -432,6 +514,9 @@ try {
   authFaceFlow.zLogin === 'verified' && authFaceFlow.unlockedDirect && authFaceFlow.zMethod === 'Face ID'
     ? pass('authGate Face ID · 1-look biometric sign-in unlocks RLS session')
     : fail('authGate 1-look Face ID', JSON.stringify(authFaceFlow));
+  authFaceFlow.unlockedPinOnly
+    ? pass('authGate PIN-only · blank email + unique 4-digit PIN resolves seat & signs in')
+    : fail('authGate PIN-only sign-in', JSON.stringify(authFaceFlow));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);
@@ -553,6 +638,25 @@ try {
       topToggleBtn.click();
       const restoredClass = !shell.classList.contains('rail-collapsed');
       const wRestored = main.getBoundingClientRect().width;
+
+      // Verify Tx Date / Rep Date (#basisSwitch) stays on the exact same row & position when filtering by any date grain or custom range
+      const basisPos = () => {
+        const b = document.getElementById('basisSwitch').getBoundingClientRect();
+        const c = document.getElementById('companySwitch').getBoundingClientRect();
+        return { top: Math.round(b.top), left: Math.round(b.left), sameRowAsCompany: Math.abs(b.top - c.top) <= 6 };
+      };
+      document.querySelector('#grainSwitch [data-grain="all"]').click();
+      const posAll = basisPos();
+      document.querySelector('#grainSwitch [data-grain="day"]').click();
+      const posDay = basisPos();
+      document.querySelector('#grainSwitch [data-grain="year"]').click();
+      const posYear = basisPos();
+      const df = document.getElementById('dateFromInput');
+      df.value = '2026-06-01'; df.dispatchEvent(new Event('change', { bubbles: true }));
+      const posCustom = basisPos();
+      document.getElementById('dateRangeResetBtn').click();
+      const basisStable = posAll.sameRowAsCompany && posAll.top === posDay.top && posAll.top === posYear.top && posAll.top === posCustom.top && posAll.left === posDay.left && posAll.left === posCustom.left;
+
       return {
         railDefaultW,
         railNarrowW,
@@ -564,11 +668,12 @@ try {
         restoredClass,
         gainedPx: Math.round(wCollapsed - wBefore),
         restoredDiff: Math.round(Math.abs(wRestored - wBefore)),
-        overflowCollapsed
+        overflowCollapsed,
+        basisStable
       };
     })()`);
-    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0 && railToggleProbe.railNarrowW < railToggleProbe.railDefaultW && railToggleProbe.railWideW > railToggleProbe.railDefaultW && railToggleProbe.railResetW === railToggleProbe.railDefaultW && railToggleProbe.brandClearanceOk && railToggleProbe.borderCollapseMode === 'separate'
-      ? pass('desktop sidebar resize & toggle · wider/narrower + drag resizer + collapse + brand clearance + sticky tfoot', `narrow ${railToggleProbe.railNarrowW}px · default ${railToggleProbe.railDefaultW}px · wide ${railToggleProbe.railWideW}px · +${railToggleProbe.gainedPx}px collapsed`)
+    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0 && railToggleProbe.railNarrowW < railToggleProbe.railDefaultW && railToggleProbe.railWideW > railToggleProbe.railDefaultW && railToggleProbe.railResetW === railToggleProbe.railDefaultW && railToggleProbe.brandClearanceOk && railToggleProbe.borderCollapseMode === 'separate' && railToggleProbe.basisStable
+      ? pass('desktop sidebar resize & toggle · wider/narrower + drag resizer + collapse + brand clearance + sticky tfoot + locked Tx/Rep Date bar', `narrow ${railToggleProbe.railNarrowW}px · default ${railToggleProbe.railDefaultW}px · wide ${railToggleProbe.railWideW}px · +${railToggleProbe.gainedPx}px collapsed · basisStable=${railToggleProbe.basisStable}`)
       : fail('desktop sidebar resize & toggle', JSON.stringify(railToggleProbe));
   }
 

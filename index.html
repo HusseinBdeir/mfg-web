@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=5.6">
+  <link rel="stylesheet" href="css/app.css?v=5.8">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -249,26 +249,28 @@
             </div>
           </div>
 
-          <!-- Smart Entry Action -->
-          <button type="button" class="btn btn-outline-bar desktop-tool-btn" id="newEntryBtn">+ New Entry</button>
+          <div class="tool-actions">
+            <!-- Smart Entry Action -->
+            <button type="button" class="btn btn-outline-bar desktop-tool-btn" id="newEntryBtn">+ New Entry</button>
 
-          <!-- Official Ask ISABI Trigger -->
-          <button type="button" class="ask-isabi-trigger desktop-tool-btn" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
-              <g fill="#F4F2EE">
-                <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
-                <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
-              </g>
-              <g fill="#D9A54A">
-                <rect x="0" y="9.5" width="55.66" height="3.4"/>
-                <rect x="0" y="17.5" width="55.66" height="3.4"/>
-              </g>
-            </svg>
-            <span>Ask ISABI</span>
-          </button>
+            <!-- Official Ask ISABI Trigger -->
+            <button type="button" class="ask-isabi-trigger desktop-tool-btn" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
+                <g fill="#F4F2EE">
+                  <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
+                  <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
+                </g>
+                <g fill="#D9A54A">
+                  <rect x="0" y="9.5" width="55.66" height="3.4"/>
+                  <rect x="0" y="17.5" width="55.66" height="3.4"/>
+                </g>
+              </svg>
+              <span>Ask ISABI</span>
+            </button>
 
-          <!-- Theme Toggle -->
-          <button type="button" class="btn btn-ghost-bar desktop-tool-btn" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
+            <!-- Theme Toggle -->
+            <button type="button" class="btn btn-ghost-bar desktop-tool-btn" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
+          </div>
         </div>
       </header>
 
@@ -502,13 +504,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=5.6"></script>
-  <script src="js/face.js?v=5.6"></script>
-  <script src="js/endpoints.js?v=5.6"></script>
-  <script src="js/seed_data.js?v=5.6"></script>
-  <script src="js/forms_engine.js?v=5.6"></script>
-  <script src="js/pbi_pages.js?v=5.6"></script>
-  <script src="js/app.js?v=5.6"></script>
+  <script src="vendor/face-api.js?v=5.8"></script>
+  <script src="js/face.js?v=5.8"></script>
+  <script src="js/endpoints.js?v=5.8"></script>
+  <script src="js/seed_data.js?v=5.8"></script>
+  <script src="js/forms_engine.js?v=5.8"></script>
+  <script src="js/pbi_pages.js?v=5.8"></script>
+  <script src="js/app.js?v=5.8"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

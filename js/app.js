@@ -1272,16 +1272,23 @@
     return latest ? String(latest.n + 1) : '';
   }
 
-  // duplicateTicketGuard: the same ticket number on any active sales / raw / fuel row of the same BU
-  function ticketExists(company, no) {
+  // duplicateTicketGuard: checks only the active table (sales_tickets, raw_purchases, or fuel_intakes) in the same BU
+  function ticketExists(company, no, formOrTable) {
     const t = norm(no);
     if (!t) return null;
-    const pools = [['sales_tickets', 'Sales Ticket'], ['raw_purchases', 'Raw Material Ticket'], ['fuel_intakes', 'Fuel Intake']];
-    for (const [k, label] of pools) {
-      const hit = SEED.records[k].find(r => r && !r.voided && r.company === company && norm(r.ticket_no) === t);
-      if (hit) return { table: k, label, row: hit };
-    }
-    return null;
+    const key = formOrTable || STATE.modalForm || 'sales';
+    const poolMap = {
+      sales: ['sales_tickets', 'Sales Ticket'],
+      sales_tickets: ['sales_tickets', 'Sales Ticket'],
+      raw: ['raw_purchases', 'Raw Material Ticket'],
+      raw_purchases: ['raw_purchases', 'Raw Material Ticket'],
+      fuel: ['fuel_intakes', 'Fuel Intake'],
+      fuel_intakes: ['fuel_intakes', 'Fuel Intake']
+    };
+    const [k, label] = poolMap[key] || poolMap.sales;
+    const rows = (SEED.records && SEED.records[k]) || [];
+    const hit = rows.find(r => r && !r.voided && r.company === company && norm(r.ticket_no) === t);
+    return hit ? { table: k, label, row: hit } : null;
   }
 
   // meterGuard: the unit's last reading strictly before the new date (prior-day readings preferred)
@@ -4111,7 +4118,7 @@
         ${truckQvHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Ticket Number *', inp('f_ticketno', 'text', nextTicketNo(company, [SEED.records.sales_tickets]), 'inputmode="numeric" placeholder="Pad number"'), { hintId: 'hint_ticket', hint: 'Next free number suggested' })}
+          ${fld('Ticket Number *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter pad ticket no."'), { hintId: 'hint_ticket', hint: '' })}
           ${dateField}
           ${fld('Dispatch Time (Overtime Check)', inp('f_time', 'time', nowHHMM()), { hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
           ${fld('Sale Type (Rule #1) *', sel('f_saletype', [['Delivery', 'Delivery (Material + Transport)'], ['Pickup', 'Pickup (Ex-Quarry / Plant)']], 'Delivery'))}
@@ -4148,7 +4155,7 @@
         ${truckQvHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Ticket # *', inp('f_ticketno', 'text', nextTicketNo(company, [SEED.records.raw_purchases]), 'inputmode="numeric"'), { hintId: 'hint_ticket', hint: 'Next free number suggested' })}
+          ${fld('Ticket # *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter ticket no."'), { hintId: 'hint_ticket', hint: '' })}
           ${dateField}
           ${fld('Quarry Site *', inp('f_site', 'text', '', 'list="dl_sites"') + dl('dl_sites', siteNames()))}
           ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers"') + dl('dl_suppliers', supplierNames()), { hintId: 'hint_owner', hint: 'Required when the material has a cost' })}
@@ -4207,7 +4214,7 @@
         </div>
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Ticket #', inp('f_ticketno', 'text', nextTicketNo(company, [SEED.records.fuel_intakes]), 'inputmode="numeric"'), { hintId: 'hint_ticket', hint: 'Next free number suggested' })}
+          ${fld('Ticket #', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Optional ticket no."'), { hintId: 'hint_ticket', hint: '' })}
           ${dateField}
           ${fld('Equipment / Truck *', inp('f_truck', 'text', '', 'list="dl_equip"') + dl('dl_equip', equipmentNames()), { hintId: 'hint_truck', hint: '' })}
           ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers"') + dl('dl_drivers', driverNames()))}
@@ -4299,14 +4306,16 @@
     else setHint('hint_date', '', '');
   }
 
-  function dupCheck(company) {
-    const hit = ticketExists(company, val('f_ticketno'));
+  function dupCheck(company, formType) {
+    const tno = val('f_ticketno');
+    const hit = ticketExists(company, tno, formType || STATE.modalForm);
     const wrap = $('wrap_dupok');
     if (hit) {
-      setHint('hint_ticket', `Already used on ${hit.label} ${hit.row.ticket_no} dated ${String(hit.row.date).slice(0, 10)}${hit.row.customer ? ' · ' + hit.row.customer : ''}`, 'crit');
+      const party = hit.row.customer || hit.row.site_owner || hit.row.site || hit.row.equipment || '';
+      setHint('hint_ticket', `Already used on ${hit.label} ${hit.row.ticket_no} dated ${String(hit.row.date).slice(0, 10)}${party ? ' · ' + party : ''}`, 'crit');
       if (wrap) wrap.hidden = false;
     } else {
-      setHint('hint_ticket', val('f_ticketno') ? 'Number is free in ' + company : 'Required', val('f_ticketno') ? '' : 'crit');
+      setHint('hint_ticket', tno ? 'Number is free in ' + company : '', tno ? 'ok' : '');
       if (wrap) { wrap.hidden = true; const cb = $('f_dupok'); if (cb) cb.checked = false; }
     }
     return hit;
@@ -4322,10 +4331,6 @@
     const date = val('f_date');
     const warnings = [];
 
-    if (FORM_UI.lastCompany !== company && !FORM_UI.ticketManual) {
-      const tEl = $('f_ticketno');
-      if (tEl) tEl.value = nextTicketNo(company, [SEED.records.sales_tickets]);
-    }
     FORM_UI.lastCompany = company;
 
     // Rule #1 / #4: Pickup = customer truck, no transport; Delivery = company fleet or hauler
@@ -4444,7 +4449,6 @@
     if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
     if (truckRow && truckRow.capacity && qtyEl() && !val('f_qty') && !FORM_UI.qtyManual) qtyEl().value = Number(truckRow.capacity).toFixed(2);
     const warnings = [];
-    if (FORM_UI.lastCompany !== company && !FORM_UI.ticketManual) { const tEl = $('f_ticketno'); if (tEl) tEl.value = nextTicketNo(company, [SEED.records.raw_purchases]); }
     FORM_UI.lastCompany = company;
 
     const prod = productInfo(product);
@@ -4511,7 +4515,6 @@
     const litres = num('f_qty');
     const mEl = $('f_meter');
     if (mEl) mEl.disabled = type === 'none';
-    if (FORM_UI.lastCompany !== company && !FORM_UI.ticketManual) { const tEl = $('f_ticketno'); if (tEl) tEl.value = nextTicketNo(company, [SEED.records.fuel_intakes]); }
     FORM_UI.lastCompany = company;
 
     const prev = equipment ? lastMeter(company, equipment, date || undefined) : null;
@@ -4628,11 +4631,174 @@
     } catch (e) { console.error('recalc', e); return {}; }
   }
 
+  function wireModalSuggestions(body) {
+    if (!body) return;
+    const closeAll = exceptMenu => {
+      body.querySelectorAll('.pa-suggest-menu').forEach(m => {
+        if (m !== exceptMenu) {
+          m.hidden = true;
+          m.innerHTML = '';
+          const w = m.closest('.pa-suggest-wrap');
+          if (w) w.classList.remove('open');
+        }
+      });
+    };
+    if (!body.dataset.suggestDocWired) {
+      body.dataset.suggestDocWired = '1';
+      document.addEventListener('mousedown', e => {
+        if (!e.target || !e.target.closest('.pa-suggest-wrap')) closeAll(null);
+      });
+    }
+    body.querySelectorAll('input[list]').forEach(el => {
+      const listId = el.getAttribute('list');
+      if (!listId) return;
+      el.removeAttribute('list');
+      el.dataset.suggestList = listId;
+      el.setAttribute('autocomplete', 'off');
+      el.setAttribute('spellcheck', 'false');
+
+      const wrap = document.createElement('div');
+      wrap.className = 'pa-suggest-wrap';
+      el.parentNode.insertBefore(wrap, el);
+      wrap.appendChild(el);
+
+      const caret = document.createElement('button');
+      caret.type = 'button';
+      caret.className = 'pa-suggest-caret';
+      caret.tabIndex = -1;
+      caret.setAttribute('aria-label', 'Show suggestions');
+      caret.innerHTML = '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2.5 4.5 6 8 9.5 4.5"/></svg>';
+      wrap.appendChild(caret);
+
+      const menu = document.createElement('div');
+      menu.className = 'pa-suggest-menu';
+      menu.setAttribute('role', 'listbox');
+      menu.hidden = true;
+      wrap.appendChild(menu);
+
+      let activeIdx = -1;
+      let currentMatches = [];
+
+      const getOptions = () => {
+        const dlEl = document.getElementById(listId) || body.querySelector('#' + listId);
+        if (!dlEl) return [];
+        return Array.from(dlEl.querySelectorAll('option')).map(o => o.value).filter(Boolean);
+      };
+
+      const highlightMatch = (text, q) => {
+        if (!q) return esc(text);
+        const idx = text.toLowerCase().indexOf(q.toLowerCase());
+        if (idx < 0) return esc(text);
+        return `${esc(text.slice(0, idx))}<mark class="pa-suggest-mark">${esc(text.slice(idx, idx + q.length))}</mark>${esc(text.slice(idx + q.length))}`;
+      };
+
+      const choose = valStr => {
+        el.value = valStr;
+        closeAll(null);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+
+      const renderMenu = (showAllOnEmpty = false) => {
+        if (el.disabled || el.readOnly) { closeAll(null); return; }
+        const all = getOptions();
+        const q = String(el.value || '').trim();
+        const ql = q.toLowerCase();
+        let filtered;
+        if (!ql) {
+          if (!showAllOnEmpty) { closeAll(null); return; }
+          filtered = all;
+        } else {
+          const starts = [];
+          const contains = [];
+          for (const item of all) {
+            const il = item.toLowerCase();
+            if (il.startsWith(ql)) starts.push(item);
+            else if (il.includes(ql)) contains.push(item);
+          }
+          filtered = starts.concat(contains);
+        }
+        if (!filtered.length || (filtered.length === 1 && filtered[0] === q)) {
+          closeAll(null);
+          return;
+        }
+        const MAX_SHOW = 7;
+        currentMatches = filtered.slice(0, MAX_SHOW);
+        activeIdx = ql ? 0 : -1;
+        closeAll(menu);
+        menu.innerHTML = currentMatches.map((item, i) => `
+          <div class="pa-suggest-item${i === activeIdx ? ' active' : ''}" role="option" data-suggest-idx="${i}">
+            <span class="pa-suggest-label">${highlightMatch(item, q)}</span>
+          </div>
+        `).join('') + (filtered.length > MAX_SHOW
+          ? `<div class="pa-suggest-more">Top ${MAX_SHOW} of ${filtered.length} matches · type to refine</div>`
+          : '');
+        menu.hidden = false;
+        wrap.classList.add('open');
+
+        menu.querySelectorAll('.pa-suggest-item').forEach(row => {
+          row.addEventListener('mousedown', ev => {
+            ev.preventDefault();
+            const idx = Number(row.getAttribute('data-suggest-idx'));
+            if (currentMatches[idx] != null) choose(currentMatches[idx]);
+          });
+          row.addEventListener('mouseenter', () => {
+            activeIdx = Number(row.getAttribute('data-suggest-idx'));
+            menu.querySelectorAll('.pa-suggest-item').forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+          });
+        });
+      };
+
+      el.addEventListener('input', () => renderMenu(true));
+      el.addEventListener('click', () => renderMenu(true));
+      caret.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        if (!menu.hidden) {
+          closeAll(null);
+        } else {
+          try { el.focus({ preventScroll: true }); } catch (_) {}
+          renderMenu(true);
+        }
+      });
+      el.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (document.activeElement !== el) closeAll(null);
+        }, 120);
+      });
+      el.addEventListener('keydown', ev => {
+        if (menu.hidden || !currentMatches.length) {
+          if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            renderMenu(true);
+          }
+          return;
+        }
+        if (ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          activeIdx = (activeIdx + 1) % currentMatches.length;
+          menu.querySelectorAll('.pa-suggest-item').forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+        } else if (ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          activeIdx = (activeIdx - 1 + currentMatches.length) % currentMatches.length;
+          menu.querySelectorAll('.pa-suggest-item').forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+        } else if (ev.key === 'Enter') {
+          if (activeIdx >= 0 && currentMatches[activeIdx] != null) {
+            ev.preventDefault();
+            choose(currentMatches[activeIdx]);
+          }
+        } else if (ev.key === 'Escape' || ev.key === 'Tab') {
+          closeAll(null);
+        }
+      });
+    });
+  }
+
   let modalFocusTimer = null;
   function wireModalLiveCalc(autoFocus = false) {
     const body = $('modalBody');
     if (!body) return;
     clearTimeout(modalFocusTimer);
+    wireModalSuggestions(body);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false;
     FORM_UI.lastCompany = val('f_company'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
     body.querySelectorAll('input, select').forEach(el => {
@@ -4697,7 +4863,7 @@
     if (f === 'sales') {
       const ticket = val('f_ticketno');
       if (!ticket) errors.push('Ticket number is required.');
-      const dup = ticketExists(company, ticket);
+      const dup = ticketExists(company, ticket, 'sales');
       if (dup && !($('f_dupok') && $('f_dupok').checked)) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company} — tick "Post anyway" if the pad really repeats.`);
       if (!c.customer) errors.push('Customer is required.');
       if (!c.product) errors.push('Product is required.');
@@ -4716,7 +4882,7 @@
     } else if (f === 'raw') {
       const ticket = val('f_ticketno');
       if (!ticket) errors.push('Ticket number is required.');
-      const dup = ticketExists(company, ticket);
+      const dup = ticketExists(company, ticket, 'raw');
       if (dup && !($('f_dupok') && $('f_dupok').checked)) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company} — tick "Post anyway" if the pad really repeats.`);
       if (!c.site) errors.push('Quarry site is required.');
       if (!c.product) errors.push('Raw material is required.');
@@ -4737,7 +4903,7 @@
       if (!c.guard.ok) errors.push('Meter guard: ' + c.guard.label);
       if (c.guard.cls === 'warn' && !notes) errors.push('Large meter jump — add a note to confirm the reading.');
       const ticket = val('f_ticketno');
-      const dup = ticketExists(company, ticket);
+      const dup = ticketExists(company, ticket, 'fuel');
       if (dup && ticket) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company}.`);
       record = { ...base, name: `FUEL ${date} ${c.equipment}${ticket ? ' #' + ticket : ''}`, ticket_no: ticket, fuel_type: /diesel/i.test(val('f_item')) ? 'Diesel' : 'Lubricant', item: val('f_item'), equipment: c.equipment, driver: val('f_driver'), litres: round2(c.litres), odometer: c.type === 'odometer' ? c.reading : null, hours: c.type === 'hours' ? c.reading : null, location: val('f_location'), meter_delta: c.delta };
     } else if (f === 'expense') {
@@ -4943,7 +5109,7 @@
       if (sBtn) sBtn.addEventListener('click', saveModalEntry);
       if (!body.dataset.enterWired) { // #modalBody persists across opens — bind once or Enter posts N times after N opens
         body.dataset.enterWired = '1';
-        body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list) { e.preventDefault(); saveModalEntry(); } });
+        body.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.defaultPrevented && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list && !e.target.dataset.suggestList) { e.preventDefault(); saveModalEntry(); } });
       }
       body.scrollTop = 0;
     }
@@ -6255,12 +6421,16 @@
       return { status: 'no-enrolled' };
     }
     if (!det || !det.descriptor) {
-      FACE_STATE.streakUser = null;
-      FACE_STATE.streakCount = 0;
-      setAuthStreak(0, needed);
-      setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for instant Face ID sign-in', '');
+      FACE_STATE.missedFrames = (FACE_STATE.missedFrames || 0) + 1;
+      if (!FACE_STATE.streakCount || FACE_STATE.missedFrames >= 3) {
+        FACE_STATE.streakUser = null;
+        FACE_STATE.streakCount = 0;
+        setAuthStreak(0, needed);
+        setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for instant Face ID sign-in', '');
+      }
       return { status: 'no-face' };
     }
+    FACE_STATE.missedFrames = 0;
     if (det.multiple) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
@@ -6278,14 +6448,13 @@
     const m = window.Face.match(det.descriptor, enrolled);
     const dec = window.Face.decide(m, cfg, { faceSizeFrac: det.faceSizeFrac != null ? det.faceSizeFrac : 0.25 });
 
-    if (dec.status !== 'ok') {
+    if (!dec.ok) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
       setAuthStreak(0, needed);
       if (dec.status === 'too-small') setAuthHint('Move closer to the camera', 'warn');
       else if (dec.status === 'ambiguous') setAuthHint(`Hold still — close match between two seats (d=${m.bestDist.toFixed(2)})`, 'warn');
-      else if (dec.status === 'weak') setAuthHint(`Face recognized weakly (d=${m.bestDist.toFixed(2)}) — face the light directly`, 'warn');
-      else setAuthHint(`Face not recognized (d=${m.bestDist.toFixed(2)} > τ=${cfg.threshold.toFixed(2)})`, 'crit');
+      else setAuthHint(`Face not recognized (d=${m.bestDist.toFixed(2)} > τ=${cfg.threshold.toFixed(2)}) — sign in with PIN or re-enrol 3 poses`, 'crit');
       return { status: dec.status, match: m };
     }
 
@@ -6980,7 +7149,7 @@
         const emEl = $('authEmailInput');
         const pinEl = $('authPinInput');
         if (emEl) emEl.value = u.email;
-        if (IS_DEMO) { if (pinEl) pinEl.value = u.pin_code || '1111'; performLogin(u.email, u.pin_code || '1111'); }
+        if (IS_DEMO) { if (pinEl) pinEl.value = u.pin_code || '1111'; performLogin(u.email, u.pin_code || '1111', { bypass2FA: true }); }
         else if (pinEl) { pinEl.value = ''; pinEl.focus(); }
       });
     });
@@ -7048,11 +7217,27 @@
   let loginAttempts = 0;
   let loginLockUntil = 0;
   async function performLogin(emailRaw, pinRaw, opts = {}) {
-    const email = norm(emailRaw);
+    let email = norm(emailRaw);
     const pin = String(pinRaw || '').trim();
     if (Date.now() < loginLockUntil) { authError(`Too many attempts — wait ${Math.ceil((loginLockUntil - Date.now()) / 1000)} s.`); return false; }
-    if (!email) { authError('Enter your team email.'); return false; }
-    if (!pin) { authError('Enter your access PIN.'); return false; }
+    if (!email && pin) {
+      const matches = STATE.users.filter(u => u.status !== 'Suspended' && String(u.pin_code || '1111').trim() === pin);
+      if (matches.length === 1) {
+        email = norm(matches[0].email);
+        const emEl = $('authEmailInput');
+        if (emEl) emEl.value = matches[0].email;
+      } else if (matches.length > 1) {
+        authError('Multiple seats share this PIN — tap your seat on the right or enter your email.');
+        return false;
+      } else {
+        loginAttempts += 1;
+        if (loginAttempts >= 5) { loginLockUntil = Date.now() + 30000; loginAttempts = 0; authError('Too many wrong PINs — locked for 30 seconds.'); }
+        else authError('Incorrect access PIN — tap your seat on the right or check your 4-digit PIN.');
+        return false;
+      }
+    }
+    if (!email) { authError('Tap your seat on the right or enter your Access PIN.'); return false; }
+    if (!pin) { authError('Enter your 4-digit Access PIN.'); return false; }
 
     const idx = STATE.users.findIndex(u => norm(u.email) === email);
     if (idx < 0) { authError('Email not found in the Manufacturing team directory.'); return false; }
@@ -7902,13 +8087,31 @@
     if (authEnrolJumpBtn) authEnrolJumpBtn.addEventListener('click', async () => {
       const em = val('authEmailInput') || (IS_DEMO ? 'husseinbdeir@bhfirms.com' : '');
       const pn = val('authPinInput') || (IS_DEMO ? '1111' : '');
+      if (!pn) {
+        authError('Enter your 4-digit Access PIN above (or tap your seat on the right + PIN), then click "Sign In & Auto-Enrol Face ID".');
+        return;
+      }
       const ok = await performLogin(em, pn, { bypass2FA: true });
       if (ok === true) {
         const me = activeUser();
         FACE_STATE.enrolUserId = me.id;
-        syncEnrolBufferFromUser(me, true);
+        FACE_STATE.enrolCaptures = [];
+        FACE_STATE.enrolThumbs = [];
+        FACE_STATE.enrolLoadedForUserId = String(me.id);
         setView('users');
-        setTimeout(() => { startEnrolCamera(); }, 120);
+        setTimeout(async () => {
+          const panel = $('faceEnrolPanel');
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const camOk = await startEnrolCamera();
+          if (camOk && !navigator.webdriver) {
+            // Auto-capture 3 poses hands-free as soon as the camera sees the user's face
+            for (let step = 0; step < 3; step++) {
+              await new Promise(r => setTimeout(r, 700));
+              if (STATE.view !== 'users' || !FACE_STATE.enrolCamActive || FACE_STATE.enrolCaptures.length > step) break;
+              await captureEnrolDescriptor();
+            }
+          }
+        }, 120);
       }
     });
 

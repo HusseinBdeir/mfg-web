@@ -1353,7 +1353,7 @@
               <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
               <span style="color:rgba(244,242,238,0.6);font-weight:700">–</span>
               <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
-              ${isDateFiltered ? '<button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px">✕ All-Time</button>' : ''}
+              <button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px" ${isDateFiltered ? '' : 'hidden'}>✕ All-Time</button>
             </div>
           </div>
 
