@@ -141,10 +141,122 @@ button {
   color: var(--brass-on-ink);
 }
 
+/* ==================== CUSTOM REV 10 "LEDGER" SCROLLBARS ==================== */
+/* Sleek pill scrollbars without Windows arrow buttons or bright white gutters */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: #E5E2D9;
+  border-radius: 999px;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 30, 56, 0.32);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: #C0892F;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:active {
+  background-color: #0F1E38;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #0B1526;
+  border-radius: 999px;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(217, 165, 74, 0.34);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background-color: #D9A54A;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:active {
+  background-color: #E5B764;
+}
+
+/* Dark Ink surfaces (Left Sidebar Rail, Ask ISABI Drawer, Auth Gate): dark navy track + brass thumb */
+.rail-nav::-webkit-scrollbar,
+.ai-thread::-webkit-scrollbar,
+.quick-seat-list::-webkit-scrollbar,
+.auth-right::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.rail-nav::-webkit-scrollbar-track,
+.ai-thread::-webkit-scrollbar-track,
+.quick-seat-list::-webkit-scrollbar-track,
+.auth-right::-webkit-scrollbar-track {
+  background: rgba(8, 17, 36, 0.55);
+  border-radius: 999px;
+}
+
+.rail-nav::-webkit-scrollbar-thumb,
+.ai-thread::-webkit-scrollbar-thumb,
+.quick-seat-list::-webkit-scrollbar-thumb,
+.auth-right::-webkit-scrollbar-thumb {
+  background-color: rgba(217, 165, 74, 0.32);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.rail-nav::-webkit-scrollbar-thumb:hover,
+.ai-thread::-webkit-scrollbar-thumb:hover,
+.quick-seat-list::-webkit-scrollbar-thumb:hover,
+.auth-right::-webkit-scrollbar-thumb:hover {
+  background-color: #D9A54A;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 30, 56, 0.35) #E5E2D9;
+  }
+  :root[data-theme="dark"] * {
+    scrollbar-color: rgba(217, 165, 74, 0.42) #0B1526;
+  }
+  .rail-nav, .ai-thread, .quick-seat-list {
+    scrollbar-color: rgba(217, 165, 74, 0.42) #0B1730;
+  }
+}
+
 /* ==================== APP SHELL & LEFT INK RAIL ==================== */
 .app-shell {
   display: grid;
-  grid-template-columns: 238px minmax(0, 1fr);
+  grid-template-columns: var(--rail-w, 248px) minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
 }
@@ -158,7 +270,14 @@ button {
   }
 }
 
+body.is-resizing-rail,
+body.is-resizing-rail * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 .rail {
+  position: relative;
   background: var(--rail);
   color: #F4F2EE;
   display: flex;
@@ -166,22 +285,62 @@ button {
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 40;
   overflow: hidden;
+  min-width: 0;
 }
 
 .rail .brand {
-  padding: 15px 12px 13px 15px;
+  padding: 13px 10px 12px 13px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+
+.rail-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.rail-size-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(244, 242, 238, 0.78);
+  border-radius: 4px;
+  width: 21px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+}
+
+.rail-size-btn:hover:not(:disabled) {
+  background: rgba(217, 165, 74, 0.18);
+  border-color: #D9A54A;
+  color: #FFFFFF;
+}
+
+.rail-size-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
 }
 
 .rail-collapse-btn {
@@ -189,8 +348,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(244, 242, 238, 0.78);
   border-radius: 5px;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -204,9 +363,60 @@ button {
   color: #FFFFFF;
 }
 
+/* Interactive Drag-to-Resize Handle on Right Edge of Left Rail */
+.rail-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 48;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.rail-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.rail-resizer-grip {
+  width: 3px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(217, 165, 74, 0.28);
+  transition: background 0.15s, height 0.15s, transform 0.15s;
+  pointer-events: none;
+}
+
+.rail-resizer:hover::before,
+.rail-resizer:focus-visible::before,
+body.is-resizing-rail .rail-resizer::before {
+  background: #D9A54A;
+}
+
+.rail-resizer:hover .rail-resizer-grip,
+.rail-resizer:focus-visible .rail-resizer-grip,
+body.is-resizing-rail .rail-resizer .rail-resizer-grip {
+  background: #D9A54A;
+  height: 52px;
+  box-shadow: 0 0 8px rgba(217, 165, 74, 0.55);
+}
+
 .brand-badge {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   display: block;
 }
@@ -224,22 +434,53 @@ button {
   align-items: flex-start;
   gap: 2px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .brand-wordmark {
-  height: 31px;
-  width: 68px;
+  height: 29px;
+  width: 64px;
   display: block;
 }
 
 .brand-sub {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #D9A54A;
   line-height: 1.1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Narrow rail adaptive tuning (< 215px) */
+@media (min-width: 861px) {
+  .app-shell.rail-narrow .rail .brand {
+    padding: 11px 7px 10px 9px;
+    gap: 4px;
+  }
+  .app-shell.rail-narrow .brand-badge {
+    width: 30px;
+    height: 30px;
+  }
+  .app-shell.rail-narrow .brand-wordmark {
+    height: 24px;
+    width: 53px;
+  }
+  .app-shell.rail-narrow .rail-nav {
+    padding: 6px 6px 10px;
+  }
+  .app-shell.rail-narrow .rail-nav button.nav-item {
+    padding: 6.5px 6px;
+    font-size: 11.8px;
+    gap: 4px;
+  }
+  .app-shell.rail-narrow .rail-footer {
+    padding: 9px 9px 10px;
+  }
 }
 
 .rail-nav {
@@ -281,7 +522,15 @@ button {
   justify-content: space-between;
   gap: 6px;
   white-space: nowrap;
+  min-width: 0;
   transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.rail-nav button.nav-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rail-nav button.nav-item:hover {
@@ -1914,6 +2163,10 @@ table.m-grid tfoot tr td {
   }
   .rail.open {
     transform: translateX(0);
+  }
+  .rail-resizer,
+  .rail-size-btn {
+    display: none !important;
   }
   .mobile-menu-btn {
     display: inline-flex;
@@ -4851,7 +5104,6 @@ td.pbi-cell-amber {
   max-height: 620px;
   overflow-y: auto;
   overflow-x: auto;
-  scrollbar-width: thin;
 }
 
 .a4-sheet .table-wrap {

@@ -61,6 +61,16 @@
     try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (_) { return fallback; }
   }
 
+  const RAIL_MIN_W = 176;
+  const RAIL_MAX_W = 420;
+  const RAIL_DEFAULT_W = 248;
+  const RAIL_STEP_W = 24;
+
+  function clampRailWidth(w) {
+    const n = parseInt(w, 10);
+    return Number.isFinite(n) ? Math.max(RAIL_MIN_W, Math.min(RAIL_MAX_W, Math.round(n))) : RAIL_DEFAULT_W;
+  }
+
   const STATE = {
     view: 'overview',
     company: 'manufacturing-group', // 'manufacturing-group' | 'wtc' | 'bbconstruction' | 'lionstransport'
@@ -71,6 +81,7 @@
     basis: 'tx',                    // 'tx' | 'rep'
     theme: localStorage.getItem('isabi_mfg_theme') || 'light',
     railCollapsed: localStorage.getItem('isabi_mfg_rail_collapsed') === '1',
+    railWidth: clampRailWidth(localStorage.getItem('isabi_mfg_rail_width') || RAIL_DEFAULT_W),
     search: '',
     chipFilter: 'all',
     activeStatement: '01',
@@ -5994,7 +6005,7 @@
     }
 
     // 2. BHFIRMS Multi-Device Cloud Relay (GitHub Pages + mobile + desktop)
-    if (!CLOUD_URL || !CLOUD_KEY || navigator.webdriver) {
+    if (!CLOUD_URL || !CLOUD_KEY || navigator.webdriver || window.__MFG_HEADLESS_TEST || PARAMS.get('nosse') === '1' || (location.port && Number(location.port) >= 8095)) {
       STATE.cloudStatus = '● Ready (Local)';
       updateCloudBadges();
       return;
@@ -7252,13 +7263,37 @@
     }
   }
 
+  function setRailWidth(w, persist = true) {
+    STATE.railWidth = clampRailWidth(w);
+    if (persist) {
+      try { localStorage.setItem('isabi_mfg_rail_width', String(STATE.railWidth)); } catch (_) {}
+    }
+    syncRailCollapseUi();
+  }
+
   function syncRailCollapseUi() {
     const shell = $('appShell');
     const menuBtn = $('mobileMenuBtn');
     const menuLbl = $('sidebarToggleLbl');
+    const narrowBtn = $('railNarrowBtn');
+    const widerBtn = $('railWiderBtn');
+    const resizer = $('railResizer');
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 860;
     const collapsed = !isMobile && !!STATE.railCollapsed;
-    if (shell) shell.classList.toggle('rail-collapsed', collapsed);
+    const w = clampRailWidth(STATE.railWidth);
+    document.documentElement.style.setProperty('--rail-w', `${w}px`);
+    if (shell) {
+      shell.style.setProperty('--rail-w', `${w}px`);
+      shell.classList.toggle('rail-collapsed', collapsed);
+      shell.classList.toggle('rail-narrow', !isMobile && !collapsed && w < 218);
+      shell.classList.toggle('rail-wide', !isMobile && !collapsed && w >= 290);
+    }
+    if (narrowBtn) narrowBtn.disabled = w <= RAIL_MIN_W;
+    if (widerBtn) widerBtn.disabled = w >= RAIL_MAX_W;
+    if (resizer) {
+      resizer.setAttribute('aria-valuenow', String(w));
+      resizer.title = `Sidebar width: ${w}px — Drag left or right to make wider/narrower · Double-click to reset (${RAIL_DEFAULT_W}px)`;
+    }
     if (menuBtn) {
       menuBtn.classList.toggle('rail-is-hidden', collapsed);
       menuBtn.setAttribute('aria-expanded', String(!collapsed));
@@ -7911,6 +7946,9 @@
     const mobileMenuBtn = $('mobileMenuBtn');
     const mobileDockMenuBtn = $('mobileDockMenuBtn');
     const railCollapseBtn = $('railCollapseBtn');
+    const railNarrowBtn = $('railNarrowBtn');
+    const railWiderBtn = $('railWiderBtn');
+    const railResizer = $('railResizer');
     const sidebar = $('sidebar');
     const backdrop = $('railBackdrop');
     const toggleMobileDrawer = () => {
@@ -7937,6 +7975,58 @@
       if (window.innerWidth <= 860) closeRail();
       else toggleDesktopOrMobileRail();
     });
+    if (railNarrowBtn) railNarrowBtn.addEventListener('click', () => {
+      if (STATE.railCollapsed) {
+        STATE.railCollapsed = false;
+        try { localStorage.setItem('isabi_mfg_rail_collapsed', '0'); } catch (_) {}
+      }
+      setRailWidth(STATE.railWidth - RAIL_STEP_W, true);
+    });
+    if (railWiderBtn) railWiderBtn.addEventListener('click', () => {
+      if (STATE.railCollapsed) {
+        STATE.railCollapsed = false;
+        try { localStorage.setItem('isabi_mfg_rail_collapsed', '0'); } catch (_) {}
+      }
+      setRailWidth(STATE.railWidth + RAIL_STEP_W, true);
+    });
+    if (railResizer) {
+      let draggingRail = false;
+      const onMove = e => {
+        if (!draggingRail) return;
+        const clientX = typeof e.clientX === 'number' ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+        if (clientX == null) return;
+        setRailWidth(clientX, false);
+      };
+      const onUp = () => {
+        if (!draggingRail) return;
+        draggingRail = false;
+        document.body.classList.remove('is-resizing-rail');
+        setRailWidth(STATE.railWidth, true);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      railResizer.addEventListener('pointerdown', e => {
+        if (window.innerWidth <= 860 || e.button === 2) return;
+        e.preventDefault();
+        draggingRail = true;
+        document.body.classList.add('is-resizing-rail');
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+      railResizer.addEventListener('dblclick', e => {
+        e.preventDefault();
+        setRailWidth(RAIL_DEFAULT_W, true);
+      });
+      railResizer.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); setRailWidth(STATE.railWidth - 16, true); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); setRailWidth(STATE.railWidth + 16, true); }
+        else if (e.key === 'Home') { e.preventDefault(); setRailWidth(RAIL_MIN_W, true); }
+        else if (e.key === 'End') { e.preventDefault(); setRailWidth(RAIL_MAX_W, true); }
+        else if (e.key === 'Enter' || e.key === '0') { e.preventDefault(); setRailWidth(RAIL_DEFAULT_W, true); }
+      });
+    }
     if (mobileDockMenuBtn) mobileDockMenuBtn.addEventListener('click', toggleMobileDrawer);
     if (backdrop) backdrop.addEventListener('click', closeRail);
 

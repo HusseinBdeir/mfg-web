@@ -11,6 +11,8 @@
     try {
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+      var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
+      if (rw >= 176 && rw <= 420) document.documentElement.style.setProperty('--rail-w', rw + 'px');
       var isStandalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
       if (isStandalone) document.documentElement.classList.add('ios-standalone');
     } catch (e) {}
@@ -25,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=5.4">
+  <link rel="stylesheet" href="css/app.css?v=5.5">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -72,9 +74,13 @@
             <small class="brand-sub">Manufacturing Command</small>
           </div>
         </a>
-        <button type="button" class="rail-collapse-btn" id="railCollapseBtn" title="Hide left navigation sidebar to expand main view" aria-label="Hide left navigation sidebar">
-          <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.2"/><line x1="7.5" y1="3" x2="7.5" y2="17"/><polyline points="12.5 7.5 9.5 10 12.5 12.5"/></svg>
-        </button>
+        <div class="rail-head-actions">
+          <button type="button" class="rail-size-btn" id="railNarrowBtn" title="Make left sidebar narrower (−24px)" aria-label="Make left sidebar narrower">‹</button>
+          <button type="button" class="rail-size-btn" id="railWiderBtn" title="Make left sidebar wider (+24px)" aria-label="Make left sidebar wider">›</button>
+          <button type="button" class="rail-collapse-btn" id="railCollapseBtn" title="Hide left navigation sidebar to expand main view" aria-label="Hide left navigation sidebar">
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.2"/><line x1="7.5" y1="3" x2="7.5" y2="17"/><polyline points="12.5 7.5 9.5 10 12.5 12.5"/></svg>
+          </button>
+        </div>
       </div>
 
       <nav class="rail-nav" id="sidebarNav" aria-label="Manufacturing Modules">
@@ -160,6 +166,9 @@
           <span class="engine-dot"><i></i><span id="sqlStatusText">Connecting…</span></span>
           <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
         </div>
+      </div>
+      <div class="rail-resizer" id="railResizer" role="separator" aria-orientation="vertical" aria-valuemin="176" aria-valuemax="420" aria-valuenow="248" tabindex="0" aria-label="Resize left navigation sidebar" title="Drag left or right to make sidebar wider or narrower · Double-click to reset">
+        <span class="rail-resizer-grip" aria-hidden="true"></span>
       </div>
     </aside>
     <div class="rail-backdrop" id="railBackdrop" hidden></div>
@@ -493,13 +502,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=5.4"></script>
-  <script src="js/face.js?v=5.4"></script>
-  <script src="js/endpoints.js?v=5.4"></script>
-  <script src="js/seed_data.js?v=5.4"></script>
-  <script src="js/forms_engine.js?v=5.4"></script>
-  <script src="js/pbi_pages.js?v=5.4"></script>
-  <script src="js/app.js?v=5.4"></script>
+  <script src="vendor/face-api.js?v=5.5"></script>
+  <script src="js/face.js?v=5.5"></script>
+  <script src="js/endpoints.js?v=5.5"></script>
+  <script src="js/seed_data.js?v=5.5"></script>
+  <script src="js/forms_engine.js?v=5.5"></script>
+  <script src="js/pbi_pages.js?v=5.5"></script>
+  <script src="js/app.js?v=5.5"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

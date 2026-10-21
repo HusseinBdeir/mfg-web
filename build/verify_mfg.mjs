@@ -35,7 +35,7 @@ const udd = fs.mkdtempSync(path.join(os.tmpdir(), 'mfg-verify-'));
 const tempDb = path.join(udd, 'mfg.db');
 try { fs.copyFileSync(path.join(ROOT, 'data', 'mfg.db'), tempDb); } catch (_) {}
 const server = spawn('python', ['server.py', String(PORT)], { cwd: ROOT, env: Object.assign({}, process.env, { MFG_DB_PATH: tempDb }), stdio: 'ignore', windowsHide: true });
-const edge = spawn(EDGE, [`--headless=new`, `--remote-debugging-port=${DBG}`, `--user-data-dir=${udd}`, '--no-first-run', '--disable-gpu', '--window-size=1366,768', 'about:blank'], { stdio: 'ignore', windowsHide: true });
+const edge = spawn(EDGE, [`--headless=new`, `--enable-automation`, `--remote-debugging-port=${DBG}`, `--user-data-dir=${udd}`, '--no-first-run', '--disable-gpu', '--window-size=1366,768', 'about:blank'], { stdio: 'ignore', windowsHide: true });
 
 let ws, msgId = 0; const pending = new Map(); const events = [];
 function send(method, params = {}, timeoutMs = 15000) {
@@ -87,6 +87,7 @@ try {
     else if (m.method) events.push(m);
   };
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__MFG_HEADLESS_TEST = true;' });
   await send('Emulation.setDeviceMetricsOverride', MOBILE
     ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }
     : { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
@@ -517,9 +518,24 @@ try {
   if (!MOBILE) {
     const railToggleProbe = await evaluate(`(() => {
       const shell = document.getElementById('appShell');
+      const sidebar = document.getElementById('sidebar');
       const main = document.querySelector('.main-area');
       const collapseBtn = document.getElementById('railCollapseBtn');
+      const narrowBtn = document.getElementById('railNarrowBtn');
+      const widerBtn = document.getElementById('railWiderBtn');
+      const resizer = document.getElementById('railResizer');
       const topToggleBtn = document.getElementById('mobileMenuBtn');
+      const railDefaultW = Math.round(sidebar.getBoundingClientRect().width);
+      narrowBtn.click();
+      narrowBtn.click();
+      const railNarrowW = Math.round(sidebar.getBoundingClientRect().width);
+      widerBtn.click();
+      widerBtn.click();
+      widerBtn.click();
+      widerBtn.click();
+      const railWideW = Math.round(sidebar.getBoundingClientRect().width);
+      resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      const railResetW = Math.round(sidebar.getBoundingClientRect().width);
       const wBefore = main.getBoundingClientRect().width;
       collapseBtn.click();
       const collapsedClass = shell.classList.contains('rail-collapsed');
@@ -529,6 +545,10 @@ try {
       const restoredClass = !shell.classList.contains('rail-collapsed');
       const wRestored = main.getBoundingClientRect().width;
       return {
+        railDefaultW,
+        railNarrowW,
+        railWideW,
+        railResetW,
         collapsedClass,
         restoredClass,
         gainedPx: Math.round(wCollapsed - wBefore),
@@ -536,9 +556,9 @@ try {
         overflowCollapsed
       };
     })()`);
-    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0
-      ? pass('desktop sidebar toggle · hides left Manufacturing Command rail & expands main view', `+${railToggleProbe.gainedPx}px width gained · 0px overflow`)
-      : fail('desktop sidebar toggle', JSON.stringify(railToggleProbe));
+    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0 && railToggleProbe.railNarrowW < railToggleProbe.railDefaultW && railToggleProbe.railWideW > railToggleProbe.railDefaultW && railToggleProbe.railResetW === railToggleProbe.railDefaultW
+      ? pass('desktop sidebar resize & toggle · wider/narrower + drag resizer + collapse', `narrow ${railToggleProbe.railNarrowW}px · default ${railToggleProbe.railDefaultW}px · wide ${railToggleProbe.railWideW}px · +${railToggleProbe.gainedPx}px collapsed`)
+      : fail('desktop sidebar resize & toggle', JSON.stringify(railToggleProbe));
   }
 
   // 8. Runtime errors
