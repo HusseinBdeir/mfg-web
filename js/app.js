@@ -410,55 +410,85 @@
 
   let _kpiRangeCacheKey = '';
   let _kpiRangeCacheVal = null;
+  let _prodByNameLen = -1;
+  let _prodByName = null;
 
-  function getKPI() {
-    const m = getModel();
+  function productByName(name) {
+    const list = SEED.records.products || [];
+    if (!_prodByName || _prodByNameLen !== list.length) {
+      _prodByName = new Map();
+      list.forEach(p => { if (p && p.name) _prodByName.set(norm(p.name), p); });
+      _prodByNameLen = list.length;
+    }
+    return _prodByName.get(norm(name));
+  }
+
+  // Tonnage rule of the semantic models (m167): Qty when the product's UoM is Ton, else Qty x the product's ton factor.
+  // A product without a factor carries no tonnage (the bundle stores a missing factor as 1.0, so 1.0 == "not set").
+  function ticketTons(r) {
+    if (!r) return 0;
+    const q = Number(r.qty || 0);
+    const p = productByName(r.product);
+    const uom = String((p && p.uom) || r.uom || '').trim();
+    if (/^ton/i.test(uom)) return q;
+    const f = Number(p && p.ton_factor != null ? p.ton_factor : (r.ton_factor != null ? r.ton_factor : 0));
+    return (f > 0 && f !== 1) ? q * f : 0;
+  }
+
+  // Keys that are plain sums over records (safe to shift by a per-record delta); ratios are recomputed afterwards.
+  const KPI_ADDITIVE_KEYS = ['sales_ttc', 'gross_sales', 'net_sales', 'trans_rev', 'sales_vat', 'loads', 'delivery_loads', 'pickup_loads', 'unregistered_loads',
+    'tons_sold', 'qty_sold', 'cash_sales', 'credit_sales', 'raw_cost', 'raw_mat_cost', 'raw_haulage', 'raw_loads', 'raw_tons', 'raw_qty',
+    'expenses', 'cash_expenses', 'credit_expenses', 'salaries_paid', 'gross_margin', 'operating_profit', 'receipts', 'settlements_paid',
+    'cash_inflow', 'cash_outflow', 'net_cash_flow', 'diesel_litres', 'own_fleet_loads'];
+
+  function finishKpiRatios(k) {
+    k.avg_price_ttc = k.qty_sold > 0 ? round2(k.sales_ttc / k.qty_sold) : 0;
+    k.avg_price_net = k.qty_sold > 0 ? round2(k.net_sales / k.qty_sold) : 0;
+    k.avg_raw_cost = k.raw_qty > 0 ? round2(k.raw_cost / k.raw_qty) : 0;
+    k.gm_pct = k.net_sales > 0 ? k.gross_margin / k.net_sales : 0;
+    k.op_margin_pct = k.net_sales > 0 ? k.operating_profit / k.net_sales : 0;
+    return k;
+  }
+
+  // Local record engine for one date basis ('tx' = transaction date, 'rep' = reporting date). Same rules as the DAX
+  // measures wherever the bundle carries the inputs (tonnage, sale-type split, cash/credit); returns plain sums only.
+  function computeLocalKPI(m, range, basis) {
     const periods = m.periods || {};
-    const range = periodRange(STATE.period);
-    if (!range && STATE.basis === 'tx') {
-      return periods.all || {};
-    }
-    if (range && range.daxKey && STATE.basis === 'tx' && periods[range.daxKey]) {
-      return periods[range.daxKey];
-    }
-    const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : SEED_DATE;
-    const cacheKey = `${STATE.company}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
-    if (_kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
-
     const baseKey = t >= '2026-01-01' ? 'ytd' : (t >= '2025-01-01' ? 'fy2025' : 'fy2024');
     const baseKpi = Object.assign({}, periods.all || {}, periods[baseKey] || {});
+    const fo = { ignoreSearch: true, basis };
 
-    const sales = filterRecords(SEED.records.sales_tickets, { ignoreSearch: true });
-    const raws = filterRecords(SEED.records.raw_purchases, { ignoreSearch: true });
-    const exps = filterRecords(SEED.records.expenses, { ignoreSearch: true });
-    const sals = filterRecords(SEED.records.salaries, { ignoreSearch: true });
-    const rcpts = filterRecords(SEED.records.receipts, { ignoreSearch: true });
-    const spays = filterRecords(SEED.records.settlements, { ignoreSearch: true });
-    const fuels = filterRecords(SEED.records.fuel_intakes, { ignoreSearch: true });
-    const exts = filterRecords(SEED.records.external_movements, { ignoreSearch: true });
+    const sales = filterRecords(SEED.records.sales_tickets, fo);
+    const raws = filterRecords(SEED.records.raw_purchases, fo);
+    const exps = filterRecords(SEED.records.expenses, fo);
+    const sals = filterRecords(SEED.records.salaries, fo);
+    const rcpts = filterRecords(SEED.records.receipts, fo);
+    const spays = filterRecords(SEED.records.settlements, fo);
+    const fuels = filterRecords(SEED.records.fuel_intakes, fo);
+    const exts = filterRecords(SEED.records.external_movements, fo);
 
-    let loads = 0, delivery_loads = 0, pickup_loads = 0;
+    let loads = 0, delivery_loads = 0, pickup_loads = 0, unregistered_loads = 0;
     let sales_ttc = 0, sales_vat = 0, net_sales = 0, gross_sales = 0, trans_rev = 0, qty_sold = 0, tons_sold = 0;
     let cash_sales = 0, credit_sales = 0;
     sales.forEach(s => {
       loads += 1;
       if (s.sale_type === 'Pickup') pickup_loads += 1;
-      else delivery_loads += 1;
+      else if (s.sale_type === 'Delivery') delivery_loads += 1;
+      else unregistered_loads += 1;
       const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
       const vat = Number(s.vat || 0);
       const net = Number(s.total != null ? s.total : (ttc - vat));
       const disc = Number(s.discount || 0);
       const tr = Number(s.trans_price || 0);
       const q = Number(s.qty || 0);
-      const tn = s.uom === 'm³' ? q * 1.5 : q;
       sales_ttc += ttc;
       sales_vat += vat;
       net_sales += net;
       gross_sales += (net + disc);
       trans_rev += tr;
       qty_sold += q;
-      tons_sold += tn;
+      tons_sold += ticketTons(s);
       if (s.method === 'Cash') cash_sales += ttc;
       else credit_sales += ttc;
     });
@@ -474,7 +504,7 @@
       raw_haulage += haul;
       raw_cost += tot;
       raw_qty += q;
-      raw_tons += (r.uom === 'm³' ? q * 1.5 : q);
+      raw_tons += ticketTons(r);
     });
 
     let expenses = 0, cash_expenses = 0, credit_expenses = 0;
@@ -501,33 +531,8 @@
       else ext_in += a;
     });
 
-    // If a single calendar month is selected under tx basis and exists in m.monthly, use exact DAX monthly figures for headline totals
-    if (STATE.basis === 'tx' && String(STATE.period).startsWith('month:')) {
-      const ymStr = String(STATE.period).slice(6, 13);
-      const [yr, mo] = ymStr.split('-').map(Number);
-      const ymLabel = `${MONTH_SHORT[(mo || 1) - 1]} ${yr}`;
-      const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
-      if (mRow) {
-        if (mRow.sales_ttc != null) sales_ttc = Number(mRow.sales_ttc);
-        if (mRow.net_sales != null) net_sales = Number(mRow.net_sales);
-        if (mRow.trans_rev != null) trans_rev = Number(mRow.trans_rev);
-        if (mRow.sales_vat != null) sales_vat = Number(mRow.sales_vat);
-        if (mRow.loads != null) loads = Number(mRow.loads);
-        if (mRow.tons_sold != null) tons_sold = Number(mRow.tons_sold);
-        if (mRow.raw_cost != null) raw_cost = Number(mRow.raw_cost);
-        if (mRow.raw_loads != null) raw_loads = Number(mRow.raw_loads);
-        if (mRow.expenses != null) expenses = Number(mRow.expenses);
-        if (mRow.salaries_paid != null) salaries_paid = Number(mRow.salaries_paid);
-        if (mRow.receipts != null) receipts = Number(mRow.receipts);
-        if (mRow.settlements_paid != null) settlements_paid = Number(mRow.settlements_paid);
-        if (mRow.diesel_litres != null) diesel_litres = Number(mRow.diesel_litres);
-      }
-    }
-
     const gross_margin = round2(net_sales - raw_cost);
-    const gm_pct = net_sales > 0 ? gross_margin / net_sales : 0;
     const operating_profit = round2(gross_margin - expenses - salaries_paid);
-    const op_margin_pct = net_sales > 0 ? operating_profit / net_sales : 0;
     const cash_inflow = round2(cash_sales + receipts + ext_in);
     const cash_outflow = round2(cash_expenses + settlements_paid + salaries_paid + ext_out);
     const net_cash_flow = round2(cash_inflow - cash_outflow);
@@ -536,7 +541,7 @@
     sales.forEach(s => { if (s.truck) truckSet.add(s.truck); if (s.transport_by === 'Company fleet') own_fleet_loads += 1; });
     raws.forEach(r => { if (r.truck) truckSet.add(r.truck); if (r.transport_by === 'Company fleet') own_fleet_loads += 1; });
 
-    const computed = Object.assign(baseKpi, {
+    return finishKpiRatios(Object.assign(baseKpi, {
       sales_ttc: round2(sales_ttc),
       gross_sales: round2(gross_sales || sales_ttc),
       net_sales: round2(net_sales),
@@ -545,10 +550,9 @@
       loads,
       delivery_loads,
       pickup_loads,
+      unregistered_loads,
       tons_sold: round2(tons_sold),
       qty_sold: round2(qty_sold),
-      avg_price_ttc: qty_sold > 0 ? round2(sales_ttc / qty_sold) : 0,
-      avg_price_net: qty_sold > 0 ? round2(net_sales / qty_sold) : 0,
       cash_sales: round2(cash_sales),
       credit_sales: round2(credit_sales),
       raw_cost: round2(raw_cost),
@@ -557,15 +561,12 @@
       raw_loads,
       raw_tons: round2(raw_tons),
       raw_qty: round2(raw_qty),
-      avg_raw_cost: raw_qty > 0 ? round2(raw_cost / raw_qty) : 0,
       expenses: round2(expenses),
       cash_expenses: round2(cash_expenses),
       credit_expenses: round2(credit_expenses),
       salaries_paid: round2(salaries_paid),
       gross_margin,
-      gm_pct,
       operating_profit,
-      op_margin_pct,
       receipts: round2(receipts),
       settlements_paid: round2(settlements_paid),
       cash_inflow,
@@ -574,8 +575,58 @@
       diesel_litres: round2(diesel_litres),
       trucks_used: truckSet.size || baseKpi.trucks_used || 0,
       own_fleet_loads,
-      label: range ? range.label : 'All-Time (2024–2026)'
+      basis,
+      label: range ? range.label : 'All-Time (2024\u20132026)'
+    }));
+  }
+
+  // A single calendar month on the transaction basis: overlay the exact DAX monthly figures on the headline totals.
+  function applyMonthlyDax(k, m) {
+    if (!String(STATE.period).startsWith('month:')) return k;
+    const ymStr = String(STATE.period).slice(6, 13);
+    const [yr, mo] = ymStr.split('-').map(Number);
+    const ymLabel = `${MONTH_SHORT[(mo || 1) - 1]} ${yr}`;
+    const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
+    if (!mRow) return k;
+    const MAP = { sales_ttc: 'sales_ttc', net_sales: 'net_sales', trans_rev: 'trans_rev', sales_vat: 'sales_vat', cash_sales: 'cash_sales', credit_sales: 'credit_sales',
+      loads: 'loads', delivery_loads: 'delivery_loads', pickup_loads: 'pickup_loads', tons_sold: 'tons', qty_sold: 'qty_sold',
+      raw_cost: 'raw_cost', raw_mat_cost: 'raw_mat_cost', raw_haulage: 'raw_haulage', raw_loads: 'raw_loads', raw_qty: 'raw_qty',
+      expenses: 'expenses', cash_expenses: 'cash_expenses', credit_expenses: 'credit_expenses', salaries_paid: 'salaries',
+      gross_margin: 'gross_margin', operating_profit: 'operating_profit', receipts: 'receipts', settlements_paid: 'settlements_paid' };
+    Object.keys(MAP).forEach(key => { if (mRow[MAP[key]] != null) k[key] = Number(mRow[MAP[key]]); });
+    return finishKpiRatios(k);
+  }
+
+  // Reporting-date figures = the transaction-date figures (DAX-anchored wherever a snapshot exists) shifted ONLY by the
+  // records whose reporting date moves them across the window edges. Never a second engine with its own totals, so
+  // All-Time is identical on both bases and a month differs by the handful of late-reported tickets.
+  function bridgeKpiToBasis(anchor, txRaw, repRaw) {
+    const out = Object.assign({}, anchor);
+    KPI_ADDITIVE_KEYS.forEach(key => {
+      const delta = Number(repRaw[key] || 0) - Number(txRaw[key] || 0);
+      const base = anchor[key] != null ? Number(anchor[key]) : Number(txRaw[key] || 0);
+      out[key] = round2(base + delta);
     });
+    out.basis = 'rep';
+    return finishKpiRatios(out);
+  }
+
+  function getKPI() {
+    const m = getModel();
+    const periods = m.periods || {};
+    const range = periodRange(STATE.period);
+    let anchor = null;
+    if (!range) anchor = periods.all || null;
+    else if (range.daxKey && periods[range.daxKey]) anchor = periods[range.daxKey];
+    if (STATE.basis === 'tx' && anchor) return anchor;
+    const f = range ? range.from : MIN_DATE;
+    const t = range ? range.to : SEED_DATE;
+    const cacheKey = `${STATE.company}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
+    if (_kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
+
+    const txRaw = computeLocalKPI(m, range, 'tx');
+    const txFinal = anchor || applyMonthlyDax(Object.assign({}, txRaw), m);
+    const computed = STATE.basis === 'rep' ? bridgeKpiToBasis(txFinal, txRaw, computeLocalKPI(m, range, 'rep')) : txFinal;
 
     _kpiRangeCacheKey = cacheKey;
     _kpiRangeCacheVal = computed;
@@ -700,19 +751,24 @@
     return !!(p && (p.sales_ttc != null || p.loads != null || p.expenses != null));
   }
 
+  function recordDateFor(r, basis) {
+    return String((basis === 'rep' && r.rep_date) ? r.rep_date : (r.date || '')).slice(0, 10);
+  }
+
   function recordDate(r) {
-    return String((STATE.basis === 'rep' && r.rep_date) ? r.rep_date : (r.date || '')).slice(0, 10);
+    return recordDateFor(r, STATE.basis);
   }
 
   function filterRecords(list, opts = {}) {
     const bu = COMPANY_BU_MATCH[STATE.company];
     const q = opts.ignoreSearch ? '' : STATE.search.trim().toLowerCase();
     const range = opts.ignorePeriod ? null : periodRange(STATE.period);
+    const basis = opts.basis || STATE.basis;
     return (list || []).filter(r => {
       if (!r || r.voided) return false;
       if (bu && r.company && r.company !== bu) return false;
       if (range) {
-        const d = recordDate(r);
+        const d = recordDateFor(r, basis);
         if (d && (d < range.from || d > range.to)) return false;
       }
       if (q) {
@@ -5722,7 +5778,7 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter }) : renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
       case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;

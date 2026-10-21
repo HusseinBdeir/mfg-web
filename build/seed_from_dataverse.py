@@ -526,7 +526,7 @@ def fetch_dataverse_records():
             "id": pid,
             "name": name,
             "official_name": p.get("bhf_officialname") or name,
-            "ton_factor": float(p.get("bhf_tonfactor") or 1.0),
+            "ton_factor": (float(p["bhf_tonfactor"]) if p.get("bhf_tonfactor") not in (None, "", 0) else None),  # None = no factor (DAX: no tonnage); was 1.0
             "type_id": p.get("_bhf_type_value") or "",
             "type": t_name,
             "ticket_product": pt_info.get("ticket_product", t_name in ("Material", "Aggregates", "Sand", "Gravel", "Subbase")),

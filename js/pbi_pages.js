@@ -696,7 +696,7 @@
   }
   // ==================== 20-PAGE POWER BI STUDIO RENDERER ====================
   function renderPbiStudio(ctx) {
-    const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn } = ctx;
+    const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, ticketTons } = ctx;
     _activePbiState = STATE;
     const m = getModel();
     const k = getKPI();
@@ -825,7 +825,7 @@
         const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
         cur.loads += 1;
         cur.qty_sold += q;
-        cur.tons_sold += (s.uom === 'm³' ? q * 1.5 : q);
+        cur.tons_sold += ticketTons ? ticketTons(s) : (s.uom === 'm³' ? q * 1.5 : q);
         cur.sales_ttc += ttc;
         cur.net_sales += net;
         cur.trans_rev += Number(s.trans_price || 0);
