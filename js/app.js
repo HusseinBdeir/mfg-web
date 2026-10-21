@@ -69,8 +69,9 @@
     search: '',
     chipFilter: 'all',
     activeStatement: '01',
+    stmtCatFilter: 'all',
     pbiPage: 'p01_overview',
-    pbiSlicer: { product: '', customer: '', supplier: '', site: '', method: '', saleType: '', search: '' },
+    pbiSlicer: {},
     activeTableKey: 'price_rules',
     modalForm: 'sales',
     activeUserIdx: 0,
@@ -85,7 +86,49 @@
     users: lsGet('isabi_mfg_users_v2', null) || DEFAULT_USERS.map(u => ({ ...u })),
     sessions: lsGet('isabi_mfg_sessions_v2', null) || [],
     customRecords: lsGet('isabi_mfg_custom_recs_v2', null) || {},
-    supabaseCfg: lsGet('isabi_mfg_supabase_cfg', null) || { url: '', anonKey: '' }
+    supabaseCfg: lsGet('isabi_mfg_supabase_cfg', null) || { url: '', anonKey: '' },
+    faceSettings: Object.assign({
+      threshold: 0.50,
+      margin: 0.08,
+      weakAbove: 0.45,
+      minFaceFrac: 0.14,
+      confirmFrames: 3,
+      liveness: false,
+      enforce2FA: true,
+      sound: true
+    }, lsGet('isabi_mfg_face_settings_v1', null) || {})
+  };
+
+  const FACE_POSES = [
+    'Look straight at the camera',
+    'Turn your head slightly LEFT — just a little, keep both eyes on the camera',
+    'Turn your head slightly RIGHT — just a little, keep both eyes on the camera'
+  ];
+
+  const FACE_STATE = {
+    camActive: false,
+    authCamStoppedByUser: false,
+    stream: null,
+    loopTimer: null,
+    busy: false,
+    streakUser: null,
+    streakCount: 0,
+    bestDist: 9,
+    secondDist: 9,
+    lastBlinkAt: 0,
+    eyeClosedSeen: false,
+    pending2faUser: null,
+    cooldownUntil: 0,
+    enrolUserId: '',
+    enrolCaptures: [],
+    enrolThumbs: [],
+    enrolConsent: false,
+    enrolCamActive: false,
+    enrolTestActive: false,
+    enrolTestTimer: null,
+    enrolStatusText: 'Select a team seat, tick biometric consent, and capture 3 poses (front, slight left, slight right).',
+    enrolStatusCls: '',
+    calibReportHtml: ''
   };
 
   // App-entered record pools (localStorage + cloud relay) → server table + SEED list
@@ -356,6 +399,48 @@
     return STATE.users[STATE.activeUserIdx] || STATE.users[0] || DEFAULT_USERS[0];
   }
   function isOwner(u) { return /Owner/i.test(String((u || activeUser()).role || '')); }
+  function userFaceSamples(u) {
+    if (!u) return [];
+    let raw = u.face_samples;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = []; } }
+    return Array.isArray(raw) ? raw.filter(s => Array.isArray(s) && s.length === 128) : [];
+  }
+  function userHasFaceId(u) {
+    return userFaceSamples(u).length > 0;
+  }
+  function userRequiresFace2FA(u) {
+    if (!u || !STATE.faceSettings.enforce2FA) return false;
+    return userHasFaceId(u) && u.face_required !== false;
+  }
+  function enrolTargetUser() {
+    if (!isOwner()) return activeUser();
+    const hit = STATE.users.find(u => u && String(u.id) === String(FACE_STATE.enrolUserId));
+    return hit || activeUser();
+  }
+  function usableFaces(includeUnsavedForUser) {
+    const list = STATE.users.filter(u => u && u.status !== 'Suspended' && userFaceSamples(u).length > 0).map(u => ({
+      id: u.id,
+      email: u.email,
+      name: u.full_name,
+      role: u.role,
+      companies: u.companies,
+      samples: userFaceSamples(u)
+    }));
+    if (includeUnsavedForUser && FACE_STATE.enrolCaptures.length) {
+      const idx = list.findIndex(x => norm(x.email) === norm(includeUnsavedForUser.email));
+      const row = {
+        id: includeUnsavedForUser.id,
+        email: includeUnsavedForUser.email,
+        name: includeUnsavedForUser.full_name + ' (unsaved)',
+        role: includeUnsavedForUser.role,
+        companies: includeUnsavedForUser.companies,
+        samples: FACE_STATE.enrolCaptures.slice()
+      };
+      if (idx >= 0) list[idx] = row;
+      else list.push(row);
+    }
+    return list;
+  }
   function canEnterForm(form, u) {
     const role = String((u || activeUser()).role || '');
     if (/Owner/i.test(role)) return true;
@@ -370,7 +455,7 @@
     u = u || activeUser();
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
-    if (view === 'overview' || view === 'pbi' || view === 'expenses') return pbi !== 'none';
+    if (view === 'overview' || view === 'pbi' || view === 'expenses' || view === 'payroll') return pbi !== 'none';
     if (view === 'sentinels' || view === 'ledger' || view === 'gl') return pbi === 'full';
     if (view === 'statements') return st !== 'none';
     return true;
@@ -2019,7 +2104,11 @@
         <div class="panel-card" id="salPanel">
           <div class="panel-head">
             <div class="panel-title"><span>STAFF SALARIES &amp; PAYROLL DISBURSEMENTS</span></div>
-            <span class="panel-meta">Account 421 / 641 ${exportBtn('salPanel', 'Payroll')}</span>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">
+              <button type="button" class="btn" style="padding:3px 9px;font-size:11px" data-nav-jump="payroll">Full Payroll Command →</button>
+              <button type="button" class="btn" style="padding:3px 9px;font-size:11px" data-pbi-jump="p12_payroll">P12 Payroll BI →</button>
+              ${exportBtn('salPanel', 'Payroll')}
+            </span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -2045,6 +2134,305 @@
             </table>
           </div>
         </div>
+      </div>
+    `;
+  }
+
+  // ==========================================================================
+  // VIEW 09B: PAYROLL, ATTENDANCE, SITE ALLOWANCES & FREELANCE COMMAND (M239/M245/M247)
+  // ==========================================================================
+  function renderPayroll() {
+    const k = getKPI();
+    const { fleet, pricing } = sentinelSlice();
+    const today = SEED_DATE;
+    const empAll = filterRecords(SEED.records.employments, { ignorePeriod: true });
+    const salAll = filterRecords(SEED.records.salaries);
+    const attAll = filterRecords(SEED.records.attendance);
+    const logAll = filterRecords(SEED.records.logistics_allowances, { ignorePeriod: true });
+    const otRates = filterRecords(SEED.records.overtime_rates, { ignorePeriod: true });
+
+    // Build per-staff 16-column payroll register (Base, OT, Late, Absence, Site Allowance, Earnings, Paid, Balance)
+    const staffMap = new Map();
+    const ensureStaff = (name, co) => {
+      const key = norm(name || '(Unassigned)');
+      if (!staffMap.has(key)) {
+        staffMap.set(key, {
+          staff: name || '(Unassigned)', company: co || 'WTC', type: 'Monthly', status: 'Current',
+          base: 0, ot_hrs: 0, ot_pay: 0, late_hrs: 0, late_ded: 0, absent_days: 0, gap_days: 0, abs_ded: 0,
+          extras: 0, reimb: 0, ded: 0, site_allow: 0, earnings: 0, paid: 0, balance: 0, payments: 0, hasContract: false
+        });
+      }
+      return staffMap.get(key);
+    };
+    empAll.forEach(e => {
+      const s = ensureStaff(e.staff, e.company);
+      s.hasContract = true;
+      s.type = e.type || 'Regular';
+      const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
+      if (!ended) s.status = 'Current';
+      else if (s.status !== 'Current') s.status = 'Ended';
+      s.base += Number(e.salary_usd || 0) || (Number(e.daily_rate || 0) * 26);
+    });
+    attAll.forEach(a => {
+      const s = ensureStaff(a.staff, a.company);
+      const otH = Number(a.overtime_hours || 0);
+      const ltH = Number(a.late_hours || 0);
+      s.ot_hrs += otH;
+      s.late_hrs += ltH;
+      const st = String(a.status || '');
+      if (/Absent|Unpaid/i.test(st)) s.absent_days += 1;
+      const hrRate = s.base > 0 ? (s.base / (26 * 9)) : 4.5;
+      s.ot_pay += round2(otH * hrRate * 1.5);
+      s.late_ded += round2(ltH * hrRate);
+      if (/Absent/i.test(st)) s.abs_ded += round2(s.base > 0 ? (s.base / 26) : 25);
+    });
+    logAll.forEach(l => {
+      const s = ensureStaff(l.staff, l.company);
+      const daily = Number(l.daily_usd || l.usd_amount || 0) || (Number(l.lbp_amount || 0) / 89500);
+      const daysPerWk = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].filter(d => l[d]).length || 6;
+      const start = String(l.start_date || '2026-01-01');
+      const end = String(l.end_date || today);
+      const spanDays = Math.max(1, Math.min(180, daysBetween(start, end < today ? end : today) + 1));
+      const paidDays = Math.max(1, Math.round(spanDays * (daysPerWk / 7)));
+      s.site_allow += round2(paidDays * daily);
+    });
+    salAll.forEach(p => {
+      const s = ensureStaff(p.staff, p.company);
+      s.paid += Number(p.amount || 0);
+      s.payments += 1;
+    });
+    const staffRows = Array.from(staffMap.values()).map(s => {
+      if (s.base === 0 && s.paid > 0) s.base = s.paid; // historical disbursed baseline when contract salary is 0
+      s.earnings = round2(s.base + s.ot_pay + s.extras + s.reimb + s.site_allow - s.late_ded - s.abs_ded - s.ded);
+      s.balance = round2(s.earnings - s.paid);
+      return s;
+    }).sort((a, b) => b.paid - a.paid || b.earnings - a.earnings);
+
+    const shownStaff = sortRows(staffRows, 'pay_staff', 'paid', 'desc').slice(0, shownCount('pay_staff'));
+    const shownSal = sortRows(salAll, 'pay_sal', 'date', 'desc').slice(0, shownCount('pay_sal'));
+    const shownEmp = sortRows(empAll, 'pay_emp', 'start_date', 'desc').slice(0, shownCount('pay_emp'));
+    const shownAtt = sortRows(attAll, 'pay_att', 'date', 'desc').slice(0, shownCount('pay_att'));
+    const shownLog = sortRows(logAll, 'pay_log', 'start_date', 'desc').slice(0, shownCount('pay_log'));
+    const unmatchedRows = pricing.unmatched_salary_by_staff || [];
+    const totalSiteAllow = staffRows.reduce((a, r) => a + r.site_allow, 0);
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+
+    return `
+      <div class="cockpit-banner">
+        <div class="cockpit-title-block">
+          <div class="cockpit-eyebrow">WORKFORCE &amp; PAYROLL COMMAND · M239 / M244 / M245 / M247</div>
+          <div class="cockpit-title">Payroll, Attendance, Site Allowances &amp; Contracts</div>
+          <div class="cockpit-sub">16-column staff earnings register (Base + Overtime + Site Allowances − Lateness &amp; Absence vs Paid), Employment &amp; Freelance Contracts, Mon–Sun Site Allowances, and Attendance.</div>
+        </div>
+        <div class="cockpit-pills">
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Salaries Paid (Book)</div><div class="cockpit-pill-val brass">${fmtUSD(k.salaries_paid, 0)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Contracts</div><div class="cockpit-pill-val emerald">${fmtNum(empAll.filter(e => e.status !== 'Ended' && (!e.end_date || e.end_date >= today)).length)} / ${fmtNum(empAll.length)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Overtime &amp; Trip Bonus</div><div class="cockpit-pill-val">${fmtUSD(k.overtime_bonus, 0)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Site Allowances</div><div class="cockpit-pill-val">${fmtUSD(totalSiteAllow, 0)} (${fmtNum(logAll.length)})</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Unmatched Salary</div><div class="cockpit-pill-val ${Number(pricing.unmatched_salary_payments_usd || 0) > 0 ? 'amber' : 'emerald'}">${fmtUSD(pricing.unmatched_salary_payments_usd || 0, 0)}</div></div>
+        </div>
+      </div>
+
+      <div class="panel-card" style="margin-bottom:14px">
+        <div class="table-toolbar" style="border-bottom:0">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search staff member, payroll month, contract type, site, equipment...')}
+            <div class="chip-bar">
+              ${chip('all', 'All Workforce Registers')}
+              ${chip('register', `Staff Register (${staffRows.length})`)}
+              ${chip('salaries', `Salary Payments (${salAll.length})`)}
+              ${chip('contracts', `Contracts (${empAll.length})`)}
+              ${chip('allowances', `Site Allowances (${logAll.length})`)}
+              ${chip('attendance', `Attendance (${attAll.length})`)}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-brass" data-pbi-jump="p12_payroll">📊 Open P12 · Payroll BI Studio</button>
+            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="19">🖨 Print Payroll A4 Statement (#19)</button>
+            <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="15">🖨 Driver Overtime Sheet (#15)</button>
+            ${canEnterForm('salary') ? '<button type="button" class="btn btn-primary" data-open-modal="salary">+ Pay Salary</button>' : ''}
+            ${canEnterForm('attendance') ? '<button type="button" class="btn" data-open-modal="attendance">+ Log Attendance</button>' : ''}
+          </div>
+        </div>
+      </div>
+
+      ${(STATE.chipFilter === 'all' || STATE.chipFilter === 'register') ? `
+      <div class="panel-card" id="payStaffRegPanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title"><span>PAYROLL BY STAFF MEMBER — BASE, OVERTIME, DEDUCTIONS, SITE ALLOWANCE, EARNINGS, PAID &amp; BALANCE</span></div>
+            <span class="ph-sub">Site allowances are included inside Earnings (m247) · Amber badge = no active contract on file</span>
+          </div>
+          <span class="panel-meta">${fmtNum(staffRows.length)} Staff ${exportBtn('payStaffRegPanel', 'Payroll_By_Staff')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('pay_staff', 'Staff Member', 'staff')}${th('pay_staff', 'Co.', 'company')}${th('pay_staff', 'Contract', 'type')}${th('pay_staff', 'Status', 'status')}
+                ${th('pay_staff', 'Base ($)', 'base', 'r')}${th('pay_staff', 'OT Hrs', 'ot_hrs', 'r')}${th('pay_staff', 'OT Pay ($)', 'ot_pay', 'r')}
+                ${th('pay_staff', 'Late Hrs', 'late_hrs', 'r')}${th('pay_staff', 'Lateness ($)', 'late_ded', 'r')}${th('pay_staff', 'Absent d', 'absent_days', 'r')}${th('pay_staff', 'Absence ($)', 'abs_ded', 'r')}
+                ${th('pay_staff', 'Site Allowance', 'site_allow', 'r')}${th('pay_staff', 'Earnings ($)', 'earnings', 'r')}${th('pay_staff', 'Paid ($)', 'paid', 'r')}${th('pay_staff', 'Balance ($)', 'balance', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownStaff.map(r => `
+                <tr class="${r.status === 'Ended' ? 'pbi-row-amber' : ''}">
+                  <td><strong>${esc(r.staff)}</strong>${!r.hasContract ? ' <span class="badge badge-warn" title="Salary payment without an employment contract">No contract</span>' : ''}</td>
+                  <td><span class="badge badge-brass">${esc(r.company)}</span></td>
+                  <td>${esc(r.type)}</td>
+                  <td><span class="badge ${r.status === 'Ended' ? 'badge-warn' : 'badge-ok'}">${esc(r.status)}</span></td>
+                  <td class="r">${fmtUSD(r.base, 2)}</td>
+                  <td class="r">${fmtNum(r.ot_hrs, 1)}</td>
+                  <td class="r">${fmtUSD(r.ot_pay, 2)}</td>
+                  <td class="r">${fmtNum(r.late_hrs, 1)}</td>
+                  <td class="r">${r.late_ded ? fmtUSD(r.late_ded, 2) : '—'}</td>
+                  <td class="r">${fmtNum(r.absent_days, 0)}</td>
+                  <td class="r">${r.abs_ded ? fmtUSD(r.abs_ded, 2) : '—'}</td>
+                  <td class="r">${r.site_allow ? fmtUSD(r.site_allow, 2) : '—'}</td>
+                  <td class="r"><strong>${fmtUSD(r.earnings, 2)}</strong></td>
+                  <td class="r pbi-bar-cell"><span class="pbi-bar-bg pos" style="width:${Math.min(94, Math.round((r.paid / Math.max(1, staffRows[0] ? staffRows[0].paid : 1)) * 90))}%"></span><strong>${fmtUSD(r.paid, 2)}</strong></td>
+                  <td class="r ${r.balance < 0 ? 'pbi-neg' : ''}"><strong>${fmtUSD(r.balance, 2)}</strong></td>
+                </tr>
+              `).join('') || emptyRow(15, 'No staff records match filter')}
+              ${showMoreRow('pay_staff', staffRows.length, 15)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4">TOTAL (${fmtNum(staffRows.length)} STAFF · BOOK PAYROLL ${fmtUSD(k.salaries_paid, 2)})</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.base, 0), 2)}</td>
+                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.ot_hrs, 0), 1)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.ot_pay, 0), 2)}</td>
+                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.late_hrs, 0), 1)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.late_ded, 0), 2)}</td>
+                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.absent_days, 0), 0)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.abs_ded, 0), 2)}</td>
+                <td class="r">${fmtUSD(totalSiteAllow, 2)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.earnings, 0), 2)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.paid, 0), 2)}</td>
+                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.balance, 0), 2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>` : ''}
+
+      <div class="split-grid-2">
+        ${(STATE.chipFilter === 'all' || STATE.chipFilter === 'salaries') ? `
+        <div class="panel-card" id="paySalPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>SALARY DISBURSEMENTS (${fmtNum(salAll.length)})</span></div>
+            <span class="panel-meta">${exportBtn('paySalPanel', 'Salary_Disbursements')} ${canEnterForm('salary') ? '<button class="btn btn-primary" style="padding:3px 9px;font-size:11px" data-open-modal="salary">+ Pay Salary</button>' : ''}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_sal', 'Date', 'date')}${th('pay_sal', 'Payroll Month', 'payroll_month')}${th('pay_sal', 'Co.', 'company')}${th('pay_sal', 'Staff Member', 'staff')}${th('pay_sal', 'Method', 'method')}${th('pay_sal', 'Amount ($)', 'amount', 'r')}${th('pay_sal', 'Voucher', 'name')}</tr></thead>
+              <tbody>
+                ${shownSal.map(s => `
+                  <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
+                    <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
+                    <td class="mono">${esc(s.payroll_month)}</td>
+                    <td><span class="badge badge-brass">${esc(s.company)}</span></td>
+                    <td><strong>${esc(s.staff)}</strong></td>
+                    <td>${esc(s.method || 'Cash')}</td>
+                    <td class="r"><strong>${fmtUSD(s.amount, 2)}</strong></td>
+                    <td class="mono mu">${esc(s.name || '—')}</td>
+                  </tr>
+                `).join('') || emptyRow(7, 'No salary payments match filter')}
+                ${showMoreRow('pay_sal', salAll.length, 7)}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+
+        ${(STATE.chipFilter === 'all' || STATE.chipFilter === 'contracts') ? `
+        <div class="panel-card" id="payEmpPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>EMPLOYMENT &amp; FREELANCE CONTRACTS (${fmtNum(empAll.length)})</span></div>
+            <span class="panel-meta">Amber = Ended contract (m244) ${exportBtn('payEmpPanel', 'Employment_Contracts')} ${canEnterForm('employment') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="employment">+ Contract</button>' : ''}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_emp', 'Staff', 'staff')}${th('pay_emp', 'Co.', 'company')}${th('pay_emp', 'Type', 'type')}${th('pay_emp', 'Start', 'start_date')}${th('pay_emp', 'End', 'end_date')}${th('pay_emp', 'Status', 'status')}${th('pay_emp', 'Monthly ($)', 'salary_usd', 'r')}${th('pay_emp', 'Daily ($)', 'daily_rate', 'r')}</tr></thead>
+              <tbody>
+                ${shownEmp.map(e => {
+                  const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
+                  return `
+                  <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="employments" data-rid="${esc(e.id)}">
+                    <td><strong>${esc(e.staff)}</strong>${appCell(e, 'employments')}</td>
+                    <td><span class="badge badge-brass">${esc(e.company)}</span></td>
+                    <td>${esc(e.type || 'Regular')}</td>
+                    <td class="mono">${esc(e.start_date || '—')}</td>
+                    <td class="mono">${esc(e.end_date || 'Open')}</td>
+                    <td><span class="badge ${ended ? 'badge-warn' : 'badge-ok'}">${ended ? 'Ended' : (e.status || 'Current')}</span></td>
+                    <td class="r"><strong>${fmtUSD(e.salary_usd, 2)}</strong></td>
+                    <td class="r">${e.daily_rate ? fmtUSD(e.daily_rate, 2) : '—'}</td>
+                  </tr>`;
+                }).join('') || emptyRow(8, 'No contracts match filter')}
+                ${showMoreRow('pay_emp', empAll.length, 8)}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+      </div>
+
+      <div class="split-grid-2" style="margin-top:14px">
+        ${(STATE.chipFilter === 'all' || STATE.chipFilter === 'allowances') ? `
+        <div class="panel-card" id="payLogPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>SITE ALLOWANCE ARRANGEMENTS (MON–SUN · ${fmtNum(logAll.length)})</span></div>
+            <span class="panel-meta">${exportBtn('payLogPanel', 'Site_Allowances')} ${canEnterForm('logistics') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="logistics">+ Allowance</button>' : ''}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_log', 'Staff', 'staff')}${th('pay_log', 'Site / Location', 'site')}${th('pay_log', 'Equipment', 'equipment')}${th('pay_log', 'Start', 'start_date')}${th('pay_log', 'End', 'end_date')}${th('pay_log', 'Working Days', 'working_days')}${th('pay_log', 'Daily ($)', 'daily_usd', 'r')}</tr></thead>
+              <tbody>
+                ${shownLog.map(l => {
+                  const ended = l.end_date && String(l.end_date) < today;
+                  return `
+                  <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="logistics_allowances" data-rid="${esc(l.id)}">
+                    <td><strong>${esc(l.staff)}</strong>${appCell(l, 'logistics_allowances')}</td>
+                    <td>${esc(l.site || '—')}</td>
+                    <td class="mono">${esc(l.equipment || '—')}</td>
+                    <td class="mono">${esc(l.start_date || '—')}</td>
+                    <td class="mono">${esc(l.end_date || 'Open')}</td>
+                    <td>${esc(l.working_days || 'Mon–Sat')}</td>
+                    <td class="r"><strong>${fmtUSD(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500), 2)}</strong></td>
+                  </tr>`;
+                }).join('') || emptyRow(7, 'No site allowances match filter')}
+                ${showMoreRow('pay_log', logAll.length, 7)}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+
+        ${(STATE.chipFilter === 'all' || STATE.chipFilter === 'attendance') ? `
+        <div class="panel-card" id="payAttPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>ATTENDANCE, OVERTIME &amp; LEAVE RECORDS (${fmtNum(attAll.length)})</span></div>
+            <span class="panel-meta">${exportBtn('payAttPanel', 'Attendance_Records')} ${canEnterForm('attendance') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="attendance">+ Attendance</button>' : ''}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_att', 'Date', 'date')}${th('pay_att', 'Co.', 'company')}${th('pay_att', 'Staff', 'staff')}${th('pay_att', 'Status / Type', 'status')}${th('pay_att', 'Reg Hrs', 'regular_hours', 'r')}${th('pay_att', 'OT Hrs', 'overtime_hours', 'r')}${th('pay_att', 'Late Hrs', 'late_hours', 'r')}${th('pay_att', 'Notes', 'notes')}</tr></thead>
+              <tbody>
+                ${shownAtt.map(a => `
+                  <tr class="rrow" data-rkey="attendance" data-rid="${esc(a.id)}">
+                    <td class="mono">${esc(a.date)}${appCell(a, 'attendance')}</td>
+                    <td><span class="badge badge-brass">${esc(a.company)}</span></td>
+                    <td><strong>${esc(a.staff)}</strong></td>
+                    <td><span class="badge ${/Absent|Sick/i.test(a.status) ? 'badge-warn' : 'badge-ok'}">${esc(a.status || 'Present')}</span></td>
+                    <td class="r">${fmtNum(a.regular_hours, 1)}</td>
+                    <td class="r">${fmtNum(a.overtime_hours, 1)}</td>
+                    <td class="r">${fmtNum(a.late_hours, 1)}</td>
+                    <td class="mu">${esc(a.notes || '—')}</td>
+                  </tr>
+                `).join('') || emptyRow(8, 'No attendance records match filter')}
+                ${showMoreRow('pay_att', attAll.length, 8)}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
       </div>
     `;
   }
@@ -2327,12 +2715,32 @@
         { label: 'Date', key: 'date', mono: true }, { label: 'Ticket', key: 'ticket_no', mono: true }, { label: 'VAT Invoice', key: 'vat_invoice', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Customer', key: 'customer' }, { label: 'Net', key: 'total', r: true, fmt: C.usd2 }, { label: 'VAT 11%', key: 'vat', r: true, fmt: v => `<strong>${fmtUSD(v, 2)}</strong>` }, { label: 'Total TTC', key: 'total_ttc', r: true, fmt: C.usd2 }
       ], vatTickets, [{ v: `${fmtNum(vatTickets.length)} TICKETS`, span: 5 }, { v: fmtUSD(sum(vatTickets, 'total'), 2), r: true }, { v: fmtUSD(sum(vatTickets, 'vat'), 2), r: true }, { v: fmtUSD(sum(vatTickets, 'total_ttc'), 2), r: true }]);
     } else if (code === '19') {
+      const { pricing } = sentinelSlice();
       const sal = filterRecords(SEED.records.salaries, { ignoreSearch: true });
+      const emp = filterRecords(SEED.records.employments, { ignoreSearch: true, ignorePeriod: true });
+      const log = filterRecords(SEED.records.logistics_allowances, { ignoreSearch: true, ignorePeriod: true });
+      const att = filterRecords(SEED.records.attendance, { ignoreSearch: true });
       const g = groupBy(sal, s => s.staff + '|' + s.payroll_month);
       const rows = Array.from(g.entries()).map(([key, list]) => ({ staff: list[0].staff, month: list[0].payroll_month, company: list[0].company, payments: list.length, amount: sum(list, 'amount'), last: list.map(x => x.date).sort().pop() })).sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(a.staff).localeCompare(String(b.staff)));
-      bodyHtml = stTable([
-        { label: 'Payroll Month', key: 'month', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Staff Member', key: 'staff', fmt: v => `<strong>${esc(v)}</strong>` }, { label: 'Payments', key: 'payments', r: true, fmt: C.num0 }, { label: 'Last Paid', key: 'last', mono: true }, { label: 'Amount ($)', key: 'amount', r: true, fmt: v => `<strong>${fmtUSD(v, 2)}</strong>` }
-      ], rows, [{ v: `${rows.length} STAFF-MONTHS · BOOK PAYROLL ${fmtUSD(k.salaries_paid, 2)}`, span: 3 }, { v: fmtNum(sum(rows, 'payments')), r: true }, { v: '' }, { v: fmtUSD(sum(rows, 'amount'), 2), r: true }]);
+      bodyHtml = `
+        <div class="live-calc">
+          <div><small>Salaries Paid (Book)</small><b>${fmtUSD(k.salaries_paid, 2)}</b></div>
+          <div><small>Employment Contracts</small><b>${fmtNum(emp.length)} (${fmtNum(emp.filter(e => e.status !== 'Ended').length)} active)</b></div>
+          <div><small>Site Allowance Arrangements</small><b>${fmtNum(log.length)} arrangements</b></div>
+          <div><small>Unmatched Salary Payments</small><b>${fmtUSD(pricing.unmatched_salary_payments_usd || 0, 2)}</b></div>
+        </div>
+        <h4>1 · Staff Salary Disbursements by Payroll Month</h4>` +
+        stTable([
+          { label: 'Payroll Month', key: 'month', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Staff Member', key: 'staff', fmt: v => `<strong>${esc(v)}</strong>` }, { label: 'Payments', key: 'payments', r: true, fmt: C.num0 }, { label: 'Last Paid', key: 'last', mono: true }, { label: 'Amount ($)', key: 'amount', r: true, fmt: v => `<strong>${fmtUSD(v, 2)}</strong>` }
+        ], rows, [{ v: `${rows.length} STAFF-MONTHS · BOOK PAYROLL ${fmtUSD(k.salaries_paid, 2)}`, span: 3 }, { v: fmtNum(sum(rows, 'payments')), r: true }, { v: '' }, { v: fmtUSD(sum(rows, 'amount'), 2), r: true }]) +
+        `<h4>2 · Employment &amp; Freelance Contracts Register</h4>` +
+        stTable([
+          { label: 'Staff Member', key: 'staff', fmt: v => `<strong>${esc(v)}</strong>` }, { label: 'Co.', key: 'company' }, { label: 'Type', key: 'type' }, { label: 'Status', key: 'status' }, { label: 'Start Date', key: 'start_date', mono: true }, { label: 'End Date', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') }, { label: 'Monthly Salary ($)', key: 'salary_usd', r: true, fmt: C.usd2 }, { label: 'Daily Rate ($)', key: 'daily_rate', r: true, fmt: C.usd2 }
+        ], emp.slice(0, 80), [{ v: `${emp.length} CONTRACTS`, span: 6 }, { v: fmtUSD(sum(emp, 'salary_usd'), 2), r: true }, { v: '' }]) +
+        `<h4>3 · Weekly Site Allowances (Mon–Sun) &amp; Attendance</h4>` +
+        stTable([
+          { label: 'Staff Member', key: 'staff', fmt: v => `<strong>${esc(v)}</strong>` }, { label: 'Co.', key: 'company' }, { label: 'Site / Location', key: 'site' }, { label: 'Equipment', key: 'equipment', mono: true }, { label: 'Start', key: 'start_date', mono: true }, { label: 'End', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') }, { label: 'Working Days', key: 'working_days' }, { label: 'Daily ($)', key: 'daily_usd', r: true, fmt: (v, r) => fmtUSD(v || r.usd_amount || (Number(r.lbp_amount || 0) / 89500), 2) }
+        ], log.slice(0, 60), [{ v: `${log.length} SITE ALLOWANCE ARRANGEMENTS · ${att.length} ATTENDANCE LOGS IN SAMPLE`, span: 8 }]);
     } else if (code === '21') {
       const tb = (m.gl_tb || []).filter(r => [1, 5].includes(Number(r.Class)) || /^(16|17|45|455|53|51|512|5300)/.test(String(r.Code)));
       bodyHtml = stTable([
@@ -2382,6 +2790,9 @@
 
   function renderStatements() {
     const st = STATEMENT_CATALOG.find(x => x.code === STATE.activeStatement) || STATEMENT_CATALOG[0];
+    const cats = ['all', 'Workforce', 'Financial', 'Receivables', 'Payables', 'Operations', 'Fleet', 'Commercial', 'Tax & Compliance', 'Treasury', 'Executive'];
+    const catFilter = STATE.stmtCatFilter || 'all';
+    const filteredCatalog = STATEMENT_CATALOG.filter(s => catFilter === 'all' || s.cat === catFilter);
     return `
       <div class="cockpit-banner no-print">
         <div class="cockpit-title-block">
@@ -2398,8 +2809,22 @@
         </div>
       </div>
 
+      <div class="stmt-filter-bar no-print">
+        <div class="chip-bar">
+          ${cats.map(c => {
+            const count = c === 'all' ? STATEMENT_CATALOG.length : STATEMENT_CATALOG.filter(s => s.cat === c).length;
+            const lbl = c === 'all' ? `All Statements (${count})` : (c === 'Workforce' ? `👷 Workforce & Payroll (${count})` : `${c} (${count})`);
+            return `<button type="button" class="filter-chip ${catFilter === c ? 'active' : ''}" data-stmt-cat="${esc(c)}">${esc(lbl)}</button>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="btn" style="padding:4px 10px;font-size:11px" data-stmt="19">👷 #19 Staff Payroll &amp; Contracts</button>
+          <button type="button" class="btn" style="padding:4px 10px;font-size:11px" data-stmt="15">🚛 #15 Driver Overtime Sheet</button>
+        </div>
+      </div>
+
       <div class="stmt-catalog-grid no-print">
-        ${STATEMENT_CATALOG.map(s => `
+        ${filteredCatalog.map(s => `
           <div class="stmt-card ${STATE.activeStatement === s.code ? 'active' : ''}" data-stmt="${s.code}" role="button" tabindex="0">
             <div>
               <div class="stmt-code">RDL-${s.code} · ${esc(s.cat)}</div>
@@ -2423,18 +2848,24 @@
     const me = activeUser();
     const owner = isOwner(me);
     const sbConfigured = !!(STATE.supabaseCfg.url && STATE.supabaseCfg.anonKey);
+    const faceCount = STATE.users.filter(userHasFaceId).length;
+    const enrolUser = enrolTargetUser();
+    const enrolSavedSamples = userFaceSamples(enrolUser);
+    const poseIdx = Math.min(FACE_STATE.enrolCaptures.length, 2);
+    const poseComplete = FACE_STATE.enrolCaptures.length >= 3;
+    const poseSvgHtml = window.Face && window.Face.poseSvg ? window.Face.poseSvg(poseIdx) : '';
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">MULTI-DEVICE TEAM AUTHENTICATION · BUSINESS-UNIT ROW-LEVEL SECURITY (RLS)</div>
-          <div class="cockpit-title">Users, Roles &amp; Multi-Device Cloud Sync</div>
-          <div class="cockpit-sub">Issue PINs and 1-click WhatsApp/Email login links for phones, tablets &amp; laptops. Seats, PINs and app entries sync through the BHFIRMS cloud relay.</div>
+          <div class="cockpit-eyebrow">MULTI-DEVICE TEAM AUTHENTICATION · BIOMETRIC FACE ID · BUSINESS-UNIT RLS</div>
+          <div class="cockpit-title">Users, Biometric Face ID &amp; Multi-Device Cloud Sync</div>
+          <div class="cockpit-sub">Enrol 3-pose on-device 128-d Face ID descriptors (Attendance PWA parity), enforce step-up 2FA on PIN login, and sync seats across phones, tablets &amp; laptops.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Web Seats</div><div class="cockpit-pill-val brass">${uCount} Users</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Biometric Face ID</div><div class="cockpit-pill-val ${faceCount ? 'emerald' : 'amber'}">${faceCount} / ${uCount} Enrolled</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cloud Relay Status</div><div class="cockpit-pill-val ${/Live/.test(STATE.cloudStatus) ? 'emerald' : 'amber'}">${esc(STATE.cloudStatus)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Last Cloud Write</div><div class="cockpit-pill-val" style="font-size:13px">${esc(String(STATE.cloudUpdatedAt || '—').replace('T', ' ').slice(0, 16))}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Annual License Savings</div><div class="cockpit-pill-val emerald">${fmtUSD(annualSaved, 0)} / yr</div></div>
         </div>
       </div>
@@ -2498,6 +2929,113 @@
         </div>
       ` : ''}
 
+      <div class="panel-card mfg-enrol-studio" id="faceEnrolPanel" style="margin-bottom:16px">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span>🎭 BIOMETRIC FACE ID ENROLMENT STUDIO &amp; CALIBRATION (ATTENDANCE PWA ENGINE)</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="badge ${enrolSavedSamples.length ? 'badge-ok' : 'badge-warn'}">${enrolSavedSamples.length ? `✓ ${esc(enrolUser.full_name)}: ${enrolSavedSamples.length} poses saved` : `${esc(enrolUser.full_name)}: Not enrolled`}</span>
+            <button type="button" class="btn" style="padding:4px 10px;font-size:11px" id="enrolCalibBtn">📊 Calibration Report</button>
+          </div>
+        </div>
+
+        <div class="enrol-studio-grid">
+          <div class="enrol-cam-col">
+            <div class="enrol-cam-viewport" id="enrolCamViewport">
+              <video id="enrolFaceVideo" autoplay playsinline muted></video>
+              <canvas id="enrolFaceOverlay"></canvas>
+              <div class="enrol-cam-placeholder" id="enrolCamPlaceholder" ${FACE_STATE.enrolCamActive ? 'hidden' : ''}>
+                <div class="enrol-cam-icon">🎭</div>
+                <div><strong>On-Device 128-d Face Recognition</strong></div>
+                <small>SSD MobileNet v1 + 68-point Landmarks · Raw camera frames never leave this device</small>
+              </div>
+            </div>
+            <div class="enrol-thumb-strip" id="enrolThumbStrip">
+              ${[0, 1, 2].map(i => {
+                const th = FACE_STATE.enrolThumbs[i];
+                const hasCap = i < FACE_STATE.enrolCaptures.length;
+                const labels = ['1 · Straight', '2 · Slight Left', '3 · Slight Right'];
+                return `<div class="enrol-thumb-slot ${hasCap ? 'captured' : ''}">
+                  ${th ? `<img src="${th}" alt="Pose ${i + 1}">` : `<div class="enrol-thumb-empty">${hasCap ? '✓ 128-d Vector' : labels[i]}</div>`}
+                  <span>${labels[i]}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <div class="enrol-controls-col">
+            <div class="form-grid-3" style="margin-bottom:10px">
+              <div class="form-field">
+                <label>Team Seat to Enrol</label>
+                <select id="enrolUserSelect" ${owner ? '' : 'disabled'}>
+                  ${STATE.users.filter(u => u.status !== 'Suspended').map(u => `
+                    <option value="${esc(u.id)}" ${String(u.id) === String(enrolUser.id) ? 'selected' : ''}>
+                      ${esc(u.full_name)} (${userFaceSamples(u).length ? userFaceSamples(u).length + ' poses' : 'no Face ID'})
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Match Threshold (τ)</label>
+                <select id="enrolThresholdSel">
+                  <option value="0.45" ${Number(STATE.faceSettings.threshold) === 0.45 ? 'selected' : ''}>0.45 (Strict High-Security)</option>
+                  <option value="0.50" ${Number(STATE.faceSettings.threshold) === 0.50 ? 'selected' : ''}>0.50 (Attendance Default)</option>
+                  <option value="0.55" ${Number(STATE.faceSettings.threshold) === 0.55 ? 'selected' : ''}>0.55 (Relaxed Lighting)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Security Policy</label>
+                <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;font-size:11.5px">
+                  <label style="display:flex;align-items:center;gap:6px;font-weight:600;text-transform:none;letter-spacing:0">
+                    <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''}>
+                    Enforce Face ID 2FA on PIN login
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;font-weight:600;text-transform:none;letter-spacing:0">
+                    <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''}>
+                    Require blink liveness check
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="pose-stepper" id="enrolPoseStepper">
+              ${['1 · Front', '2 · Slight Left', '3 · Slight Right'].map((lbl, i) => `
+                <div class="pose-step ${i < FACE_STATE.enrolCaptures.length ? 'done' : (i === FACE_STATE.enrolCaptures.length ? 'active' : '')}">
+                  <span class="pose-step-num">${i < FACE_STATE.enrolCaptures.length ? '✓' : (i + 1)}</span>
+                  <span>${lbl}</span>
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="mfg-pose-guide ${poseComplete ? 'complete' : ''}" id="enrolPoseGuide">
+              <div class="mfg-pose-svg">${poseSvgHtml}</div>
+              <div class="mfg-pose-copy">
+                <div class="mfg-pose-kicker">${poseComplete ? 'ALL 3 POSES CAPTURED — READY TO SAVE' : `POSE ${poseIdx + 1} OF 3 · CAMERA-TOP GUIDE`}</div>
+                <div class="mfg-pose-title" id="enrolPosePrompt">${esc(poseComplete ? 'Click "Save Face ID Enrolment" below to activate biometric sign-in & 2FA for ' + enrolUser.full_name + '.' : FACE_POSES[poseIdx])}</div>
+              </div>
+            </div>
+
+            <label class="enrol-consent-row">
+              <input type="checkbox" id="enrolConsentCb" ${FACE_STATE.enrolConsent ? 'checked' : ''}>
+              <span>I consent to on-device 128-d biometric facial descriptor enrolment for BHFIRMS authentication (raw images are never uploaded).</span>
+            </label>
+
+            <div class="enrol-status-bar ${esc(FACE_STATE.enrolStatusCls)}" id="enrolStatusBar">${esc(FACE_STATE.enrolStatusText)}</div>
+
+            <div class="enrol-btn-bar">
+              <button type="button" class="btn" id="enrolStartCamBtn">${FACE_STATE.enrolCamActive ? '⏹ Stop Camera' : '📷 Start Camera'}</button>
+              <button type="button" class="btn btn-brass" id="enrolCaptureBtn" ${poseComplete ? 'disabled' : ''}>📸 Capture Pose (${Math.min(FACE_STATE.enrolCaptures.length + 1, 3)}/3)</button>
+              <button type="button" class="btn btn-primary" id="enrolSaveBtn" ${FACE_STATE.enrolCaptures.length ? '' : 'disabled'}>✓ Save Face ID Enrolment (${FACE_STATE.enrolCaptures.length}/3)</button>
+              <button type="button" class="btn" id="enrolTestBtn">${FACE_STATE.enrolTestActive ? '⏹ Stop Test' : '🔎 Test Recognition'}</button>
+              <button type="button" class="btn" id="enrolClearBtn" ${(enrolSavedSamples.length || FACE_STATE.enrolCaptures.length) ? '' : 'disabled'}>🗑 Clear Face ID</button>
+            </div>
+
+            <div id="enrolCalibWrap" ${FACE_STATE.calibReportHtml ? '' : 'hidden'}>${FACE_STATE.calibReportHtml}</div>
+          </div>
+        </div>
+      </div>
+
       <div class="split-grid-2">
         <div class="panel-card">
           <div class="panel-head">
@@ -2514,30 +3052,42 @@
                   <th>User Name</th>
                   <th>Login Email</th>
                   ${owner ? '<th>PIN</th>' : ''}
+                  <th>Face ID (2FA)</th>
                   <th>Role</th>
                   <th>Allowed Companies (RLS)</th>
                   <th>Status</th>
                   <th>Last Login</th>
-                  ${owner ? '<th>Owner Actions</th>' : ''}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                ${STATE.users.map((u, idx) => `
+                ${STATE.users.map((u, idx) => {
+                  const fSamples = userFaceSamples(u);
+                  return `
                   <tr>
                     <td><strong>${esc(u.full_name)}</strong>${idx === STATE.activeUserIdx ? ' <span class="badge badge-ok">you</span>' : ''}</td>
                     <td class="mono">${esc(u.email)}</td>
                     ${owner ? `<td class="mono"><span class="badge badge-info">${esc(u.pin_code || '1111')}</span></td>` : ''}
+                    <td>
+                      <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">
+                        ${fSamples.length ? `🎭 ${fSamples.length} poses${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}
+                      </span>
+                    </td>
                     <td><span class="badge badge-brass">${esc(u.role)}</span></td>
                     <td><strong>${esc(u.companies)}</strong></td>
                     <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
                     <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
-                    ${owner ? `<td style="white-space:nowrap">
-                      <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
-                      <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">🔗 Invite Link</button>
-                      <button class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
-                    </td>` : ''}
+                    <td style="white-space:nowrap">
+                      ${(owner || idx === STATE.activeUserIdx) ? `<button class="btn" style="padding:3px 7px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update 3-pose Biometric Face ID for ${esc(u.full_name)}">🎭 Face ID</button>` : ''}
+                      ${owner ? `
+                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
+                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">🔗 Invite Link</button>
+                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
+                      ` : ''}
+                    </td>
                   </tr>
-                `).join('')}
+                `;
+                }).join('')}
               </tbody>
             </table>
           </div>
@@ -2555,6 +3105,7 @@
                   <tr>
                     <th>Timestamp</th>
                     <th>Team Member</th>
+                    <th>Auth Method</th>
                     <th>Role / Scope</th>
                     <th>Device</th>
                   </tr>
@@ -2564,10 +3115,11 @@
                     <tr>
                       <td class="mono" style="font-size:10.5px">${esc(s.logged_in_at)}</td>
                       <td><strong>${esc(s.full_name)}</strong></td>
+                      <td><span class="badge ${/Face/i.test(s.method || '') ? 'badge-ok' : 'badge-info'}">${esc(s.method || 'PIN')}${s.confidence ? ` · ${Math.round(Number(s.confidence))}%` : ''}</span></td>
                       <td><span class="badge badge-brass">${esc(s.companies)}</span></td>
                       <td class="mono" style="font-size:10.5px">${esc(s.device)}</td>
                     </tr>
-                  `).join('') || emptyRow(4, 'No sign-ins recorded yet')}
+                  `).join('') || emptyRow(5, 'No sign-ins recorded yet')}
                 </tbody>
               </table>
             </div>
@@ -3584,7 +4136,32 @@
       localStorage.setItem('isabi_mfg_users_v2', JSON.stringify(STATE.users));
       localStorage.setItem('isabi_mfg_sessions_v2', JSON.stringify(STATE.sessions.slice(0, 50)));
       localStorage.setItem('isabi_mfg_custom_recs_v2', JSON.stringify(STATE.customRecords));
+      localStorage.setItem('isabi_mfg_face_settings_v1', JSON.stringify(STATE.faceSettings));
     } catch (_) { /* storage full or blocked — the cloud copy still holds the state */ }
+  }
+
+  function mergeUserRow(existing, incoming) {
+    if (!existing) return Object.assign({ face_samples: [], face_required: false, face_updated_at: '' }, incoming);
+    if (!incoming) return existing;
+    const out = Object.assign({}, existing, incoming);
+    const exSamples = userFaceSamples(existing);
+    const inSamples = userFaceSamples(incoming);
+    const exTs = String(existing.face_updated_at || '');
+    const inTs = String(incoming.face_updated_at || '');
+    if (inSamples.length && (!exSamples.length || inTs >= exTs)) {
+      out.face_samples = inSamples;
+      out.face_required = incoming.face_required != null ? !!incoming.face_required : true;
+      out.face_updated_at = inTs || exTs;
+    } else if (exSamples.length && (!inSamples.length && !(incoming.face_cleared && inTs > exTs))) {
+      out.face_samples = exSamples;
+      out.face_required = existing.face_required != null ? !!existing.face_required : true;
+      out.face_updated_at = exTs;
+    } else {
+      out.face_samples = inSamples;
+      out.face_required = !!(incoming.face_required && inSamples.length);
+      out.face_updated_at = inTs || exTs;
+    }
+    return out;
   }
 
   // Union-merge another device's app entries into ours. A void tombstone always wins.
@@ -3630,9 +4207,10 @@
       users: STATE.users,
       sessions: STATE.sessions.slice(0, 25),
       customRecords: trimmed,
+      faceSettings: STATE.faceSettings,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '4.3'
+      appVersion: '4.5'
     };
   }
 
@@ -3641,7 +4219,7 @@
     if (m && !m.hidden) return true;
     const ins = $('recordInspector');
     if (ins && !ins.hidden) return true;
-    if (STATE.showAddUserForm) return true;
+    if (STATE.showAddUserForm || FACE_STATE.enrolCamActive) return true;
     const a = document.activeElement;
     return !!(a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName) && a.id !== 'aiInput');
   }
@@ -3672,7 +4250,7 @@
           const dLocal = await rLocal.json();
           if (Array.isArray(dLocal.users) && dLocal.users.length) {
             const byEmail = new Map(STATE.users.map(u => [norm(u.email), u]));
-            dLocal.users.forEach(u => { const k = norm(u.email); if (k) byEmail.set(k, Object.assign({}, byEmail.get(k) || {}, u)); });
+            dLocal.users.forEach(u => { const k = norm(u.email); if (k) byEmail.set(k, mergeUserRow(byEmail.get(k), u)); });
             STATE.users = Array.from(byEmail.values());
           }
         }
@@ -3705,10 +4283,15 @@
       if (Array.isArray(remote.users) && remote.users.length) {
         const byEmail = new Map();
         remote.users.forEach(u => { if (u && u.email) byEmail.set(norm(u.email), u); });
-        if (pushChanges) STATE.users.forEach(u => { if (u && u.email) byEmail.set(norm(u.email), u); });
+        if (pushChanges) STATE.users.forEach(u => { if (u && u.email) byEmail.set(norm(u.email), mergeUserRow(byEmail.get(norm(u.email)), u)); });
         else {
-          // keep any seat only this device knows about (created offline) so it is not lost before the next push
-          STATE.users.forEach(u => { if (u && u.email && !byEmail.has(norm(u.email))) { byEmail.set(norm(u.email), u); pushChanges = true; } });
+          // keep any seat or biometric enrolment only this device knows about so it is not lost before the next push
+          STATE.users.forEach(u => {
+            if (!u || !u.email) return;
+            const k = norm(u.email);
+            if (!byEmail.has(k)) { byEmail.set(k, u); pushChanges = true; }
+            else byEmail.set(k, mergeUserRow(u, byEmail.get(k)));
+          });
         }
         const next = Array.from(byEmail.values());
         if (JSON.stringify(next) !== JSON.stringify(STATE.users)) { changed = true; }
@@ -3716,7 +4299,7 @@
         STATE.users = next;
         const idx = STATE.users.findIndex(u => norm(u.email) === myEmail);
         if (idx >= 0) STATE.activeUserIdx = idx;
-        if (!STATE.authed) renderQuickSeatsInAuthGate();
+        if (!STATE.authed) { renderQuickSeatsInAuthGate(); updateAuthFaceUi(); }
       }
 
       if (Array.isArray(remote.sessions) && remote.sessions.length) {
@@ -3768,6 +4351,480 @@
   }
 
   // ==========================================================================
+  // BIOMETRIC FACE ID ENGINE (ATTENDANCE PWA PARITY: 128-D + STEP-UP 2FA)
+  // ==========================================================================
+  function streamAlive() {
+    return !!(FACE_STATE.stream && FACE_STATE.stream.getVideoTracks && FACE_STATE.stream.getVideoTracks().some(t => t.readyState === 'live'));
+  }
+
+  async function ensureFaceModelsLoaded() {
+    if (!window.Face) throw new Error('Face recognition module not loaded');
+    await window.Face.load('./vendor/models');
+    return true;
+  }
+
+  async function startFaceCamera(videoEl) {
+    if (!videoEl) return false;
+    try {
+      if (!streamAlive()) {
+        if (FACE_STATE.stream) { try { FACE_STATE.stream.getTracks().forEach(t => t.stop()); } catch (_) {} }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+        FACE_STATE.stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        });
+      }
+      if (videoEl.srcObject !== FACE_STATE.stream) videoEl.srcObject = FACE_STATE.stream;
+      await videoEl.play().catch(() => {});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function stopFaceCamera() {
+    if (FACE_STATE.loopTimer) { clearTimeout(FACE_STATE.loopTimer); FACE_STATE.loopTimer = null; }
+    if (FACE_STATE.enrolTestTimer) { clearTimeout(FACE_STATE.enrolTestTimer); FACE_STATE.enrolTestTimer = null; }
+    FACE_STATE.camActive = false;
+    FACE_STATE.enrolCamActive = false;
+    FACE_STATE.enrolTestActive = false;
+    if (FACE_STATE.stream) {
+      try { FACE_STATE.stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      FACE_STATE.stream = null;
+    }
+    ['authFaceVideo', 'enrolFaceVideo'].forEach(id => {
+      const v = $(id);
+      if (v) v.srcObject = null;
+    });
+  }
+
+  function setAuthHint(text, cls) {
+    const el = $('authFaceHint');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'auth-face-hint' + (cls ? ' ' + cls : '');
+  }
+
+  function setAuthStreak(count, needed) {
+    const fill = $('authStreakFill');
+    if (fill) fill.style.width = Math.min(100, Math.round((count / Math.max(1, needed)) * 100)) + '%';
+  }
+
+  function updateAuthFaceUi() {
+    const enrolled = STATE.users.filter(userHasFaceId);
+    const statsEl = $('authFaceStats');
+    const camBtn = $('authCamToggleBtn');
+    const sndBtn = $('authSoundBtn');
+    const sndLbl = $('authSoundLbl');
+    const dotEl = $('authFacePulse') || $('authFaceDot');
+    const bannerEl = $('authFaceTargetBanner');
+    const targetNameEl = $('authFaceTargetText') || $('authFaceTargetName');
+
+    if (sndLbl) sndLbl.textContent = STATE.faceSettings.sound ? '🔊' : '🔇';
+    else if (sndBtn) sndBtn.textContent = STATE.faceSettings.sound ? '🔊 Sound' : '🔇 Muted';
+    if (camBtn) camBtn.textContent = FACE_STATE.camActive ? '📷 Camera On' : '📷 Scan Face ID';
+    if (dotEl) dotEl.className = 'auth-face-pulse' + (FACE_STATE.camActive ? ' live' : '');
+
+    if (bannerEl) {
+      if (FACE_STATE.pending2faUser) {
+        bannerEl.hidden = false;
+        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Face ID Required for ${FACE_STATE.pending2faUser.full_name} — look at the camera`;
+      } else {
+        bannerEl.hidden = true;
+      }
+    }
+
+    if (statsEl) {
+      const ready = !!(window.Face && window.Face.ready);
+      const be = (window.Face && window.Face.backend) || 'webgl';
+      statsEl.textContent = `${enrolled.length}/${STATE.users.length} Face ID · τ≤${Number(STATE.faceSettings.threshold).toFixed(2)} · ${ready ? 'Ready (' + be + ')' : '128-d Biometric'}`;
+    }
+  }
+
+  function livenessStep(landmarks) {
+    if (!STATE.faceSettings.liveness) return true;
+    if (!landmarks || !window.Face || !window.Face.ear) return false;
+    const ear = window.Face.ear(landmarks);
+    const now = Date.now();
+    if (ear > 0 && ear < 0.20) FACE_STATE.eyeClosedSeen = true;
+    else if (FACE_STATE.eyeClosedSeen && ear > 0.26) {
+      FACE_STATE.lastBlinkAt = now;
+      FACE_STATE.eyeClosedSeen = false;
+    }
+    return (now - FACE_STATE.lastBlinkAt) < 4000;
+  }
+
+  async function completeFaceLogin(user, dist, snapshotUrl, methodLabel) {
+    if (!user) return false;
+    FACE_STATE.cooldownUntil = Date.now() + 2500;
+    FACE_STATE.pending2faUser = null;
+    const confPct = Math.max(55, Math.min(99.8, Math.round((1 - Number(dist || 0.2) * 0.85) * 1000) / 10));
+
+    if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
+      window.Face.Sound.playSuccess();
+    }
+
+    // Show verification card overlay on #authGate briefly
+    const card = $('authFaceCard');
+    const photoEl = $('authFaceCardImg') || $('authFacePhoto');
+    const nameEl = $('authFaceCardName') || $('authFaceName');
+    const metaEl = $('authFaceCardMeta') || $('authFaceMeta');
+    const confEl = $('authFaceCardSub') || $('authFaceConf');
+    const badgeEl = $('authFaceCardBadge') || $('authFaceBadge');
+    if (card) {
+      if (badgeEl) badgeEl.textContent = methodLabel || 'BIOMETRIC FACE ID VERIFIED';
+      if (nameEl) nameEl.textContent = user.full_name;
+      if (metaEl) metaEl.textContent = `${confPct.toFixed(1)}% · d=${Number(dist || 0).toFixed(3)}`;
+      if (confEl) confEl.textContent = `${user.role} · ${user.companies}`;
+      if (photoEl && snapshotUrl) photoEl.src = snapshotUrl;
+      card.hidden = false;
+    }
+
+    await new Promise(r => setTimeout(r, navigator.webdriver ? 80 : 520));
+    if (card) card.hidden = true;
+    return performLogin(user.email, user.pin_code || '1111', {
+      bypass2FA: true,
+      method: methodLabel || 'Face ID',
+      confidence: confPct
+    });
+  }
+
+  // Evaluates a single 128-d face detection against enrolled seats (used by live camera loop AND headless tests)
+  async function handleAuthDescriptor(det, snapshotUrl) {
+    const needed = Math.max(1, Number(STATE.faceSettings.confirmFrames || 3));
+    const enrolled = usableFaces();
+    if (!enrolled.length) {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      setAuthHint('No Face ID seats enrolled yet — sign in with PIN below, then open Team Auth to enrol your 3 poses.', 'warn');
+      return { status: 'no-enrolled' };
+    }
+    if (!det || !det.descriptor) {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for instant Face ID sign-in', '');
+      return { status: 'no-face' };
+    }
+    if (det.multiple) {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      setAuthHint('One person at a time in front of the camera', 'warn');
+      return { status: 'multiple' };
+    }
+
+    const cfg = Object.assign({}, window.Face.CONFIG, {
+      threshold: Number(STATE.faceSettings.threshold || 0.50),
+      margin: Number(STATE.faceSettings.margin || 0.08),
+      weakAbove: Number(STATE.faceSettings.weakAbove || 0.45),
+      minFaceFrac: Number(STATE.faceSettings.minFaceFrac || 0.14)
+    });
+    const m = window.Face.match(det.descriptor, enrolled);
+    const dec = window.Face.decide(m, cfg, { faceSizeFrac: det.faceSizeFrac != null ? det.faceSizeFrac : 0.25 });
+
+    if (dec.status !== 'ok') {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      if (dec.status === 'too-small') setAuthHint('Move closer to the camera', 'warn');
+      else if (dec.status === 'ambiguous') setAuthHint(`Hold still — close match between two seats (d=${m.bestDist.toFixed(2)})`, 'warn');
+      else if (dec.status === 'weak') setAuthHint(`Face recognized weakly (d=${m.bestDist.toFixed(2)}) — face the light directly`, 'warn');
+      else setAuthHint(`Face not recognized (d=${m.bestDist.toFixed(2)} > τ=${cfg.threshold.toFixed(2)})`, 'crit');
+      return { status: dec.status, match: m };
+    }
+
+    // If step-up 2FA is waiting for a specific seat, verify it matches that exact seat
+    if (FACE_STATE.pending2faUser && norm(dec.best.email) !== norm(FACE_STATE.pending2faUser.email)) {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      if (STATE.faceSettings.sound && window.Face && window.Face.Sound) window.Face.Sound.playWarn();
+      setAuthHint(`2FA mismatch: expected ${FACE_STATE.pending2faUser.full_name}, saw ${dec.best.name}`, 'crit');
+      return { status: '2fa-mismatch', expected: FACE_STATE.pending2faUser.email, actual: dec.best.email };
+    }
+
+    const blinkOk = livenessStep(det.landmarks);
+    if (!blinkOk) {
+      setAuthHint(`${dec.best.name} recognized — blink once to confirm liveness`, 'warn');
+      return { status: 'awaiting-blink', best: dec.best, dist: m.bestDist };
+    }
+
+    if (FACE_STATE.streakUser && norm(FACE_STATE.streakUser.email) === norm(dec.best.email)) {
+      FACE_STATE.streakCount += 1;
+    } else {
+      FACE_STATE.streakUser = dec.best;
+      FACE_STATE.streakCount = 1;
+    }
+    FACE_STATE.bestDist = m.bestDist;
+    FACE_STATE.secondDist = m.secondDist;
+    setAuthStreak(FACE_STATE.streakCount, needed);
+
+    if (FACE_STATE.streakCount < needed) {
+      setAuthHint(`Verifying ${dec.best.name} (${FACE_STATE.streakCount}/${needed} frames · d=${m.bestDist.toFixed(2)})…`, 'ok');
+      return { status: 'streak', count: FACE_STATE.streakCount, needed, best: dec.best, dist: m.bestDist };
+    }
+
+    // Confirmed across N consecutive frames!
+    FACE_STATE.streakUser = null;
+    FACE_STATE.streakCount = 0;
+    setAuthStreak(needed, needed);
+    const matchedUser = STATE.users.find(u => norm(u.email) === norm(dec.best.email));
+    const methodLabel = FACE_STATE.pending2faUser ? 'PIN + Face ID 2FA' : 'Face ID';
+    setAuthHint(`✓ Verified ${dec.best.name} (${methodLabel})`, 'ok');
+    await completeFaceLogin(matchedUser, m.bestDist, snapshotUrl, methodLabel);
+    return { status: 'verified', user: matchedUser, dist: m.bestDist, method: methodLabel };
+  }
+
+  async function authFaceTick() {
+    if (STATE.authed || !FACE_STATE.camActive) return;
+    const videoEl = $('authFaceVideo');
+    const overlayEl = $('authFaceOverlay');
+    if (!videoEl || Date.now() < FACE_STATE.cooldownUntil) {
+      FACE_STATE.loopTimer = setTimeout(authFaceTick, 240);
+      return;
+    }
+    if (!FACE_STATE.busy && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+      FACE_STATE.busy = true;
+      try {
+        await ensureFaceModelsLoaded();
+        const det = await window.Face.detectOne(videoEl, false);
+        if (overlayEl && window.Face.drawOverlay) {
+          const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#B8883B') : '#DC2626';
+          window.Face.drawOverlay(overlayEl, videoEl, det, color, FACE_STATE.streakUser ? FACE_STATE.streakUser.name : '');
+        }
+        const snap = (det && !det.multiple && FACE_STATE.streakCount + 1 >= Number(STATE.faceSettings.confirmFrames || 3) && window.Face.snapshot)
+          ? window.Face.snapshot(videoEl)
+          : '';
+        await handleAuthDescriptor(det, snap);
+      } catch (_) {
+        /* ignore transient frame error */
+      } finally {
+        FACE_STATE.busy = false;
+      }
+    }
+    if (!STATE.authed && FACE_STATE.camActive) {
+      FACE_STATE.loopTimer = setTimeout(authFaceTick, 210);
+    }
+  }
+
+  async function startAuthFaceScanner(forceStart = false) {
+    updateAuthFaceUi();
+    if (navigator.webdriver && !forceStart) {
+      setAuthHint('Biometric Face ID Scanner ready · Look at the camera or sign in with Email + PIN below', '');
+      return false;
+    }
+    const videoEl = $('authFaceVideo');
+    if (!videoEl) return false;
+    setAuthHint('Starting camera & loading 128-d neural models…', '');
+    try {
+      await ensureFaceModelsLoaded();
+    } catch (_) {}
+    const camOk = await startFaceCamera(videoEl);
+    FACE_STATE.camActive = camOk;
+    updateAuthFaceUi();
+    if (!camOk) {
+      setAuthHint('Camera off or permission declined — click "Enable Camera" above or sign in with Email + PIN.', 'warn');
+      return false;
+    }
+    const enrolled = usableFaces();
+    setAuthHint(
+      FACE_STATE.pending2faUser
+        ? `🔒 Look at the camera to complete 2FA for ${FACE_STATE.pending2faUser.full_name}`
+        : (enrolled.length
+          ? `Look at the camera for instant Face ID sign-in (${enrolled.length} enrolled)`
+          : 'Camera active · Sign in with PIN below, then open Team Auth to enrol your 3 Face ID poses'),
+      enrolled.length ? 'ok' : ''
+    );
+    if (FACE_STATE.loopTimer) clearTimeout(FACE_STATE.loopTimer);
+    FACE_STATE.loopTimer = setTimeout(authFaceTick, 180);
+    return true;
+  }
+
+  function stopAuthFaceScanner() {
+    if (FACE_STATE.loopTimer) { clearTimeout(FACE_STATE.loopTimer); FACE_STATE.loopTimer = null; }
+    FACE_STATE.camActive = false;
+    if (!FACE_STATE.enrolCamActive) stopFaceCamera();
+    updateAuthFaceUi();
+  }
+
+  // ---- Enrolment Studio & Calibration helpers (Users & Cloud Auth view) ----
+  async function captureEnrolDescriptor(syntheticDet, syntheticThumb) {
+    const target = enrolTargetUser();
+    if (!target) return { ok: false, reason: 'no-user' };
+    if (!FACE_STATE.enrolConsent) {
+      FACE_STATE.enrolStatusText = 'Please tick the biometric consent checkbox first.';
+      FACE_STATE.enrolStatusCls = 'warn';
+      renderApp();
+      return { ok: false, reason: 'no-consent' };
+    }
+    if (FACE_STATE.enrolCaptures.length >= 3) {
+      FACE_STATE.enrolStatusText = 'All 3 poses are already captured — click "Save Face ID Enrolment".';
+      FACE_STATE.enrolStatusCls = 'ok';
+      renderApp();
+      return { ok: false, reason: 'already-3' };
+    }
+
+    let det = syntheticDet || null;
+    let thumb = syntheticThumb || '';
+    if (!det) {
+      const videoEl = $('enrolFaceVideo');
+      if (!FACE_STATE.enrolCamActive || !videoEl || videoEl.readyState < 2) {
+        FACE_STATE.enrolStatusText = 'Start the camera first so your face is visible in the frame.';
+        FACE_STATE.enrolStatusCls = 'warn';
+        renderApp();
+        return { ok: false, reason: 'no-camera' };
+      }
+      await ensureFaceModelsLoaded();
+      det = await window.Face.detectOne(videoEl, false);
+      if (det && !det.multiple && window.Face.snapshot) thumb = window.Face.snapshot(videoEl);
+    }
+
+    if (!det || !det.descriptor) {
+      FACE_STATE.enrolStatusText = 'No face detected — look clearly at the camera in good lighting.';
+      FACE_STATE.enrolStatusCls = 'crit';
+      renderApp();
+      return { ok: false, reason: 'no-face' };
+    }
+    if (det.multiple) {
+      FACE_STATE.enrolStatusText = 'Multiple faces in frame — only one person may be in view during enrolment.';
+      FACE_STATE.enrolStatusCls = 'crit';
+      renderApp();
+      return { ok: false, reason: 'multiple' };
+    }
+    if (det.detScore != null && det.detScore < 0.65) {
+      FACE_STATE.enrolStatusText = `Face confidence too low (${Math.round(det.detScore * 100)}% < 65%) — face the light directly.`;
+      FACE_STATE.enrolStatusCls = 'warn';
+      renderApp();
+      return { ok: false, reason: 'low-score' };
+    }
+    if (det.faceSizeFrac != null && det.faceSizeFrac < Number(STATE.faceSettings.minFaceFrac || 0.14)) {
+      FACE_STATE.enrolStatusText = 'Move closer so your face fills the guide frame.';
+      FACE_STATE.enrolStatusCls = 'warn';
+      renderApp();
+      return { ok: false, reason: 'too-small' };
+    }
+
+    // Duplicate-person guard: refuse if this face already belongs to a DIFFERENT enrolled seat
+    const others = usableFaces().filter(x => norm(x.email) !== norm(target.email));
+    if (others.length && window.Face && window.Face.match) {
+      const dupMatch = window.Face.match(det.descriptor, others);
+      const thr = Number(STATE.faceSettings.threshold || 0.50);
+      if (dupMatch.best && dupMatch.bestDist <= thr) {
+        FACE_STATE.enrolStatusText = `Refused: this face is already enrolled under ${dupMatch.best.name} (d=${dupMatch.bestDist.toFixed(3)} ≤ τ=${thr.toFixed(2)}). Each team seat must have a distinct person.`;
+        FACE_STATE.enrolStatusCls = 'crit';
+        if (STATE.faceSettings.sound && window.Face.Sound) window.Face.Sound.playError();
+        renderApp();
+        return { ok: false, reason: 'duplicate-person', other: dupMatch.best.email, dist: dupMatch.bestDist };
+      }
+    }
+
+    FACE_STATE.enrolCaptures.push(Array.from(det.descriptor));
+    FACE_STATE.enrolThumbs.push(thumb || '');
+    const count = FACE_STATE.enrolCaptures.length;
+    if (STATE.faceSettings.sound && window.Face && window.Face.Sound) window.Face.Sound.playSuccess();
+    FACE_STATE.enrolStatusText = count >= 3
+      ? `✓ Captured all 3 poses for ${target.full_name} — click "Save Face ID Enrolment" to activate.`
+      : `✓ Pose ${count}/3 captured — next: ${FACE_POSES[count]}`;
+    FACE_STATE.enrolStatusCls = 'ok';
+    renderApp();
+    return { ok: true, count };
+  }
+
+  async function saveFaceEnrolment() {
+    const target = enrolTargetUser();
+    if (!target || !FACE_STATE.enrolCaptures.length) return false;
+    target.face_samples = FACE_STATE.enrolCaptures.slice(0, 5);
+    target.face_required = true;
+    target.face_cleared = false;
+    target.face_updated_at = new Date().toISOString();
+    FACE_STATE.enrolCaptures = [];
+    FACE_STATE.enrolThumbs = [];
+    FACE_STATE.enrolStatusText = `✓ Biometric Face ID saved for ${target.full_name} (${target.face_samples.length} poses · 128-d vectors synced).`;
+    FACE_STATE.enrolStatusCls = 'ok';
+    saveLocalAuthAndRecords();
+    renderApp();
+    toast(`Face ID enrolled for ${target.full_name}`);
+    if (HAS_LOCAL_API) {
+      try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: target }) }); } catch (_) {}
+    }
+    syncWithCloud(true);
+    return true;
+  }
+
+  async function clearFaceEnrolment() {
+    const target = enrolTargetUser();
+    if (!target) return false;
+    target.face_samples = [];
+    target.face_required = false;
+    target.face_cleared = true;
+    target.face_updated_at = new Date().toISOString();
+    FACE_STATE.enrolCaptures = [];
+    FACE_STATE.enrolThumbs = [];
+    FACE_STATE.enrolStatusText = `Cleared Face ID enrolment for ${target.full_name}.`;
+    FACE_STATE.enrolStatusCls = 'warn';
+    saveLocalAuthAndRecords();
+    renderApp();
+    toast(`Cleared Face ID for ${target.full_name}`);
+    if (HAS_LOCAL_API) {
+      try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: target }) }); } catch (_) {}
+    }
+    syncWithCloud(true);
+    return true;
+  }
+
+  function runCalibrationReport() {
+    const target = enrolTargetUser();
+    const list = usableFaces(target);
+    if (!window.Face || !window.Face.calibration) return null;
+    const cal = window.Face.calibration(list);
+    if (!list.length) {
+      FACE_STATE.calibReportHtml = `<div class="enrol-calib-box"><small>No enrolled seats yet — capture and save 3 poses for at least 1 seat to compute intra-seat spread and inter-seat separation.</small></div>`;
+    } else {
+      const rowsHtml = cal.perEmp.map(e => `
+        <tr>
+          <td><strong>${esc(e.name)}</strong></td>
+          <td class="r mono">${e.samples}</td>
+          <td class="r mono">${e.spread.toFixed(3)}</td>
+          <td><span class="badge ${e.spread <= 0.38 ? 'badge-ok' : 'badge-warn'}">${e.spread <= 0.38 ? 'Tight' : 'Wide (re-capture)'}</span></td>
+        </tr>
+      `).join('');
+      const pairsHtml = cal.pairs.slice(0, 5).map(p => `
+        <tr>
+          <td>${esc(p.a)} ↔ ${esc(p.b)}</td>
+          <td class="r mono"><strong>${p.d.toFixed(3)}</strong></td>
+          <td><span class="badge ${p.d >= 0.55 ? 'badge-ok' : 'badge-warn'}">${p.d >= 0.55 ? 'Well separated' : 'Close pair'}</span></td>
+        </tr>
+      `).join('');
+      FACE_STATE.calibReportHtml = `
+        <div class="enrol-calib-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+            <strong>📊 128-d Euclidean Calibration Matrix (${list.length} Enrolled Seat${list.length === 1 ? '' : 's'})</strong>
+            ${cal.recommendedThreshold ? `<span class="badge badge-info">Recommended τ = ${cal.recommendedThreshold.toFixed(2)}</span>` : `<span class="badge badge-info">Active τ = ${Number(STATE.faceSettings.threshold).toFixed(2)}</span>`}
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Enrolled Seat</th><th class="r">Poses</th><th class="r">Max Intra-Seat Spread (d)</th><th>Quality</th></tr></thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+          ${cal.pairs.length ? `
+            <div class="table-wrap" style="margin-top:8px">
+              <table class="ledger-table">
+                <thead><tr><th>Closest Seat Pair</th><th class="r">Min Inter-Seat Distance (d)</th><th>Separation</th></tr></thead>
+                <tbody>${pairsHtml}</tbody>
+              </table>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+    renderApp();
+    return cal;
+  }
+
+  // ==========================================================================
   // TEAM SIGN-IN GATE (FAIL-CLOSED) + RLS
   // ==========================================================================
   const VIEW_TITLES = {
@@ -3783,7 +4840,8 @@
     ar: 'Customers & FIFO Accounts Receivable Aging',
     suppliers: 'Suppliers, Quarries & 3-Leg Accounts Payable',
     ap: 'Suppliers, Quarries & 3-Leg Accounts Payable',
-    expenses: 'Operating Expenses, Salaries & Overtime',
+    expenses: 'Operating Expenses, Spare Parts & Overhead',
+    payroll: 'Payroll, Attendance, Site Allowances & Contracts (m239/m247)',
     ledger: 'Lebanese CoA Trial Balance & SOA Journal Stream',
     gl: 'Lebanese CoA Trial Balance & SOA Journal Stream',
     statements: '22 Printable A4 Financial & Operational Statements',
@@ -3802,7 +4860,8 @@
     ar: 'Customers & AR Aging',
     suppliers: 'Suppliers & 3-Leg AP',
     ap: 'Suppliers & 3-Leg AP',
-    expenses: 'Expenses & Payroll',
+    expenses: 'Expenses & Overhead',
+    payroll: 'Payroll & Workforce',
     ledger: 'Trial Balance & SOA GL',
     gl: 'Trial Balance & SOA GL',
     statements: '22 Financial Statements',
@@ -3849,8 +4908,10 @@
     const hdr = document.querySelector('.auth-right-hdr span');
     const sub = document.querySelector('.auth-right-hdr small');
     if (hdr) hdr.textContent = IS_DEMO ? 'Quick Role & Device Simulator (1-Click Fill)' : 'Team Seats on this Workspace';
-    if (sub) sub.textContent = IS_DEMO ? 'Demo mode — tap any seat to sign in and see how Row-Level Security scopes the interface:' : 'Tap your seat to fill the email, then type the PIN your administrator gave you:';
-    listEl.innerHTML = STATE.users.filter(u => u.status !== 'Suspended').map((u, idx) => `
+    if (sub) sub.textContent = IS_DEMO ? 'Demo mode — tap any seat to sign in (or test Face ID 2FA if enrolled):' : 'Look at the camera for Face ID, or tap your seat to fill your email:';
+    listEl.innerHTML = STATE.users.filter(u => u.status !== 'Suspended').map((u, idx) => {
+      const hasFace = userHasFaceId(u);
+      return `
       <button type="button" class="quick-seat-item" data-quick-seat="${esc(u.email)}">
         <div>
           <b>${esc(u.full_name)}</b>
@@ -3858,10 +4919,12 @@
         </div>
         <div class="quick-seat-meta">
           <span class="quick-seat-role">${esc(u.role)}</span>
+          <span class="quick-seat-face ${hasFace ? 'on' : ''}">${hasFace ? `🎭 Face ID${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}</span>
           ${IS_DEMO ? `<span class="quick-seat-pin">PIN: ${esc(u.pin_code || '1111')}</span>` : ''}
         </div>
       </button>
-    `).join('');
+    `;
+    }).join('');
 
     listEl.querySelectorAll('[data-quick-seat]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -3878,9 +4941,13 @@
 
   function openAuthGate(prefillEmail) {
     STATE.authed = false;
+    FACE_STATE.pending2faUser = null;
+    FACE_STATE.streakUser = null;
+    FACE_STATE.streakCount = 0;
     window.__mfgAuthedEmail = '';
     renderQuickSeatsInAuthGate();
     updateCloudBadges();
+    updateAuthFaceUi();
     const emEl = $('authEmailInput');
     const pinEl = $('authPinInput');
     if (emEl) emEl.value = prefillEmail || '';
@@ -3890,11 +4957,14 @@
     const gate = $('authGate');
     if (gate) gate.hidden = false;
     document.body.classList.add('locked');
+    if (!FACE_STATE.authCamStoppedByUser) startAuthFaceScanner(false);
     setTimeout(() => { const t = prefillEmail ? pinEl : emEl; if (t) t.focus(); }, 80);
   }
 
   function closeAuthGate() {
     STATE.authed = true;
+    FACE_STATE.pending2faUser = null;
+    stopAuthFaceScanner();
     window.__mfgAuthedEmail = activeUser().email;
     const gate = $('authGate');
     if (gate) gate.hidden = true;
@@ -3916,7 +4986,7 @@
     ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
     history.replaceState({ view: STATE.view }, '', location.pathname + (keep.toString() ? '?' + keep.toString() : ''));
     openAuthGate(email);
-    toast('Session locked — sign in to continue');
+    toast('Session locked — sign in with Face ID or PIN to continue');
   }
 
   function authError(msg) {
@@ -3930,7 +5000,7 @@
 
   let loginAttempts = 0;
   let loginLockUntil = 0;
-  async function performLogin(emailRaw, pinRaw) {
+  async function performLogin(emailRaw, pinRaw, opts = {}) {
     const email = norm(emailRaw);
     const pin = String(pinRaw || '').trim();
     if (Date.now() < loginLockUntil) { authError(`Too many attempts — wait ${Math.ceil((loginLockUntil - Date.now()) / 1000)} s.`); return false; }
@@ -3949,20 +5019,46 @@
     }
     loginAttempts = 0;
 
+    // Step-Up 2FA Biometric Gate: if this seat has enrolled Face ID and 2FA is enforced, require Face ID confirmation!
+    if (!opts.bypass2FA && userRequiresFace2FA(user)) {
+      FACE_STATE.pending2faUser = user;
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      const errEl = $('authErrorBox');
+      if (errEl) errEl.hidden = true;
+      updateAuthFaceUi();
+      setAuthHint(`🔒 PIN verified for ${user.full_name} — look at the camera to complete Biometric Face ID 2FA`, 'ok');
+      if (!FACE_STATE.camActive && !navigator.webdriver) startAuthFaceScanner(true);
+      return '2fa_pending';
+    }
+
+    FACE_STATE.pending2faUser = null;
     const nowStr = nowStamp();
     const ua = navigator.userAgent || '';
     const devLabel = /iPhone|iPad/i.test(ua) ? 'iOS Safari' : (/Android/i.test(ua) ? 'Android Chrome' : (/Edg\//.test(ua) ? 'Desktop Edge' : 'Desktop Browser'));
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const authMethod = opts.method || 'PIN';
+    const authConf = opts.confidence != null ? Number(opts.confidence) : null;
 
     user.last_login_at = nowStr.slice(0, 16);
     STATE.activeUserIdx = idx;
     try { localStorage.removeItem('isabi_mfg_active_email'); } catch (_) {}
-    STATE.sessions.unshift({ id: uid('sess'), full_name: user.full_name, email: user.email, role: user.role, companies: user.companies, device: devLabel + (standalone ? ' · Home Screen app' : ''), logged_in_at: nowStr });
+    STATE.sessions.unshift({
+      id: uid('sess'),
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+      companies: user.companies,
+      device: devLabel + (standalone ? ' · Home Screen app' : ''),
+      method: authMethod,
+      confidence: authConf,
+      logged_in_at: nowStr
+    });
     STATE.sessions = STATE.sessions.slice(0, 50);
     saveLocalAuthAndRecords();
 
     if (HAS_LOCAL_API) {
-      try { await fetch('./api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, pin, device: devLabel }) }); } catch (_) { /* no server.py */ }
+      try { await fetch('./api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, pin, device: devLabel, method: authMethod, confidence: authConf }) }); } catch (_) { /* no server.py */ }
     }
 
     if (!getAllowedCompanyKeys(user).includes(STATE.company)) STATE.company = getAllowedCompanyKeys(user)[0];
@@ -3971,7 +5067,7 @@
     STATE.search = '';
     STATE.showAddUserForm = false;
     renderApp();
-    toast(`Signed in as ${user.full_name} · ${String(user.companies).replace(/BBConstruction/g, 'BBC')}`);
+    toast(`Signed in as ${user.full_name} (${authMethod}) · ${String(user.companies).replace(/BBConstruction/g, 'BBC')}`);
     syncWithCloud(true);
     return true;
   }
@@ -4053,7 +5149,7 @@
 
   function contextFormForView(view, user) {
     user = user || activeUser();
-    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', tables: 'pricerule' };
+    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule' };
     let preferred = map[view] || 'sales';
     if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
       const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
@@ -4071,7 +5167,7 @@
     const v = STATE.view;
     let group = 'exec';
     if (['sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
-    else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'ledger', 'gl'].includes(v)) group = 'books';
+    else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
 
     const specs = {
       exec: [
@@ -4092,6 +5188,7 @@
         { view: 'customers', match: ['customers', 'ar'], label: 'AR Aging', pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
         { view: 'suppliers', match: ['suppliers', 'ap'], label: 'AP 3-Leg', pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
         { view: 'expenses', label: 'Expenses', pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
+        { view: 'payroll', label: 'Payroll', pill: k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : '' },
         { view: 'ledger', match: ['ledger', 'gl'], label: 'GL & SOA', pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
       ]
     };
@@ -4111,7 +5208,7 @@
     if (dEntry && dEntryLbl) {
       if (canEnterAny(user)) {
         dEntry.hidden = false;
-        const formLabels = { sales: 'Post Ticket', raw: 'Post Raw', fuel: 'Log Fuel', receipt: 'Post Receipt', settlement: 'Settle AP', expense: 'Post Expense' };
+        const formLabels = { sales: 'Post Ticket', raw: 'Post Raw', fuel: 'Log Fuel', receipt: 'Post Receipt', settlement: 'Settle AP', expense: 'Post Expense', salary: 'Pay Salary' };
         dEntryLbl.textContent = formLabels[contextFormForView(v, user)] || 'Post Entry';
       } else {
         dEntry.hidden = true;
@@ -4170,6 +5267,7 @@
     setPill('navCountAR', k.ar_balance != null ? fmtUSDk(k.ar_balance) : '—');
     setPill('navCountAP', k.ap_balance != null ? fmtUSDk(k.ap_balance) : '3 Legs');
     setPill('navCountExp', k.expenses != null ? fmtUSDk(k.expenses) : '—');
+    setPill('navCountPayroll', k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : fmtNum(SEED.records.employments.length));
     setPill('navCountSentinels', String(sentinelsOpen));
     setPill('navCountUsers', `${STATE.users.length} Seats`);
     const tbPill = $('navCountTB');
@@ -4196,6 +5294,7 @@
       case 'suppliers':
       case 'ap': container.innerHTML = renderAP(); break;
       case 'expenses': container.innerHTML = renderExpenses(); break;
+      case 'payroll': container.innerHTML = renderPayroll(); break;
       case 'ledger':
       case 'gl': container.innerHTML = renderGL(); break;
       case 'statements': container.innerHTML = renderStatements(); break;
@@ -4206,23 +5305,40 @@
   }
 
   function wireWorkspace(container, activeUserRow) {
-    // Power BI Studio 20-page tabs & slicers + 34-table hub chips
+    // Power BI Studio 20-page tabs & dynamic per-page slicers + 34-table hub chips
     container.querySelectorAll('[data-pbi-page]').forEach(btn => btn.addEventListener('click', () => {
       STATE.pbiPage = btn.getAttribute('data-pbi-page');
       renderApp();
     }));
+    container.querySelectorAll('[data-pbi-jump]').forEach(el => {
+      const go = () => {
+        STATE.pbiPage = el.getAttribute('data-pbi-jump') || 'p01_overview';
+        if (STATE.view !== 'pbi') setView('pbi');
+        else {
+          renderApp();
+          const ws = $('workspace');
+          if (ws) ws.scrollTop = 0;
+        }
+      };
+      el.addEventListener('click', go);
+      if (el.getAttribute('role') === 'button') el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
     const pbiReset = $('pbiResetSlicersBtn');
     if (pbiReset) pbiReset.addEventListener('click', () => {
-      STATE.pbiSlicer = { product: '', customer: '', supplier: '', site: '', method: '', saleType: '', search: '' };
+      STATE.pbiSlicer = {};
       renderApp();
     });
-    const slicerMap = [
-      ['pbiSlicerProduct', 'product'], ['pbiSlicerCustomer', 'customer'], ['pbiSlicerSupplier', 'supplier'],
-      ['pbiSlicerSite', 'site'], ['pbiSlicerSaleType', 'saleType'], ['pbiSlicerMethod', 'method']
-    ];
-    slicerMap.forEach(([id, key]) => {
-      const el = $(id);
-      if (el) el.addEventListener('change', e => { STATE.pbiSlicer[key] = e.target.value; renderApp(); });
+    container.querySelectorAll('[data-pbi-slicer]').forEach(el => {
+      el.addEventListener('change', e => {
+        const key = el.getAttribute('data-pbi-slicer');
+        if (key) { STATE.pbiSlicer[key] = e.target.value; renderApp(); }
+      });
+    });
+    container.querySelectorAll('[data-stmt-cat]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        STATE.stmtCatFilter = btn.getAttribute('data-stmt-cat') || 'all';
+        renderApp();
+      });
     });
     const pbiSearch = $('pbiSlicerSearch');
     if (pbiSearch) {
@@ -4367,11 +5483,135 @@
       toast('Statement CSV downloaded');
     });
 
-    // Users view (owner tools)
+    // Users view (owner tools + Biometric Face ID Enrolment Studio)
+    if (STATE.view === 'users' && FACE_STATE.enrolCamActive && streamAlive()) {
+      const ev = $('enrolFaceVideo');
+      if (ev && ev.srcObject !== FACE_STATE.stream) {
+        ev.srcObject = FACE_STATE.stream;
+        ev.play().catch(() => {});
+      }
+    }
+    container.querySelectorAll('[data-enrol-user]').forEach(btn => btn.addEventListener('click', () => {
+      const uidTarget = btn.getAttribute('data-enrol-user');
+      const u = STATE.users.find(x => String(x.id) === String(uidTarget));
+      if (!u) return;
+      FACE_STATE.enrolUserId = u.id;
+      FACE_STATE.enrolCaptures = [];
+      FACE_STATE.enrolThumbs = [];
+      FACE_STATE.enrolStatusText = `Selected ${u.full_name} — tick consent and capture 3 poses (front, slight left, slight right).`;
+      FACE_STATE.enrolStatusCls = '';
+      renderApp();
+      const panel = $('faceEnrolPanel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    const enrolSel = $('enrolUserSelect');
+    if (enrolSel) enrolSel.addEventListener('change', e => {
+      FACE_STATE.enrolUserId = e.target.value;
+      FACE_STATE.enrolCaptures = [];
+      FACE_STATE.enrolThumbs = [];
+      const u = enrolTargetUser();
+      FACE_STATE.enrolStatusText = `Selected ${u.full_name} — tick consent and capture 3 poses.`;
+      FACE_STATE.enrolStatusCls = '';
+      renderApp();
+    });
+    const thrSel = $('enrolThresholdSel');
+    if (thrSel) thrSel.addEventListener('change', e => {
+      STATE.faceSettings.threshold = Number(e.target.value) || 0.50;
+      saveLocalAuthAndRecords();
+      renderApp();
+      toast(`Face ID match threshold set to τ ≤ ${STATE.faceSettings.threshold.toFixed(2)}`);
+    });
+    const req2faCb = $('enrolRequire2faCb');
+    if (req2faCb) req2faCb.addEventListener('change', e => {
+      STATE.faceSettings.enforce2FA = !!e.target.checked;
+      saveLocalAuthAndRecords();
+      renderApp();
+      toast(STATE.faceSettings.enforce2FA ? 'Biometric 2FA enforced for enrolled seats' : 'Biometric 2FA optional on PIN login');
+    });
+    const liveCb = $('enrolLivenessCb');
+    if (liveCb) liveCb.addEventListener('change', e => {
+      STATE.faceSettings.liveness = !!e.target.checked;
+      saveLocalAuthAndRecords();
+      renderApp();
+      toast(STATE.faceSettings.liveness ? 'Blink liveness check enabled' : 'Blink liveness check disabled');
+    });
+    const consentCb = $('enrolConsentCb');
+    if (consentCb) consentCb.addEventListener('change', e => {
+      FACE_STATE.enrolConsent = !!e.target.checked;
+    });
+    const startCamBtn = $('enrolStartCamBtn');
+    if (startCamBtn) startCamBtn.addEventListener('click', async () => {
+      if (FACE_STATE.enrolCamActive) {
+        stopFaceCamera();
+        FACE_STATE.enrolStatusText = 'Camera stopped.';
+        FACE_STATE.enrolStatusCls = '';
+        renderApp();
+        return;
+      }
+      FACE_STATE.enrolStatusText = 'Starting camera & loading 128-d neural recognition models…';
+      FACE_STATE.enrolStatusCls = '';
+      renderApp();
+      try { await ensureFaceModelsLoaded(); } catch (_) {}
+      const ev = $('enrolFaceVideo');
+      const ok = await startFaceCamera(ev);
+      FACE_STATE.enrolCamActive = ok;
+      FACE_STATE.enrolStatusText = ok
+        ? `Camera live — follow the pose prompt above and click "Capture Pose".`
+        : 'Camera unavailable or permission denied on this device.';
+      FACE_STATE.enrolStatusCls = ok ? 'ok' : 'warn';
+      renderApp();
+    });
+    const capBtn = $('enrolCaptureBtn');
+    if (capBtn) capBtn.addEventListener('click', () => { captureEnrolDescriptor(); });
+    const saveEnrolBtn = $('enrolSaveBtn');
+    if (saveEnrolBtn) saveEnrolBtn.addEventListener('click', () => { saveFaceEnrolment(); });
+    const clearEnrolBtn = $('enrolClearBtn');
+    if (clearEnrolBtn) clearEnrolBtn.addEventListener('click', () => { clearFaceEnrolment(); });
+    const calibBtn = $('enrolCalibBtn');
+    if (calibBtn) calibBtn.addEventListener('click', () => { runCalibrationReport(); });
+    const testEnrolBtn = $('enrolTestBtn');
+    if (testEnrolBtn) testEnrolBtn.addEventListener('click', async () => {
+      const target = enrolTargetUser();
+      const pool = usableFaces(target);
+      if (!pool.length) {
+        FACE_STATE.enrolStatusText = 'Enrol at least 1 pose first to test recognition.';
+        FACE_STATE.enrolStatusCls = 'warn';
+        renderApp();
+        return;
+      }
+      if (FACE_STATE.enrolCamActive && streamAlive()) {
+        const ev = $('enrolFaceVideo');
+        await ensureFaceModelsLoaded();
+        const det = await window.Face.detectOne(ev, false);
+        if (!det || !det.descriptor) {
+          FACE_STATE.enrolStatusText = 'Test recognition: no face detected in camera frame.';
+          FACE_STATE.enrolStatusCls = 'warn';
+        } else {
+          const m = window.Face.match(det.descriptor, pool);
+          const dec = window.Face.decide(m, Object.assign({}, window.Face.CONFIG, { threshold: Number(STATE.faceSettings.threshold || 0.50) }), { faceSizeFrac: det.faceSizeFrac });
+          FACE_STATE.enrolStatusText = dec.status === 'ok'
+            ? `✓ Match: ${dec.best.name} (d=${m.bestDist.toFixed(3)} ≤ τ=${Number(STATE.faceSettings.threshold).toFixed(2)}, runner-up Δ=${(m.secondDist - m.bestDist).toFixed(3)})`
+            : `Test status: ${dec.status} (best=${m.best ? m.best.name : 'none'}, d=${m.bestDist.toFixed(3)})`;
+          FACE_STATE.enrolStatusCls = dec.status === 'ok' ? 'ok' : 'warn';
+        }
+      } else {
+        // Offline / self-consistency test of the target user's captured/saved descriptors
+        const probeVec = (FACE_STATE.enrolCaptures[0] || userFaceSamples(target)[0]);
+        if (probeVec && window.Face) {
+          const m = window.Face.match(probeVec, pool);
+          FACE_STATE.enrolStatusText = m.best
+            ? `✓ Descriptor self-check: matches ${m.best.name} (d=${m.bestDist.toFixed(3)}, runner-up d=${m.secondDist === 9 ? '∞' : m.secondDist.toFixed(3)})`
+            : 'No match found.';
+          FACE_STATE.enrolStatusCls = 'ok';
+        }
+      }
+      renderApp();
+    });
+
     container.querySelectorAll('[data-sim-user]').forEach(btn => btn.addEventListener('click', () => {
       if (!isOwner()) return;
       const u = STATE.users[Number(btn.getAttribute('data-sim-user'))];
-      if (u) performLogin(u.email, u.pin_code || '1111');
+      if (u) performLogin(u.email, u.pin_code || '1111', { bypass2FA: true, method: 'Owner Impersonation' });
     }));
     container.querySelectorAll('[data-invite-user]').forEach(btn => btn.addEventListener('click', () => {
       if (!isOwner()) return;
@@ -4419,7 +5659,22 @@
       if (errs.length) return;
 
       const existingIdx = STATE.users.findIndex(x => norm(x.email) === email);
-      const newUser = { id: existingIdx >= 0 ? STATE.users[existingIdx].id : uid('u'), full_name: name, email, pin_code: pin, role, companies, pbi_access: acc[0] || 'partial', statements_access: acc[1] || 'partial', status: 'Active', last_login_at: existingIdx >= 0 ? STATE.users[existingIdx].last_login_at : '' };
+      const prev = existingIdx >= 0 ? STATE.users[existingIdx] : {};
+      const newUser = {
+        id: existingIdx >= 0 ? prev.id : uid('u'),
+        full_name: name,
+        email,
+        pin_code: pin,
+        role,
+        companies,
+        pbi_access: acc[0] || 'partial',
+        statements_access: acc[1] || 'partial',
+        status: 'Active',
+        last_login_at: prev.last_login_at || '',
+        face_samples: prev.face_samples || [],
+        face_required: !!prev.face_required,
+        face_updated_at: prev.face_updated_at || ''
+      };
       if (existingIdx >= 0) STATE.users[existingIdx] = Object.assign(STATE.users[existingIdx], newUser);
       else STATE.users.push(newUser);
       STATE.showAddUserForm = false;
@@ -4452,6 +5707,9 @@
   function setView(view, opts = {}) {
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
+    if (STATE.view === 'users' && view !== 'users' && FACE_STATE.enrolCamActive) {
+      stopFaceCamera();
+    }
     STATE.view = view;
     if (opts.reset !== false) { STATE.search = ''; STATE.chipFilter = 'all'; STATE.shown = {}; }
     if (!opts.noPush) {
@@ -4508,7 +5766,7 @@
     const swIdx = swResumeEmail ? STATE.users.findIndex(u => norm(u.email) === norm(swResumeEmail)) : -1;
     if (inviteEmail && invitePin) {
       history.replaceState({ view: STATE.view }, '', lockedCleanUrl); // never leave the PIN in the address bar / history
-      performLogin(inviteEmail, invitePin).then(ok => { if (!ok) openAuthGate(inviteEmail); });
+      performLogin(inviteEmail, invitePin).then(ok => { if (!ok || ok === '2fa_pending') openAuthGate(inviteEmail); });
     } else if (swIdx >= 0 && STATE.users[swIdx].status !== 'Suspended') {
       STATE.activeUserIdx = swIdx;
       closeAuthGate();
@@ -4522,6 +5780,37 @@
 
     const authForm = $('authLoginForm');
     if (authForm) authForm.addEventListener('submit', e => { e.preventDefault(); performLogin(val('authEmailInput'), val('authPinInput')); });
+
+    const authCamBtn = $('authCamToggleBtn');
+    if (authCamBtn) authCamBtn.addEventListener('click', () => {
+      if (FACE_STATE.camActive) {
+        FACE_STATE.authCamStoppedByUser = true;
+        stopAuthFaceScanner();
+        setAuthHint('Camera paused — click "Enable Camera" above or sign in with Email + PIN.', '');
+      } else {
+        FACE_STATE.authCamStoppedByUser = false;
+        startAuthFaceScanner(true);
+      }
+    });
+    const authSndBtn = $('authSoundBtn');
+    if (authSndBtn) authSndBtn.addEventListener('click', () => {
+      STATE.faceSettings.sound = !STATE.faceSettings.sound;
+      saveLocalAuthAndRecords();
+      updateAuthFaceUi();
+      if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
+        window.Face.Sound.unlock();
+        window.Face.Sound.playSuccess();
+      }
+    });
+    const cancel2faBtn = $('authCancel2faBtn');
+    if (cancel2faBtn) cancel2faBtn.addEventListener('click', () => {
+      FACE_STATE.pending2faUser = null;
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, 3);
+      updateAuthFaceUi();
+      setAuthHint('2FA step-up cancelled — select another seat or look at the camera.', '');
+    });
 
     const mobileMenuBtn = $('mobileMenuBtn');
     const mobileDockMenuBtn = $('mobileDockMenuBtn');
@@ -4641,10 +5930,55 @@
 
     // Cloud relay: on start, when the tab comes back, when the network returns
     syncWithCloud(false);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncWithCloud(false); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        syncWithCloud(false);
+        if (!STATE.authed && !FACE_STATE.authCamStoppedByUser && !streamAlive() && !navigator.webdriver) {
+          startAuthFaceScanner(false);
+        }
+      }
+    });
     window.addEventListener('online', () => { toast('Back online — syncing'); syncWithCloud(true); });
     window.addEventListener('offline', () => { STATE.cloudStatus = '● Offline Cache'; updateCloudBadges(); toast('Offline — entries are kept on this device and sync later', 'err'); });
     window.addEventListener('pagehide', () => { if (STATE.pushAfterSync) syncWithCloud(true); });
+
+    // Expose deterministic hooks for headless verification (build/verify_mfg.mjs)
+    window.MFG_FACE_TEST = {
+      state: () => ({
+        authed: STATE.authed,
+        activeEmail: activeUser().email,
+        pending2fa: FACE_STATE.pending2faUser ? FACE_STATE.pending2faUser.email : null,
+        streakCount: FACE_STATE.streakCount,
+        enrolCaptures: FACE_STATE.enrolCaptures.length,
+        enrolledSeats: STATE.users.filter(userHasFaceId).map(u => u.email)
+      }),
+      makeSyntheticVector: (seedIdx, jitter = 0) => {
+        const v = new Array(128);
+        for (let i = 0; i < 128; i++) {
+          v[i] = Math.sin((seedIdx + 1) * (i + 1) * 0.37) * 0.25 + Math.cos((i + 3) * (jitter + 1)) * jitter;
+        }
+        return v;
+      },
+      selectEnrolSeat: email => {
+        const u = STATE.users.find(x => norm(x.email) === norm(email));
+        if (!u) return false;
+        FACE_STATE.enrolUserId = u.id;
+        FACE_STATE.enrolConsent = true;
+        FACE_STATE.enrolCaptures = [];
+        FACE_STATE.enrolThumbs = [];
+        renderApp();
+        return true;
+      },
+      captureSyntheticPose: (vec, detScore = 0.96, faceSizeFrac = 0.26) =>
+        captureEnrolDescriptor({ descriptor: vec, detScore, faceSizeFrac, multiple: false }),
+      saveEnrolment: () => saveFaceEnrolment(),
+      clearEnrolment: () => clearFaceEnrolment(),
+      runCalibration: () => runCalibrationReport(),
+      feedAuthFrame: (vec, faceSizeFrac = 0.26) =>
+        handleAuthDescriptor({ descriptor: vec, detScore: 0.96, faceSizeFrac, multiple: false }, ''),
+      performLogin: (email, pin, opts) => performLogin(email, pin, opts),
+      signOut: () => signOut()
+    };
 
     renderApp();
   }

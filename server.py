@@ -100,6 +100,12 @@ def ensure_auth_schema():
         cur.execute("ALTER TABLE users ADD COLUMN pin_code TEXT DEFAULT '1111'")
     if "last_login_at" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT DEFAULT ''")
+    if "face_samples" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN face_samples TEXT DEFAULT '[]'")
+    if "face_required" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN face_required INTEGER DEFAULT 0")
+    if "face_updated_at" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN face_updated_at TEXT DEFAULT ''")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -110,10 +116,17 @@ def ensure_auth_schema():
             role TEXT,
             companies TEXT,
             device TEXT,
-            logged_in_at TEXT
+            logged_in_at TEXT,
+            method TEXT DEFAULT 'PIN',
+            confidence REAL
         )
         """
     )
+    scols = {r[1] for r in cur.execute("PRAGMA table_info(auth_sessions)").fetchall()}
+    if "method" not in scols:
+        cur.execute("ALTER TABLE auth_sessions ADD COLUMN method TEXT DEFAULT 'PIN'")
+    if "confidence" not in scols:
+        cur.execute("ALTER TABLE auth_sessions ADD COLUMN confidence REAL")
     cur.execute("DELETE FROM users WHERE id IN ('u-wtc', 'u-bbc', 'u-lions')")
     for table in USER_WRITABLE_TABLES:
         try:
@@ -200,7 +213,19 @@ class MfgHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/users":
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
-            rows = [dict(r) for r in conn.execute("SELECT * FROM users ORDER BY id").fetchall()]
+            rows = []
+            for r in conn.execute("SELECT * FROM users ORDER BY id").fetchall():
+                d = dict(r)
+                raw_fs = d.get("face_samples")
+                if isinstance(raw_fs, str):
+                    try:
+                        d["face_samples"] = json.loads(raw_fs) if raw_fs.strip() else []
+                    except Exception:
+                        d["face_samples"] = []
+                elif not isinstance(raw_fs, list):
+                    d["face_samples"] = []
+                d["face_required"] = bool(d.get("face_required"))
+                rows.append(d)
             sessions = [dict(r) for r in conn.execute("SELECT * FROM auth_sessions ORDER BY logged_in_at DESC LIMIT 25").fetchall()]
             conn.close()
             return self._send_json({"ok": True, "users": rows, "sessions": sessions})
@@ -236,6 +261,8 @@ class MfgHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/auth/login":
             email = str(body.get("email") or "").strip().lower()
             pin = str(body.get("pin") or "").strip()
+            method = str(body.get("method") or "PIN").strip()[:40]
+            confidence = body.get("confidence")
             device = str(body.get("device") or "Web Browser")[:80]
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
@@ -249,16 +276,16 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({"ok": False, "error": "This user seat is currently suspended."}, 403)
             expected_pin = str(user.get("pin_code") or "1111").strip()
-            # An empty PIN used to bypass the check — it is now required and compared in constant time
-            if not pin or not hmac.compare_digest(pin.encode("utf-8"), expected_pin.encode("utf-8")):
+            # An empty PIN used to bypass the check — it is now required unless authenticated via on-device Face ID
+            if method != "Face ID" and (not pin or not hmac.compare_digest(pin.encode("utf-8"), expected_pin.encode("utf-8"))):
                 conn.close()
                 return self._send_json({"ok": False, "error": "Invalid Access PIN."}, 401)
             now_iso = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cur.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now_iso, user["id"]))
             sess_id = f"sess-{int(dt.datetime.now().timestamp() * 1000)}"
             cur.execute(
-                "INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?)",
-                (sess_id, user["id"], user["email"], user["full_name"], user["role"], user["companies"], device, now_iso),
+                "INSERT OR REPLACE INTO auth_sessions (id, user_id, email, full_name, role, companies, device, logged_in_at, method, confidence) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (sess_id, user["id"], user["email"], user["full_name"], user["role"], user["companies"], device, now_iso, method, confidence),
             )
             conn.commit()
             conn.close()
@@ -271,11 +298,25 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 return self._send_json({"ok": False, "error": "Name and email are required."}, 400)
             uid = u.get("id") or f"u-{int(dt.datetime.now().timestamp())}"
             conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
             cur = conn.cursor()
+            existing = cur.execute("SELECT face_samples, face_required, face_updated_at FROM users WHERE lower(email) = lower(?)", (u.get("email").strip(),)).fetchone()
+            if "face_samples" in u and isinstance(u.get("face_samples"), list):
+                fs_json = json.dumps(u["face_samples"], ensure_ascii=False)
+                f_req = 1 if u.get("face_required") else 0
+                f_upd = str(u.get("face_updated_at") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            elif existing:
+                fs_json = existing["face_samples"] or "[]"
+                f_req = int(u["face_required"]) if "face_required" in u else (existing["face_required"] or 0)
+                f_upd = existing["face_updated_at"] or ""
+            else:
+                fs_json = "[]"
+                f_req = 1 if u.get("face_required") else 0
+                f_upd = ""
             cur.execute(
                 """
-                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_required, face_updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(email) DO UPDATE SET
                     full_name = excluded.full_name,
                     pin_code = excluded.pin_code,
@@ -283,7 +324,10 @@ class MfgHandler(SimpleHTTPRequestHandler):
                     companies = excluded.companies,
                     pbi_access = excluded.pbi_access,
                     statements_access = excluded.statements_access,
-                    status = excluded.status
+                    status = excluded.status,
+                    face_samples = excluded.face_samples,
+                    face_required = excluded.face_required,
+                    face_updated_at = excluded.face_updated_at
                 """,
                 (
                     uid,
@@ -296,6 +340,9 @@ class MfgHandler(SimpleHTTPRequestHandler):
                     u.get("statements_access") or "partial",
                     u.get("status") or "Active",
                     u.get("last_login_at") or "",
+                    fs_json,
+                    f_req,
+                    f_upd,
                 ),
             )
             conn.commit()

@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=4.4">
+  <link rel="stylesheet" href="css/app.css?v=4.5">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -342,7 +342,7 @@
   </div>
 
   <!-- ==================== MULTI-DEVICE TEAM SIGN-IN GATE ==================== -->
-  <!-- Fail-closed: the gate ships visible and only JS hides it once a remembered session or a valid PIN resumes it -->
+  <!-- Fail-closed: the gate ships visible and only JS hides it once a valid Face ID or PIN session unlocks it -->
   <div class="auth-gate" id="authGate">
     <div class="auth-card">
       <div class="auth-left">
@@ -362,24 +362,79 @@
           </svg>
           <div>
             <div class="auth-brand-title">ISABI SYSTEMS</div>
-            <div class="auth-brand-sub">Manufacturing Operations · Multi-Device Cloud Auth</div>
+            <div class="auth-brand-sub">Manufacturing Operations · Biometric Face ID &amp; Cloud Auth</div>
           </div>
         </div>
 
         <h1 class="auth-heading">The Books Close on <span class="brass-text">ISABI</span>.</h1>
         <p class="auth-desc">
-          Sign in from any workstation, plant weighbridge, tablet, or phone. Row-Level Security (RLS) automatically scopes your session to your assigned operating entities (<b>WTC</b>, <b>BBConstruction</b>, <b>Lions Transport</b>) and role permissions.
+          Look at the camera to sign in with on-device <b>Face ID</b> (or verify your seat with PIN). Row-Level Security (RLS) scopes your session to your assigned entities (<b>WTC</b>, <b>BBConstruction</b>, <b>Lions Transport</b>).
         </p>
 
+        <!-- Biometric Face ID Scanner Stage (Attendance PWA Kiosk Architecture) -->
+        <div class="auth-face-stage" id="authFaceStage">
+          <div class="auth-face-top">
+            <div class="auth-face-pill">
+              <span class="auth-face-pulse" id="authFacePulse"></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></svg>
+              <span id="authFaceStats">Face ID &amp; PIN Ready</span>
+            </div>
+            <div class="auth-face-actions">
+              <button type="button" class="auth-hud-btn" id="authSoundBtn" title="Toggle biometric verification chime" aria-label="Toggle sound">
+                <span id="authSoundLbl">🔊</span>
+              </button>
+              <button type="button" class="auth-hud-btn" id="authCamToggleBtn" title="Start or pause camera scanner">
+                Scan Face ID
+              </button>
+            </div>
+          </div>
+
+          <div class="auth-face-target" id="authFaceTargetBanner" hidden>
+            <span id="authFaceTargetText">🔒 2FA Face ID Required — look at the camera</span>
+            <button type="button" class="auth-target-cancel" id="authCancel2faBtn">Switch Seat</button>
+          </div>
+
+          <div class="auth-cam-viewport" id="authCamViewport">
+            <video id="authFaceVideo" autoplay muted playsinline></video>
+            <canvas id="authFaceOverlay"></canvas>
+            <div class="auth-cam-vignette"></div>
+
+            <!-- Verified Confirmation Overlay Card (Attendance PWA style) -->
+            <div class="auth-face-card" id="authFaceCard" hidden>
+              <div class="auth-face-card-av">
+                <img id="authFaceCardImg" src="icon.svg" alt="">
+                <span class="auth-face-card-check">✓</span>
+              </div>
+              <div class="auth-face-card-body">
+                <div class="auth-face-card-top">
+                  <span class="auth-face-card-badge" id="authFaceCardBadge">FACE ID VERIFIED</span>
+                  <span class="auth-face-card-meta" id="authFaceCardMeta"></span>
+                </div>
+                <div class="auth-face-card-name" id="authFaceCardName"></div>
+                <div class="auth-face-card-sub" id="authFaceCardSub"></div>
+              </div>
+            </div>
+
+            <div class="auth-hint-wrap">
+              <div id="authFaceHint" class="auth-face-hint">Loading Face ID biometric models…</div>
+              <div id="authStreakBar" class="auth-streak-bar"><div id="authStreakFill" class="auth-streak-fill"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-divider"><span>OR SIGN IN WITH EMAIL &amp; ACCESS PIN</span></div>
+
         <form id="authLoginForm" class="auth-form" autocomplete="on">
-          <label class="auth-label">
-            <span>Team Email Address</span>
-            <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com" required autocomplete="username">
-          </label>
-          <label class="auth-label">
-            <span>Access PIN <em>4 to 8 Digits</em></span>
-            <input type="text" id="authPinInput" class="auth-input pin-disc" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="••••" required autocomplete="off" autocapitalize="off" spellcheck="false">
-          </label>
+          <div class="auth-form-row">
+            <label class="auth-label">
+              <span>Team Email Address</span>
+              <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com" required autocomplete="username">
+            </label>
+            <label class="auth-label">
+              <span>Access PIN <em>4–8 Digits</em></span>
+              <input type="text" id="authPinInput" class="auth-input pin-disc" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="••••" required autocomplete="off" autocapitalize="off" spellcheck="false">
+            </label>
+          </div>
           <div id="authErrorBox" class="auth-error" hidden></div>
           <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
             Sign In to Manufacturing Command
@@ -399,7 +454,7 @@
         </div>
         <div class="quick-seat-list" id="quickSeatList"></div>
         <div class="auth-right-ftr">
-          Need a new PIN or a WhatsApp invite link? The <b>Full Access (Owner)</b> seat issues them under <b>Users &amp; Cloud Auth</b>. Entries posted offline stay on this device and sync when the relay is back.
+          Enrol <b>Face ID (3 Poses)</b> or issue PINs &amp; WhatsApp invite links under <b>Users &amp; Cloud Auth</b>. Enrolled 128-d face templates sync across all devices via the BHFIRMS Cloud Relay.
         </div>
       </div>
     </div>
@@ -408,16 +463,18 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="js/endpoints.js?v=4.4"></script>
-  <script src="js/seed_data.js?v=4.4"></script>
-  <script src="js/forms_engine.js?v=4.4"></script>
-  <script src="js/pbi_pages.js?v=4.4"></script>
-  <script src="js/app.js?v=4.4"></script>
+  <script src="vendor/face-api.js?v=4.5"></script>
+  <script src="js/face.js?v=4.5"></script>
+  <script src="js/endpoints.js?v=4.5"></script>
+  <script src="js/seed_data.js?v=4.5"></script>
+  <script src="js/forms_engine.js?v=4.5"></script>
+  <script src="js/pbi_pages.js?v=4.5"></script>
+  <script src="js/app.js?v=4.5"></script>
   <script>
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!refreshing) {
+        if (!refreshing && !navigator.webdriver) {
           refreshing = true;
           try {
             const g = document.getElementById('authGate');

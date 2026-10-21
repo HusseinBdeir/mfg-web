@@ -60,8 +60,8 @@ try {
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   if (MOBILE) await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?demo=1&nosse=1` });
-  await sleep(2500);
-  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
+  await sleep(1500);
+  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && window.MFG_PBI && window.MFG_FACE_TEST && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
 
   // 0. Always starts on the login gate (#authGate visible, body.locked, no #overview hash), even if a legacy localStorage email exists
   const initialGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), hash: location.hash }))()`);
@@ -70,8 +70,8 @@ try {
     : fail('authGate initial state', JSON.stringify(initialGate));
   await evaluate(`localStorage.setItem('isabi_mfg_active_email', 'husseinbdeir@bhfirms.com')`);
   await send('Page.reload', { ignoreCache: true });
-  await sleep(1500);
-  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
+  await sleep(1200);
+  await evaluate(`new Promise(r => { const t = setInterval(() => { if (window.MFG_SEED && window.MFG_PBI && window.MFG_FACE_TEST && document.getElementById('workspace')) { clearInterval(t); r(1); } }, 100); })`);
   const reloadGate = await evaluate(`(() => ({ gateOpen: !document.getElementById('authGate').hidden, locked: document.body.classList.contains('locked'), purged: localStorage.getItem('isabi_mfg_active_email') === null }))()`);
   reloadGate.gateOpen && reloadGate.locked && reloadGate.purged
     ? pass('authGate · legacy localStorage email purged & still requires login first')
@@ -90,7 +90,7 @@ try {
   };
 
   // 2. Every view
-  const views = ['overview', 'pbi', 'tables', 'sentinels', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'ledger', 'statements', 'users'];
+  const views = ['overview', 'pbi', 'tables', 'sentinels', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
   for (const v of views) {
     await evaluate(`(() => { const b = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]'); b.click(); return 1; })()`);
     await sleep(350);
@@ -99,9 +99,18 @@ try {
     await overflow(v);
   }
 
-  // 3. Every PBI page + GL totals on P16 + pricing active-count on P05
+  // 3. Every PBI page + GL totals on P16 + pricing active-count on P05 + dynamic per-page slicers + header button contrast
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`);
   await sleep(300);
+  // Check top header button contrast (fix for white square button on dark navy header)
+  const hdrBtnContrast = await evaluate(`(() => {
+    const btn = document.getElementById('pbiResetSlicersBtn');
+    if (!btn) return null;
+    const cs = getComputedStyle(btn);
+    return { bg: cs.backgroundColor, color: cs.color };
+  })()`);
+  hdrBtnContrast && hdrBtnContrast.bg !== 'rgb(255, 255, 255)' ? pass('pbi · header buttons styled for dark header (no white square)', `${hdrBtnContrast.bg} / ${hdrBtnContrast.color}`) : fail('pbi header button contrast', JSON.stringify(hdrBtnContrast));
+
   const pages = await evaluate(`Array.from(document.querySelectorAll('[data-pbi-page]')).map(b => b.getAttribute('data-pbi-page'))`);
   pages.length === 20 ? pass('pbi · 20 page tabs') : fail('pbi tabs', String(pages.length));
   for (const p of pages) {
@@ -110,6 +119,33 @@ try {
     const len = await evaluate(`document.getElementById('pbiCanvasPanel').innerHTML.length`);
     len > 2000 ? pass(`pbi ${p}`) : fail(`pbi ${p}`, 'thin canvas');
   }
+  // Check dynamic per-page slicers switch between P05, P06, P12
+  await evaluate(`document.querySelector('[data-pbi-page="p05_pricing"]').click()`); await sleep(200);
+  const p05Slicers = await evaluate(`Array.from(document.querySelectorAll('[data-pbi-slicer]')).map(s => s.getAttribute('data-pbi-slicer')).join(',')`);
+  /ruleType/.test(p05Slicers) && /activeStatus/.test(p05Slicers) ? pass('pbi · P05 dynamic slicers', p05Slicers) : fail('pbi P05 dynamic slicers', p05Slicers);
+
+  await evaluate(`document.querySelector('[data-pbi-page="p06_ar"]').click()`); await sleep(200);
+  const p06Info = await evaluate(`(() => {
+    const slicers = Array.from(document.querySelectorAll('[data-pbi-slicer]')).map(s => s.getAttribute('data-pbi-slicer')).join(',');
+    const txt = document.getElementById('pbiCanvasPanel').innerText;
+    const tables = document.querySelectorAll('#pbiCanvasPanel table').length;
+    const bars = document.querySelectorAll('#pbiCanvasPanel .pbi-bar-fill').length;
+    return { slicers, hasAging: /AR aging/i.test(txt) && /On account/i.test(txt), hasStatement: /Customer statement/i.test(txt), tables, bars };
+  })()`);
+  p06Info.hasAging && p06Info.hasStatement && p06Info.tables >= 4 && p06Info.bars > 5
+    ? pass('pbi · P06 Customers & Receivables matches & exceeds Power Apps PBI', `${p06Info.tables} tables, ${p06Info.bars} inline data bars, slicers=${p06Info.slicers}`)
+    : fail('pbi P06 parity', JSON.stringify(p06Info));
+
+  await evaluate(`document.querySelector('[data-pbi-page="p12_payroll"]').click()`); await sleep(200);
+  const p12Info = await evaluate(`(() => {
+    const slicers = Array.from(document.querySelectorAll('[data-pbi-slicer]')).map(s => s.getAttribute('data-pbi-slicer')).join(',');
+    const headings = Array.from(document.querySelectorAll('#pbiCanvasPanel .pbi-sec-heading')).map(h => h.textContent.trim().split('\\n')[0].trim());
+    return { slicers, headings, kpis: document.querySelectorAll('#pbiCanvasPanel .pbi-kpi-card').length };
+  })()`);
+  p12Info.headings.length >= 3 && /contractStatus/.test(p12Info.slicers) && p12Info.kpis >= 18
+    ? pass('pbi · P12 Payroll & Attendance 3 sections + dynamic slicers', `${p12Info.headings.join(' | ')} · ${p12Info.kpis} KPIs`)
+    : fail('pbi P12 payroll', JSON.stringify(p12Info));
+
   await evaluate(`document.querySelector('[data-pbi-page="p16_financial"]').click()`); await sleep(250);
   const glText = await evaluate(`(() => { const t = Array.from(document.querySelectorAll('#pbiCanvasPanel table tbody tr.total td')).map(td => td.textContent.trim()); return t.join('|'); })()`);
   /TOTAL/.test(glText) && !/\$0\.00\|\$0\.00\|\$0\.00/.test(glText) ? pass('pbi P16 GL totals populated', glText.slice(0, 80)) : fail('pbi P16 GL totals', glText.slice(0, 120));
@@ -121,7 +157,7 @@ try {
   fleetNonZero ? pass('pbi P10 equipment total cost populated') : fail('pbi P10 equipment', 'all $0');
   // slicer round-trip
   await evaluate(`document.querySelector('[data-pbi-page="p04_sales"]').click()`); await sleep(250);
-  await evaluate(`(() => { const s = document.getElementById('pbiSlicerSaleType'); s.value = 'Pickup'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`); await sleep(300);
+  await evaluate(`(() => { const s = document.querySelector('[data-pbi-slicer="saleType"]') || document.getElementById('pbiSlicerSaleType'); if (s) { s.value = 'Pickup'; s.dispatchEvent(new Event('change', { bubbles: true })); } return 1; })()`); await sleep(300);
   const slicerBadge = await evaluate(`!!document.querySelector('.pbi-studio-top .badge-warn')`);
   slicerBadge ? pass('pbi slicer badge shows active slicer') : fail('pbi slicer badge', 'missing');
   await evaluate(`document.getElementById('pbiResetSlicersBtn').click()`); await sleep(250);
@@ -210,10 +246,114 @@ try {
 
   // 7. Statements all 22
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click()`); await sleep(300);
-  const codes = await evaluate(`Array.from(document.querySelectorAll('[data-stmt]')).map(c => c.getAttribute('data-stmt'))`);
+  const codes = await evaluate(`Array.from(document.querySelectorAll('.stmt-card[data-stmt]')).map(c => c.getAttribute('data-stmt'))`);
   let stOk = 0;
-  for (const c of codes) { await evaluate(`document.querySelector('[data-stmt="${c}"]').click()`); await sleep(120); const n = await evaluate(`document.querySelectorAll('#printableSheet table').length`); if (n) stOk++; }
+  for (const c of codes) { await evaluate(`document.querySelector('.stmt-card[data-stmt="${c}"]').click()`); await sleep(120); const n = await evaluate(`document.querySelectorAll('#printableSheet table').length`); if (n) stOk++; }
   stOk === 22 ? pass('statements · 22 sheets render') : fail('statements', `${stOk}/22`);
+
+  // 7b. Biometric Face ID (Attendance PWA parity: 128-d models, 3-pose enrolment, duplicate guard, 2FA step-up, 3-frame biometric sign-in)
+  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(250);
+  const modelsLoaded = await evaluate(`(async () => { await window.Face.load('./vendor/models'); return { ready: window.Face.ready, backend: window.Face.backend }; })()`);
+  modelsLoaded.ready ? pass('face-api · 128-d neural models loaded', `backend=${modelsLoaded.backend}`) : fail('face-api models', JSON.stringify(modelsLoaded));
+
+  const enrolFlow = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    T.selectEnrolSeat('husseinbdeir@bhfirms.com');
+    const c1 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.002));
+    const c2 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.005));
+    const c3 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.008));
+    await T.saveEnrolment();
+
+    // Select Zeinab and verify duplicate-person guard blocks Hussein's face vector
+    T.selectEnrolSeat('zeinabrkein@bhfirms.com');
+    const dup = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.003));
+    const z1 = await T.captureSyntheticPose(T.makeSyntheticVector(2, 0.002));
+    const z2 = await T.captureSyntheticPose(T.makeSyntheticVector(2, 0.005));
+    const z3 = await T.captureSyntheticPose(T.makeSyntheticVector(2, 0.008));
+    await T.saveEnrolment();
+    const cal = T.runCalibration();
+    return {
+      cCount: c3.count,
+      dupReason: dup.reason,
+      dupOther: dup.other,
+      zCount: z3.count,
+      enrolled: T.state().enrolledSeats,
+      calPairs: cal ? cal.pairs.length : 0,
+      calMinDist: cal && cal.pairs[0] ? cal.pairs[0].d : 0
+    };
+  })()`);
+  enrolFlow.cCount === 3 && enrolFlow.zCount === 3 && enrolFlow.enrolled.length === 2
+    ? pass('face enrolment · 3-pose 128-d capture & persistence', enrolFlow.enrolled.join(', '))
+    : fail('face enrolment', JSON.stringify(enrolFlow));
+  enrolFlow.dupReason === 'duplicate-person' && enrolFlow.dupOther === 'husseinbdeir@bhfirms.com'
+    ? pass('face duplicate guard · blocks enrolling same face on a second seat')
+    : fail('face duplicate guard', JSON.stringify(enrolFlow));
+  enrolFlow.calPairs === 1 && enrolFlow.calMinDist > 0.55
+    ? pass('face calibration · 128-d Euclidean separation matrix', `d=${enrolFlow.calMinDist.toFixed(3)}`)
+    : fail('face calibration', JSON.stringify(enrolFlow));
+
+  // Sign out to #authGate and test Step-Up 2FA + 3-frame Biometric Sign-In
+  const authFaceFlow = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    T.signOut();
+    const gateOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const stageVisible = !!document.getElementById('authFaceStage') && !document.getElementById('authGate').hidden;
+
+    // 1. Entering PIN for an enrolled seat triggers Step-Up 2FA instead of unlocking immediately
+    const pinStep = await T.performLogin('husseinbdeir@bhfirms.com', '1111');
+    const bannerVisible = !document.getElementById('authFaceTargetBanner').hidden;
+    const stillLockedAfterPin = !document.getElementById('authGate').hidden;
+
+    // 2. Feeding Zeinab's face during Hussein's 2FA step-up is refused
+    const wrongPerson = await T.feedAuthFrame(T.makeSyntheticVector(2, 0.002));
+
+    // 3. Feeding 3 consecutive frames of Hussein's face completes 2FA and unlocks #authGate
+    const f1 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.002));
+    const f2 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.004));
+    const f3 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.003));
+    const unlocked2FA = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
+
+    // 4. Sign out and test 1-Look Biometric Sign-In (no Email or PIN typed) for Zeinab
+    T.signOut();
+    await T.feedAuthFrame(T.makeSyntheticVector(2, 0.002));
+    await T.feedAuthFrame(T.makeSyntheticVector(2, 0.004));
+    const zLogin = await T.feedAuthFrame(T.makeSyntheticVector(2, 0.003));
+    const unlockedDirect = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
+
+    // Clean up test enrolments and restore owner session
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    T.selectEnrolSeat('husseinbdeir@bhfirms.com'); await T.clearEnrolment();
+    T.selectEnrolSeat('zeinabrkein@bhfirms.com'); await T.clearEnrolment();
+
+    return {
+      gateOverflow,
+      stageVisible,
+      pinStep,
+      bannerVisible,
+      stillLockedAfterPin,
+      wrongPerson: wrongPerson.status,
+      f1: f1.status,
+      f2: f2.status,
+      f3: f3.status,
+      f3Method: f3.method,
+      unlocked2FA,
+      zLogin: zLogin.status,
+      zMethod: zLogin.method,
+      unlockedDirect
+    };
+  })()`);
+  authFaceFlow.stageVisible && authFaceFlow.gateOverflow === 0
+    ? pass('authGate · Face ID scanner stage visible & 0px overflow')
+    : fail('authGate Face ID stage', JSON.stringify(authFaceFlow));
+  authFaceFlow.pinStep === '2fa_pending' && authFaceFlow.bannerVisible && authFaceFlow.stillLockedAfterPin && authFaceFlow.wrongPerson === '2fa-mismatch'
+    ? pass('authGate 2FA · enrolled seat requires Face ID after PIN & rejects wrong face')
+    : fail('authGate 2FA enforcement', JSON.stringify(authFaceFlow));
+  authFaceFlow.f1 === 'streak' && authFaceFlow.f2 === 'streak' && authFaceFlow.f3 === 'verified' && authFaceFlow.unlocked2FA
+    ? pass('authGate 2FA · 3 consecutive matching frames unlock session', authFaceFlow.f3Method)
+    : fail('authGate 2FA unlock', JSON.stringify(authFaceFlow));
+  authFaceFlow.zLogin === 'verified' && authFaceFlow.unlockedDirect && authFaceFlow.zMethod === 'Face ID'
+    ? pass('authGate Face ID · 1-look biometric sign-in unlocks RLS session')
+    : fail('authGate 1-look Face ID', JSON.stringify(authFaceFlow));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

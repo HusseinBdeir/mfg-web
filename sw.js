@@ -1,13 +1,15 @@
-const CACHE = 'isabi-mfg-v4.3';
+const CACHE = 'isabi-mfg-v4.5';
 const SHELL = [
   './',
   './index.html',
-  './css/app.css?v=4.3',
-  './js/endpoints.js?v=4.3',
-  './js/seed_data.js?v=4.3',
-  './js/forms_engine.js?v=4.3',
-  './js/pbi_pages.js?v=4.3',
-  './js/app.js?v=4.3',
+  './css/app.css?v=4.5',
+  './vendor/face-api.js?v=4.5',
+  './js/face.js?v=4.5',
+  './js/endpoints.js?v=4.5',
+  './js/seed_data.js?v=4.5',
+  './js/forms_engine.js?v=4.5',
+  './js/pbi_pages.js?v=4.5',
+  './js/app.js?v=4.5',
   './manifest.json',
   './icon.svg',
   './icon-192.png',

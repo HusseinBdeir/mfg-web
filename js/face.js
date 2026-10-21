@@ -1,0 +1,434 @@
+// ISABI Manufacturing Command — On-Device Biometric Face ID Engine (js/face.js)
+// Shared architecture with BHFIRMS Attendance PWA (Attendance.md / PWA.md §4):
+//   - Pipeline: SSD MobileNet v1 detector (Tiny Face Detector fallback + liveness fast path)
+//               -> Full 68-point face landmarks -> 128-d Euclidean descriptor.
+//   - Accept rule (Face.decide): nearest sample <= threshold (0.50) AND nearest sample of
+//     any OTHER user is >= margin (0.08) further away; 3 consecutive frames confirm match.
+//   - Enrolment: 3 guided poses (straight, slightly left, slightly right) with camera-top
+//     SVG pictograms (poseSvg), minFaceFrac 14%, enrolScore 0.70, and separation check.
+//   - Models are served from ./vendor/models and cached by sw.js for 100% offline operation.
+
+const MFG_FACE_CONFIG = {
+  match: {
+    detector: "ssd",          // "ssd" = SSD MobileNet v1 (~5.6 MB) | "tiny" = Tiny Face Detector
+    threshold: 0.50,
+    margin: 0.08,             // required gap between best match and runner-up person
+    weakAbove: 0.45,          // accepted but flagged as weak match above this distance
+    minSamples: 3,            // 3 guided poses required before a seat's Face ID is active
+    maxSamples: 3,
+    confirmFrames: 3,         // same user across 3 consecutive frames before sign-in
+    unknownFrames: 3,         // unknown face across 3 consecutive frames before PIN hint
+    minFaceFrac: 0.14,        // ignore background faces narrower than 14% of frame width
+    detectorInputSize: 320,
+    detectorScore: 0.50,
+    enrolScore: 0.70,
+    poses: [
+      "Look straight at the camera",
+      "Turn your head slightly LEFT — just a little, keep both eyes on the camera",
+      "Turn your head slightly RIGHT — just a little, keep both eyes on the camera"
+    ],
+    poseIcons: ["straight", "left", "right"]
+  },
+  liveness: {
+    enabled: false,
+    earClosed: 0.20,
+    earOpen: 0.26,
+    windowSec: 4
+  },
+  snapshotWidth: 180,
+  snapshotQuality: 0.65
+};
+
+const Face = (() => {
+  let ready = false;
+  let loading = null;
+  let backend = "?";
+  let detector = "tiny";
+  let landmarksTiny = true;
+
+  const M = () => MFG_FACE_CONFIG.match;
+
+  function opts(which) {
+    const d = which || detector;
+    if (d === "ssd") return new faceapi.SsdMobilenetv1Options({ minConfidence: M().detectorScore });
+    return new faceapi.TinyFaceDetectorOptions({ inputSize: M().detectorInputSize, scoreThreshold: M().detectorScore });
+  }
+
+  async function load() {
+    if (ready) return;
+    if (loading) return loading;
+    if (typeof faceapi === "undefined") throw new Error("face-api.js not loaded");
+    loading = (async () => {
+      const base = "./vendor/models";
+      try {
+        await faceapi.tf.setBackend("webgl");
+        await faceapi.tf.ready();
+      } catch (e) {
+        await faceapi.tf.setBackend("cpu");
+        await faceapi.tf.ready();
+      }
+      backend = faceapi.tf.getBackend();
+      await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+      if (M().detector === "ssd") {
+        try {
+          await faceapi.nets.ssdMobilenetv1.loadFromUri(base);
+          detector = "ssd";
+        } catch (e) {
+          console.warn("SSD detector unavailable, using tiny", e);
+          detector = "tiny";
+        }
+      }
+      try {
+        await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+        landmarksTiny = false;
+      } catch (e) {
+        console.warn("full landmark net unavailable, using tiny", e);
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri(base);
+        landmarksTiny = true;
+      }
+      await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      ready = true;
+    })();
+    return loading;
+  }
+
+  const frameWidth = src => src.videoWidth || src.naturalWidth || src.width || 0;
+
+  // Offscreen canvas copy: prevents face-api.js awaitMediaLoaded from hanging forever
+  // when a MediaStream <video> has readyState < 3 or is hidden (PWA.md §4.2).
+  let scratchCanvas = null;
+  function frameToCanvas(src) {
+    if (!src) return null;
+    if (src.tagName !== "VIDEO") return src;
+    if (src.paused && src.srcObject) src.play().catch(() => {});
+    if (src.readyState < 2 || !src.videoWidth || !src.videoHeight) return null;
+    const cv = scratchCanvas || (scratchCanvas = document.createElement("canvas"));
+    cv.width = src.videoWidth;
+    cv.height = src.videoHeight;
+    cv.getContext("2d").drawImage(src, 0, 0);
+    return cv;
+  }
+
+  function snapshot(src) {
+    const frame = frameToCanvas(src);
+    if (!frame) return "";
+    const sw = frame.videoWidth || frame.naturalWidth || frame.width || 320;
+    const sh = frame.videoHeight || frame.naturalHeight || frame.height || 240;
+    if (!sw || !sh) return "";
+    const w = MFG_FACE_CONFIG.snapshotWidth;
+    const cv = document.createElement("canvas");
+    cv.width = w;
+    cv.height = Math.round((w * sh) / sw);
+    try {
+      cv.getContext("2d").drawImage(frame, 0, 0, cv.width, cv.height);
+      return cv.toDataURL("image/jpeg", MFG_FACE_CONFIG.snapshotQuality);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  // Eye aspect ratio (Soukupová & Čech 2016) from 68-point layout:
+  // left eye = 36..41, right eye = 42..47. Open ~0.30, closed < 0.20.
+  function ear(pts) {
+    if (!pts || pts.length < 48) return null;
+    const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const one = i => (d(pts[i + 1], pts[i + 5]) + d(pts[i + 2], pts[i + 4])) / (2 * d(pts[i], pts[i + 3]) || 1);
+    return (one(36) + one(42)) / 2;
+  }
+
+  function pack(r, src) {
+    const fw = frameWidth(src);
+    const lm = r.landmarks ? r.landmarks.positions : null;
+    return {
+      descriptor: r.descriptor,
+      box: r.detection.box,
+      score: r.detection.score,
+      frac: fw ? r.detection.box.width / fw : 1,
+      landmarks: lm,
+      ear: lm ? ear(lm) : null
+    };
+  }
+
+  async function detectOne(src) {
+    if (!ready) return null;
+    const frame = frameToCanvas(src);
+    if (!frame) return null;
+    const r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+    return r ? pack(r, frame) : null;
+  }
+
+  async function detectAll(src) {
+    if (!ready) return [];
+    const frame = frameToCanvas(src);
+    if (!frame) return [];
+    const rs = await faceapi.detectAllFaces(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptors();
+    return rs.map(r => pack(r, frame));
+  }
+
+  async function landmarksOnly(src) {
+    if (!ready) return null;
+    const frame = frameToCanvas(src);
+    if (!frame) return null;
+    const r = await faceapi.detectSingleFace(frame, opts("tiny")).withFaceLandmarks(landmarksTiny);
+    if (!r) return null;
+    const lm = r.landmarks.positions;
+    return { box: r.detection.box, landmarks: lm, ear: ear(lm) };
+  }
+
+  function euclidean(a, b) {
+    if (typeof faceapi !== "undefined" && faceapi.euclideanDistance) return faceapi.euclideanDistance(a, b);
+    let sum = 0;
+    for (let i = 0; i < 128; i++) {
+      const diff = (Number(a[i]) || 0) - (Number(b[i]) || 0);
+      sum += diff * diff;
+    }
+    return Math.sqrt(sum);
+  }
+
+  // Supports both [{ id, email, name, samples: [[128], ...] }] and flat [{ staffId, d: [128] }]
+  function match(descriptor, enrolled) {
+    let best = null, bestDist = 9, second = null, secondDist = 9;
+    for (const item of (enrolled || [])) {
+      if (!item) continue;
+      if (Array.isArray(item.samples)) {
+        let empBest = 9;
+        for (const s of item.samples) {
+          if (!Array.isArray(s) || s.length !== 128) continue;
+          const d = euclidean(descriptor, s);
+          if (d < empBest) empBest = d;
+        }
+        if (empBest < bestDist) {
+          second = best; secondDist = bestDist;
+          best = item; bestDist = empBest;
+        } else if (empBest < secondDist) {
+          second = item; secondDist = empBest;
+        }
+      } else if (Array.isArray(item.d) && item.d.length === 128) {
+        const d = euclidean(descriptor, item.d);
+        const key = item.email || item.staffId || item.id;
+        if (d < bestDist) {
+          if (best && (best.email || best.staffId || best.id) !== key) { second = best; secondDist = bestDist; }
+          best = item; bestDist = d;
+        } else if (best && (best.email || best.staffId || best.id) !== key && d < secondDist) {
+          second = item; secondDist = d;
+        }
+      }
+    }
+    return {
+      best,
+      bestDist,
+      second,
+      secondDist,
+      staffId: best ? (best.email || best.staffId || best.id) : null,
+      distance: bestDist,
+      runnerUp: second ? { staffId: second.email || second.staffId || second.id, distance: secondDist } : null,
+      margin: second ? (secondDist - bestDist) : 9
+    };
+  }
+
+  function decide(m, cfgOrThr, meta = {}) {
+    const cfg = (cfgOrThr && typeof cfgOrThr === "object")
+      ? Object.assign({}, M(), cfgOrThr)
+      : Object.assign({}, M(), { threshold: cfgOrThr == null ? M().threshold : Number(cfgOrThr) });
+    if (!m || !m.best) return { status: "no-enrolled", ok: false, reason: "no-enrolments" };
+    if (meta.faceSizeFrac != null && meta.faceSizeFrac < (cfg.minFaceFrac || 0.14)) {
+      return { status: "too-small", ok: false, reason: "too-small", best: m.best, bestDist: m.bestDist };
+    }
+    if (m.bestDist > cfg.threshold) {
+      return { status: "unknown", ok: false, reason: "far", best: m.best, bestDist: m.bestDist };
+    }
+    if (m.second && (m.secondDist - m.bestDist) < (cfg.margin || 0.08)) {
+      return { status: "ambiguous", ok: false, reason: "ambiguous", best: m.best, second: m.second, bestDist: m.bestDist, secondDist: m.secondDist };
+    }
+    if (cfg.weakAbove && m.bestDist > cfg.weakAbove) {
+      return { status: "weak", ok: true, weak: true, reason: "", best: m.best, bestDist: m.bestDist, secondDist: m.secondDist };
+    }
+    return { status: "ok", ok: true, weak: false, reason: "", best: m.best, bestDist: m.bestDist, secondDist: m.secondDist };
+  }
+
+  function calibration(enrolled) {
+    const perEmp = [];
+    const pairs = [];
+    const list = (enrolled || []).filter(e => e && Array.isArray(e.samples) && e.samples.length > 0);
+    for (const e of list) {
+      let maxIntra = 0;
+      const s = e.samples;
+      for (let i = 0; i < s.length; i++) {
+        for (let j = i + 1; j < s.length; j++) {
+          const d = euclidean(s[i], s[j]);
+          if (d > maxIntra) maxIntra = d;
+        }
+      }
+      perEmp.push({ id: e.id || e.email, name: e.name || e.email, samples: s.length, spread: maxIntra });
+    }
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        let minInter = 9;
+        for (const sa of list[i].samples) {
+          for (const sb of list[j].samples) {
+            const d = euclidean(sa, sb);
+            if (d < minInter) minInter = d;
+          }
+        }
+        pairs.push({ a: list[i].name || list[i].email, b: list[j].name || list[j].email, d: minInter });
+      }
+    }
+    pairs.sort((x, y) => x.d - y.d);
+    const maxSpread = perEmp.reduce((m, x) => Math.max(m, x.spread), 0);
+    const minPair = pairs.length ? pairs[0].d : null;
+    const recThr = minPair != null
+      ? Math.max(0.40, Math.min(0.55, Number(((maxSpread + minPair) / 2).toFixed(2))))
+      : 0.50;
+    return { perEmp, pairs, maxSpread, minPair, recommendedThreshold: recThr };
+  }
+
+  // Exact Attendance v0.2.4 camera-top pose pictograms (mirrored-preview sense)
+  function poseSvg(kind) {
+    if (kind === 0) kind = "straight";
+    else if (kind === 1) kind = "left";
+    else if (kind === 2) kind = "right";
+    else if (kind === 3) kind = "done";
+    const W = "#f8fafc", B = "#D9A54A";
+    const cam = `<rect x="40" y="2" width="20" height="12" rx="3" fill="${B}"/><circle cx="50" cy="8" r="3.4" fill="#0f172a"/>`;
+    const sight = `<path d="M50 16 V40" fill="none" stroke="${B}" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round"/>`;
+    const earL = `<path d="M24.5 57 q-8 7 0 14" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;
+    const earR = `<path d="M75.5 57 q8 7 0 14" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;
+    const head = dx => `<circle cx="50" cy="64" r="26" fill="none" stroke="${W}" stroke-width="4"/>` +
+      `<circle cx="${41 + dx}" cy="58" r="${dx < 0 ? 2.7 : 3.3}" fill="${W}"/><circle cx="${59 + dx}" cy="58" r="${dx > 0 ? 2.7 : 3.3}" fill="${W}"/>` +
+      `<path d="M${50 + dx * 1.5} 59 v9 h${dx >= 0 ? 5 : -5}" fill="none" stroke="${W}" stroke-width="3" stroke-linecap="round"/>` +
+      `<path d="M${42 + dx} 76 h16" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;
+    const arrow = (d, dx) => `<g class="face-pose-arrow" style="--dx:${dx}px;--dy:0px"><path d="${d}" fill="none" stroke="${B}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+    let body;
+    switch (kind) {
+      case "left":  body = cam + head(-6) + earR + arrow("M60 32 Q50 20 38 29 M46 28 L38 29 L41 22", -4); break;
+      case "right": body = cam + head(6) + earL + arrow("M40 32 Q50 20 62 29 M54 28 L62 29 L59 22", 4); break;
+      case "done":  body = `<circle cx="50" cy="56" r="34" fill="none" stroke="#22c55e" stroke-width="5"/><path d="M32 58 l12 12 l26 -28" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`; break;
+      default:      body = cam + sight + head(0) + earL + earR;
+    }
+    return `<svg viewBox="0 0 100 92" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${body}</svg>`;
+  }
+
+  // Biometric HUD reticle overlay (Attendance v0.3.0)
+  function drawOverlay(cv, video, det, status) {
+    if (!cv || !video) return;
+    const wrap = cv.parentElement;
+    const cw = wrap ? wrap.clientWidth : 0;
+    const ch = wrap ? wrap.clientHeight : 0;
+    if (!cw || !ch) return;
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, cw, ch);
+    if (!det || !det.box) return;
+    const vw = video.videoWidth || cw, vh = video.videoHeight || ch;
+    const s = Math.max(cw / vw, ch / vh);
+    const ox = (cw - vw * s) / 2, oy = (ch - vh * s) / 2;
+    const b = det.box;
+    const x = b.x * s + ox, y = b.y * s + oy, w = b.width * s, h = b.height * s;
+    const col = (status && status.startsWith("#"))
+      ? status
+      : ({ ok: "#22c55e", live: "#38bdf8", warn: "#f59e0b", unknown: "#f59e0b", far: "#94a3b8", scan: "#D9A54A" }[status] || "#D9A54A");
+    const L = Math.min(w, h) * 0.22;
+
+    g.save();
+    g.strokeStyle = col + "33";
+    g.lineWidth = 1.5;
+    g.strokeRect(x, y, w, h);
+
+    g.shadowColor = col;
+    g.shadowBlur = 12;
+    g.lineWidth = 3.5;
+    g.strokeStyle = col;
+    g.lineCap = "round";
+    const corner = (cx, cy, dx, dy) => {
+      g.beginPath();
+      g.moveTo(cx + dx * L, cy);
+      g.lineTo(cx, cy);
+      g.lineTo(cx, cy + dy * L);
+      g.stroke();
+    };
+    corner(x, y, 1, 1);
+    corner(x + w, y, -1, 1);
+    corner(x, y + h, 1, -1);
+    corner(x + w, y + h, -1, -1);
+
+    g.shadowBlur = 0;
+    g.lineWidth = 2;
+    const tick = 5;
+    g.beginPath();
+    g.moveTo(x + w / 2, y - tick / 2); g.lineTo(x + w / 2, y + tick / 2);
+    g.moveTo(x + w / 2, y + h - tick / 2); g.lineTo(x + w / 2, y + h + tick / 2);
+    g.moveTo(x - tick / 2, y + h / 2); g.lineTo(x + tick / 2, y + h / 2);
+    g.moveTo(x + w - tick / 2, y + h / 2); g.lineTo(x + w + tick / 2, y + h / 2);
+    g.stroke();
+    g.restore();
+  }
+
+  // Synthesized Web Audio feedback (zero external files, muted under navigator.webdriver — PWA.md §4.4)
+  const Sound = (() => {
+    let ctx = null;
+    let enabled = true;
+    function getCtx() {
+      if (navigator.webdriver || !enabled) return null;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!ctx) ctx = new AC();
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      return ctx;
+    }
+    function tone(freq, dur, delay, type, gainVal) {
+      try {
+        const c = getCtx(); if (!c) return;
+        const t0 = c.currentTime + (delay || 0);
+        const osc = c.createOscillator(), g = c.createGain();
+        osc.type = type || "sine";
+        osc.frequency.setValueAtTime(freq, t0);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(gainVal || 0.12, t0 + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.connect(g); g.connect(c.destination);
+        osc.start(t0); osc.stop(t0 + dur + 0.02);
+      } catch (_) {}
+    }
+    return {
+      unlock() { getCtx(); },
+      play(kind) {
+        if (!enabled || navigator.webdriver) return;
+        if (kind === "in" || kind === "ok") { tone(587.33, 0.14, 0, "sine", 0.14); tone(880, 0.24, 0.11, "triangle", 0.16); }
+        else if (kind === "warn") { tone(349.23, 0.12, 0, "triangle", 0.12); tone(311.13, 0.18, 0.13, "triangle", 0.12); }
+        else if (kind === "capture") { tone(1046.5, 0.09, 0, "sine", 0.10); }
+        else if (kind === "tap") { tone(660, 0.035, 0, "sine", 0.05); }
+      },
+      playSuccess() { this.play("ok"); },
+      playWarn() { this.play("warn"); },
+      playError() { this.play("warn"); },
+      get enabled() { return enabled; },
+      set enabled(v) { enabled = !!v; }
+    };
+  })();
+
+  return {
+    config: MFG_FACE_CONFIG,
+    CONFIG: MFG_FACE_CONFIG.match,
+    load,
+    isReady: () => ready,
+    getBackend: () => backend,
+    detectOne,
+    detectAll,
+    landmarksOnly,
+    match,
+    decide,
+    calibration,
+    ear,
+    euclidean,
+    frameToCanvas,
+    snapshot,
+    poseSvg,
+    drawOverlay,
+    Sound,
+    get ready() { return ready; },
+    get backend() { return backend; },
+    get detector() { return detector; },
+    get landmarks() { return landmarksTiny ? "68-tiny" : "68"; }
+  };
+})();
+window.Face = Face;
