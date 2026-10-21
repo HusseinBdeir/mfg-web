@@ -539,18 +539,18 @@
       const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
       const vat = Number(s.vat || 0);
       const net = Number(s.total != null ? s.total : (ttc - vat));
-      const disc = Number(s.discount || 0);
       const tr = Number(s.trans_price || 0);
+      const mat = Number(s.price != null ? s.price : (net - tr));
       const q = Number(s.qty || 0);
       sales_ttc += ttc;
       sales_vat += vat;
-      net_sales += net;
-      gross_sales += (net + disc);
+      net_sales += mat;
+      gross_sales += net;
       trans_rev += tr;
       qty_sold += q;
       tons_sold += ticketTons(s);
-      if (s.method === 'Cash') cash_sales += ttc;
-      else credit_sales += ttc;
+      if (s.method === 'Cash') cash_sales += net;
+      else credit_sales += net;
     });
 
     let raw_loads = 0, raw_mat_cost = 0, raw_haulage = 0, raw_cost = 0, raw_qty = 0, raw_tons = 0;
@@ -635,6 +635,10 @@
       diesel_litres: round2(diesel_litres),
       trucks_used: truckSet.size || baseKpi.trucks_used || 0,
       own_fleet_loads,
+      sales_rep_date: round2(sales_ttc),
+      raw_rep_date: round2(raw_cost),
+      exp_rep_date: round2(expenses),
+      op_profit_rep_date: operating_profit,
       basis,
       label: range ? range.label : 'All-Time (2024\u20132030)'
     }));
@@ -648,12 +652,13 @@
     const ymLabel = `${MONTH_SHORT[(mo || 1) - 1]} ${yr}`;
     const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
     if (!mRow) return k;
-    const MAP = { sales_ttc: 'sales_ttc', net_sales: 'net_sales', trans_rev: 'trans_rev', sales_vat: 'sales_vat', cash_sales: 'cash_sales', credit_sales: 'credit_sales',
+    const MAP = { sales_ttc: 'sales_ttc', gross_sales: 'gross_sales', net_sales: 'net_sales', trans_rev: 'trans_rev', sales_vat: 'sales_vat', cash_sales: 'cash_sales', credit_sales: 'credit_sales',
       loads: 'loads', delivery_loads: 'delivery_loads', pickup_loads: 'pickup_loads', tons_sold: 'tons', qty_sold: 'qty_sold',
       raw_cost: 'raw_cost', raw_mat_cost: 'raw_mat_cost', raw_haulage: 'raw_haulage', raw_loads: 'raw_loads', raw_qty: 'raw_qty',
       expenses: 'expenses', cash_expenses: 'cash_expenses', credit_expenses: 'credit_expenses', salaries_paid: 'salaries',
       gross_margin: 'gross_margin', operating_profit: 'operating_profit', receipts: 'receipts', settlements_paid: 'settlements_paid' };
     Object.keys(MAP).forEach(key => { if (mRow[MAP[key]] != null) k[key] = Number(mRow[MAP[key]]); });
+    if (k.gross_sales == null && k.net_sales != null) k.gross_sales = round2(Number(k.net_sales || 0) + Number(k.trans_rev || 0));
     return finishKpiRatios(k);
   }
 
@@ -667,6 +672,10 @@
       const base = anchor[key] != null ? Number(anchor[key]) : Number(txRaw[key] || 0);
       out[key] = round2(base + delta);
     });
+    out.sales_rep_date = out.sales_ttc;
+    out.raw_rep_date = out.raw_cost;
+    out.exp_rep_date = out.expenses;
+    out.op_profit_rep_date = out.operating_profit;
     out.basis = 'rep';
     return finishKpiRatios(out);
   }
@@ -1456,7 +1465,7 @@
         <div class="kpi kpi-link" data-nav-jump="sales" role="button" tabindex="0" title="Open the Sales & Deliveries register">
           <span class="k">Consolidated Revenue (TTC)</span>
           <span class="v num">${fmtUSD(salesVal, 0)}</span>
-          <span class="d good">Net Ex-VAT: ${fmtUSD(k.net_sales, 0)} · 11% VAT Incl.</span>
+          <span class="d good">Sales Ex-VAT: ${fmtUSD(k.gross_sales || k.net_sales, 0)} · VAT 11%: ${fmtUSD(k.sales_vat, 0)}</span>
         </div>
         <div class="kpi kpi-link" data-nav-jump="raw" role="button" tabindex="0" title="Open the Raw Material & Quarries register">
           <span class="k">Realized Gross Margin</span>
@@ -1916,6 +1925,7 @@
     const sumQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
     const sumMat = rows.reduce((a, r) => a + Number(r.price || 0), 0);
     const sumTr = rows.reduce((a, r) => a + Number(r.trans_price || 0), 0);
+    const sumNet = rows.reduce((a, r) => a + Number(r.total != null ? r.total : (Number(r.price || 0) + Number(r.trans_price || 0))), 0);
     const sumVat = rows.reduce((a, r) => a + Number(r.vat || 0), 0);
     const sumTtc = rows.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
     const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all' || STATE.basis === 'rep');
@@ -1983,6 +1993,8 @@
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Sales TTC</div><div class="cockpit-pill-val brass">${fmtUSD(k.sales_ttc, 0)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Sales Ex-VAT</div><div class="cockpit-pill-val">${fmtUSD(k.gross_sales || k.net_sales, 0)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">VAT (11%)</div><div class="cockpit-pill-val">${fmtUSD(k.sales_vat, 0)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Loads</div><div class="cockpit-pill-val">${fmtNum(k.loads)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Delivery / Pickup</div><div class="cockpit-pill-val">${fmtNum(k.delivery_loads)} / ${fmtNum(k.pickup_loads)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Tons Sold</div><div class="cockpit-pill-val emerald">${fmtNum(k.tons_sold, 0)} t</div></div>
@@ -2036,10 +2048,10 @@
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="8"><b>TOTAL (${fmtNum(rows.length)} LOADS)</b></td>
+                <td colspan="8"><b>TOTAL (${fmtNum(rows.length)} LOADS · Ex-VAT ${fmtUSD(sumNet, 2)})</b></td>
                 <td class="r"><b>${fmtNum(sumQty, 0)}</b></td>
-                <td class="r"><b>${fmtUSD(sumMat, 0)}</b></td>
-                <td class="r"><b>${fmtUSD(sumTr, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTr, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
                 <td></td>
@@ -3436,7 +3448,8 @@
           <tbody>
             <tr><td class="mono">701/7085</td><td><strong>Gross Revenue incl. 11% VAT (Sales TTC)</strong></td><td class="r">${fmtUSD(k.sales_ttc, 2)}</td><td class="r">—</td></tr>
             <tr><td class="mono">4427</td><td>Less: Output VAT 11% Invoiced</td><td class="r">(${fmtUSD(k.sales_vat, 2)})</td><td class="r">—</td></tr>
-            <tr><td class="mono">701</td><td><strong>Net Sales Revenue (Ex-VAT)</strong></td><td class="r"><strong>${fmtUSD(k.net_sales, 2)}</strong></td><td class="r">100.0%</td></tr>
+            <tr><td class="mono">701/706</td><td><strong>Total Sales Revenue (Ex-VAT · Mat + Trans)</strong></td><td class="r"><strong>${fmtUSD(k.gross_sales || k.net_sales, 2)}</strong></td><td class="r">—</td></tr>
+            <tr><td class="mono">701</td><td><strong>Material Sales Revenue (Ex-VAT)</strong></td><td class="r"><strong>${fmtUSD(k.net_sales, 2)}</strong></td><td class="r">100.0%</td></tr>
             <tr><td class="mono">601</td><td>Raw Material Cost (Quarry Owners)</td><td class="r">(${fmtUSD(k.raw_mat_cost, 2)})</td><td class="r">${fmtPct((k.raw_mat_cost || 0) / (k.net_sales || 1))}</td></tr>
             <tr><td class="mono">611</td><td>Quarry Haulage Cost (Third-Party Trucks)</td><td class="r">(${fmtUSD(k.raw_haulage, 2)})</td><td class="r">${fmtPct((k.raw_haulage || 0) / (k.net_sales || 1))}</td></tr>
             <tr><td class="mono">GM</td><td><strong>GROSS MARGIN</strong></td><td class="r"><strong>${fmtUSD(k.gross_margin, 2)}</strong></td><td class="r"><strong>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</strong></td></tr>

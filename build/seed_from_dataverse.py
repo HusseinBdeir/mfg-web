@@ -73,8 +73,18 @@ def get_all_fmt(path):
     rows, url = [], f"{mlib.API}/{path}"
     S = _thread_session()
     while url:
-        r = S.get(url, timeout=120, headers={"Prefer": FMT_PREFER})
-        r.raise_for_status()
+        for attempt in range(5):
+            try:
+                r = S.get(url, timeout=120, headers={"Prefer": FMT_PREFER})
+                r.raise_for_status()
+                break
+            except Exception as e:
+                if attempt == 4:
+                    raise
+                print(f"  [RETRY {attempt + 1}/5] GET {path[:60]}...: {e}", flush=True)
+                time.sleep(2 * (attempt + 1))
+                _TLS.session = None
+                S = _thread_session()
         j = r.json()
         rows.extend(j.get("value", []))
         url = j.get("@odata.nextLink")
@@ -82,18 +92,23 @@ def get_all_fmt(path):
 
 
 def safe_get_fmt(table_or_path, query="", by_logical=False, top_only=False):
-    try:
-        es = entityset(table_or_path) if by_logical else table_or_path
-        path = f"{es}?{query}" if query else es
-        if top_only:
-            S = _thread_session()
-            r = S.get(f"{mlib.API}/{path}", timeout=120, headers={"Prefer": FMT_PREFER})
-            r.raise_for_status()
-            return r.json().get("value", [])
-        return get_all_fmt(path)
-    except Exception as e:
-        print(f"  [WARN] OData fetch {table_or_path}: {e}", flush=True)
-        return []
+    es = entityset(table_or_path) if by_logical else table_or_path
+    path = f"{es}?{query}" if query else es
+    for attempt in range(5):
+        try:
+            if top_only:
+                S = _thread_session()
+                r = S.get(f"{mlib.API}/{path}", timeout=120, headers={"Prefer": FMT_PREFER})
+                r.raise_for_status()
+                return r.json().get("value", [])
+            return get_all_fmt(path)
+        except Exception as e:
+            if attempt == 4:
+                print(f"  [WARN] OData fetch {table_or_path}: {e}", flush=True)
+                return []
+            print(f"  [RETRY {attempt + 1}/5] safe_get_fmt {table_or_path}: {e}", flush=True)
+            time.sleep(2 * (attempt + 1))
+            _TLS.session = None
 
 
 def fmt_val(row, attr, default=""):
@@ -127,7 +142,7 @@ def fetch_model_analytics(model_key):
         "sep2026": ('DATE(2026, 9, 1)', 'DATE(2026, 9, 30)', 'September 2026'),
         "aug2026": ('DATE(2026, 8, 1)', 'DATE(2026, 8, 31)', 'August 2026'),
         "q3_2026": ('DATE(2026, 7, 1)', 'DATE(2026, 9, 30)', 'Q3 2026'),
-        "ytd": ('DATE(2026, 1, 1)', 'DATE(2026, 10, 31)', 'FY 2026 (YTD)'),
+        "ytd": ('DATE(2026, 1, 1)', 'DATE(2026, 12, 31)', 'FY 2026 (YTD)'),
         "fy2025": ('DATE(2025, 1, 1)', 'DATE(2025, 12, 31)', 'FY 2025'),
         "fy2024": ('DATE(2024, 1, 1)', 'DATE(2024, 12, 31)', 'FY 2024'),
         "all": ('DATE(2024, 1, 1)', 'DATE(2030, 12, 31)', 'All-Time (2024–2030)'),
@@ -225,6 +240,7 @@ def fetch_model_analytics(model_key):
             Dates[YearMonthNo],
             'Dates'[Year Month],
             "sales_ttc", [Sales incl VAT],
+            "gross_sales", [Gross Sales],
             "net_sales", [Net Sales],
             "trans_rev", [Transport Revenue],
             "sales_vat", [Sales VAT],
@@ -926,14 +942,29 @@ def fetch_dataverse_records():
             fetched[k] = fut.result()
             print(f"    -> {k}: {len(fetched[k])} rows", flush=True)
 
+    cust_raw = fetched["cust_raw"]
+    cust_vat_by_id = {
+        (c.get("bhf_customerid") or "").lower(): bool(c.get("bhf_vatregistered"))
+        for c in cust_raw
+    }
+    cust_vat_by_name = {
+        (c.get("bhf_name") or "").strip().lower(): bool(c.get("bhf_vatregistered"))
+        for c in cust_raw
+        if c.get("bhf_name")
+    }
+
     r_sales = fetched["r_sales"]
     sales_tickets = []
     for r in r_sales:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
         net_tot = round(float(r.get("bhf_total") or 0), 2)
         vatinv = fmt_val(r, "_bhf_vatinvoice_value", "")
-        vat_amt = round(net_tot * 0.11, 2) if vatinv else 0.0
         cname = fmt_val(r, "_bhf_customer_value", "")
+        cid_low = (r.get("_bhf_customer_value") or "").lower()
+        method_lbl = fmt_val(r, "_bhf_method_value", "Credit")
+        is_vat_reg = cust_vat_by_id.get(cid_low, False) or cust_vat_by_name.get(cname.strip().lower(), False)
+        # m268 rule (m18a_tables.py): 11% VAT applies to every sale ticket of a VAT-registered (IVA) customer
+        vat_amt = round(net_tot * 0.11, 4) if (is_vat_reg and method_lbl != "Free") else 0.0
         towner = fmt_val(r, "_bhf_supplier_value", "")
         if cname:
             mfg_cust_names.add(cname)
@@ -967,8 +998,8 @@ def fetch_dataverse_records():
             "discount": round(float(r.get("bhf_discount") or 0), 2),
             "total": net_tot,
             "vat": vat_amt,
-            "total_ttc": round(net_tot + vat_amt, 2),
-            "method": fmt_val(r, "_bhf_method_value", "Credit"),
+            "total_ttc": round(net_tot + vat_amt, 4),
+            "method": method_lbl,
             "vat_invoice": vatinv,
             "external_invoice": r.get("bhf_externalinvoice") or "",
             "reference": r.get("bhf_reference") or "",
@@ -1870,17 +1901,22 @@ def build_sqlite_and_postgres(snapshot):
         ],
     )
 
-    cur.executemany(
-        "INSERT INTO users VALUES (?,?,?,?,?,?,?,?)",
-        [
-            ("u-hussein", "Hussein Bdeir", "husseinbdeir@bhfirms.com", "Full Access (Owner)", "WTC,BBConstruction,Lions Transport", "full", "full", "Active"),
-            ("u-zeinab", "Zeinab Rkein", "zeinabrkein@bhfirms.com", "Supervisor + Entry", "WTC,BBConstruction,Lions Transport", "full", "full", "Active"),
-            ("u-sabah", "Sabah Kassab", "sabahkassab@bhfirms.com", "Entry", "WTC", "partial", "partial", "Active"),
-            ("u-wtc", "WTC Plant Desk", "wtc@bhfirms.com", "Supervisor", "WTC", "full", "full", "Active"),
-            ("u-bbc", "BBConstruction Desk", "bbconstruction@bhfirms.com", "Entry", "BBConstruction", "partial", "partial", "Active"),
-            ("u-lions", "Lions Transport Dispatch", "lions@bhfirms.com", "Entry", "Lions Transport", "partial", "none", "Active"),
-        ],
-    )
+    if not keep["users"]:
+        cur.executemany(
+            "INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status) VALUES (?,?,?,?,?,?,?,?,?)",
+            [
+                ("u1", "Hussein Bdeir", "husseinbdeir@bhfirms.com", "1111", "Full Access (Owner)", "WTC,BBConstruction,Lions Transport", "full", "full", "Active"),
+                ("u2", "Zeinab Rkein", "zeinabrkein@bhfirms.com", "2222", "Supervisor + Entry", "WTC,BBConstruction,Lions Transport", "full", "full", "Active"),
+                ("u3", "Sabah Kassab", "sabahkassab@bhfirms.com", "3333", "Entry", "WTC", "partial", "partial", "Active"),
+                ("u4", "WTC Plant Weighbridge 1", "scale1.wtc@bhfirms.com", "4444", "Entry", "WTC", "none", "partial", "Active"),
+                ("u5", "WTC Quarry Dispatch", "quarry.wtc@bhfirms.com", "4545", "Entry", "WTC", "none", "none", "Active"),
+                ("u6", "BBConstruction Batching Desk", "batch.bbc@bhfirms.com", "5555", "Entry", "BBConstruction", "partial", "partial", "Active"),
+                ("u7", "BBConstruction Site Supervisor", "site.bbc@bhfirms.com", "6666", "Supervisor", "BBConstruction", "full", "full", "Active"),
+                ("u8", "Lions Transport Fleet Controller", "fleet.lions@bhfirms.com", "7777", "Supervisor + Entry", "Lions Transport,WTC", "full", "partial", "Active"),
+                ("u9", "Diesel & Garage Officer", "fuel.mfg@bhfirms.com", "7878", "Entry", "WTC,BBConstruction,Lions Transport", "none", "none", "Active"),
+                ("u10", "Accounts Receivable Collector", "ar.mfg@bhfirms.com", "8888", "Sales", "WTC,BBConstruction", "partial", "full", "Active"),
+            ],
+        )
 
     rec = snapshot["records"]
     for p in rec["products"]:

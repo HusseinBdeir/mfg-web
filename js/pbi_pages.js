@@ -1183,30 +1183,33 @@
       salesRows.forEach(s => {
         const ck = norm(s.customer);
         if (!ck) return;
-        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
         const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
-        const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
+        const vat = Number(s.vat || 0);
+        const net = Number(s.total != null ? s.total : (ttc - vat));
         cur.loads += 1;
         cur.sales_ttc += ttc;
         cur.net_sales += net;
-        if (s.method === 'Cash') cur.cash_sales += ttc;
-        else cur.credit_sales += ttc;
+        cur.sales_vat += vat;
+        if (s.method === 'Cash') cur.cash_sales += net;
+        else cur.credit_sales += net;
         if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
         cMap.set(ck, cur);
       });
       recRows.forEach(r => {
         const ck = norm(r.customer);
         if (!ck) return;
-        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
         cur.receipts += Number(r.amount || 0);
         cMap.set(ck, cur);
       });
       baseCusts = baseCusts.map(c => {
-        const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
         return Object.assign({}, c, {
           loads: st.loads,
           sales_ttc: round2(st.sales_ttc),
           net_sales: round2(st.net_sales),
+          sales_vat: round2(st.sales_vat),
           credit_sales: round2(st.credit_sales),
           cash_sales: round2(st.cash_sales),
           receipts: round2(st.receipts),
@@ -1416,7 +1419,7 @@
         <div class="pbi-overview-bands">
           ${kpiBand('1 · Sales & Revenue (Click any card to drill into its page)', [
             { label: 'Sales incl. VAT (TTC)', value: fmtUSD(sc(k.sales_ttc), 0), sub: fmtNum(sc(k.loads), 0) + ' weighbridge loads', tone: 'brass', navPage: 'p04_sales' },
-            { label: 'Net Sales (ex-VAT)', value: fmtUSD(sc(k.net_sales), 0), sub: 'Material + Delivery ex-11%', navPage: 'p04_sales' },
+            { label: 'Sales Ex-VAT (Mat + Trans)', value: fmtUSD(sc(k.gross_sales || k.net_sales), 0), sub: 'Mat ' + fmtUSDk(sc(k.net_sales)) + ' + Trans ' + fmtUSDk(sc(k.trans_rev)), navPage: 'p04_sales' },
             { label: 'Transport Revenue', value: fmtUSD(sc(k.trans_rev), 0), sub: fmtNum(sc(k.delivery_loads), 0) + ' delivery loads', navPage: 'p08_stock' },
             { label: 'Output VAT (11%)', value: fmtUSD(sc(k.sales_vat), 0), sub: 'Account 4427 invoiced', navPage: 'p13_vat' },
             { label: 'Tons Sold', value: fmtNum(sc(k.tons_sold), 0) + ' t', sub: fmtNum(sc(k.qty_sold), 0) + ' billed units', navPage: 'p04_sales' },
@@ -1698,12 +1701,12 @@
       bodyHtml = `
         <div class="pbi-overview-bands">
           ${kpiBand('1 · Sales Revenue, Volumes & Payment Mix', [
-            { label: 'Sales incl. VAT (TTC)', value: fmtUSD(sc(k.sales_ttc), 0), sub: '100% of gross revenue', tone: 'brass' },
-            { label: 'Material Sales (ex-VAT)', value: fmtUSD(sc(k.net_sales) - sc(k.trans_rev), 0), sub: 'Aggregate grade value' },
+            { label: 'Sales incl. VAT (TTC)', value: fmtUSD(sc(k.sales_ttc), 0), sub: 'Ex-VAT: ' + fmtUSD(sc(k.gross_sales || k.net_sales), 0), tone: 'brass' },
+            { label: 'Material Sales (ex-VAT)', value: fmtUSD(sc(k.net_sales), 0), sub: 'Aggregate grade value' },
             { label: 'Transport Revenue', value: fmtUSD(sc(k.trans_rev), 0), sub: 'Delivery haulage billed' },
             { label: 'Output VAT (11%)', value: fmtUSD(sc(k.sales_vat), 0), sub: 'Invoiced on IVA customers' },
-            { label: 'Cash Sales', value: fmtUSD(sc(k.cash_sales), 0), sub: fmtPct(null, k.cash_sales, k.sales_ttc) + ' of TTC', tone: 'good' },
-            { label: 'Credit Sales', value: fmtUSD(sc(k.credit_sales), 0), sub: fmtPct(null, k.credit_sales, k.sales_ttc) + ' of TTC' }
+            { label: 'Cash Sales (ex-VAT)', value: fmtUSD(sc(k.cash_sales), 0), sub: fmtPct(null, k.cash_sales, k.gross_sales || k.net_sales) + ' of Sales', tone: 'good' },
+            { label: 'Credit Sales (ex-VAT)', value: fmtUSD(sc(k.credit_sales), 0), sub: fmtPct(null, k.credit_sales, k.gross_sales || k.net_sales) + ' of Sales' }
           ])}
           ${kpiBand('2 · Weighbridge Loads, Tonnage & Unit Realisation', [
             { label: 'Total Loads', value: fmtNum(sc(k.loads), 0), sub: fmtNum(salesRows.length) + ' in web sample' },
@@ -3145,10 +3148,11 @@
         return true;
       });
 
+      const totRevExVat = Number(k.gross_sales || ((k.net_sales || 0) + (k.trans_rev || 0)));
       const pnlRows = [
-        { code: '7011', name: 'Material Sales Revenue (Ex-VAT)', amt: (k.net_sales || 0) - (k.trans_rev || 0), pct: fmtPct(null, (k.net_sales || 0) - (k.trans_rev || 0), k.net_sales) },
-        { code: '7061', name: 'Delivery Transport Revenue', amt: k.trans_rev || 0, pct: fmtPct(null, k.trans_rev, k.net_sales) },
-        { code: '70', name: 'NET REVENUE (EX-VAT)', amt: k.net_sales || 0, pct: '100.0%', bold: true },
+        { code: '7011', name: 'Material Sales Revenue (Ex-VAT)', amt: k.net_sales || 0, pct: fmtPct(null, k.net_sales || 0, totRevExVat) },
+        { code: '7061', name: 'Delivery Transport Revenue', amt: k.trans_rev || 0, pct: fmtPct(null, k.trans_rev || 0, totRevExVat) },
+        { code: '70', name: 'TOTAL SALES REVENUE (EX-VAT)', amt: totRevExVat, pct: '100.0%', bold: true },
         { code: '6011', name: 'Raw Material Quarry Purchases (Leg 1)', amt: -(k.raw_mat_cost || 0), pct: fmtPct(null, k.raw_mat_cost, k.net_sales) },
         { code: '6111', name: 'Subcontracted Quarry Haulage (Leg 2)', amt: -(k.raw_haulage || 0), pct: fmtPct(null, k.raw_haulage, k.net_sales) },
         { code: 'GM', name: 'GROSS MARGIN', amt: k.gross_margin || 0, pct: fmtPct(k.gm_pct, k.gross_margin, k.net_sales), bold: true },
