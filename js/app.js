@@ -40,7 +40,7 @@
   const VAT_RATE = 0.11;
   const DAY_SHIFT_FROM = 6 * 60;   // m48: Day shift 06:00–17:59, Night otherwise
   const DAY_SHIFT_TO = 17 * 60 + 59;
-  const PAGE = 100;
+  const PAGE = 25;
   const SEED_DATE = String(SEED.generated_at || '').slice(0, 10) || todayISO();
 
   const DEFAULT_USERS = [
@@ -63,7 +63,10 @@
   const STATE = {
     view: 'overview',
     company: 'manufacturing-group', // 'manufacturing-group' | 'wtc' | 'bbconstruction' | 'lionstransport'
-    period: 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025'
+    period: 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025' | 'fy2024' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
+    dateGrain: 'all',               // 'all' | 'year' | 'month' | 'week' | 'day'
+    dateFrom: '',
+    dateTo: '',
     basis: 'tx',                    // 'tx' | 'rep'
     theme: localStorage.getItem('isabi_mfg_theme') || 'light',
     search: '',
@@ -72,6 +75,8 @@
     stmtCatFilter: 'all',
     pbiPage: 'p01_overview',
     pbiSlicer: {},
+    pbiTablePage: {},
+    pbiPageSize: 15,
     activeTableKey: 'price_rules',
     modalForm: 'sales',
     activeUserIdx: 0,
@@ -246,30 +251,453 @@
     };
   }
 
+  const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function lastDayOfMonth(y, m1) {
+    return new Date(Number(y), Number(m1), 0).getDate();
+  }
+
+  function fmtWeekLabel(fromISO, toISO) {
+    const [y1, m1, d1] = fromISO.split('-').map(Number);
+    const [y2, m2, d2] = toISO.split('-').map(Number);
+    if (y1 === y2 && m1 === m2) return `${d1} - ${d2} ${MONTH_SHORT[m1 - 1]} ${y1}`;
+    if (y1 === y2) return `${d1} ${MONTH_SHORT[m1 - 1]} - ${d2} ${MONTH_SHORT[m2 - 1]} ${y1}`;
+    return `${d1} ${MONTH_SHORT[m1 - 1]} ${y1} - ${d2} ${MONTH_SHORT[m2 - 1]} ${y2}`;
+  }
+
+  function fmtDayLabel(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dtObj = new Date(y, m - 1, d);
+    return `${DOW_SHORT[dtObj.getDay()]} ${String(d).padStart(2, '0')} ${MONTH_SHORT[m - 1]} ${y}`;
+  }
+
+  let _grainCatalogCache = null;
+  function getDateGrainCatalog() {
+    if (_grainCatalogCache) return _grainCatalogCache;
+    const gp = ((SEED.models['manufacturing-group'] || {}).periods) || {};
+    const presets = [
+      { value: 'all', label: (gp.all && gp.all.label) || 'All-Time (2024–2026)', from: MIN_DATE, to: SEED_DATE, daxKey: 'all' },
+      { value: 'ytd', label: (gp.ytd && gp.ytd.label) || 'FY 2026 (YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
+      { value: 'mtd', label: (gp.mtd && gp.mtd.label) || 'October 2026 (MTD)', from: '2026-10-01', to: '2026-10-31', daxKey: 'mtd' },
+      { value: 'sep2026', label: (gp.sep2026 && gp.sep2026.label) || 'September 2026', from: '2026-09-01', to: '2026-09-30', daxKey: 'sep2026' },
+      { value: 'aug2026', label: (gp.aug2026 && gp.aug2026.label) || 'August 2026', from: '2026-08-01', to: '2026-08-31', daxKey: 'aug2026' },
+      { value: 'q3_2026', label: (gp.q3_2026 && gp.q3_2026.label) || 'Q3 2026 (Jul–Sep)', from: '2026-07-01', to: '2026-09-30', daxKey: 'q3_2026' },
+      { value: 'fy2025', label: (gp.fy2025 && gp.fy2025.label) || 'FY 2025 (Full Year)', from: '2025-01-01', to: '2025-12-31', daxKey: 'fy2025' },
+      { value: 'fy2024', label: (gp.fy2024 && gp.fy2024.label) || 'FY 2024 (Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' }
+    ];
+
+    const years = [
+      { value: 'year:2026', label: '2026 (FY 2026 YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
+      { value: 'year:2025', label: '2025 (FY 2025 Full Year)', from: '2025-01-01', to: '2025-12-31', daxKey: 'fy2025' },
+      { value: 'year:2024', label: '2024 (FY 2024 Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' }
+    ];
+
+    const months = [];
+    const maxY = Number(SEED_DATE.slice(0, 4)) || 2026;
+    const maxM = Number(SEED_DATE.slice(5, 7)) || 10;
+    for (let y = maxY; y >= 2024; y--) {
+      const mStart = y === maxY ? maxM : 12;
+      for (let m = mStart; m >= 1; m--) {
+        const ym = `${y}-${String(m).padStart(2, '0')}`;
+        const ld = String(lastDayOfMonth(y, m)).padStart(2, '0');
+        const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
+        months.push({
+          value: `month:${ym}`,
+          label: `${MONTH_SHORT[m - 1]} ${y}`,
+          from: `${ym}-01`,
+          to: `${ym}-${ld}`,
+          daxKey: daxMap[ym] || null
+        });
+      }
+    }
+
+    // Build Monday–Sunday weeks newest-first across 2024-01-01 .. SEED_DATE
+    const weeks = [];
+    const [sy, sm, sd] = SEED_DATE.split('-').map(Number);
+    const curDt = new Date(sy, sm - 1, sd);
+    const dow = (curDt.getDay() + 6) % 7; // Monday = 0 .. Sunday = 6
+    const monDt = new Date(curDt.getFullYear(), curDt.getMonth(), curDt.getDate() - dow);
+    const minDt = new Date(2024, 0, 1);
+    const toISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    for (let wMon = new Date(monDt); wMon >= minDt; wMon.setDate(wMon.getDate() - 7)) {
+      const wSun = new Date(wMon.getFullYear(), wMon.getMonth(), wMon.getDate() + 6);
+      const fISO = toISO(wMon);
+      const tISO = toISO(wSun);
+      weeks.push({
+        value: `week:${fISO}..${tISO}`,
+        label: fmtWeekLabel(fISO, tISO),
+        from: fISO,
+        to: tISO
+      });
+    }
+
+    // Build active transaction days newest-first across 2024-01-01 .. SEED_DATE
+    const daySet = new Set([SEED_DATE]);
+    ['sales_tickets', 'raw_purchases', 'expenses', 'receipts', 'settlements', 'fuel_intakes', 'salaries'].forEach(tk => {
+      (SEED.records[tk] || []).forEach(r => {
+        if (r && r.date && r.date >= MIN_DATE && r.date <= '2026-12-31') daySet.add(String(r.date).slice(0, 10));
+      });
+    });
+    const days = Array.from(daySet).sort((a, b) => b.localeCompare(a)).map(iso => ({
+      value: `day:${iso}`,
+      label: `${fmtDayLabel(iso)} (${iso})`,
+      from: iso,
+      to: iso
+    }));
+
+    _grainCatalogCache = { all: presets, year: years, month: months, week: weeks, day: days };
+    return _grainCatalogCache;
+  }
+
+  function getDateGrainOptions(grain) {
+    const cat = getDateGrainCatalog();
+    return cat[grain] || cat.all;
+  }
+
+  // Reporting period → ISO date window applied to the record registers & KPIs (null = All-Time)
+  function periodRange(p) {
+    const pVal = p !== undefined ? p : STATE.period;
+    if (!pVal || pVal === 'all') {
+      if (STATE.dateFrom || STATE.dateTo) {
+        const f = STATE.dateFrom || MIN_DATE;
+        const t = STATE.dateTo || SEED_DATE;
+        return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
+      }
+      return null;
+    }
+    if (pVal === 'custom') {
+      const f = STATE.dateFrom || MIN_DATE;
+      const t = STATE.dateTo || SEED_DATE;
+      return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
+    }
+    const y = SEED_DATE.slice(0, 4);
+    const ym = SEED_DATE.slice(0, 7);
+    switch (pVal) {
+      case 'ytd': return { from: y + '-01-01', to: y + '-12-31', label: 'FY 2026 (YTD)', daxKey: 'ytd' };
+      case 'mtd': return { from: ym + '-01', to: ym + '-31', label: 'October 2026 (MTD)', daxKey: 'mtd' };
+      case 'sep2026': return { from: '2026-09-01', to: '2026-09-30', label: 'September 2026', daxKey: 'sep2026' };
+      case 'aug2026': return { from: '2026-08-01', to: '2026-08-31', label: 'August 2026', daxKey: 'aug2026' };
+      case 'q3_2026': return { from: '2026-07-01', to: '2026-09-30', label: 'Q3 2026 (Jul–Sep)', daxKey: 'q3_2026' };
+      case 'fy2025': return { from: '2025-01-01', to: '2025-12-31', label: 'FY 2025 (Full Year)', daxKey: 'fy2025' };
+      case 'fy2024': return { from: '2024-01-01', to: '2024-12-31', label: 'FY 2024 (Full Year)', daxKey: 'fy2024' };
+    }
+    if (String(pVal).startsWith('year:')) {
+      const yr = String(pVal).slice(5, 9);
+      const daxMap = { '2026': 'ytd', '2025': 'fy2025', '2024': 'fy2024' };
+      return { from: `${yr}-01-01`, to: `${yr}-12-31`, label: `FY ${yr}`, daxKey: daxMap[yr] || null };
+    }
+    if (String(pVal).startsWith('month:')) {
+      const ymStr = String(pVal).slice(6, 13);
+      const [yr, mo] = ymStr.split('-').map(Number);
+      const ld = String(lastDayOfMonth(yr || 2026, mo || 1)).padStart(2, '0');
+      const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
+      return { from: `${ymStr}-01`, to: `${ymStr}-${ld}`, label: `${MONTH_LONG[(mo || 1) - 1]} ${yr}`, daxKey: daxMap[ymStr] || null };
+    }
+    if (String(pVal).startsWith('week:')) {
+      const parts = String(pVal).slice(5).split('..');
+      const f = parts[0] || MIN_DATE;
+      const t = parts[1] || f;
+      return { from: f, to: t, label: `Week ${fmtWeekLabel(f, t)}` };
+    }
+    if (String(pVal).startsWith('day:')) {
+      const iso = String(pVal).slice(4, 14);
+      return { from: iso, to: iso, label: fmtDayLabel(iso) };
+    }
+    return null;
+  }
+
+  let _kpiRangeCacheKey = '';
+  let _kpiRangeCacheVal = null;
+
   function getKPI() {
     const m = getModel();
-    return (m.periods && m.periods[STATE.period]) || (m.periods && m.periods.all) || {};
+    const periods = m.periods || {};
+    const range = periodRange(STATE.period);
+    if (!range && STATE.basis === 'tx') {
+      return periods.all || {};
+    }
+    if (range && range.daxKey && STATE.basis === 'tx' && periods[range.daxKey]) {
+      return periods[range.daxKey];
+    }
+    const f = range ? range.from : MIN_DATE;
+    const t = range ? range.to : SEED_DATE;
+    const cacheKey = `${STATE.company}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
+    if (_kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
+
+    const baseKey = t >= '2026-01-01' ? 'ytd' : (t >= '2025-01-01' ? 'fy2025' : 'fy2024');
+    const baseKpi = Object.assign({}, periods.all || {}, periods[baseKey] || {});
+
+    const sales = filterRecords(SEED.records.sales_tickets, { ignoreSearch: true });
+    const raws = filterRecords(SEED.records.raw_purchases, { ignoreSearch: true });
+    const exps = filterRecords(SEED.records.expenses, { ignoreSearch: true });
+    const sals = filterRecords(SEED.records.salaries, { ignoreSearch: true });
+    const rcpts = filterRecords(SEED.records.receipts, { ignoreSearch: true });
+    const spays = filterRecords(SEED.records.settlements, { ignoreSearch: true });
+    const fuels = filterRecords(SEED.records.fuel_intakes, { ignoreSearch: true });
+    const exts = filterRecords(SEED.records.external_movements, { ignoreSearch: true });
+
+    let loads = 0, delivery_loads = 0, pickup_loads = 0;
+    let sales_ttc = 0, sales_vat = 0, net_sales = 0, gross_sales = 0, trans_rev = 0, qty_sold = 0, tons_sold = 0;
+    let cash_sales = 0, credit_sales = 0;
+    sales.forEach(s => {
+      loads += 1;
+      if (s.sale_type === 'Pickup') pickup_loads += 1;
+      else delivery_loads += 1;
+      const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+      const vat = Number(s.vat || 0);
+      const net = Number(s.total != null ? s.total : (ttc - vat));
+      const disc = Number(s.discount || 0);
+      const tr = Number(s.trans_price || 0);
+      const q = Number(s.qty || 0);
+      const tn = s.uom === 'm³' ? q * 1.5 : q;
+      sales_ttc += ttc;
+      sales_vat += vat;
+      net_sales += net;
+      gross_sales += (net + disc);
+      trans_rev += tr;
+      qty_sold += q;
+      tons_sold += tn;
+      if (s.method === 'Cash') cash_sales += ttc;
+      else credit_sales += ttc;
+    });
+
+    let raw_loads = 0, raw_mat_cost = 0, raw_haulage = 0, raw_cost = 0, raw_qty = 0, raw_tons = 0;
+    raws.forEach(r => {
+      raw_loads += 1;
+      const mat = Number(r.cost || 0);
+      const haul = Number(r.trans_cost || 0);
+      const tot = Number(r.total != null ? r.total : (mat + haul));
+      const q = Number(r.qty || 0);
+      raw_mat_cost += mat;
+      raw_haulage += haul;
+      raw_cost += tot;
+      raw_qty += q;
+      raw_tons += (r.uom === 'm³' ? q * 1.5 : q);
+    });
+
+    let expenses = 0, cash_expenses = 0, credit_expenses = 0;
+    exps.forEach(x => {
+      const a = Number(x.amount || 0);
+      expenses += a;
+      if (x.method === 'Cash') cash_expenses += a;
+      else credit_expenses += a;
+    });
+
+    const salaries_paid = sals.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const receipts = rcpts.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const settlements_paid = spays.reduce((a, r) => a + Number(r.amount || 0), 0);
+    let diesel_litres = 0;
+    fuels.forEach(fl => {
+      if (/diesel|mazout/i.test(String(fl.item || fl.fuel_type || 'Diesel'))) {
+        diesel_litres += Number(fl.litres || 0);
+      }
+    });
+    let ext_in = 0, ext_out = 0;
+    exts.forEach(ex => {
+      const a = Number(ex.amount || 0);
+      if (/out/i.test(String(ex.direction || ''))) ext_out += a;
+      else ext_in += a;
+    });
+
+    // If a single calendar month is selected under tx basis and exists in m.monthly, use exact DAX monthly figures for headline totals
+    if (STATE.basis === 'tx' && String(STATE.period).startsWith('month:')) {
+      const ymStr = String(STATE.period).slice(6, 13);
+      const [yr, mo] = ymStr.split('-').map(Number);
+      const ymLabel = `${MONTH_SHORT[(mo || 1) - 1]} ${yr}`;
+      const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
+      if (mRow) {
+        if (mRow.sales_ttc != null) sales_ttc = Number(mRow.sales_ttc);
+        if (mRow.net_sales != null) net_sales = Number(mRow.net_sales);
+        if (mRow.trans_rev != null) trans_rev = Number(mRow.trans_rev);
+        if (mRow.sales_vat != null) sales_vat = Number(mRow.sales_vat);
+        if (mRow.loads != null) loads = Number(mRow.loads);
+        if (mRow.tons_sold != null) tons_sold = Number(mRow.tons_sold);
+        if (mRow.raw_cost != null) raw_cost = Number(mRow.raw_cost);
+        if (mRow.raw_loads != null) raw_loads = Number(mRow.raw_loads);
+        if (mRow.expenses != null) expenses = Number(mRow.expenses);
+        if (mRow.salaries_paid != null) salaries_paid = Number(mRow.salaries_paid);
+        if (mRow.receipts != null) receipts = Number(mRow.receipts);
+        if (mRow.settlements_paid != null) settlements_paid = Number(mRow.settlements_paid);
+        if (mRow.diesel_litres != null) diesel_litres = Number(mRow.diesel_litres);
+      }
+    }
+
+    const gross_margin = round2(net_sales - raw_cost);
+    const gm_pct = net_sales > 0 ? gross_margin / net_sales : 0;
+    const operating_profit = round2(gross_margin - expenses - salaries_paid);
+    const op_margin_pct = net_sales > 0 ? operating_profit / net_sales : 0;
+    const cash_inflow = round2(cash_sales + receipts + ext_in);
+    const cash_outflow = round2(cash_expenses + settlements_paid + salaries_paid + ext_out);
+    const net_cash_flow = round2(cash_inflow - cash_outflow);
+    const truckSet = new Set();
+    let own_fleet_loads = 0;
+    sales.forEach(s => { if (s.truck) truckSet.add(s.truck); if (s.transport_by === 'Company fleet') own_fleet_loads += 1; });
+    raws.forEach(r => { if (r.truck) truckSet.add(r.truck); if (r.transport_by === 'Company fleet') own_fleet_loads += 1; });
+
+    const computed = Object.assign(baseKpi, {
+      sales_ttc: round2(sales_ttc),
+      gross_sales: round2(gross_sales || sales_ttc),
+      net_sales: round2(net_sales),
+      trans_rev: round2(trans_rev),
+      sales_vat: round2(sales_vat),
+      loads,
+      delivery_loads,
+      pickup_loads,
+      tons_sold: round2(tons_sold),
+      qty_sold: round2(qty_sold),
+      avg_price_ttc: qty_sold > 0 ? round2(sales_ttc / qty_sold) : 0,
+      avg_price_net: qty_sold > 0 ? round2(net_sales / qty_sold) : 0,
+      cash_sales: round2(cash_sales),
+      credit_sales: round2(credit_sales),
+      raw_cost: round2(raw_cost),
+      raw_mat_cost: round2(raw_mat_cost),
+      raw_haulage: round2(raw_haulage),
+      raw_loads,
+      raw_tons: round2(raw_tons),
+      raw_qty: round2(raw_qty),
+      avg_raw_cost: raw_qty > 0 ? round2(raw_cost / raw_qty) : 0,
+      expenses: round2(expenses),
+      cash_expenses: round2(cash_expenses),
+      credit_expenses: round2(credit_expenses),
+      salaries_paid: round2(salaries_paid),
+      gross_margin,
+      gm_pct,
+      operating_profit,
+      op_margin_pct,
+      receipts: round2(receipts),
+      settlements_paid: round2(settlements_paid),
+      cash_inflow,
+      cash_outflow,
+      net_cash_flow,
+      diesel_litres: round2(diesel_litres),
+      trucks_used: truckSet.size || baseKpi.trucks_used || 0,
+      own_fleet_loads,
+      label: range ? range.label : 'All-Time (2024–2026)'
+    });
+
+    _kpiRangeCacheKey = cacheKey;
+    _kpiRangeCacheVal = computed;
+    return computed;
+  }
+
+  function monthLabelToYm(lbl) {
+    const parts = String(lbl || '').trim().split(/\s+/);
+    if (parts.length < 2) return '';
+    const mi = MONTH_SHORT.findIndex(m => m.toLowerCase() === parts[0].slice(0, 3).toLowerCase());
+    if (mi < 0) return '';
+    return `${parts[1]}-${String(mi + 1).padStart(2, '0')}`;
+  }
+
+  function getScopedMonthly(monthlyList, maxCount = 14) {
+    const allM = monthlyList || [];
+    const range = periodRange(STATE.period);
+    if (!range) return allM.slice(-maxCount);
+    const fYm = range.from.slice(0, 7);
+    const tYm = range.to.slice(0, 7);
+    const matching = allM.filter(r => {
+      const ym = monthLabelToYm(r['Year Month']);
+      return ym && ym >= fYm && ym <= tYm;
+    });
+    if (matching.length >= 2) return matching.slice(-maxCount);
+    // When a single Month/Week/Day is selected, include up to 6 months ending at tYm for context
+    const upTo = allM.filter(r => {
+      const ym = monthLabelToYm(r['Year Month']);
+      return ym && ym <= tYm;
+    });
+    return (upTo.length ? upTo.slice(-Math.min(6, maxCount)) : allM.slice(-maxCount));
+  }
+
+  function setDateFilter(opts = {}) {
+    if (opts.reset) {
+      STATE.dateGrain = 'all';
+      STATE.period = 'all';
+      STATE.dateFrom = '';
+      STATE.dateTo = '';
+    } else {
+      if (opts.grain) {
+        STATE.dateGrain = opts.grain;
+        if (!opts.period && !opts.from && !opts.to) {
+          const grainOpts = getDateGrainOptions(opts.grain);
+          if (opts.grain === 'all') {
+            STATE.period = 'all';
+          } else if (grainOpts.length) {
+            STATE.period = grainOpts[0].value;
+          }
+          STATE.dateFrom = '';
+          STATE.dateTo = '';
+        }
+      }
+      if (opts.period !== undefined) {
+        STATE.period = opts.period;
+        if (opts.period !== 'custom') {
+          STATE.dateFrom = '';
+          STATE.dateTo = '';
+          if (String(opts.period).startsWith('year:')) STATE.dateGrain = 'year';
+          else if (String(opts.period).startsWith('month:')) STATE.dateGrain = 'month';
+          else if (String(opts.period).startsWith('week:')) STATE.dateGrain = 'week';
+          else if (String(opts.period).startsWith('day:')) STATE.dateGrain = 'day';
+        }
+      }
+      if (opts.from !== undefined || opts.to !== undefined) {
+        const curRange = periodRange(STATE.period) || { from: MIN_DATE, to: SEED_DATE };
+        let nf = opts.from !== undefined ? opts.from : (STATE.dateFrom || curRange.from);
+        let nt = opts.to !== undefined ? opts.to : (STATE.dateTo || curRange.to);
+        if (nf && nt && nf > nt) {
+          if (opts.from !== undefined) nt = nf;
+          else nf = nt;
+        }
+        STATE.dateFrom = nf || MIN_DATE;
+        STATE.dateTo = nt || SEED_DATE;
+        STATE.period = 'custom';
+      }
+    }
+    STATE.shown = {};
+    STATE.pbiTablePage = {};
+    renderApp();
+  }
+
+  function syncTopbarDateControls() {
+    document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-grain') === STATE.dateGrain);
+    });
+    const periodSel = $('periodSelect');
+    if (periodSel) {
+      const cat = getDateGrainCatalog();
+      const activeOpts = cat[STATE.dateGrain] || cat.all;
+      let html = '';
+      if (STATE.period === 'custom') {
+        const f = STATE.dateFrom || MIN_DATE;
+        const t = STATE.dateTo || SEED_DATE;
+        html += `<option value="custom">Range: ${esc(f)} → ${esc(t)}</option>`;
+      }
+      html += activeOpts.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+      if (STATE.dateGrain !== 'all') {
+        html += `<optgroup label="Quick Presets">${cat.all.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</optgroup>`;
+      }
+      if (periodSel.dataset.sig !== STATE.dateGrain + '|' + (STATE.period === 'custom' ? (STATE.dateFrom + '..' + STATE.dateTo) : '')) {
+        periodSel.innerHTML = html;
+        periodSel.dataset.sig = STATE.dateGrain + '|' + (STATE.period === 'custom' ? (STATE.dateFrom + '..' + STATE.dateTo) : '');
+      }
+      periodSel.value = STATE.period;
+    }
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: SEED_DATE };
+    const fromEl = $('dateFromInput');
+    const toEl = $('dateToInput');
+    const barEl = $('dateRangeBar');
+    const rstEl = $('dateRangeResetBtn');
+    if (fromEl && document.activeElement !== fromEl) fromEl.value = r.from;
+    if (toEl && document.activeElement !== toEl) toEl.value = r.to;
+    const isFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
+    if (barEl) barEl.classList.toggle('custom-active', STATE.period === 'custom' || isFiltered);
+    if (rstEl) rstEl.hidden = !isFiltered;
   }
 
   function modelHasLedger(key) {
     const m = SEED.models[key || STATE.company];
     const p = m && m.periods && m.periods.all;
     return !!(p && (p.sales_ttc != null || p.loads != null || p.expenses != null));
-  }
-
-  // Reporting period → ISO date window applied to the record registers (null = All-Time)
-  function periodRange(p) {
-    const y = SEED_DATE.slice(0, 4);
-    const ym = SEED_DATE.slice(0, 7);
-    switch (p) {
-      case 'ytd': return { from: y + '-01-01', to: y + '-12-31' };
-      case 'mtd': return { from: ym + '-01', to: ym + '-31' };
-      case 'sep2026': return { from: '2026-09-01', to: '2026-09-30' };
-      case 'aug2026': return { from: '2026-08-01', to: '2026-08-31' };
-      case 'q3_2026': return { from: '2026-07-01', to: '2026-09-30' };
-      case 'fy2025': return { from: '2025-01-01', to: '2025-12-31' };
-      default: return null;
-    }
   }
 
   function recordDate(r) {
@@ -904,11 +1332,11 @@
             </div>
           </div>
           <div class="chartwrap" id="execChartWrap">
-            ${buildExecutiveChart(m.monthly)}
+            ${buildExecutiveChart(getScopedMonthly(m.monthly, 12))}
             <div class="chart-tip" id="execChartTip" hidden></div>
           </div>
           ${(() => {
-            const months = (m.monthly || []).slice(-12);
+            const months = getScopedMonthly(m.monthly, 12);
             const peakM = months.reduce((best, r) => (Number(r.sales_ttc || 0) > Number((best && best.sales_ttc) || 0) ? r : best), months[0] || {});
             const peakLabel = peakM['Year Month'] || peakM.Month || peakM.label || '—';
             const avgM = months.length ? months.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) / months.length : 0;
@@ -1586,6 +2014,7 @@
     const flagged = allFuel.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
     const tank = fleet.diesel_stock_balance_l != null ? Number(fleet.diesel_stock_balance_l) : Number(k.diesel_in_tank || 0);
     const equipRows = sortRows((m.equipment || []).filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'equip', 'total_cost', 'desc');
+    const shownEquip = equipRows.slice(0, shownCount('equip'));
 
     return `
       <div class="cockpit-banner">
@@ -1620,7 +2049,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${equipRows.map(e => `
+                ${shownEquip.map(e => `
                   <tr>
                     <td class="mono"><strong>${esc(e.Equipment)}</strong></td>
                     <td>${esc(e.Type || 'Truck')}</td>
@@ -1634,6 +2063,7 @@
                     <td class="r">${e.cost_per_ton ? fmtUSD(e.cost_per_ton, 2) : '—'}</td>
                   </tr>
                 `).join('') || emptyRow(10, 'No equipment cost rows for this entity')}
+                ${showMoreRow('equip', equipRows.length, 10)}
               </tbody>
             </table>
           </div>
@@ -1832,6 +2262,7 @@
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
     const custs = sortRows((m.customers || []).filter(c => !q || String(c.Customer || '').toLowerCase().includes(q)), 'custs', 'ar_balance', 'desc');
+    const shownCusts = custs.slice(0, shownCount('custs'));
     const base = filterRecords(SEED.records.receipts);
     const rcpts = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'receipts', 'date', 'desc');
     const shown = rcpts.slice(0, shownCount('receipts'));
@@ -1874,7 +2305,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${custs.map(c => `
+                ${shownCusts.map(c => `
                   <tr>
                     <td><strong>${esc(c.Customer)}</strong></td>
                     <td>${c['VAT Registered'] === 'Yes' ? '<span class="badge badge-info">11% VAT</span>' : 'No'}</td>
@@ -1887,6 +2318,7 @@
                     <td class="mono">${esc(String(c.last_sale || '').slice(0, 10) || '—')}</td>
                   </tr>
                 `).join('') || emptyRow(9, q ? `No customers match "${STATE.search}".` : 'No customer balances for this entity')}
+                ${showMoreRow('custs', custs.length, 9)}
               </tbody>
             </table>
           </div>
@@ -1934,6 +2366,7 @@
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
     const sups = sortRows((m.suppliers || []).filter(s => !q || String(s.Supplier || '').toLowerCase().includes(q)), 'sups', 'ap_balance', 'desc');
+    const shownSups = sups.slice(0, shownCount('sups'));
     const base = filterRecords(SEED.records.settlements);
     const spays = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || r.method === STATE.chipFilter)), 'settle', 'date', 'desc');
     const shown = spays.slice(0, shownCount('settle'));
@@ -1976,7 +2409,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sups.map(s => `
+                ${shownSups.map(s => `
                   <tr>
                     <td><strong>${esc(s.Supplier)}</strong></td>
                     <td>${s.IVA === 'Yes' ? '<span class="badge badge-info">IVA</span>' : '—'}</td>
@@ -1988,6 +2421,7 @@
                     <td class="r"><strong>${fmtUSD(s.ap_balance, 2)}</strong></td>
                   </tr>
                 `).join('') || emptyRow(8, q ? `No suppliers match "${STATE.search}".` : 'No supplier balances for this entity')}
+                ${showMoreRow('sups', sups.length, 8)}
               </tbody>
             </table>
           </div>
@@ -3202,7 +3636,7 @@
     const companyField = fld('Company (BU) *', sel('f_company', comps, company), { hint: comps.length === 1 ? 'Your seat is scoped to this entity' : '' });
     const dateField = fld('Transaction Date *', inp('f_date', 'date', today, dateAttrs), { hintId: 'hint_date', hint: '' });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { span: true });
-    const cockpitHtml = window.MFG_FORMS ? window.MFG_FORMS.renderExecutiveCockpit({ SEED, STATE }, company) : '';
+    const cockpitHtml = '';
     const truckQvHtml = window.MFG_FORMS ? `<div id="paTruckQvWrap">${window.MFG_FORMS.renderTruckQuickView(null, true)}</div>` : '';
 
     if (window.MFG_FORMS && !['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(fType)) {
@@ -5254,8 +5688,7 @@
     });
     document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-company') === STATE.company));
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis));
-    const periodSel = $('periodSelect');
-    if (periodSel && periodSel.value !== STATE.period) periodSel.value = STATE.period;
+    syncTopbarDateControls();
 
     // Rail badges follow the active scope
     const setPill = (id, text) => { const el = $(id); if (el) el.textContent = text; };
@@ -5282,7 +5715,7 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE }) : renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter }) : renderOverview(); break;
       case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;
@@ -5326,12 +5759,45 @@
     const pbiReset = $('pbiResetSlicersBtn');
     if (pbiReset) pbiReset.addEventListener('click', () => {
       STATE.pbiSlicer = {};
+      STATE.pbiTablePage = {};
       renderApp();
     });
     container.querySelectorAll('[data-pbi-slicer]').forEach(el => {
       el.addEventListener('change', e => {
         const key = el.getAttribute('data-pbi-slicer');
-        if (key) { STATE.pbiSlicer[key] = e.target.value; renderApp(); }
+        if (key) { STATE.pbiSlicer[key] = e.target.value; STATE.pbiTablePage = {}; renderApp(); }
+      });
+    });
+    container.querySelectorAll('[data-pbi-grain]').forEach(btn => {
+      btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-pbi-grain') }));
+    });
+    const pbiPeriodSel = $('pbiPeriodSelect');
+    if (pbiPeriodSel) pbiPeriodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
+    const pbiDateFrom = $('pbiDateFrom');
+    if (pbiDateFrom) pbiDateFrom.addEventListener('change', e => setDateFilter({ from: e.target.value }));
+    const pbiDateTo = $('pbiDateTo');
+    if (pbiDateTo) pbiDateTo.addEventListener('change', e => setDateFilter({ to: e.target.value }));
+    const pbiDateReset = $('pbiDateResetBtn');
+    if (pbiDateReset) pbiDateReset.addEventListener('click', () => setDateFilter({ reset: true }));
+    container.querySelectorAll('[data-pbi-page-btn]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tk = btn.getAttribute('data-pbi-page-btn');
+        const target = Number(btn.getAttribute('data-pbi-page-target') || 0);
+        STATE.pbiTablePage[tk] = Math.max(0, target);
+        const ws = $('workspace');
+        const y = ws ? ws.scrollTop : 0;
+        renderApp();
+        if (ws) ws.scrollTop = y;
+      });
+    });
+    container.querySelectorAll('[data-pbi-page-size]').forEach(sel => {
+      sel.addEventListener('change', e => {
+        STATE.pbiPageSize = Number(e.target.value) || 15;
+        STATE.pbiTablePage = {};
+        const ws = $('workspace');
+        const y = ws ? ws.scrollTop : 0;
+        renderApp();
+        if (ws) ws.scrollTop = y;
       });
     });
     container.querySelectorAll('[data-stmt-cat]').forEach(btn => {
@@ -5827,9 +6293,16 @@
     const brand = $('brandHomeLink');
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
-    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.addEventListener('click', () => { STATE.company = btn.getAttribute('data-company'); STATE.shown = {}; renderApp(); }));
+    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.addEventListener('click', () => { STATE.company = btn.getAttribute('data-company'); STATE.shown = {}; STATE.pbiTablePage = {}; renderApp(); }));
+    document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-grain') })));
     const periodSel = $('periodSelect');
-    if (periodSel) periodSel.addEventListener('change', e => { STATE.period = e.target.value; STATE.shown = {}; renderApp(); });
+    if (periodSel) periodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
+    const dateFromEl = $('dateFromInput');
+    if (dateFromEl) dateFromEl.addEventListener('change', e => setDateFilter({ from: e.target.value }));
+    const dateToEl = $('dateToInput');
+    if (dateToEl) dateToEl.addEventListener('change', e => setDateFilter({ to: e.target.value }));
+    const dateRstEl = $('dateRangeResetBtn');
+    if (dateRstEl) dateRstEl.addEventListener('click', () => setDateFilter({ reset: true }));
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); renderApp(); }));
 
     const toggleTheme = () => { STATE.theme = STATE.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('isabi_mfg_theme', STATE.theme); renderApp(); };

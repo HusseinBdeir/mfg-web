@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=4.6">
+  <link rel="stylesheet" href="css/app.css?v=4.8">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -198,6 +198,15 @@
           </div>
 
           <div class="period-basis-row">
+            <!-- Power BI / Power Apps Date Grain Slicer (All | Year | Month | Week | Day) -->
+            <div class="grain-switch" id="grainSwitch" role="group" aria-label="Date Grain">
+              <button type="button" class="grain-btn active" data-grain="all" title="Preset &amp; All-Time Periods">All</button>
+              <button type="button" class="grain-btn" data-grain="year" title="Filter by Calendar Year">Year</button>
+              <button type="button" class="grain-btn" data-grain="month" title="Filter by Calendar Month">Month</button>
+              <button type="button" class="grain-btn" data-grain="week" title="Filter by Monday–Sunday Week">Week</button>
+              <button type="button" class="grain-btn" data-grain="day" title="Filter by Specific Day">Day</button>
+            </div>
+
             <!-- Period Slicer -->
             <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
               <option value="all">All-Time (2024–2026)</option>
@@ -207,7 +216,16 @@
               <option value="aug2026">August 2026</option>
               <option value="q3_2026">Q3 2026 (Jul–Sep)</option>
               <option value="fy2025">FY 2025 (Full Year)</option>
+              <option value="fy2024">FY 2024 (Full Year)</option>
             </select>
+
+            <!-- Custom Date Range Slicer (Power BI "Period (between)" From – To) -->
+            <div class="date-range-bar" id="dateRangeBar" role="group" aria-label="Date Range Filter">
+              <input type="date" id="dateFromInput" class="date-range-input" min="2024-01-01" max="2026-12-31" aria-label="From Date" title="Start Date (From)">
+              <span class="date-range-sep">–</span>
+              <input type="date" id="dateToInput" class="date-range-input" min="2024-01-01" max="2026-12-31" aria-label="To Date" title="End Date (To)">
+              <button type="button" id="dateRangeResetBtn" class="date-range-reset" title="Reset to All-Time (2024–2026)" aria-label="Reset Date Filter" hidden>✕</button>
+            </div>
 
             <!-- Date Basis -->
             <div class="basis-switch" id="basisSwitch" role="group" aria-label="Accounting Date Basis">
@@ -463,13 +481,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=4.6"></script>
-  <script src="js/face.js?v=4.6"></script>
-  <script src="js/endpoints.js?v=4.6"></script>
-  <script src="js/seed_data.js?v=4.6"></script>
-  <script src="js/forms_engine.js?v=4.6"></script>
-  <script src="js/pbi_pages.js?v=4.6"></script>
-  <script src="js/app.js?v=4.6"></script>
+  <script src="vendor/face-api.js?v=4.8"></script>
+  <script src="js/face.js?v=4.8"></script>
+  <script src="js/endpoints.js?v=4.8"></script>
+  <script src="js/seed_data.js?v=4.8"></script>
+  <script src="js/forms_engine.js?v=4.8"></script>
+  <script src="js/pbi_pages.js?v=4.8"></script>
+  <script src="js/app.js?v=4.8"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

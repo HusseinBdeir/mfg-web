@@ -156,47 +156,10 @@
   }
 
   // ==================== EMBEDDED EXECUTIVE COCKPIT (bhf_mfgCockpit.htm m283) ====================
-  function renderExecutiveCockpit(ctx, companyName) {
-    const seed = (ctx && ctx.SEED) || window.MFG_SEED || {};
-    const coKey = companyName === 'BBConstruction' ? 'bbconstruction' : (companyName === 'Lions Transport' ? 'lionstransport' : 'wtc');
-    const model = (seed.models && (seed.models[coKey] || seed.models['manufacturing-group'])) || {};
-    const period = (ctx && ctx.STATE && ctx.STATE.period) || 'all';
-    const kpi = (model.periods && (model.periods[period] || model.periods.all)) || {};
-    const tank = computeDieselTank(ctx, companyName);
-    return `
-      <div class="pa-cockpit" id="paCockpit">
-        <div class="pa-cockpit-hdr">
-          <span class="pa-cockpit-badge">POWER APPS EXECUTIVE COCKPIT · m283</span>
-          <span class="pa-cockpit-scope" id="paCockpitScope">${esc(companyName)} · ${esc(kpi.label || 'All-Time')} · Live Telemetry &amp; Controls</span>
-        </div>
-        <div class="pa-cockpit-grid">
-          <div class="pa-cockpit-card">
-            <small>Sales incl. VAT</small>
-            <strong id="paCkSales">${fmtUsd(kpi.sales_ttc || 0, 0)}</strong>
-            <span id="paCkSalesSub">${fmtNum(kpi.loads || 0)} loads · ${fmtNum(kpi.tons_sold || 0)} T</span>
-          </div>
-          <div class="pa-cockpit-card">
-            <small>Raw Cost &amp; Haulage</small>
-            <strong id="paCkRaw">${fmtUsd(kpi.raw_cost || 0, 0)}</strong>
-            <span id="paCkRawSub">${fmtNum(kpi.raw_loads || 0)} loads · GM ${fmtUsd(kpi.gross_margin || 0, 0)}</span>
-          </div>
-          <div class="pa-cockpit-card">
-            <small>Receivables / Payables</small>
-            <strong id="paCkAr">AR ${fmtUsd(kpi.ar_balance || 0, 0)}</strong>
-            <span id="paCkArSub">Overdue ${fmtUsd(kpi.ar_overdue || 0, 0)} · AP ${fmtUsd(kpi.ap_balance || 0, 0)}</span>
-          </div>
-          <div class="pa-cockpit-card ${tank.balance < 0 ? 'crit' : ''}" id="paCkTankCard">
-            <small>Diesel Tank (${esc(companyName)})</small>
-            <strong id="paCkTank">${fmtNum(tank.balance, 0)} L</strong>
-            <span id="paCkTankSub">In ${fmtNum(tank.bought, 0)} − Out ${fmtNum(tank.issued + tank.sold, 0)} L</span>
-          </div>
-        </div>
-      </div>
-      <div class="pa-live-banner" id="paLiveBanner">
-        <span class="pa-banner-dot">●</span>
-        <span id="paLiveBannerText">Power Apps form rules active — cascading Truck Owner → Truck → Driver locks, Tier 1/2 Price Agreements &amp; validation guards ready.</span>
-      </div>
-    `;
+  function renderExecutiveCockpit() {
+    // Removed from New Entry forms (2026-10-21): neither the Power Apps Executive Cockpit nor the
+    // Power Apps form rules banner is needed when creating new entries.
+    return '';
   }
 
   // ==================== DIESEL TANK BALANCE ENGINE (m207 / m212) ====================
@@ -476,7 +439,7 @@
     if (fType === 'pricerule') {
       return `
         <div class="rule-banner" id="smartRuleBanner">
-          <strong>Power Apps Price Agreement Engine (bhf_pricerule · m73 / m103 / m136):</strong> Supports all 6 rule types (<i>Sales Delivery, Sales Pickup, List Price, Purchase Price Site, Transport Price Site, Haulage Customer Site</i>), Tier 1 &amp; Tier 2 truck capacity adjustments, and Indifference Pricing.
+          <strong>Price Agreement Engine (bhf_pricerule · m73 / m103 / m136):</strong> Supports all 6 rule types (<i>Sales Delivery, Sales Pickup, List Price, Purchase Price Site, Transport Price Site, Haulage Customer Site</i>), Tier 1 &amp; Tier 2 truck capacity adjustments, and Indifference Pricing.
         </div>
         <div class="form-grid-3">
           ${companyField}

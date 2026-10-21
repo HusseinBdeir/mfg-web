@@ -224,16 +224,18 @@ try {
   }
   groupScrollShifts.length === 0 ? pass('entry desk · group tabs 1–4 keep scrollTop at 0px (no downward push on Group 4 Payroll)') : fail('entry desk group scroll', groupScrollShifts.join(', '));
   const forms = ['sales', 'raw', 'receipt', 'settlement', 'fuel', 'expense', 'pricerule', 'vatinvoice', 'creditterm', 'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'salary', 'attendance', 'freelance', 'employment', 'logistics', 'triprate', 'treasury', 'jv'];
-  let opened = 0, formScrollShifts = [];
+  let opened = 0, formScrollShifts = [], cockpitLeaks = [];
   for (const f of forms) {
     const ok = await evaluate(`(() => { const groups = window.MFG_FORMS.FORM_GROUPS; const g = groups.find(x => x.forms.some(y => y.id === '${f}')); document.querySelector('[data-pa-group="' + g.id + '"]').click(); const t = document.querySelector('.modal-tab[data-form="${f}"]'); if (!t) return false; t.click(); return document.getElementById('modalBody').querySelectorAll('input, select').length > 3; })()`);
     if (ok) opened++; else fail(`form ${f}`, 'did not render inputs');
     await sleep(80);
-    const sc = await evaluate(`(() => { const c = document.querySelector('#entryModal .modal-card'); const b = document.getElementById('modalBody'); return (c ? c.scrollTop : 0) + (b ? b.scrollTop : 0); })()`);
-    if (sc !== 0) formScrollShifts.push(`${f}:${sc}px`);
+    const sc = await evaluate(`(() => { const c = document.querySelector('#entryModal .modal-card'); const b = document.getElementById('modalBody'); const hasPa = !!(document.getElementById('paCockpit') || document.getElementById('paLiveBanner')); return { scroll: (c ? c.scrollTop : 0) + (b ? b.scrollTop : 0), hasPa }; })()`);
+    if (sc.scroll !== 0) formScrollShifts.push(`${f}:${sc.scroll}px`);
+    if (sc.hasPa) cockpitLeaks.push(f);
   }
   opened === 24 ? pass('entry desk · 24 forms render') : fail('entry desk forms', `${opened}/24`);
   formScrollShifts.length === 0 ? pass('entry desk · all 24 forms keep scrollTop at 0px after 80ms') : fail('entry desk form scroll', formScrollShifts.join(', '));
+  cockpitLeaks.length === 0 ? pass('entry desk · no Power Apps Executive Cockpit or Power Apps form rules banner on new entries') : fail('entry desk cockpit/banner leak', cockpitLeaks.join(', '));
 
   // sales tier test: find a tiered Sales (Pickup) rule with an active window and a truck of that capacity
   const tierProbe = await evaluate(`(() => {
