@@ -15,8 +15,14 @@
   SEED.models = SEED.models || {};
   SEED.records = SEED.records || {};
   SEED.sentinels = SEED.sentinels || {};
-  ['sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses', 'receipts', 'settlements', 'salaries',
-    'price_rules', 'products', 'sites', 'equipment', 'drivers'].forEach(k => {
+  [
+    'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses', 'receipts', 'settlements', 'salaries',
+    'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'suppliers', 'products', 'sites',
+    'regions', 'uoms', 'product_types', 'equipment', 'company_equipment', 'drivers', 'company_drivers',
+    'expense_categories', 'expense_subcategories', 'employments', 'attendance', 'logistics_allowances',
+    'overtime_rates', 'external_movements', 'loans', 'loan_settlements', 'conversions',
+    'jv_partnerships', 'jv_distributions', 'daily_totals'
+  ].forEach(k => {
     if (!Array.isArray(SEED.records[k])) SEED.records[k] = [];
   });
 
@@ -63,6 +69,9 @@
     search: '',
     chipFilter: 'all',
     activeStatement: '01',
+    pbiPage: 'p01_overview',
+    pbiSlicer: { product: '', customer: '', supplier: '', site: '', method: '', saleType: '', search: '' },
+    activeTableKey: 'price_rules',
     modalForm: 'sales',
     activeUserIdx: 0,
     authed: false,
@@ -80,9 +89,35 @@
   };
 
   // App-entered record pools (localStorage + cloud relay) → server table + SEED list
-  const CR_KEYS = ['sales_tickets', 'raw_purchases', 'receipts', 'fuel_intakes', 'expenses', 'settlements'];
-  const CR_TABLE = { sales_tickets: 'sales_tickets', raw_purchases: 'raw_purchases', receipts: 'customer_receipts', fuel_intakes: 'fuel_intakes', expenses: 'expenses', settlements: 'supplier_payments' };
-  const CR_LABEL = { sales_tickets: 'sales ticket', raw_purchases: 'raw receipt', receipts: 'customer receipt', fuel_intakes: 'fuel intake', expenses: 'expense', settlements: 'supplier settlement' };
+  const CR_KEYS = [
+    'sales_tickets', 'raw_purchases', 'receipts', 'fuel_intakes', 'expenses', 'settlements',
+    'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'suppliers', 'products', 'sites',
+    'equipment', 'company_equipment', 'drivers', 'salaries', 'attendance', 'employments',
+    'logistics_allowances', 'overtime_rates', 'external_movements', 'loans', 'loan_settlements',
+    'conversions', 'jv_partnerships', 'jv_distributions'
+  ];
+  const CR_TABLE = {
+    sales_tickets: 'sales_tickets', raw_purchases: 'raw_purchases', receipts: 'customer_receipts',
+    fuel_intakes: 'fuel_intakes', expenses: 'expenses', settlements: 'supplier_payments',
+    price_rules: 'price_rules', vat_invoices: 'vat_invoices', credit_terms: 'credit_terms',
+    customers: 'customers', suppliers: 'suppliers', products: 'products', sites: 'sites',
+    equipment: 'equipment', company_equipment: 'company_equipment', drivers: 'drivers',
+    salaries: 'salaries', attendance: 'attendance', employments: 'employments',
+    logistics_allowances: 'logistics_allowances', overtime_rates: 'overtime_rates',
+    external_movements: 'external_movements', loans: 'loans', loan_settlements: 'loan_settlements',
+    conversions: 'conversions', jv_partnerships: 'jv_partnerships', jv_distributions: 'jv_distributions'
+  };
+  const CR_LABEL = {
+    sales_tickets: 'sales ticket', raw_purchases: 'raw receipt', receipts: 'customer receipt',
+    fuel_intakes: 'fuel intake', expenses: 'expense', settlements: 'supplier settlement',
+    price_rules: 'price agreement', vat_invoices: 'VAT invoice', credit_terms: 'credit terms',
+    customers: 'customer', suppliers: 'supplier', products: 'product', sites: 'site',
+    equipment: 'equipment', company_equipment: 'company fleet unit', drivers: 'driver',
+    salaries: 'salary payment', attendance: 'attendance log', employments: 'contract / freelance',
+    logistics_allowances: 'site allowance', overtime_rates: 'overtime rate',
+    external_movements: 'external movement', loans: 'partner loan', loan_settlements: 'loan settlement',
+    conversions: 'currency conversion', jv_partnerships: 'JV partnership', jv_distributions: 'JV distribution'
+  };
   CR_KEYS.forEach(k => { if (!Array.isArray(STATE.customRecords[k])) STATE.customRecords[k] = []; });
   if (!Array.isArray(STATE.users) || !STATE.users.length) STATE.users = DEFAULT_USERS.map(u => ({ ...u }));
 
@@ -324,7 +359,7 @@
     const role = String((u || activeUser()).role || '');
     if (/Owner/i.test(role)) return true;
     if (/Entry/i.test(role)) return true;            // Entry · Supervisor + Entry
-    if (/Sales/i.test(role)) return form === 'receipt'; // AR collector keys receipts only
+    if (/Sales/i.test(role)) return ['receipt', 'pricerule', 'vatinvoice', 'creditterm', 'customer'].includes(form); // AR / commercial seat
     return false;                                      // Supervisor = read-only oversight
   }
   function canEnterAny(u) { return canEnterForm('sales', u) || canEnterForm('receipt', u); }
@@ -334,7 +369,7 @@
     u = u || activeUser();
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
-    if (view === 'overview' || view === 'expenses') return pbi !== 'none';
+    if (view === 'overview' || view === 'pbi' || view === 'expenses') return pbi !== 'none';
     if (view === 'sentinels' || view === 'ledger' || view === 'gl') return pbi === 'full';
     if (view === 'statements') return st !== 'none';
     return true;
@@ -372,6 +407,7 @@
   }
   function customerNames() {
     const out = [];
+    (SEED.records.customers || []).forEach(c => out.push(c.name));
     Object.values(SEED.models).forEach(m => (m.customers || []).forEach(c => out.push(c.Customer)));
     SEED.records.sales_tickets.forEach(r => out.push(r.customer));
     SEED.records.receipts.forEach(r => out.push(r.customer));
@@ -380,6 +416,7 @@
   }
   function supplierNames() {
     const out = [];
+    (SEED.records.suppliers || []).forEach(s => out.push(s.name));
     Object.values(SEED.models).forEach(m => (m.suppliers || []).forEach(s => out.push(s.Supplier)));
     SEED.records.raw_purchases.forEach(r => { out.push(r.site_owner); out.push(r.truck_owner); });
     SEED.records.settlements.forEach(r => out.push(r.supplier));
@@ -387,12 +424,61 @@
     SEED.records.price_rules.forEach(r => out.push(r.supplier));
     return uniqSorted(out);
   }
+  function truckOwnerNames() {
+    const out = [];
+    (SEED.records.suppliers || []).forEach(s => { if (s.is_truck_owner || Number(s.trucks_count || 0) > 0) out.push(s.name); });
+    (SEED.records.equipment || []).forEach(e => { if (e.supplier) out.push(e.supplier); });
+    (SEED.records.drivers || []).forEach(d => { if (d.truck_owner) out.push(d.truck_owner); });
+    SEED.records.raw_purchases.forEach(r => { if (r.truck_owner) out.push(r.truck_owner); });
+    return uniqSorted(out);
+  }
+  function trucksForOwner(ownerName, company, isCompanyFleet) {
+    if (isCompanyFleet) {
+      const coUnits = (SEED.records.company_equipment || []).filter(e => !company || !e.company || e.company === company).map(e => e.name);
+      const ownUnits = (SEED.records.equipment || []).filter(e => /^own/i.test(e.ownership || '') || norm(e.supplier) === norm(company)).map(e => e.name);
+      return uniqSorted(coUnits.concat(ownUnits));
+    }
+    const o = norm(ownerName);
+    if (!o) return [];
+    const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o).map(e => e.name);
+    const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
+    const fromSup = (sup && Array.isArray(sup.trucks)) ? sup.trucks : [];
+    const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o).map(r => r.truck);
+    const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o).map(r => r.truck);
+    return uniqSorted(fromEq.concat(fromSup, fromRaw, fromSales));
+  }
+  function driversForOwner(ownerName, company, isCompanyFleet) {
+    if (isCompanyFleet) {
+      const coDrv = (SEED.records.company_drivers || []).filter(d => !company || !d.company || d.company === company).map(d => d.driver || d.name);
+      return uniqSorted(coDrv.length ? coDrv : driverNames());
+    }
+    const o = norm(ownerName);
+    if (!o) return [];
+    const fromDrv = (SEED.records.drivers || []).filter(d => norm(d.truck_owner) === o).map(d => d.name);
+    const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
+    const fromSup = (sup && Array.isArray(sup.drivers)) ? sup.drivers : [];
+    const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o).map(r => r.driver);
+    const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o).map(r => r.driver);
+    return uniqSorted(fromDrv.concat(fromSup, fromRaw, fromSales));
+  }
+  function siteInfo(name) {
+    const n = norm(name);
+    return (SEED.records.sites || []).find(s => norm(s.name) === n) || null;
+  }
   function siteNames() { return uniqSorted(SEED.records.sites.map(s => s.name).concat(SEED.records.sales_tickets.map(r => r.site), SEED.records.raw_purchases.map(r => r.site))); }
   function equipmentNames() { return uniqSorted(SEED.records.equipment.map(e => e.name).concat(SEED.records.fuel_intakes.map(f => f.equipment), SEED.records.sales_tickets.map(r => r.truck))); }
   function driverNames() { return uniqSorted(SEED.records.drivers.map(d => d.name).concat(SEED.records.sales_tickets.map(r => r.driver), SEED.records.fuel_intakes.map(f => f.driver))); }
-  function staffNames() { return uniqSorted(SEED.records.salaries.map(s => s.staff)); }
+  function staffNames() { return uniqSorted(SEED.records.salaries.map(s => s.staff).concat((SEED.records.employments || []).map(e => e.staff || e.name))); }
   function expenseCategories() {
     const map = new Map();
+    (SEED.records.expense_categories || []).forEach(c => {
+      if (c && c.name && !map.has(c.name)) map.set(c.name, new Set());
+    });
+    (SEED.records.expense_subcategories || []).forEach(sc => {
+      if (!sc || !sc.category || !sc.name) return;
+      if (!map.has(sc.category)) map.set(sc.category, new Set());
+      map.get(sc.category).add(sc.name);
+    });
     SEED.records.expenses.forEach(x => {
       if (!x.category) return;
       if (!map.has(x.category)) map.set(x.category, new Set());
@@ -403,8 +489,8 @@
   }
   function productList(materialOnly) {
     // Grades sold most → first (model products carry revenue), then every other registered product.
-    // Tickets carry Material products only (m37 / m54 / m110) — oils and spare parts never go on a weighbridge ticket.
-    const pool = materialOnly ? SEED.records.products.filter(p => !p.type || /material/i.test(p.type)) : SEED.records.products;
+    // Tickets carry Material / ticket_product products only (m37 / m54 / m110) — oils and spare parts never go on a weighbridge ticket.
+    const pool = materialOnly ? SEED.records.products.filter(p => p.ticket_product !== false && (!p.type || /material/i.test(p.type))) : SEED.records.products;
     const top = ((SEED.models['manufacturing-group'] || {}).products || []).map(p => p.Product);
     const byName = new Map(pool.map(p => [norm(p.name), p]));
     const out = [];
@@ -416,20 +502,36 @@
   function customerInfo(name) {
     const n = norm(name);
     if (!n) return null;
+    const dvn = (SEED.records.customers || []).find(x => norm(x.name) === n) || null;
+    let mdl = null;
     for (const m of Object.values(SEED.models)) {
       const c = (m.customers || []).find(x => norm(x.Customer) === n);
-      if (c) return c;
+      if (c) { mdl = c; break; }
     }
-    return null;
+    if (!dvn && !mdl) return null;
+    return Object.assign({}, dvn || {}, mdl || {}, {
+      Customer: (mdl && mdl.Customer) || (dvn && dvn.name) || name,
+      method: (dvn && dvn.method) || (mdl && mdl.Method) || 'Credit',
+      'VAT Registered': ((mdl && mdl['VAT Registered'] === 'Yes') || (dvn && dvn.vat_registered)) ? 'Yes' : 'No',
+      customer_declared_qty: !!(dvn && dvn.customer_declared_qty),
+      external_invoice: !!(dvn && dvn.external_invoice)
+    });
   }
   function supplierInfo(name) {
     const n = norm(name);
     if (!n) return null;
+    const dvn = (SEED.records.suppliers || []).find(x => norm(x.name) === n) || null;
+    let mdl = null;
     for (const m of Object.values(SEED.models)) {
       const s = (m.suppliers || []).find(x => norm(x.Supplier) === n);
-      if (s) return s;
+      if (s) { mdl = s; break; }
     }
-    return null;
+    if (!dvn && !mdl) return null;
+    return Object.assign({}, dvn || {}, mdl || {}, {
+      Supplier: (mdl && mdl.Supplier) || (dvn && dvn.name) || name,
+      iva: !!(dvn && dvn.iva),
+      is_truck_owner: !!(dvn && dvn.is_truck_owner)
+    });
   }
   function productInfo(name) {
     const n = norm(name);
@@ -2500,15 +2602,18 @@
   // ==========================================================================
   // SMART ENTRY DESK — SIX FORMS WITH THE DATAVERSE FORM RULES
   // ==========================================================================
-  const FORM_TITLES = {
+  const FORM_TITLES = Object.assign({
     sales: 'New Sales Ticket (Price Agreement · VAT · Overtime · Duplicate Guards)',
     raw: 'New Raw Material Quarry Receipt (2-Leg AP Split)',
     receipt: 'New Customer Receipt (FIFO Auto-Allocated)',
     fuel: 'New Diesel / Lubricant Intake (M142 Meter Guard)',
     expense: 'New Expense (Cash Till or Supplier Credit)',
     settlement: 'New Supplier / Hauler Settlement (Oldest Leg First)'
-  };
-  const FORM_CR_KEY = { sales: 'sales_tickets', raw: 'raw_purchases', receipt: 'receipts', fuel: 'fuel_intakes', expense: 'expenses', settlement: 'settlements' };
+  }, (window.MFG_FORMS && window.MFG_FORMS.FORM_TITLES) || {});
+  const FORM_CR_KEY = Object.assign({
+    sales: 'sales_tickets', raw: 'raw_purchases', receipt: 'receipts',
+    fuel: 'fuel_intakes', expense: 'expenses', settlement: 'settlements'
+  }, (window.MFG_FORMS && window.MFG_FORMS.FORM_CR_KEY) || {});
 
   function fld(label, inner, opts = {}) {
     return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.id ? ` id="${opts.id}"` : ''}${opts.hidden ? ' hidden' : ''}><label>${label}</label>${inner}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
@@ -2539,13 +2644,22 @@
     const companyField = fld('Company (BU) *', sel('f_company', comps, company), { hint: comps.length === 1 ? 'Your seat is scoped to this entity' : '' });
     const dateField = fld('Transaction Date *', inp('f_date', 'date', today, dateAttrs), { hintId: 'hint_date', hint: '' });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { span: true });
+    const cockpitHtml = window.MFG_FORMS ? window.MFG_FORMS.renderExecutiveCockpit({ SEED, STATE }, company) : '';
+    const truckQvHtml = window.MFG_FORMS ? `<div id="paTruckQvWrap">${window.MFG_FORMS.renderTruckQuickView(null, true)}</div>` : '';
+
+    if (window.MFG_FORMS && !['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(fType)) {
+      return cockpitHtml + window.MFG_FORMS.renderExtendedFormBody(fType, { SEED, STATE }, {
+        allowedCompanyNames, defaultEntryCompany, customerNames, supplierNames, siteNames, equipmentNames, driverNames
+      });
+    }
 
     if (fType === 'sales') {
       const prods = productList(true);
-      return `
+      return cockpitHtml + `
         <div class="rule-banner" id="smartRuleBanner">
-          <strong>Smart Agreement Engine:</strong> Company, Customer, Product &amp; Site pick the active Price Agreement (unit + transport price); the product sets the unit of measure; VAT-registered customers get 11% VAT; Pickup zeroes transport; a company-fleet load outside 06:00–17:59 flags overtime; a repeated ticket number in the same BU is blocked unless you confirm it.
+          <strong>Smart Agreement Engine:</strong> Company, Customer, Product &amp; Site pick the active Price Agreement (unit + transport price + Tier 1/2 truck size); the product sets the unit of measure; VAT-registered customers get 11% VAT; Pickup zeroes transport; a company-fleet load outside 06:00–17:59 flags overtime; a repeated ticket number in the same BU is blocked unless you confirm it.
         </div>
+        ${truckQvHtml}
         <div class="form-grid-3">
           ${companyField}
           ${fld('Ticket Number *', inp('f_ticketno', 'text', nextTicketNo(company, [SEED.records.sales_tickets]), 'inputmode="numeric" placeholder="Pad number"'), { hintId: 'hint_ticket', hint: 'Next free number suggested' })}
@@ -2578,10 +2692,11 @@
     }
 
     if (fType === 'raw') {
-      return `
+      return cockpitHtml + `
         <div class="rule-banner" id="smartRuleBanner">
           <strong>Two-Payable Raw Intake Rule (m192):</strong> Material cost is owed to the <strong>Quarry Site Owner</strong>; haulage is owed to the <strong>Truck Owner</strong> and is $0 when a company-fleet truck hauls it. A Purchase Price (Site) agreement for the owner / site fills the unit cost.
         </div>
+        ${truckQvHtml}
         <div class="form-grid-3">
           ${companyField}
           ${fld('Ticket # *', inp('f_ticketno', 'text', nextTicketNo(company, [SEED.records.raw_purchases]), 'inputmode="numeric"'), { hintId: 'hint_ticket', hint: 'Next free number suggested' })}
@@ -2612,7 +2727,7 @@
     }
 
     if (fType === 'receipt') {
-      return `
+      return cockpitHtml + `
         <div class="rule-banner" id="smartRuleBanner">
           <strong>FIFO Auto-Allocation (step240 + m165):</strong> the receipt settles the customer's oldest open credit tickets first. VAT-registered customers carry 11% inside their balance; a <strong>VAT</strong> method receipt settles only the VAT leg.
         </div>
@@ -2626,6 +2741,7 @@
           ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Cheque / transfer / receipt no."'))}
           ${notesField}
         </div>
+        <div id="paCustSubgridWrap"></div>
         <div class="live-calc">
           <div><small>Open AR before</small><b id="calc_before">—</b></div>
           <div><small>Receipt + discount</small><b id="calc_total">$0.00</b></div>
@@ -2636,7 +2752,7 @@
     }
 
     if (fType === 'fuel') {
-      return `
+      return cockpitHtml + `
         <div class="rule-banner" id="smartRuleBanner">
           <strong>M142 Fuel &amp; Meter Guard:</strong> the reading is checked against the unit's previous intake — a backwards reading, a jump over 5,000 km / 500 h, zero or an impossible value is refused. BBConstruction diesel intakes are refused while its tank reconciliation is negative (m212).
         </div>
@@ -2664,7 +2780,7 @@
 
     if (fType === 'expense') {
       const cats = expenseCategories();
-      return `
+      return cockpitHtml + `
         <div class="rule-banner" id="smartRuleBanner">
           <strong>Expense posting:</strong> Cash expenses credit the till (5300); Credit expenses open a Supplies &amp; Services leg (Class 4) owed to the supplier until a settlement relieves it. Tie plant and fleet costs to the equipment so the unit economics pick them up.
         </div>
@@ -2691,7 +2807,7 @@
     }
 
     // settlement
-    return `
+    return cockpitHtml + `
       <div class="rule-banner" id="smartRuleBanner">
         <strong>Supplier settlement (step241):</strong> the payment relieves the supplier's oldest open legs first (material, haulage, then credit expenses). A <strong>VAT / IVA</strong> method settles only the VAT leg of an IVA invoice.
       </div>
@@ -2705,6 +2821,7 @@
         ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Cheque / transfer no."'))}
         ${notesField}
       </div>
+      <div id="paSupSubgridWrap"></div>
       <div class="live-calc">
         <div><small>Open AP before</small><b id="calc_before">—</b></div>
         <div><small>Paid + discount</small><b id="calc_total">$0.00</b></div>
@@ -2814,6 +2931,16 @@
     const truckName = val('f_truck');
     const truckRow = truckName ? SEED.records.equipment.find(e => norm(e.name) === norm(truckName)) : null;
     const ownTruck = !!(truckRow && /^own/i.test(truckRow.ownership || ''));
+    const qvWrap = $('paTruckQvWrap');
+    if (qvWrap && window.MFG_FORMS) qvWrap.innerHTML = window.MFG_FORMS.renderTruckQuickView(truckRow, transportBy === 'Company fleet');
+    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
+    if (rule && truckRow && truckRow.capacity && !FORM_UI.priceManual && upEl && window.MFG_FORMS) {
+      const tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
+      if (tier.tier > 0) {
+        upEl.value = (Number(rule.unit_price || 0) + tier.adj).toFixed(2);
+        if (tpEl && saleType === 'Delivery') tpEl.value = (Number(rule.trans_unit_price || 0) + tier.transAdj).toFixed(2);
+      }
+    }
     if (saleType === 'Delivery' && !truckName) setHint('hint_truck', 'Required on Delivery', 'crit');
     else if (truckName && transportBy === 'Company fleet' && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is a third-party unit (${truckRow.supplier || 'hauler'}) — switch Transported By or pick an own truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && ownTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
@@ -2850,7 +2977,17 @@
   function recalcRaw() {
     const company = val('f_company');
     const transportBy = val('f_transportby');
-    const site = val('f_site'), owner = val('f_siteowner'), product = val('f_product'), date = val('f_date');
+    const site = val('f_site'), product = val('f_product'), date = val('f_date');
+    const sInfo = site ? siteInfo(site) : null;
+    if (sInfo && sInfo.supplier && $('f_siteowner') && !val('f_siteowner')) $('f_siteowner').value = sInfo.supplier;
+    if (sInfo && sInfo.supplier && transportBy !== 'Company fleet' && $('f_truckowner') && !val('f_truckowner')) $('f_truckowner').value = sInfo.supplier;
+    const owner = val('f_siteowner');
+    const truckName = val('f_truck');
+    const truckRow = truckName ? SEED.records.equipment.find(e => norm(e.name) === norm(truckName)) : null;
+    const qvWrap = $('paTruckQvWrap');
+    if (qvWrap && window.MFG_FORMS) qvWrap.innerHTML = window.MFG_FORMS.renderTruckQuickView(truckRow, transportBy === 'Company fleet');
+    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
+    if (truckRow && truckRow.capacity && qtyEl() && !val('f_qty') && !FORM_UI.qtyManual) qtyEl().value = Number(truckRow.capacity).toFixed(2);
     const warnings = [];
     if (FORM_UI.lastCompany !== company && !FORM_UI.ticketManual) { const tEl = $('f_ticketno'); if (tEl) tEl.value = nextTicketNo(company, [SEED.records.raw_purchases]); }
     FORM_UI.lastCompany = company;
@@ -2902,6 +3039,8 @@
     setText('calc_total', fmtUSD(amount + disc, 2));
     setText('calc_after', before == null ? '—' : fmtUSD(before - amount - disc, 2));
     setText('calc_alloc', val('f_method') === 'VAT' ? 'VAT leg only' : 'FIFO oldest ticket first');
+    const cSub = $('paCustSubgridWrap');
+    if (cSub && window.MFG_FORMS) cSub.innerHTML = window.MFG_FORMS.renderCustomerOpenTicketsSubgrid({ SEED, STATE }, val('f_company'), customer, amount + disc, val('f_method'));
     if (before != null && amount + disc > before + 0.005) setHint('hint_amount', `Exceeds the open balance by ${fmtUSD(amount + disc - before, 2)} — becomes an advance`, 'warn');
     else setHint('hint_amount', amount <= 0 && val('f_amount') ? 'Must be above zero' : '', amount <= 0 && val('f_amount') ? 'crit' : '');
     commonDateChecks([]);
@@ -2970,6 +3109,8 @@
     setText('calc_total', fmtUSD(amount + disc, 2));
     setText('calc_after', before == null ? '—' : fmtUSD(before - amount - disc, 2));
     setText('calc_alloc', /VAT|IVA/.test(val('f_method')) ? 'VAT leg only' : 'Oldest leg first');
+    const sSub = $('paSupSubgridWrap');
+    if (sSub && window.MFG_FORMS) sSub.innerHTML = window.MFG_FORMS.renderSupplierOpenLegsSubgrid({ SEED, STATE }, val('f_company'), supplier, amount + disc, 'all');
     if (before != null && amount + disc > before + 0.005) setHint('hint_amount', `Exceeds the open balance by ${fmtUSD(amount + disc - before, 2)} — becomes a prepayment`, 'warn');
     else setHint('hint_amount', amount <= 0 && val('f_amount') ? 'Must be above zero' : '', amount <= 0 && val('f_amount') ? 'crit' : '');
     commonDateChecks([]);
@@ -2978,13 +3119,39 @@
 
   function recalcForm() {
     try {
+      if (['salary', 'logistics', 'treasury'].includes(STATE.modalForm)) {
+        const usd = num('f_usd'), lbp = num('f_lbp');
+        const tot = round2(usd + lbp / 90000);
+        const aEl = $('f_amount');
+        if (aEl && (usd > 0 || lbp > 0 || !aEl.value)) aEl.value = tot.toFixed(2);
+        return { usd, lbp, amount: num('f_amount') };
+      }
+      if (STATE.modalForm === 'pricerule') {
+        const up = num('f_unitprice'), tp = num('f_transunitprice'), q1 = num('f_qty1'), a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
+        setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}`);
+        setText('calc_tr', q1 > 0 ? `${q1}m³ → ${fmtUSD(up + a1 + tp + ta1, 2)}` : '—');
+        setText('calc_vat', q2 > 0 ? `${q2}m³ → ${fmtUSD(up + a2 + tp + ta2, 2)}` : '—');
+        setText('calc_total', fmtUSD(up + tp, 2));
+        return { up, tp };
+      }
+      if (STATE.modalForm === 'vatinvoice') {
+        const net = num('f_amount');
+        const vEl = $('f_vat');
+        if (vEl && !FORM_UI.priceManual && net > 0) vEl.value = round2(net * VAT_RATE).toFixed(2);
+        const vat = num('f_vat');
+        setText('calc_mat', fmtUSD(net, 2));
+        setText('calc_vat', fmtUSD(vat, 2));
+        setText('calc_total', fmtUSD(net + vat, 2));
+        return { net, vat, ttc: round2(net + vat) };
+      }
       switch (STATE.modalForm) {
         case 'sales': return recalcSales();
         case 'raw': return recalcRaw();
         case 'receipt': return recalcReceipt();
         case 'fuel': return recalcFuel();
         case 'expense': return recalcExpense();
-        default: return recalcSettlement();
+        case 'settlement': return recalcSettlement();
+        default: return {};
       }
     } catch (e) { console.error('recalc', e); return {}; }
   }
@@ -3017,18 +3184,22 @@
     const errors = [];
     const c = recalcForm();
     const company = val('f_company');
-    const date = val('f_date');
+    const date = val('f_date') || todayISO();
     const today = todayISO();
     const notes = val('f_notes');
     const who = activeUser();
+    const needsDate = !['customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver'].includes(f);
     if (!allowedCompanyNames().includes(company)) errors.push('Your seat cannot post to ' + (company || 'that company') + '.');
-    if (!date) errors.push('Date is required.');
-    else if (date > today) errors.push('Future dates are not allowed.');
-    else if (date < MIN_DATE) errors.push('Date is before the books opened (' + MIN_DATE + ').');
-    else if (daysBetween(date, today) > 30 && !notes) errors.push('Back-dated more than 30 days — add a note explaining why.');
+    if (needsDate) {
+      if (!val('f_date')) errors.push('Date is required.');
+      else if (date > today && f !== 'pricerule') errors.push('Future dates are not allowed.');
+      else if (date < MIN_DATE) errors.push('Date is before the books opened (' + MIN_DATE + ').');
+      else if (daysBetween(date, today) > 30 && !notes && ['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(f)) errors.push('Back-dated more than 30 days — add a note explaining why.');
+    }
 
-    const base = { id: uid(f === 'sales' ? 'st' : f === 'raw' ? 'rw' : f === 'receipt' ? 'rc' : f === 'fuel' ? 'fu' : f === 'expense' ? 'ex' : 'sp'), date, company, notes, source: 'app', entered_by: who.full_name, entered_by_email: who.email, entered_at: nowStamp(), voided: false };
+    const base = { id: uid(f.slice(0, 2)), date, company, notes, source: 'app', entered_by: who.full_name, entered_by_email: who.email, entered_at: nowStamp(), voided: false };
     let record = null;
+    let crKey = FORM_CR_KEY[f] || 'sales_tickets';
 
     if (f === 'sales') {
       const ticket = val('f_ticketno');
@@ -3081,13 +3252,80 @@
       if (!(c.amount > 0)) errors.push('Amount must be above zero.');
       if (c.method === 'Credit' && !c.supplier) errors.push('A credit expense needs the supplier it is owed to.');
       record = { ...base, name: `EXP ${date} ${c.supplier || val('f_category')}`, rep_date: date, category: val('f_category'), subcategory: val('f_subcategory'), supplier: c.supplier, equipment: val('f_truck'), method: c.method, qty: num('f_qty') || 1, amount: round2(c.amount), reference: val('f_reference') };
-    } else {
+    } else if (f === 'settlement') {
       if (!c.supplier) errors.push('Supplier is required.');
       if (!(c.amount > 0)) errors.push('Amount must be above zero.');
       if (c.disc < 0) errors.push('Discount cannot be negative.');
       record = { ...base, name: `SETTLE ${date} ${c.supplier}`, supplier: c.supplier, method: val('f_method'), amount: round2(c.amount), discount: round2(c.disc), reference: val('f_reference'), ap_before: c.before };
+    } else if (f === 'pricerule') {
+      const prod = val('f_product'), rt = val('f_ruletype') || 'Sales (Delivery)';
+      if (!prod) errors.push('Product / Grade is required.');
+      record = { ...base, name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod}`, rule_type: rt, customer: val('f_customer'), supplier: val('f_supplier'), site: val('f_site'), product: prod, unit: val('f_uom') || 'm³', rate_per: val('f_rateper') || 'm³', unit_price: round2(num('f_unitprice')), trans_unit_price: round2(num('f_transunitprice')), indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null, qty1: val('f_qty1') ? num('f_qty1') : null, adj1: round2(num('f_adj1')), trans_adj1: round2(num('f_transadj1')), qty2: val('f_qty2') ? num('f_qty2') : null, adj2: round2(num('f_adj2')), trans_adj2: round2(num('f_transadj2')), start_date: date, end_date: val('f_enddate') || '' };
+    } else if (f === 'vatinvoice') {
+      const inv = val('f_ticketno'), cust = val('f_customer'), net = round2(num('f_amount')), vat = round2(num('f_vat'));
+      if (!inv || !cust || !(net > 0)) errors.push('Invoice Serial No., Customer, and Net Amount are required.');
+      record = { ...base, name: inv, invoice_no: inv, rep_date: val('f_repdate') || date, customer: cust, net_amount: net, vat_amount: vat, total_ttc: round2(net + vat), status: val('f_status') || 'Open' };
+    } else if (f === 'creditterm') {
+      const cust = val('f_customer'), days = num('f_days');
+      if (!cust) errors.push('Customer is required.');
+      record = { ...base, name: `${cust} · Net ${days}d`, customer: cust, payment_days: days, credit_limit: round2(num('f_amount')), start_date: date };
+    } else if (f === 'customer') {
+      const nm = val('f_customer');
+      if (!nm) errors.push('Customer Name is required.');
+      record = { ...base, name: nm, method: val('f_method') || 'Credit', vat_registered: val('f_vatreg') === 'Yes', mof_no: val('f_mof'), phone: val('f_phone'), region: val('f_region'), customer_declared_qty: !!($('f_declqty') && $('f_declqty').checked), external_invoice: !!($('f_extinv') && $('f_extinv').checked) };
+    } else if (f === 'supplier') {
+      const nm = val('f_supplier');
+      if (!nm) errors.push('Supplier Name is required.');
+      record = { ...base, name: nm, category: val('f_category'), phone: val('f_phone'), mof_no: val('f_mof'), is_truck_owner: !!($('f_istruckowner') && $('f_istruckowner').checked), iva: !!($('f_iva') && $('f_iva').checked), trucks_count: 0 };
+    } else if (f === 'product') {
+      const nm = val('f_product');
+      if (!nm) errors.push('Product Name is required.');
+      record = { ...base, name: nm, uom: val('f_uom') || 'm³', type: val('f_prodtype') || 'Material', ton_factor: num('f_tonfactor') || 1, list_price: round2(num('f_unitprice')), ticket_product: !!($('f_ticketprod') && $('f_ticketprod').checked), fuel_item: !!($('f_fuelitem') && $('f_fuelitem').checked), input_product: !!($('f_inputprod') && $('f_inputprod').checked) };
+    } else if (f === 'site') {
+      const nm = val('f_site');
+      if (!nm) errors.push('Site Name is required.');
+      record = { ...base, name: nm, region: val('f_region'), supplier: val('f_supplier'), customer: val('f_customer'), latitude: val('f_lat') ? num('f_lat') : null, longitude: val('f_lng') ? num('f_lng') : null, is_jv: !!($('f_isjv') && $('f_isjv').checked) };
+    } else if (f === 'equipment' || f === 'companyequipment') {
+      const nm = val('f_truck');
+      if (!nm) errors.push('Unit Code / Plate Identifier is required.');
+      record = { ...base, name: nm, plate_no: val('f_plateno') || nm, type: val('f_category') || 'Truck', capacity: num('f_capacity') || 0, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model') };
+    } else if (f === 'driver') {
+      const nm = val('f_driver');
+      if (!nm) errors.push('Driver Name is required.');
+      record = { ...base, name: nm, driver: nm, truck_owner: val('f_supplier'), truck: val('f_truck'), phone: val('f_phone'), is_company_driver: !!($('f_iscompanydriver') && $('f_iscompanydriver').checked) };
+    } else if (f === 'salary') {
+      const st = val('f_staff'), amt = round2(num('f_amount'));
+      if (!st || !(amt > 0)) errors.push('Staff Name and Amount > 0 are required.');
+      record = { ...base, name: `SAL ${val('f_paymonth') || date.slice(0, 7)} ${st}`, payroll_month: val('f_paymonth') || date.slice(0, 7), staff: st, equipment: val('f_truck'), method: val('f_method') || 'Cash', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), amount: amt };
+    } else if (f === 'attendance') {
+      const st = val('f_staff');
+      if (!st) errors.push('Staff Member is required.');
+      record = { ...base, name: `ATT ${date} ${st}`, staff: st, status: val('f_status') || 'Present', site: val('f_site'), overtime_hours: num('f_hours') || 0 };
+    } else if (f === 'freelance' || f === 'employment') {
+      const st = val('f_staff'), amt = round2(num('f_amount'));
+      if (!st || !(amt > 0)) errors.push('Staff Name and Salary/Rate > 0 are required.');
+      record = { ...base, name: `${f === 'employment' ? 'EMP' : 'FRL'} ${st}`, staff: st, role: val('f_role'), pay_type: val('f_paytype'), base_salary: amt, amount: amt, start_date: date, status: 'Active' };
+    } else if (f === 'logistics') {
+      const st = val('f_staff'), amt = round2(num('f_amount'));
+      if (!st || !(amt > 0)) errors.push('Staff Member and Allowance > 0 are required.');
+      const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].filter(d => $('f_day_' + d) && $('f_day_' + d).checked).length;
+      record = { ...base, name: `ALLOW ${date} ${st}`, staff: st, site: val('f_site'), days_count: days, usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), amount: amt };
+    } else if (f === 'triprate') {
+      const nm = val('f_name') || val('f_site'), amt = round2(num('f_amount'));
+      if (!nm || !(amt > 0)) errors.push('Route/Site and Rate > 0 are required.');
+      record = { ...base, name: nm, site: val('f_site'), category: val('f_category') || 'Truck', rate_usd: amt };
+    } else if (f === 'treasury') {
+      const trt = val('f_trtype') || 'loan', cp = val('f_counterparty'), amt = round2(num('f_amount'));
+      if (!cp || !(amt > 0)) errors.push('Counterparty and Amount > 0 are required.');
+      crKey = trt === 'loan_settlement' ? 'loan_settlements' : (trt === 'external' ? 'external_movements' : (trt === 'conversion' ? 'conversions' : 'loans'));
+      record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: val('f_direction') || 'Inflow', from_currency: 'LBP → USD', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, amount: amt, balance: amt, reference: val('f_reference') };
+    } else if (f === 'jv') {
+      const jvt = val('f_jvtype') || 'distribution', st = val('f_site'), pt = val('f_counterparty');
+      if (!st || !pt) errors.push('JV Site and JV Partner are required.');
+      crKey = jvt === 'partnership' ? 'jv_partnerships' : 'jv_distributions';
+      record = { ...base, name: `JV ${st} · ${pt}`, site: st, partner: pt, share_pct: num('f_share') || 50, amount: round2(num('f_amount')) };
     }
-    return { errors, record, crKey: FORM_CR_KEY[f] };
+    return { errors, record, crKey };
   }
 
   function showFormErrors(errors) {
@@ -3163,12 +3401,28 @@
     const modal = $('entryModal');
     const body = $('modalBody');
     const title = $('modalTitle');
+    const tabsWrap = $('modalTabs');
     if (title) title.textContent = FORM_TITLES[form];
-    document.querySelectorAll('#modalTabs .modal-tab').forEach(b => {
-      const f = b.getAttribute('data-form');
-      b.hidden = !canEnterForm(f);
-      b.classList.toggle('active', f === form);
-    });
+    if (tabsWrap && window.MFG_FORMS) {
+      tabsWrap.innerHTML = window.MFG_FORMS.renderModalTabsHtml(form, canEnterForm);
+      tabsWrap.querySelectorAll('[data-pa-group]').forEach(gBtn => {
+        gBtn.addEventListener('click', () => {
+          const gid = gBtn.getAttribute('data-pa-group');
+          const grp = (window.MFG_FORMS.FORM_GROUPS || []).find(g => g.id === gid);
+          const firstForm = grp && grp.forms.find(f => canEnterForm(f.id));
+          if (firstForm) openEntryModal(firstForm.id);
+        });
+      });
+      tabsWrap.querySelectorAll('.modal-tab[data-form]').forEach(tBtn => {
+        tBtn.addEventListener('click', () => openEntryModal(tBtn.getAttribute('data-form')));
+      });
+    } else {
+      document.querySelectorAll('#modalTabs .modal-tab').forEach(b => {
+        const f = b.getAttribute('data-form');
+        b.hidden = !canEnterForm(f);
+        b.classList.toggle('active', f === form);
+      });
+    }
     if (body) {
       body.innerHTML = renderEntryModalBody() + `
         <div class="modal-foot">
@@ -3254,7 +3508,7 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '3.3'
+      appVersion: '4.0'
     };
   }
 
@@ -3391,6 +3645,8 @@
   // ==========================================================================
   const VIEW_TITLES = {
     overview: 'Consolidated Command & Ledger Overview',
+    pbi: '20-Page Power BI Semantic Report Studio (m18c Parity)',
+    tables: 'All 34 Power Apps Dataverse Tables & Registers (m14 Parity)',
     sentinels: 'AI Sentinel Watchdogs & Deterministic Audit (m280)',
     sales: 'Sales & Weighbridge Deliveries Register',
     raw: 'Raw Material & Quarry Intake (2-Leg Payable Split)',
@@ -3408,6 +3664,8 @@
   };
   const VIEW_MOBILE_TITLES = {
     overview: 'Command & Ledger Overview',
+    pbi: 'Power BI Studio (20 Pages)',
+    tables: 'All 34 Tables & Setup',
     sentinels: 'AI Sentinel Audit (m280)',
     sales: 'Sales & Deliveries',
     raw: 'Quarry Intake (2-Leg AP)',
@@ -3656,7 +3914,7 @@
 
   function contextFormForView(view, user) {
     user = user || activeUser();
-    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense' };
+    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', tables: 'pricerule' };
     const preferred = map[view] || 'sales';
     if (canEnterForm(preferred, user)) return preferred;
     if (canEnterForm('sales', user)) return 'sales';
@@ -3675,6 +3933,8 @@
     const specs = {
       exec: [
         { view: 'overview', label: 'Overview', pill: 'Live' },
+        { view: 'pbi', label: 'Power BI', pill: '20' },
+        { view: 'tables', label: '34 Tables', pill: '34' },
         { view: 'sentinels', label: 'Sentinels', pill: String(sentinelsOpen) },
         { view: 'statements', label: 'Statements', pill: '22' },
         { view: 'users', label: 'Team', pill: String(STATE.users.length) }
@@ -3781,6 +4041,8 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn }) : renderOverview(); break;
+      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;
       case 'raw': container.innerHTML = renderRaw(); break;
@@ -3801,6 +4063,43 @@
   }
 
   function wireWorkspace(container, activeUserRow) {
+    // Power BI Studio 20-page tabs & slicers + 34-table hub chips
+    container.querySelectorAll('[data-pbi-page]').forEach(btn => btn.addEventListener('click', () => {
+      STATE.pbiPage = btn.getAttribute('data-pbi-page');
+      renderApp();
+    }));
+    const pbiReset = $('pbiResetSlicersBtn');
+    if (pbiReset) pbiReset.addEventListener('click', () => {
+      STATE.pbiSlicer = { product: '', customer: '', supplier: '', site: '', method: '', saleType: '', search: '' };
+      renderApp();
+    });
+    const slicerMap = [
+      ['pbiSlicerProduct', 'product'], ['pbiSlicerCustomer', 'customer'], ['pbiSlicerSupplier', 'supplier'],
+      ['pbiSlicerSite', 'site'], ['pbiSlicerSaleType', 'saleType'], ['pbiSlicerMethod', 'method']
+    ];
+    slicerMap.forEach(([id, key]) => {
+      const el = $(id);
+      if (el) el.addEventListener('change', e => { STATE.pbiSlicer[key] = e.target.value; renderApp(); });
+    });
+    const pbiSearch = $('pbiSlicerSearch');
+    if (pbiSearch) {
+      pbiSearch.addEventListener('input', e => {
+        STATE.pbiSlicer.search = e.target.value;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          const pos = e.target.selectionStart;
+          renderApp();
+          const next = $('pbiSlicerSearch');
+          if (next) { next.focus(); try { next.setSelectionRange(pos, pos); } catch (_) {} }
+        }, 160);
+      });
+    }
+    container.querySelectorAll('[data-table-key]').forEach(btn => btn.addEventListener('click', () => {
+      STATE.activeTableKey = btn.getAttribute('data-table-key');
+      STATE.search = '';
+      STATE.shown = {};
+      renderApp();
+    }));
     // Chart hover & mobile tap tooltip
     const chartWrap = $('execChartWrap');
     const chartTip = $('execChartTip');

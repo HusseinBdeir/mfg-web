@@ -29,7 +29,7 @@ sys.path.insert(0, str(MFG_SCRIPTS))
 sys.path.insert(0, str(RESORT_SCRIPTS))
 
 import mlib  # noqa: E402
-from m3lib import BU as BU_IDS  # noqa: E402
+from m3lib import BU as BU_IDS, entityset  # noqa: E402
 import pbi_period_verify as pv  # noqa: E402
 import pbi_slicer_audit as sa   # noqa: E402
 
@@ -51,9 +51,6 @@ def run_dax(model_key, query):
         return []
 
 
-# requests replaces the whole `Prefer` header per call, so mlib.get_all (odata.maxpagesize only) silently drops the
-# FormattedValue annotations every lookup / option-set column relies on -> price rules exported without customer,
-# product, site or rule type (v3.0 bug). This helper keeps both preferences on every page.
 FMT_PREFER = 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
 
 
@@ -67,6 +64,30 @@ def get_all_fmt(path):
         rows.extend(j.get("value", []))
         url = j.get("@odata.nextLink")
     return rows
+
+
+def safe_get_fmt(table_or_path, query="", by_logical=False, top_only=False):
+    try:
+        es = entityset(table_or_path) if by_logical else table_or_path
+        path = f"{es}?{query}" if query else es
+        if top_only:
+            S = mlib.session()
+            r = S.get(f"{mlib.API}/{path}", timeout=120, headers={"Prefer": FMT_PREFER})
+            r.raise_for_status()
+            return r.json().get("value", [])
+        return get_all_fmt(path)
+    except Exception as e:
+        print(f"  [WARN] OData fetch {table_or_path}: {e}", flush=True)
+        return []
+
+
+def fmt_val(row, attr, default=""):
+    return (
+        row.get(f"{attr}@OData.Community.Display.V1.FormattedValue")
+        or row.get(f"_{attr}_value@OData.Community.Display.V1.FormattedValue")
+        or row.get(attr)
+        or default
+    )
 
 
 def clean_row(row):
@@ -181,7 +202,6 @@ def fetch_model_analytics(model_key):
         r["label"] = label
         period_kpis[pk] = r
 
-    # Monthly series (Nov 2025 -> Oct 2026 = 12 rolling months + 2025/2026 history)
     q_months = """
     EVALUATE
     FILTER(
@@ -191,17 +211,44 @@ def fetch_model_analytics(model_key):
             "sales_ttc", [Sales incl VAT],
             "net_sales", [Net Sales],
             "trans_rev", [Transport Revenue],
+            "sales_vat", [Sales VAT],
+            "cash_sales", [Cash Sales],
+            "credit_sales", [Credit Sales],
             "raw_cost", [Raw Cost],
+            "raw_mat_cost", [Raw Material Cost],
+            "raw_haulage", [Raw Haulage],
             "expenses", [Expenses],
+            "cash_expenses", [Cash Expenses],
+            "credit_expenses", [Credit Expenses],
             "salaries", [Salaries Paid],
+            "freelance_paid", [Freelance Paid],
+            "overtime_due", [Overtime Allowances Due],
+            "commission_due", [Commission Due],
             "gross_margin", [Gross Margin],
             "operating_profit", [Operating Profit (cash view)],
             "loads", [Loads],
+            "delivery_loads", [Delivery Loads],
+            "pickup_loads", [Pickup Loads],
             "raw_loads", [Raw Loads],
             "tons", [Tons Sold],
+            "qty_sold", [Qty Sold],
+            "raw_qty", [Raw Qty],
+            "avg_price_net", [Avg Price per Unit],
+            "avg_raw_cost", [Avg Raw Unit Cost],
+            "receipts", [Receipts],
+            "settlements_paid", [Settlements Paid],
             "cash_in", [Cash Inflow],
             "cash_out", [Cash Outflow],
-            "sales_rep", [Sales incl VAT (reporting date)]
+            "net_cash", [Net Cash Flow],
+            "cash_till", [Cash (till)],
+            "diesel_bought", [Diesel Purchased (L)],
+            "diesel_issued", [Diesel Litres],
+            "diesel_sold", [Diesel Sold (L)],
+            "diesel_tank", [Diesel In Tank (L)],
+            "equip_cost", [Total Equipment Cost],
+            "sales_rep", [Sales incl VAT (reporting date)],
+            "raw_rep", [Raw Cost (reporting date)],
+            "exp_rep", [Expenses (reporting date)]
         ),
         Dates[YearMonthNo] >= 202501 && Dates[YearMonthNo] <= 202610
     )
@@ -209,11 +256,10 @@ def fetch_model_analytics(model_key):
     """
     monthly = [clean_row(r) for r in run_dax(model_key, q_months)]
 
-    # Top Products
     q_prod = """
     EVALUATE
     TOPN(
-        20,
+        30,
         FILTER(
             SUMMARIZECOLUMNS(
                 Products[Product],
@@ -228,7 +274,9 @@ def fetch_model_analytics(model_key):
                 "avg_price_net", [Avg Price per Unit],
                 "list_price", [List Price],
                 "raw_cost", [Raw Cost],
-                "raw_qty", [Raw Qty]
+                "raw_qty", [Raw Qty],
+                "avg_raw_cost", [Avg Raw Unit Cost],
+                "commission_due", [Commission Due]
             ),
             NOT ISBLANK([Sales incl VAT]) || NOT ISBLANK([Raw Cost])
         ),
@@ -238,24 +286,31 @@ def fetch_model_analytics(model_key):
     """
     products = [clean_row(r) for r in run_dax(model_key, q_prod)]
 
-    # Top Customers & AR
     q_cust = """
     EVALUATE
     TOPN(
-        40,
+        60,
         FILTER(
             SUMMARIZECOLUMNS(
                 Customers[Customer],
                 Customers[VAT Registered],
                 "sales_ttc", [Sales incl VAT],
                 "net_sales", [Net Sales],
+                "credit_sales", [Credit Sales],
+                "cash_sales", [Cash Sales],
                 "loads", [Loads],
                 "tons_sold", [Tons Sold],
                 "ar_balance", [AR Balance],
+                "ar_gross", [Trade Receivables Gross],
+                "ar_advances", [Customer Advances],
                 "ar_overdue", [AR Overdue],
                 "ar_current", [AR Current],
+                "ar_1_10", [AR 1-10],
+                "ar_11_30", [AR 11-30],
+                "ar_31_60", [AR 31-60],
                 "ar_60_plus", [AR 60+],
                 "vat_receivable", [VAT Receivable],
+                "sales_vat", [Sales VAT],
                 "receipts", [Receipts],
                 "last_sale", [Last Sale Date]
             ),
@@ -267,16 +322,17 @@ def fetch_model_analytics(model_key):
     """
     customers = [clean_row(r) for r in run_dax(model_key, q_cust)]
 
-    # Top Suppliers & AP
     q_sup = """
     EVALUATE
     TOPN(
-        40,
+        60,
         FILTER(
             SUMMARIZECOLUMNS(
                 Suppliers[Supplier],
                 Suppliers[IVA],
                 "raw_cost", [Raw Cost],
+                "raw_mat_cost", [Raw Material Cost],
+                "raw_haulage", [Raw Haulage],
                 "raw_loads", [Raw Loads],
                 "expenses", [Expenses],
                 "ap_balance", [AP Balance],
@@ -294,22 +350,25 @@ def fetch_model_analytics(model_key):
     """
     suppliers = [clean_row(r) for r in run_dax(model_key, q_sup)]
 
-    # Top Sites
     q_sites = """
     EVALUATE
     TOPN(
-        30,
+        40,
         FILTER(
             SUMMARIZECOLUMNS(
                 Sites[Site],
                 Sites[JV],
                 "sales_ttc", [Sales incl VAT],
+                "net_sales", [Net Sales],
                 "loads", [Loads],
                 "tons_sold", [Tons Sold],
                 "trans_rev", [Transport Revenue],
                 "raw_cost", [Raw Cost],
+                "raw_mat_cost", [Raw Material Cost],
+                "raw_haulage", [Raw Haulage],
                 "raw_loads", [Raw Loads],
-                "raw_tons", [Raw Tons]
+                "raw_tons", [Raw Tons],
+                "raw_qty", [Raw Qty]
             ),
             NOT ISBLANK([Sales incl VAT]) || NOT ISBLANK([Raw Cost])
         ),
@@ -319,11 +378,10 @@ def fetch_model_analytics(model_key):
     """
     sites = [clean_row(r) for r in run_dax(model_key, q_sites)]
 
-    # Top Equipment / Fleet
     q_equip = """
     EVALUATE
     TOPN(
-        35,
+        45,
         FILTER(
             SUMMARIZECOLUMNS(
                 Equipment[Equipment],
@@ -342,15 +400,14 @@ def fetch_model_analytics(model_key):
                 "cost_per_ton", [Cost per Ton Hauled],
                 "cost_per_unit", [Cost per Unit Hauled]
             ),
-            NOT ISBLANK([Total Equipment Cost]) || [Trips] > 0
+            NOT ISBLANK([Total Equipment Cost]) || [Trips] > 0 || [Diesel Litres] > 0
         ),
-        [Total Equipment Cost] + [Trips] * 10, DESC
+        [Total Equipment Cost] + [Trips] * 10 + [Diesel Litres], DESC
     )
     ORDER BY [total_cost] DESC
     """
     equipment = [clean_row(r) for r in run_dax(model_key, q_equip)]
 
-    # Trial Balance / GL Accounts
     q_gl = """
     EVALUATE
     FILTER(
@@ -368,11 +425,10 @@ def fetch_model_analytics(model_key):
     """
     gl_tb = [clean_row(r) for r in run_dax(model_key, q_gl)]
 
-    # Recent Audited GL Stream (SOA journal entries)
     q_soa = """
     EVALUATE
     TOPN(
-        80,
+        100,
         SELECTCOLUMNS(
             SOA,
             "date", SOA[Date],
@@ -383,7 +439,7 @@ def fetch_model_analytics(model_key):
             "detail", SOA[Detail],
             "desc", SOA[Description],
             "debit", SOA[Debit],
-            "credit", SOA[Credit],
+            "credit", [Credit],
             "company", SOA[Company]
         ),
         [date], DESC, [doc], DESC
@@ -405,14 +461,41 @@ def fetch_model_analytics(model_key):
 
 
 def fetch_dataverse_records():
-    print("\n== Fetching live Dataverse records for SQLite / Snapshot...", flush=True)
-    mlib.session().headers["Prefer"] = 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+    print("\n== Fetching live Dataverse records for SQLite / Snapshot (Full 28-Table Coverage)...", flush=True)
+    mlib.session().headers["Prefer"] = FMT_PREFER
     bu_filter = " or ".join(f"_owningbusinessunit_value eq {bid}" for bid in BU_IDS.values())
 
-    # 1. Products
-    prods_raw = get_all_fmt(
-        "bhf_products?$filter=statecode eq 0"
-        "&$select=bhf_productid,bhf_name,bhf_officialname,bhf_tonfactor,_bhf_type_value,_bhf_uom_value,_bhf_inputproduct_value"
+    # 0a. Units of Measure (bhf_uom) & Product Types (bhf_producttype)
+    uoms_raw = safe_get_fmt("bhf_uom", "$filter=statecode eq 0&$select=bhf_uomid,bhf_name", by_logical=True)
+    uoms = [{"id": u["bhf_uomid"], "name": u.get("bhf_name") or ""} for u in uoms_raw]
+
+    pt_raw = safe_get_fmt(
+        "bhf_producttype",
+        "$filter=statecode eq 0",
+        by_logical=True,
+    )
+    product_types = []
+    pt_map = {}
+    for pt in pt_raw:
+        ptid = pt["bhf_producttypeid"].lower()
+        item = {
+            "id": pt["bhf_producttypeid"],
+            "name": pt.get("bhf_name") or "",
+            "ticket_product": bool(pt.get("bhf_ticketproduct")),
+            "fuel_item": bool(pt.get("bhf_fuelitem")),
+            "revenue_account": fmt_val(pt, "bhf_revenueaccount", "701"),
+            "purchase_account": fmt_val(pt, "bhf_purchaseaccount", "601"),
+            "notes": pt.get("bhf_notes") or "",
+        }
+        pt_map[ptid] = item
+        product_types.append(item)
+    print(f"  Product Types: {len(product_types)} · UoMs: {len(uoms)}", flush=True)
+
+    # 1. Products (bhf_product)
+    prods_raw = safe_get_fmt(
+        "bhf_product",
+        "$filter=statecode eq 0",
+        by_logical=True,
     )
     products = []
     prod_map = {}
@@ -420,135 +503,336 @@ def fetch_dataverse_records():
         pid = p["bhf_productid"]
         name = p.get("bhf_name") or ""
         prod_map[pid] = name
+        tid = (p.get("_bhf_type_value") or "").lower()
+        pt_info = pt_map.get(tid, {})
+        t_name = fmt_val(p, "_bhf_type_value", "Material")
         products.append({
             "id": pid,
             "name": name,
             "official_name": p.get("bhf_officialname") or name,
             "ton_factor": float(p.get("bhf_tonfactor") or 1.0),
-            "type": p.get("_bhf_type_value@OData.Community.Display.V1.FormattedValue") or "Material",
-            "uom": p.get("_bhf_uom_value@OData.Community.Display.V1.FormattedValue") or "m³",
-            "input_product": p.get("_bhf_inputproduct_value@OData.Community.Display.V1.FormattedValue") or "",
+            "type_id": p.get("_bhf_type_value") or "",
+            "type": t_name,
+            "ticket_product": pt_info.get("ticket_product", t_name in ("Material", "Aggregates", "Sand", "Gravel", "Subbase")),
+            "fuel_item": pt_info.get("fuel_item", t_name in ("Oil", "Grease", "Lubricant", "Fuel")),
+            "uom_id": p.get("_bhf_uom_value") or "",
+            "uom": fmt_val(p, "_bhf_uom_value", "m³"),
+            "input_product_id": p.get("_bhf_inputproduct_value") or "",
+            "input_product": fmt_val(p, "_bhf_inputproduct_value", ""),
+            "revenue_account": fmt_val(p, "bhf_revenueaccount", "701"),
+            "purchase_account": fmt_val(p, "bhf_purchaseaccount", "601"),
+            "notes": p.get("bhf_notes") or "",
         })
     print(f"  Products: {len(products)}", flush=True)
 
-    # 2. Sites
-    sites_raw = get_all_fmt(
-        "bhf_sites?$filter=statecode eq 0"
-        "&$select=bhf_siteid,bhf_name,bhf_jv,bhf_address,_bhf_region_value,_bhf_supplier_value"
+    # 2. Regions (bhf_region) & Sites (bhf_site)
+    reg_raw = safe_get_fmt(
+        "bhf_region",
+        "$filter=statecode eq 0&$select=bhf_regionid,bhf_name,bhf_zonegeojson,bhf_notes",
+        by_logical=True,
+    )
+    regions = []
+    for rg in reg_raw:
+        z = rg.get("bhf_zonegeojson") or ""
+        places_cnt = 0
+        if z:
+            try:
+                places_cnt = len(json.loads(z).get("features", []))
+            except Exception:
+                places_cnt = 1
+        regions.append({
+            "id": rg["bhf_regionid"],
+            "name": rg.get("bhf_name") or "",
+            "places_count": places_cnt,
+            "notes": rg.get("bhf_notes") or "",
+        })
+
+    sites_raw = safe_get_fmt(
+        "bhf_site",
+        "$filter=statecode eq 0&$select=bhf_siteid,bhf_name,bhf_jv,bhf_address,bhf_latitude,bhf_longitude,bhf_notes,_bhf_region_value,_bhf_supplier_value",
+        by_logical=True,
     )
     sites = []
     site_owner_map = {}
     for s in sites_raw:
         sname = s.get("bhf_name") or ""
-        sowner = s.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or ""
+        sowner = fmt_val(s, "_bhf_supplier_value", "")
         site_owner_map[sname] = sowner
         sites.append({
             "id": s["bhf_siteid"],
             "name": sname,
             "is_jv": bool(s.get("bhf_jv")),
-            "region": s.get("_bhf_region_value@OData.Community.Display.V1.FormattedValue") or "",
+            "region_id": s.get("_bhf_region_value") or "",
+            "region": fmt_val(s, "_bhf_region_value", ""),
+            "supplier_id": s.get("_bhf_supplier_value") or "",
             "supplier": sowner,
             "address": s.get("bhf_address") or "",
+            "latitude": s.get("bhf_latitude"),
+            "longitude": s.get("bhf_longitude"),
+            "notes": s.get("bhf_notes") or "",
         })
-    print(f"  Sites: {len(sites)}", flush=True)
+    print(f"  Regions: {len(regions)} · Sites: {len(sites)}", flush=True)
 
-    # 3. Equipment (universal registry + company equipment enrichment)
-    ce_raw = get_all_fmt(
-        f"bhf_companyequipments?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=_bhf_equipment_value,bhf_ownership,bhf_status,_bhf_customer_value,_bhf_driver_value"
+    # 3. Equipment (universal registry + company equipment rows)
+    ce_raw = safe_get_fmt(
+        "bhf_companyequipment",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_companyequipmentid,bhf_name,_bhf_equipment_value,bhf_ownership,bhf_status,_bhf_site_value,"
+        "_bhf_customer_value,_bhf_supplier_value,_bhf_driver_value,_bhf_dayoperator_value,_bhf_nightoperator_value,"
+        "bhf_startdate,bhf_enddate,bhf_acquisitiondate,bhf_notes,_owningbusinessunit_value",
+        by_logical=True,
     )
     ce_map = {}
+    company_equipment = []
     for ce in ce_raw:
+        bu = ID_TO_BU.get((ce.get("_owningbusinessunit_value") or "").lower(), "WTC")
         eid = (ce.get("_bhf_equipment_value") or "").lower()
+        own_code = ce.get("bhf_ownership")
+        own_lbl = fmt_val(ce, "bhf_ownership", "Owned")
+        drv_lbl = fmt_val(ce, "_bhf_driver_value", "")
+        ce_item = {
+            "id": ce["bhf_companyequipmentid"],
+            "company": bu,
+            "equipment_id": ce.get("_bhf_equipment_value") or "",
+            "equipment": fmt_val(ce, "_bhf_equipment_value", ce.get("bhf_name") or ""),
+            "ownership_code": own_code,
+            "ownership": own_lbl,
+            "is_company_fleet": own_code != 4 and own_lbl.lower() not in ("third party", "transporter"),
+            "status": fmt_val(ce, "bhf_status", "Active"),
+            "site": fmt_val(ce, "_bhf_site_value", ""),
+            "customer": fmt_val(ce, "_bhf_customer_value", ""),
+            "supplier": fmt_val(ce, "_bhf_supplier_value", ""),
+            "default_driver": drv_lbl,
+            "day_operator": fmt_val(ce, "_bhf_dayoperator_value", ""),
+            "night_operator": fmt_val(ce, "_bhf_nightoperator_value", ""),
+            "start_date": str(ce.get("bhf_startdate") or "")[:10],
+            "end_date": str(ce.get("bhf_enddate") or "")[:10],
+            "notes": ce.get("bhf_notes") or "",
+        }
+        company_equipment.append(ce_item)
         if eid and eid not in ce_map:
-            ce_map[eid] = {
-                "ownership": ce.get("bhf_ownership@OData.Community.Display.V1.FormattedValue") or "Transporter",
-                "status": ce.get("bhf_status@OData.Community.Display.V1.FormattedValue") or "Active",
-                "customer": ce.get("_bhf_customer_value@OData.Community.Display.V1.FormattedValue") or "",
-                "driver": ce.get("_bhf_driver_value@OData.Community.Display.V1.FormattedValue") or "",
-            }
+            ce_map[eid] = ce_item
 
-    equip_raw = get_all_fmt(
-        "bhf_equipments?$filter=statecode eq 0"
-        "&$select=bhf_equipmentid,bhf_name,bhf_plateno,bhf_category,bhf_model,bhf_capacity,_bhf_supplier_value"
+    equip_raw = safe_get_fmt(
+        "bhf_equipment",
+        "$filter=statecode eq 0&$select=bhf_equipmentid,bhf_name,bhf_plateno,bhf_category,bhf_model,bhf_color,bhf_capacity,bhf_notes,_bhf_supplier_value",
+        by_logical=True,
     )
     equipment = []
+    owner_trucks_map = defaultdict(list)
     for e in equip_raw:
         eid = e["bhf_equipmentid"].lower()
         ce = ce_map.get(eid, {})
+        cat_code = e.get("bhf_category")
+        cat_lbl = fmt_val(e, "bhf_category", "Truck")
+        sup_name = fmt_val(e, "_bhf_supplier_value", "")
+        cap = float(e.get("bhf_capacity") or 0)
+        eq_name = e.get("bhf_name") or ""
+        if (cat_code == 1 or cat_lbl == "Truck") and sup_name:
+            owner_trucks_map[sup_name].append({"name": eq_name, "capacity": cap})
         equipment.append({
             "id": e["bhf_equipmentid"],
-            "name": e.get("bhf_name") or "",
-            "plate_no": e.get("bhf_plateno") or e.get("bhf_name") or "",
-            "type": e.get("bhf_category@OData.Community.Display.V1.FormattedValue") or "Truck",
-            "ownership": ce.get("ownership") or "Transporter",
-            "capacity": float(e.get("bhf_capacity") or 0),
-            "supplier": e.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
+            "name": eq_name,
+            "plate_no": e.get("bhf_plateno") or eq_name,
+            "category_code": cat_code,
+            "type": cat_lbl,
+            "model": e.get("bhf_model") or "",
+            "color": e.get("bhf_color") or "",
+            "ownership": ce.get("ownership") or ("Transporter" if sup_name else "Company Fleet"),
+            "capacity": cap,
+            "supplier_id": e.get("_bhf_supplier_value") or "",
+            "supplier": sup_name,
             "customer": ce.get("customer") or "",
-            "default_driver": ce.get("driver") or "",
+            "default_driver": ce.get("default_driver") or "",
+            "notes": e.get("bhf_notes") or "",
         })
-    print(f"  Equipment: {len(equipment)}", flush=True)
+    print(f"  Equipment: {len(equipment)} · Company Equipment rows: {len(company_equipment)}", flush=True)
 
-    # 4. Drivers
-    drv_raw = get_all_fmt(
-        "bhf_drivers?$filter=statecode eq 0"
-        "&$select=bhf_driverid,bhf_name,bhf_phone,_bhf_supplier_value"
+    # 4. Drivers & Company Drivers
+    drv_raw = safe_get_fmt(
+        "bhf_driver",
+        "$filter=statecode eq 0&$select=bhf_driverid,bhf_name,bhf_phone,bhf_notes,_bhf_supplier_value",
+        by_logical=True,
     )
     drivers = []
+    owner_drivers_map = defaultdict(list)
     for d in drv_raw:
+        dname = d.get("bhf_name") or ""
+        towner = fmt_val(d, "_bhf_supplier_value", "")
+        if towner:
+            owner_drivers_map[towner].append(dname)
         drivers.append({
             "id": d["bhf_driverid"],
-            "name": d.get("bhf_name") or "",
+            "name": dname,
             "phone": d.get("bhf_phone") or "",
-            "truck_owner": d.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
+            "supplier_id": d.get("_bhf_supplier_value") or "",
+            "truck_owner": towner,
+            "notes": d.get("bhf_notes") or "",
         })
-    print(f"  Drivers: {len(drivers)}", flush=True)
 
-    # 5. Price Agreements (Active / Recent)
-    pr_raw = get_all_fmt(
-        f"bhf_pricerules?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_priceruleid,bhf_name,bhf_ruletype,bhf_price,bhf_transprice,bhf_indifferentprice,bhf_unit,bhf_startdate,bhf_enddate,"
-        "_bhf_customer_value,_bhf_supplier_value,_bhf_product_value,_bhf_site_value,_bhf_uom_value,_owningbusinessunit_value"
+    cd_raw = safe_get_fmt(
+        "bhf_companydriver",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_companydriverid,bhf_name,_bhf_driver_value,_bhf_staff_value,bhf_startdate,bhf_enddate,bhf_notes,_owningbusinessunit_value",
+        by_logical=True,
+    )
+    company_drivers = []
+    for cd in cd_raw:
+        bu = ID_TO_BU.get((cd.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        company_drivers.append({
+            "id": cd["bhf_companydriverid"],
+            "company": bu,
+            "driver_id": cd.get("_bhf_driver_value") or "",
+            "driver": fmt_val(cd, "_bhf_driver_value", cd.get("bhf_name") or ""),
+            "staff": fmt_val(cd, "_bhf_staff_value", ""),
+            "start_date": str(cd.get("bhf_startdate") or "")[:10],
+            "end_date": str(cd.get("bhf_enddate") or "")[:10],
+            "notes": cd.get("bhf_notes") or "",
+        })
+    print(f"  Drivers: {len(drivers)} · Company Drivers: {len(company_drivers)}", flush=True)
+
+    # 5. Price Agreements (bhf_pricerule — with full Tier 1/2 & Transport columns)
+    pr_raw = safe_get_fmt(
+        "bhf_pricerule",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_priceruleid,bhf_name,bhf_ruletype,bhf_byproduct,bhf_unit,bhf_price,bhf_transprice,bhf_unitpricetotal,"
+        "bhf_quantity1,bhf_adjustment1,bhf_transadjustment1,bhf_total1,bhf_transtotal1,"
+        "bhf_quantity2,bhf_adjustment2,bhf_transadjustment2,bhf_total2,bhf_transtotal2,"
+        "bhf_indifferentprice,bhf_transindifferentprice,bhf_deliveredindifferentprice,"
+        "bhf_startdate,bhf_enddate,bhf_notes,"
+        "_bhf_customer_value,_bhf_supplier_value,_bhf_product_value,_bhf_site_value,_bhf_uom_value,_owningbusinessunit_value",
+        by_logical=True,
     )
     price_rules = []
+    mfg_cust_names = set()
+    mfg_sup_names = set()
     for pr in pr_raw:
         bu = ID_TO_BU.get((pr.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        u_fmt = pr.get("_bhf_uom_value@OData.Community.Display.V1.FormattedValue") or pr.get("bhf_unit@OData.Community.Display.V1.FormattedValue") or "m³"
+        u_fmt = fmt_val(pr, "_bhf_uom_value", "") or fmt_val(pr, "bhf_unit", "") or "m³"
+        cname = fmt_val(pr, "_bhf_customer_value", "")
+        sname = fmt_val(pr, "_bhf_supplier_value", "")
+        if cname:
+            mfg_cust_names.add(cname)
+        if sname:
+            mfg_sup_names.add(sname)
         price_rules.append({
             "id": pr["bhf_priceruleid"],
             "name": pr.get("bhf_name") or "",
             "company": bu,
-            "rule_type": pr.get("bhf_ruletype@OData.Community.Display.V1.FormattedValue") or "",
-            "customer": pr.get("_bhf_customer_value@OData.Community.Display.V1.FormattedValue") or "",
-            "supplier": pr.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
-            "product": pr.get("_bhf_product_value@OData.Community.Display.V1.FormattedValue") or "",
-            "site": pr.get("_bhf_site_value@OData.Community.Display.V1.FormattedValue") or "",
+            "rule_type_code": pr.get("bhf_ruletype"),
+            "rule_type": fmt_val(pr, "bhf_ruletype", ""),
+            "by_product": bool(pr.get("bhf_byproduct")),
+            "rate_per_code": pr.get("bhf_unit"),
+            "customer_id": pr.get("_bhf_customer_value") or "",
+            "customer": cname,
+            "supplier_id": pr.get("_bhf_supplier_value") or "",
+            "supplier": sname,
+            "product_id": pr.get("_bhf_product_value") or "",
+            "product": fmt_val(pr, "_bhf_product_value", ""),
+            "site_id": pr.get("_bhf_site_value") or "",
+            "site": fmt_val(pr, "_bhf_site_value", ""),
+            "uom_id": pr.get("_bhf_uom_value") or "",
             "unit": u_fmt,
             "unit_price": float(pr.get("bhf_price") or pr.get("bhf_indifferentprice") or 0),
+            "price": pr.get("bhf_price"),
             "trans_unit_price": float(pr.get("bhf_transprice") or 0),
+            "trans_price": pr.get("bhf_transprice"),
+            "unit_price_total": pr.get("bhf_unitpricetotal"),
+            "qty1": pr.get("bhf_quantity1"),
+            "adj1": pr.get("bhf_adjustment1"),
+            "trans_adj1": pr.get("bhf_transadjustment1"),
+            "total1": pr.get("bhf_total1"),
+            "trans_total1": pr.get("bhf_transtotal1"),
+            "qty2": pr.get("bhf_quantity2"),
+            "adj2": pr.get("bhf_adjustment2"),
+            "trans_adj2": pr.get("bhf_transadjustment2"),
+            "total2": pr.get("bhf_total2"),
+            "trans_total2": pr.get("bhf_transtotal2"),
+            "indiff_price": pr.get("bhf_indifferentprice"),
+            "trans_indiff_price": pr.get("bhf_transindifferentprice"),
+            "delivered_indiff_price": pr.get("bhf_deliveredindifferentprice"),
             "start_date": str(pr.get("bhf_startdate") or "")[:10],
             "end_date": str(pr.get("bhf_enddate") or "")[:10],
+            "notes": pr.get("bhf_notes") or "",
         })
     print(f"  Price Rules: {len(price_rules)}", flush=True)
 
-    # 6. Recent Sales Tickets (latest 400 across BUs)
-    S = mlib.session()
-    hdr_fmt = {"Prefer": 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"'}
-    r_sales = S.get(
-        f"{mlib.API}/bhf_salestickets?$filter=statecode eq 0 and ({bu_filter})"
+    # 5b. Credit Terms (bhf_creditterm) & VAT Invoices (bhf_vatinvoice)
+    ct_raw = safe_get_fmt(
+        "bhf_creditterm",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_credittermid,bhf_name,_bhf_customer_value,bhf_creditdays,bhf_creditlimit,bhf_startdate,bhf_enddate,bhf_notes,_owningbusinessunit_value",
+        by_logical=True,
+    )
+    credit_terms = []
+    for ct in ct_raw:
+        bu = ID_TO_BU.get((ct.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        cname = fmt_val(ct, "_bhf_customer_value", "")
+        if cname:
+            mfg_cust_names.add(cname)
+        credit_terms.append({
+            "id": ct["bhf_credittermid"],
+            "name": ct.get("bhf_name") or "",
+            "company": bu,
+            "customer_id": ct.get("_bhf_customer_value") or "",
+            "customer": cname,
+            "credit_days": ct.get("bhf_creditdays"),
+            "credit_limit": float(ct.get("bhf_creditlimit") or 0),
+            "start_date": str(ct.get("bhf_startdate") or "")[:10],
+            "end_date": str(ct.get("bhf_enddate") or "")[:10],
+            "notes": ct.get("bhf_notes") or "",
+        })
+
+    vi_raw = safe_get_fmt(
+        "bhf_vatinvoice",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_vatinvoiceid,bhf_name,bhf_invoiceno,_bhf_customer_value,bhf_startdate,bhf_enddate,bhf_notes,_owningbusinessunit_value",
+        by_logical=True,
+    )
+    vat_invoices = []
+    for vi in vi_raw:
+        bu = ID_TO_BU.get((vi.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        cname = fmt_val(vi, "_bhf_customer_value", "")
+        if cname:
+            mfg_cust_names.add(cname)
+        vat_invoices.append({
+            "id": vi["bhf_vatinvoiceid"],
+            "name": vi.get("bhf_name") or "",
+            "company": bu,
+            "invoice_no": vi.get("bhf_invoiceno") or vi.get("bhf_name") or "",
+            "customer_id": vi.get("_bhf_customer_value") or "",
+            "customer": cname,
+            "start_date": str(vi.get("bhf_startdate") or "")[:10],
+            "end_date": str(vi.get("bhf_enddate") or "")[:10],
+            "notes": vi.get("bhf_notes") or "",
+        })
+    print(f"  Credit Terms: {len(credit_terms)} · VAT Invoices: {len(vat_invoices)}", flush=True)
+
+    # 6. Recent Sales Tickets (latest 500 across BUs)
+    r_sales = safe_get_fmt(
+        "bhf_salesticket",
+        f"$filter=statecode eq 0 and ({bu_filter})"
         "&$select=bhf_salesticketid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_saletype,bhf_transportby,"
-        "bhf_quantity,bhf_unitprice,bhf_price,bhf_transunitprice,bhf_transprice,bhf_discount,bhf_total,bhf_time,bhf_overtime,"
+        "bhf_quantity,bhf_externalquantity,bhf_unitprice,bhf_price,bhf_transunitprice,bhf_transprice,bhf_tip,bhf_discount,bhf_total,"
+        "bhf_time,bhf_overtime,bhf_externalinvoice,bhf_reference,bhf_notes,"
         "_bhf_customer_value,_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
         "_bhf_unit_value,_bhf_method_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=400",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+        "&$orderby=bhf_transactiondate desc&$top=500",
+        by_logical=True,
+        top_only=True,
+    )
     sales_tickets = []
     for r in r_sales:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
         net_tot = round(float(r.get("bhf_total") or 0), 2)
-        vatinv = r.get("_bhf_vatinvoice_value@OData.Community.Display.V1.FormattedValue") or ""
+        vatinv = fmt_val(r, "_bhf_vatinvoice_value", "")
         vat_amt = round(net_tot * 0.11, 2) if vatinv else 0.0
+        cname = fmt_val(r, "_bhf_customer_value", "")
+        towner = fmt_val(r, "_bhf_supplier_value", "")
+        if cname:
+            mfg_cust_names.add(cname)
+        if towner:
+            mfg_sup_names.add(towner)
         sales_tickets.append({
             "id": r["bhf_salesticketid"],
             "name": r.get("bhf_name") or "",
@@ -556,46 +840,61 @@ def fetch_dataverse_records():
             "date": str(r.get("bhf_transactiondate") or "")[:10],
             "rep_date": str(r.get("bhf_expecteddate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "sale_type": r.get("bhf_saletype@OData.Community.Display.V1.FormattedValue") or "Delivery",
-            "transport_by": r.get("bhf_transportby@OData.Community.Display.V1.FormattedValue") or "Third-party truck",
-            "customer": r.get("_bhf_customer_value@OData.Community.Display.V1.FormattedValue") or "",
-            "product": r.get("_bhf_product_value@OData.Community.Display.V1.FormattedValue") or "",
-            "site": r.get("_bhf_site_value@OData.Community.Display.V1.FormattedValue") or "",
-            "truck_owner": r.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
-            "truck": r.get("_bhf_equipment_value@OData.Community.Display.V1.FormattedValue") or "",
-            "driver": r.get("_bhf_driver_value@OData.Community.Display.V1.FormattedValue") or "",
-            "uom": r.get("_bhf_unit_value@OData.Community.Display.V1.FormattedValue") or "m³",
+            "sale_type_code": r.get("bhf_saletype"),
+            "sale_type": fmt_val(r, "bhf_saletype", "Delivery"),
+            "transport_by_code": r.get("bhf_transportby"),
+            "transport_by": fmt_val(r, "bhf_transportby", "Third-party truck"),
+            "customer": cname,
+            "product": fmt_val(r, "_bhf_product_value", ""),
+            "site": fmt_val(r, "_bhf_site_value", ""),
+            "truck_owner": towner,
+            "truck": fmt_val(r, "_bhf_equipment_value", ""),
+            "driver": fmt_val(r, "_bhf_driver_value", ""),
+            "uom": fmt_val(r, "_bhf_unit_value", "m³"),
             "qty": round(float(r.get("bhf_quantity") or 0), 2),
+            "external_qty": r.get("bhf_externalquantity"),
             "unit_price": round(float(r.get("bhf_unitprice") or 0), 2),
             "price": round(float(r.get("bhf_price") or 0), 2),
             "trans_unit_price": round(float(r.get("bhf_transunitprice") or 0), 2),
             "trans_price": round(float(r.get("bhf_transprice") or 0), 2),
+            "tip": round(float(r.get("bhf_tip") or 0), 2),
             "discount": round(float(r.get("bhf_discount") or 0), 2),
             "total": net_tot,
             "vat": vat_amt,
             "total_ttc": round(net_tot + vat_amt, 2),
-            "method": r.get("_bhf_method_value@OData.Community.Display.V1.FormattedValue") or "Credit",
+            "method": fmt_val(r, "_bhf_method_value", "Credit"),
             "vat_invoice": vatinv,
+            "external_invoice": r.get("bhf_externalinvoice") or "",
+            "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
             "time": r.get("bhf_time") or "12:00",
             "overtime": bool(r.get("bhf_overtime")),
         })
     print(f"  Recent Sales Tickets: {len(sales_tickets)}", flush=True)
 
-    # 7. Recent Raw Material Tickets (latest 300)
-    r_raw = S.get(
-        f"{mlib.API}/bhf_rawpurchases?$filter=statecode eq 0 and ({bu_filter})"
+    # 7. Recent Raw Material Tickets (latest 400)
+    r_raw = safe_get_fmt(
+        "bhf_rawpurchase",
+        f"$filter=statecode eq 0 and ({bu_filter})"
         "&$select=bhf_rawpurchaseid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_expecteddate,bhf_transportby,"
         "bhf_quantity,bhf_unitcost,bhf_cost,bhf_transunitcost,bhf_transcost,bhf_discount,bhf_time,bhf_overtime,"
+        "bhf_externalinvoice,bhf_reference,bhf_notes,"
         "_bhf_product_value,_bhf_site_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_driver_value,"
         "_bhf_unit_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=300",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+        "&$orderby=bhf_transactiondate desc&$top=400",
+        by_logical=True,
+        top_only=True,
+    )
     raw_purchases = []
     for r in r_raw:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        sname = r.get("_bhf_site_value@OData.Community.Display.V1.FormattedValue") or ""
-        towner = r.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or ""
+        sname = fmt_val(r, "_bhf_site_value", "")
+        towner = fmt_val(r, "_bhf_supplier_value", "")
+        sowner = site_owner_map.get(sname) or towner
+        if towner:
+            mfg_sup_names.add(towner)
+        if sowner:
+            mfg_sup_names.add(sowner)
         mat_cost = round(float(r.get("bhf_cost") or 0), 2)
         tr_cost = round(float(r.get("bhf_transcost") or 0), 2)
         raw_purchases.append({
@@ -605,34 +904,41 @@ def fetch_dataverse_records():
             "date": str(r.get("bhf_transactiondate") or "")[:10],
             "rep_date": str(r.get("bhf_expecteddate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "product": r.get("_bhf_product_value@OData.Community.Display.V1.FormattedValue") or "",
+            "product": fmt_val(r, "_bhf_product_value", ""),
             "site": sname,
-            "site_owner": site_owner_map.get(sname) or towner,
-            "transport_by": r.get("bhf_transportby@OData.Community.Display.V1.FormattedValue") or "Third-party truck",
+            "site_owner": sowner,
+            "transport_by_code": r.get("bhf_transportby"),
+            "transport_by": fmt_val(r, "bhf_transportby", "Third-party truck"),
             "truck_owner": towner,
-            "truck": r.get("_bhf_equipment_value@OData.Community.Display.V1.FormattedValue") or "",
-            "driver": r.get("_bhf_driver_value@OData.Community.Display.V1.FormattedValue") or "",
-            "uom": r.get("_bhf_unit_value@OData.Community.Display.V1.FormattedValue") or "m³",
+            "truck": fmt_val(r, "_bhf_equipment_value", ""),
+            "driver": fmt_val(r, "_bhf_driver_value", ""),
+            "uom": fmt_val(r, "_bhf_unit_value", "m³"),
             "qty": round(float(r.get("bhf_quantity") or 0), 2),
+            "discount": round(float(r.get("bhf_discount") or 0), 2),
             "unit_cost": round(float(r.get("bhf_unitcost") or 0), 2),
             "cost": mat_cost,
             "trans_unit_cost": round(float(r.get("bhf_transunitcost") or 0), 2),
             "trans_cost": tr_cost,
             "total": round(mat_cost + tr_cost, 2),
+            "external_invoice": r.get("bhf_externalinvoice") or "",
+            "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
             "method": "Credit",
             "time": r.get("bhf_time") or "12:00",
             "overtime": bool(r.get("bhf_overtime")),
         })
     print(f"  Recent Raw Purchases: {len(raw_purchases)}", flush=True)
 
-    # 8. Recent Fuel Intakes (latest 250)
-    r_fuel = S.get(
-        f"{mlib.API}/bhf_fuelintakes?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_fuelintakeid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_fueltype,bhf_intake,bhf_odometer,bhf_hours,"
+    # 8. Recent Fuel Intakes (latest 300)
+    r_fuel = safe_get_fmt(
+        "bhf_fuelintake",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_fuelintakeid,bhf_name,bhf_ticketno,bhf_transactiondate,bhf_reportingdate,bhf_fueltype,bhf_intake,bhf_odometer,bhf_hours,bhf_notes,"
         "_bhf_product_value,_bhf_equipment_value,_bhf_driver_value,_bhf_site_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=250",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+        "&$orderby=bhf_transactiondate desc&$top=300",
+        by_logical=True,
+        top_only=True,
+    )
     fuel_intakes = []
     for r in r_fuel:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -641,101 +947,232 @@ def fetch_dataverse_records():
             "name": r.get("bhf_name") or "",
             "ticket_no": r.get("bhf_ticketno") or "—",
             "date": str(r.get("bhf_transactiondate") or "")[:10],
+            "rep_date": str(r.get("bhf_reportingdate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "fuel_type": r.get("bhf_fueltype@OData.Community.Display.V1.FormattedValue") or "Diesel",
-            "item": r.get("_bhf_product_value@OData.Community.Display.V1.FormattedValue") or "Diesel",
-            "equipment": r.get("_bhf_equipment_value@OData.Community.Display.V1.FormattedValue") or "",
-            "driver": r.get("_bhf_driver_value@OData.Community.Display.V1.FormattedValue") or "",
+            "fuel_type_code": r.get("bhf_fueltype"),
+            "fuel_type": fmt_val(r, "bhf_fueltype", "Diesel"),
+            "item": fmt_val(r, "_bhf_product_value", "Diesel"),
+            "equipment": fmt_val(r, "_bhf_equipment_value", ""),
+            "driver": fmt_val(r, "_bhf_driver_value", ""),
             "litres": round(float(r.get("bhf_intake") or 0), 2),
             "odometer": r.get("bhf_odometer"),
             "hours": r.get("bhf_hours"),
-            "location": r.get("_bhf_site_value@OData.Community.Display.V1.FormattedValue") or "",
+            "location": fmt_val(r, "_bhf_site_value", ""),
+            "notes": r.get("bhf_notes") or "",
         })
     print(f"  Recent Fuel Intakes: {len(fuel_intakes)}", flush=True)
 
-    # 9. Recent Expenses (latest 250)
-    r_exp = S.get(
-        f"{mlib.API}/bhf_expenses?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_expenseid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_usdvalue,bhf_quantity,bhf_reference,"
+    # 9. Expense Categories, Subcategories & Recent Expenses (latest 300)
+    ec_raw = safe_get_fmt(
+        "bhf_expensecategory",
+        "$filter=statecode eq 0&$select=bhf_expensecategoryid,bhf_name",
+        by_logical=True,
+    )
+    expense_categories = [{"id": c["bhf_expensecategoryid"], "name": c.get("bhf_name") or ""} for c in ec_raw]
+
+    esc_raw = safe_get_fmt(
+        "bhf_expensesubcategory",
+        "$filter=statecode eq 0&$select=bhf_expensesubcategoryid,bhf_name,_bhf_category_value",
+        by_logical=True,
+    )
+    expense_subcategories = [
+        {
+            "id": sc["bhf_expensesubcategoryid"],
+            "name": sc.get("bhf_name") or "",
+            "category_id": sc.get("_bhf_category_value") or "",
+            "category": fmt_val(sc, "_bhf_category_value", ""),
+        }
+        for sc in esc_raw
+    ]
+
+    r_exp = safe_get_fmt(
+        "bhf_expense",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_expenseid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_quantity,bhf_reference,bhf_notes,"
         "_bhf_category_value,_bhf_subcategory_value,_bhf_supplier_value,_bhf_equipment_value,_bhf_method_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=250",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+        "&$orderby=bhf_transactiondate desc&$top=300",
+        by_logical=True,
+        top_only=True,
+    )
     expenses = []
     for r in r_exp:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        sname = fmt_val(r, "_bhf_supplier_value", "")
+        if sname:
+            mfg_sup_names.add(sname)
         expenses.append({
             "id": r["bhf_expenseid"],
             "name": r.get("bhf_name") or "",
             "date": str(r.get("bhf_transactiondate") or "")[:10],
             "rep_date": str(r.get("bhf_reportingdate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "category": r.get("_bhf_category_value@OData.Community.Display.V1.FormattedValue") or "",
-            "subcategory": r.get("_bhf_subcategory_value@OData.Community.Display.V1.FormattedValue") or "",
-            "supplier": r.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
-            "equipment": r.get("_bhf_equipment_value@OData.Community.Display.V1.FormattedValue") or "",
-            "method": r.get("_bhf_method_value@OData.Community.Display.V1.FormattedValue") or "Cash",
+            "invoice": r.get("bhf_invoice") or "",
+            "category": fmt_val(r, "_bhf_category_value", ""),
+            "subcategory": fmt_val(r, "_bhf_subcategory_value", ""),
+            "supplier": sname,
+            "equipment": fmt_val(r, "_bhf_equipment_value", ""),
+            "method": fmt_val(r, "_bhf_method_value", "Cash"),
             "qty": round(float(r.get("bhf_quantity") or 0), 2),
+            "usd_amount": r.get("bhf_usdamount"),
+            "lbp_amount": r.get("bhf_lbpamount"),
             "amount": round(float(r.get("bhf_usdvalue") or 0), 2),
             "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Expenses: {len(expenses)}", flush=True)
+    print(f"  Recent Expenses: {len(expenses)} · Categories: {len(expense_categories)} · Subcategories: {len(expense_subcategories)}", flush=True)
 
     # 10. Recent Customer Receipts & Supplier Payments
-    r_rcpt = S.get(
-        f"{mlib.API}/bhf_customerreceipts?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_customerreceiptid,bhf_name,bhf_transactiondate,bhf_usdvalue,bhf_discount,bhf_reference,"
-        "_bhf_customer_value,_bhf_method_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=200",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+    r_rcpt = safe_get_fmt(
+        "bhf_customerreceipt",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_customerreceiptid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_discount,bhf_reference,bhf_notes,"
+        "_bhf_customer_value,_bhf_method_value,_bhf_salesticket_value,_bhf_vatinvoice_value,_owningbusinessunit_value"
+        "&$orderby=bhf_transactiondate desc&$top=250",
+        by_logical=True,
+        top_only=True,
+    )
     receipts = []
     for r in r_rcpt:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        cname = fmt_val(r, "_bhf_customer_value", "")
+        if cname:
+            mfg_cust_names.add(cname)
         receipts.append({
             "id": r["bhf_customerreceiptid"],
             "name": r.get("bhf_name") or "",
             "date": str(r.get("bhf_transactiondate") or "")[:10],
+            "rep_date": str(r.get("bhf_reportingdate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "customer": r.get("_bhf_customer_value@OData.Community.Display.V1.FormattedValue") or "",
-            "method": r.get("_bhf_method_value@OData.Community.Display.V1.FormattedValue") or "Payment",
+            "customer": cname,
+            "method": fmt_val(r, "_bhf_method_value", "Payment"),
+            "record_ticket": fmt_val(r, "_bhf_salesticket_value", ""),
+            "vat_invoice": fmt_val(r, "_bhf_vatinvoice_value", ""),
+            "usd_amount": r.get("bhf_usdamount"),
+            "lbp_amount": r.get("bhf_lbpamount"),
             "amount": round(float(r.get("bhf_usdvalue") or 0), 2),
             "discount": round(float(r.get("bhf_discount") or 0), 2),
             "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
         })
     print(f"  Recent Customer Receipts: {len(receipts)}", flush=True)
 
-    r_spay = S.get(
-        f"{mlib.API}/bhf_supplierpayments?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_supplierpaymentid,bhf_name,bhf_transactiondate,bhf_usdvalue,bhf_difference,bhf_reference,"
-        "_bhf_supplier_value,_bhf_method_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=200",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+    r_spay = safe_get_fmt(
+        "bhf_supplierpayment",
+        f"$filter=statecode eq 0 and ({bu_filter})"
+        "&$select=bhf_supplierpaymentid,bhf_name,bhf_transactiondate,bhf_reportingdate,bhf_invoice,bhf_usdamount,bhf_lbpamount,bhf_usdvalue,bhf_difference,bhf_reference,bhf_notes,"
+        "_bhf_supplier_value,_bhf_method_value,_bhf_expense_value,_bhf_rawpurchase_value,_owningbusinessunit_value"
+        "&$orderby=bhf_transactiondate desc&$top=250",
+        by_logical=True,
+        top_only=True,
+    )
     settlements = []
     for r in r_spay:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        sname = fmt_val(r, "_bhf_supplier_value", "")
+        if sname:
+            mfg_sup_names.add(sname)
         settlements.append({
             "id": r["bhf_supplierpaymentid"],
             "name": r.get("bhf_name") or "",
             "date": str(r.get("bhf_transactiondate") or "")[:10],
+            "rep_date": str(r.get("bhf_reportingdate") or r.get("bhf_transactiondate") or "")[:10],
             "company": bu,
-            "supplier": r.get("_bhf_supplier_value@OData.Community.Display.V1.FormattedValue") or "",
-            "method": r.get("_bhf_method_value@OData.Community.Display.V1.FormattedValue") or "Payment",
+            "supplier": sname,
+            "method": fmt_val(r, "_bhf_method_value", "Payment"),
+            "expense_record": fmt_val(r, "_bhf_expense_value", ""),
+            "raw_ticket": fmt_val(r, "_bhf_rawpurchase_value", ""),
+            "invoice": r.get("bhf_invoice") or "",
+            "usd_amount": r.get("bhf_usdamount"),
+            "lbp_amount": r.get("bhf_lbpamount"),
             "amount": round(float(r.get("bhf_usdvalue") or 0), 2),
             "discount": round(float(r.get("bhf_difference") or 0), 2),
             "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
         })
     print(f"  Recent Supplier Settlements: {len(settlements)}", flush=True)
 
-    # 11. Recent Salary Payments
-    r_sal = S.get(
-        f"{mlib.API}/bhf_salarypayments?$filter=statecode eq 0 and ({bu_filter})"
-        "&$select=bhf_salarypaymentid,bhf_name,bhf_transactiondate,bhf_month,bhf_usdvalue,bhf_reference,"
-        "_bhf_staff_value,_owningbusinessunit_value"
-        "&$orderby=bhf_transactiondate desc&$top=150",
-        headers=hdr_fmt, timeout=120
-    ).json().get("value", [])
+    # 10b. Customers (bhf_customer) & Suppliers (bhf_supplier) master records
+    cust_raw = safe_get_fmt(
+        "bhf_customer",
+        "$filter=statecode eq 0&$select=bhf_customerid,bhf_name,bhf_officialname,bhf_phone,bhf_address,bhf_method,"
+        "bhf_vatregistered,bhf_mofno,bhf_externalinvoice,bhf_customerdeclaredquantity,bhf_notes",
+        by_logical=True,
+    )
+    customers_master = []
+    for c in cust_raw:
+        cname = c.get("bhf_name") or ""
+        m_lbl = fmt_val(c, "bhf_method", "")
+        if not m_lbl and c.get("bhf_method") in (684000000, 684000001):
+            m_lbl = "Cash" if c.get("bhf_method") == 684000000 else "Credit"
+        is_mfg = (
+            cname in mfg_cust_names
+            or bool(c.get("bhf_method"))
+            or bool(c.get("bhf_externalinvoice"))
+            or bool(c.get("bhf_customerdeclaredquantity"))
+        )
+        if is_mfg:
+            customers_master.append({
+                "id": c["bhf_customerid"],
+                "name": cname,
+                "official_name": c.get("bhf_officialname") or cname,
+                "phone": c.get("bhf_phone") or "",
+                "address": c.get("bhf_address") or "",
+                "method": m_lbl or "Credit",
+                "vat_registered": bool(c.get("bhf_vatregistered")),
+                "mof_no": c.get("bhf_mofno") or "",
+                "external_invoice": bool(c.get("bhf_externalinvoice")),
+                "customer_declared_qty": bool(c.get("bhf_customerdeclaredquantity")),
+                "notes": c.get("bhf_notes") or "",
+            })
+
+    sup_raw = safe_get_fmt(
+        "bhf_supplier",
+        "$filter=statecode eq 0",
+        by_logical=True,
+    )
+    for s in sites:
+        if s.get("supplier"):
+            mfg_sup_names.add(s["supplier"])
+    for e in equipment:
+        if e.get("supplier"):
+            mfg_sup_names.add(e["supplier"])
+    for d in drivers:
+        if d.get("truck_owner"):
+            mfg_sup_names.add(d["truck_owner"])
+
+    suppliers_master = []
+    for s in sup_raw:
+        sname = s.get("bhf_name") or ""
+        t_list = owner_trucks_map.get(sname, [])
+        d_list = owner_drivers_map.get(sname, [])
+        if sname in mfg_sup_names or t_list or d_list:
+            suppliers_master.append({
+                "id": s["bhf_supplierid"],
+                "name": sname,
+                "official_name": s.get("bhf_officialname") or sname,
+                "contact": s.get("bhf_contact") or "",
+                "location": s.get("bhf_location") or "",
+                "financial_no": s.get("bhf_financialno") or "",
+                "method": fmt_val(s, "bhf_method", "Credit"),
+                "category1": fmt_val(s, "bhf_category1", ""),
+                "category2": fmt_val(s, "bhf_category2", ""),
+                "category3": fmt_val(s, "bhf_category3", ""),
+                "iva": bool(s.get("bhf_iva")),
+                "is_truck_owner": len(t_list) > 0,
+                "trucks_count": len(t_list),
+                "trucks": [t["name"] for t in t_list],
+                "drivers": d_list,
+                "notes": s.get("bhf_notes") or "",
+            })
+    print(f"  Master Customers (Mfg): {len(customers_master)} · Master Suppliers (Mfg): {len(suppliers_master)}", flush=True)
+
+    # 11. Payroll, Attendance, Freelance, Employments, Logistics Allowances & Overtime Rates
+    r_sal = safe_get_fmt(
+        "bhf_salarypayment",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
     salaries = []
     for r in r_sal:
         bu = ID_TO_BU.get((r.get("_owningbusinessunit_value") or "").lower(), "WTC")
@@ -743,20 +1180,415 @@ def fetch_dataverse_records():
             "id": r["bhf_salarypaymentid"],
             "name": r.get("bhf_name") or "",
             "date": str(r.get("bhf_transactiondate") or "")[:10],
+            "rep_date": str(r.get("bhf_reportingdate") or r.get("bhf_transactiondate") or "")[:10],
             "payroll_month": str(r.get("bhf_month") or r.get("bhf_transactiondate") or "")[:7],
             "company": bu,
-            "staff": r.get("_bhf_staff_value@OData.Community.Display.V1.FormattedValue") or "",
-            "method": "Cash",
+            "staff": fmt_val(r, "_bhf_staff_value", ""),
+            "method": fmt_val(r, "_bhf_method_value", "Cash"),
+            "usd_amount": r.get("bhf_usdamount"),
+            "lbp_amount": r.get("bhf_lbpamount"),
             "amount": round(float(r.get("bhf_usdvalue") or 0), 2),
+            "reference": r.get("bhf_reference") or "",
+            "notes": r.get("bhf_notes") or "",
         })
-    print(f"  Recent Salary Payments: {len(salaries)}", flush=True)
+
+    emp_raw = safe_get_fmt(
+        "bhf_employment",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
+        by_logical=True,
+    )
+    employments = []
+    mfg_staff_names = set()
+    for e in emp_raw:
+        bu = ID_TO_BU.get((e.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        st_name = fmt_val(e, "_bhf_staff_value", "")
+        if st_name:
+            mfg_staff_names.add(st_name)
+        employments.append({
+            "id": e["bhf_employmentid"],
+            "name": e.get("bhf_name") or "",
+            "company": bu,
+            "staff": st_name,
+            "role": fmt_val(e, "_bhf_role_value", "") or e.get("bhf_jobtitle") or "",
+            "type": fmt_val(e, "bhf_employmenttype", "Regular"),
+            "salary_usd": float(e.get("bhf_basesalary") or e.get("bhf_usdamount") or 0),
+            "daily_rate": float(e.get("bhf_dailyrate") or e.get("bhf_rate") or 0),
+            "start_date": str(e.get("bhf_startdate") or "")[:10],
+            "end_date": str(e.get("bhf_enddate") or "")[:10],
+            "status": fmt_val(e, "bhf_status", "Active"),
+            "notes": e.get("bhf_notes") or "",
+        })
+
+    att_raw = safe_get_fmt(
+        "bhf_attendance",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=createdon desc&$top=250",
+        by_logical=True,
+        top_only=True,
+    )
+    attendance_records = []
+    for a in att_raw:
+        bu = ID_TO_BU.get((a.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        st_name = fmt_val(a, "_bhf_staff_value", "")
+        if st_name:
+            mfg_staff_names.add(st_name)
+        attendance_records.append({
+            "id": a["bhf_attendanceid"],
+            "name": a.get("bhf_name") or "",
+            "company": bu,
+            "date": str(a.get("bhf_date") or a.get("bhf_transactiondate") or a.get("createdon") or "")[:10],
+            "staff": st_name,
+            "status": fmt_val(a, "bhf_status", "Present"),
+            "regular_hours": float(a.get("bhf_regularhours") or a.get("bhf_hours") or 0),
+            "overtime_hours": float(a.get("bhf_overtimehours") or a.get("bhf_overtime") or 0),
+            "late_hours": float(a.get("bhf_latehours") or 0),
+            "notes": a.get("bhf_notes") or "",
+        })
+
+    flw_raw = safe_get_fmt(
+        "bhf_freelancework",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
+    freelance_entries = []
+    for f in flw_raw:
+        bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        st_name = fmt_val(f, "_bhf_staff_value", "")
+        if st_name:
+            mfg_staff_names.add(st_name)
+        freelance_entries.append({
+            "id": f["bhf_freelanceworkid"],
+            "name": f.get("bhf_name") or "",
+            "company": bu,
+            "date": str(f.get("bhf_transactiondate") or "")[:10],
+            "staff": st_name,
+            "days": float(f.get("bhf_days") or f.get("bhf_quantity") or 1),
+            "rate": float(f.get("bhf_rate") or f.get("bhf_unitprice") or 0),
+            "amount": float(f.get("bhf_usdvalue") or f.get("bhf_total") or 0),
+            "notes": f.get("bhf_notes") or "",
+        })
+
+    flp_raw = safe_get_fmt(
+        "bhf_freelancepayment",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
+    freelance_payments = []
+    for f in flp_raw:
+        bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        st_name = fmt_val(f, "_bhf_staff_value", "")
+        if st_name:
+            mfg_staff_names.add(st_name)
+        freelance_payments.append({
+            "id": f["bhf_freelancepaymentid"],
+            "name": f.get("bhf_name") or "",
+            "company": bu,
+            "date": str(f.get("bhf_transactiondate") or "")[:10],
+            "staff": st_name,
+            "method": fmt_val(f, "_bhf_method_value", "Cash"),
+            "usd_amount": f.get("bhf_usdamount"),
+            "lbp_amount": f.get("bhf_lbpamount"),
+            "amount": float(f.get("bhf_usdvalue") or 0),
+            "reference": f.get("bhf_reference") or "",
+            "notes": f.get("bhf_notes") or "",
+        })
+
+    log_raw = safe_get_fmt(
+        "bhf_logistics",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
+        by_logical=True,
+    )
+    logistics_allowances = []
+    for lg in log_raw:
+        bu = ID_TO_BU.get((lg.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        st_name = fmt_val(lg, "_bhf_staff_value", "")
+        if st_name:
+            mfg_staff_names.add(st_name)
+        days = [d[:3] for d, col in [("Mon", "bhf_monday"), ("Tue", "bhf_tuesday"), ("Wed", "bhf_wednesday"),
+                                     ("Thu", "bhf_thursday"), ("Fri", "bhf_friday"), ("Sat", "bhf_saturday"), ("Sun", "bhf_sunday")] if lg.get(col)]
+        logistics_allowances.append({
+            "id": lg["bhf_logisticsid"],
+            "name": lg.get("bhf_name") or "",
+            "company": bu,
+            "staff": st_name,
+            "site": fmt_val(lg, "_bhf_site_value", ""),
+            "equipment": fmt_val(lg, "_bhf_equipment_value", ""),
+            "usd_amount": lg.get("bhf_usdamount"),
+            "lbp_amount": lg.get("bhf_lbpamount"),
+            "daily_usd": float(lg.get("bhf_usdvalue") or lg.get("bhf_usdamount") or 0),
+            "working_days": ", ".join(days) if days else "Mon-Sat",
+            "mon": bool(lg.get("bhf_monday", True)),
+            "tue": bool(lg.get("bhf_tuesday", True)),
+            "wed": bool(lg.get("bhf_wednesday", True)),
+            "thu": bool(lg.get("bhf_thursday", True)),
+            "fri": bool(lg.get("bhf_friday", True)),
+            "sat": bool(lg.get("bhf_saturday", True)),
+            "sun": bool(lg.get("bhf_sunday", False)),
+            "start_date": str(lg.get("bhf_startdate") or "")[:10],
+            "end_date": str(lg.get("bhf_enddate") or "")[:10],
+            "notes": lg.get("bhf_notes") or "",
+        })
+
+    tr_raw = safe_get_fmt(
+        "bhf_triprate",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc",
+        by_logical=True,
+    )
+    overtime_rates = []
+    for tr in tr_raw:
+        bu = ID_TO_BU.get((tr.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        overtime_rates.append({
+            "id": tr["bhf_triprateid"],
+            "name": tr.get("bhf_name") or "",
+            "company": bu,
+            "region": fmt_val(tr, "_bhf_region_value", ""),
+            "amount": float(tr.get("bhf_amount") or 0),
+            "start_date": str(tr.get("bhf_startdate") or "")[:10],
+            "end_date": str(tr.get("bhf_enddate") or "")[:10],
+            "notes": tr.get("bhf_notes") or "",
+        })
+    print(f"  Payroll: {len(salaries)} salaries · {len(employments)} employments · {len(attendance_records)} attendance · {len(logistics_allowances)} allowances · {len(overtime_rates)} OT rates", flush=True)
+
+    # 12. Treasury, Loans, Conversions, JVs & Statements
+    ext_raw = safe_get_fmt(
+        "bhf_external",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
+    external_movements = []
+    for ex in ext_raw:
+        bu = ID_TO_BU.get((ex.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        external_movements.append({
+            "id": ex["bhf_externalid"],
+            "name": ex.get("bhf_name") or "",
+            "company": bu,
+            "date": str(ex.get("bhf_transactiondate") or "")[:10],
+            "direction": fmt_val(ex, "bhf_direction", "") or fmt_val(ex, "bhf_type", "Inflow"),
+            "counterparty": fmt_val(ex, "_bhf_partner_value", "") or fmt_val(ex, "_bhf_supplier_value", "") or ex.get("bhf_counterparty") or "",
+            "method": fmt_val(ex, "_bhf_method_value", "Cash"),
+            "usd_amount": ex.get("bhf_usdamount"),
+            "lbp_amount": ex.get("bhf_lbpamount"),
+            "amount": float(ex.get("bhf_usdvalue") or 0),
+            "reference": ex.get("bhf_reference") or "",
+            "notes": ex.get("bhf_notes") or "",
+        })
+
+    ln_raw = safe_get_fmt(
+        "bhf_borrowingagreement",
+        f"$filter=statecode eq 0 and ({bu_filter})",
+        by_logical=True,
+    )
+    loans = []
+    for ln in ln_raw:
+        bu = ID_TO_BU.get((ln.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        loans.append({
+            "id": ln["bhf_borrowingagreementid"],
+            "name": ln.get("bhf_name") or "",
+            "company": bu,
+            "lender": fmt_val(ln, "_bhf_partner_value", "") or fmt_val(ln, "_bhf_supplier_value", "") or ln.get("bhf_lender") or "",
+            "principal": float(ln.get("bhf_principal") or ln.get("bhf_usdvalue") or ln.get("bhf_amount") or 0),
+            "interest_rate": float(ln.get("bhf_interestrate") or 0),
+            "start_date": str(ln.get("bhf_startdate") or "")[:10],
+            "end_date": str(ln.get("bhf_enddate") or "")[:10],
+            "notes": ln.get("bhf_notes") or "",
+        })
+
+    lns_raw = safe_get_fmt(
+        "bhf_borrowing",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
+    loan_settlements = []
+    for ls in lns_raw:
+        bu = ID_TO_BU.get((ls.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        loan_settlements.append({
+            "id": ls["bhf_borrowingid"],
+            "name": ls.get("bhf_name") or "",
+            "company": bu,
+            "date": str(ls.get("bhf_transactiondate") or "")[:10],
+            "loan": fmt_val(ls, "_bhf_agreement_value", "") or fmt_val(ls, "_bhf_borrowingagreement_value", ""),
+            "type": fmt_val(ls, "bhf_type", "Repayment"),
+            "method": fmt_val(ls, "_bhf_method_value", "Cash"),
+            "usd_amount": ls.get("bhf_usdamount"),
+            "lbp_amount": ls.get("bhf_lbpamount"),
+            "amount": float(ls.get("bhf_usdvalue") or 0),
+            "reference": ls.get("bhf_reference") or "",
+            "notes": ls.get("bhf_notes") or "",
+        })
+
+    cv_raw = safe_get_fmt(
+        "bhf_conversion",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc&$top=150",
+        by_logical=True,
+        top_only=True,
+    )
+    conversions = []
+    for cv in cv_raw:
+        bu = ID_TO_BU.get((cv.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        conversions.append({
+            "id": cv["bhf_conversionid"],
+            "name": cv.get("bhf_name") or "",
+            "company": bu,
+            "date": str(cv.get("bhf_transactiondate") or "")[:10],
+            "from_currency": fmt_val(cv, "bhf_fromcurrency", "USD"),
+            "to_currency": fmt_val(cv, "bhf_tocurrency", "LBP"),
+            "usd_amount": float(cv.get("bhf_usdamount") or cv.get("bhf_usdvalue") or 0),
+            "lbp_amount": float(cv.get("bhf_lbpamount") or 0),
+            "exchange_rate": float(cv.get("bhf_exchangerate") or cv.get("bhf_rate") or 90000),
+            "notes": cv.get("bhf_notes") or "",
+        })
+
+    jvp_raw = safe_get_fmt(
+        "bhf_jvpartnership",
+        f"$filter=statecode eq 0 and ({bu_filter})",
+        by_logical=True,
+    )
+    jv_partnerships = []
+    for jp in jvp_raw:
+        bu = ID_TO_BU.get((jp.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        jv_partnerships.append({
+            "id": jp["bhf_jvpartnershipid"],
+            "name": jp.get("bhf_name") or "",
+            "company": bu,
+            "site": fmt_val(jp, "_bhf_site_value", ""),
+            "partner": fmt_val(jp, "_bhf_partner_value", ""),
+            "percentage": float(jp.get("bhf_percentage") or 0),
+            "start_date": str(jp.get("bhf_startdate") or "")[:10],
+            "end_date": str(jp.get("bhf_enddate") or "")[:10],
+            "notes": jp.get("bhf_notes") or "",
+        })
+
+    jvd_raw = safe_get_fmt(
+        "bhf_jvdistribution",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc",
+        by_logical=True,
+    )
+    jv_distributions = []
+    for jd in jvd_raw:
+        bu = ID_TO_BU.get((jd.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        jv_distributions.append({
+            "id": jd["bhf_jvdistributionid"],
+            "name": jd.get("bhf_name") or "",
+            "company": bu,
+            "date": str(jd.get("bhf_transactiondate") or "")[:10],
+            "rep_date": str(jd.get("bhf_reportingdate") or jd.get("bhf_transactiondate") or "")[:10],
+            "site": fmt_val(jd, "_bhf_site_value", ""),
+            "partner": fmt_val(jd, "_bhf_partner_value", ""),
+            "basis": fmt_val(jd, "bhf_basis", "Cash"),
+            "amount": float(jd.get("bhf_amount") or 0),
+            "difference": float(jd.get("bhf_difference") or 0),
+            "total": float(jd.get("bhf_total") or jd.get("bhf_amount") or 0),
+            "reference": jd.get("bhf_reference") or "",
+            "notes": jd.get("bhf_notes") or "",
+        })
+
+    stm_raw = safe_get_fmt(
+        "bhf_statement",
+        f"$filter=statecode eq 0 and ({bu_filter})",
+        by_logical=True,
+    )
+    statements = []
+    for st in stm_raw:
+        bu = ID_TO_BU.get((st.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        statements.append({
+            "id": st["bhf_statementid"],
+            "name": st.get("bhf_name") or "",
+            "company": bu,
+            "side": fmt_val(st, "bhf_side", "Customer"),
+            "customer": fmt_val(st, "_bhf_customer_value", ""),
+            "supplier": fmt_val(st, "_bhf_supplier_value", ""),
+            "start_date": str(st.get("bhf_startdate") or "")[:10],
+            "end_date": str(st.get("bhf_enddate") or "")[:10],
+            "basis": fmt_val(st, "bhf_basis", "Accrual Date"),
+            "status": fmt_val(st, "bhf_status", "Open"),
+            "their_total": float(st.get("bhf_linestotal") or st.get("bhf_statementtotal") or 0),
+            "our_total": float(st.get("bhf_ourtotal") or 0),
+            "difference": float(st.get("bhf_difference") or 0),
+            "lines_count": int(st.get("bhf_linescount") or 0),
+            "matched_count": int(st.get("bhf_matchedcount") or 0),
+            "exception_count": int(st.get("bhf_exceptioncount") or 0),
+            "summary": st.get("bhf_summary") or "",
+            "notes": st.get("bhf_notes") or "",
+        })
+
+    stml_raw = safe_get_fmt(
+        "bhf_statementline",
+        f"$filter=statecode eq 0 and ({bu_filter})&$top=300",
+        by_logical=True,
+        top_only=True,
+    )
+    statement_lines = []
+    for sl in stml_raw:
+        bu = ID_TO_BU.get((sl.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        statement_lines.append({
+            "id": sl["bhf_statementlineid"],
+            "name": sl.get("bhf_name") or "",
+            "company": bu,
+            "statement": fmt_val(sl, "_bhf_statement_value", ""),
+            "line_no": sl.get("bhf_lineno"),
+            "ticket_no": sl.get("bhf_ticketno") or "",
+            "date": str(sl.get("bhf_date") or "")[:10],
+            "product": fmt_val(sl, "_bhf_product_value", "") or sl.get("bhf_producttext") or "",
+            "qty": float(sl.get("bhf_quantity") or 0),
+            "unit_price": float(sl.get("bhf_unitprice") or 0),
+            "amount": float(sl.get("bhf_amount") or 0),
+            "result": fmt_val(sl, "bhf_result", "Matched"),
+            "our_ticket_no": sl.get("bhf_ourticketno") or "",
+            "our_date": str(sl.get("bhf_ourdate") or "")[:10],
+            "our_qty": float(sl.get("bhf_ourquantity") or 0),
+            "our_unit_price": float(sl.get("bhf_ourunitprice") or 0),
+            "our_amount": float(sl.get("bhf_ouramount") or 0),
+            "amount_diff": float(sl.get("bhf_amountdiff") or 0),
+            "resolution": fmt_val(sl, "bhf_resolution", ""),
+            "notes": sl.get("bhf_notes") or "",
+        })
+
+    dt_raw = safe_get_fmt(
+        "bhf_dailytotal",
+        f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_date desc&$top=200",
+        by_logical=True,
+        top_only=True,
+    )
+    daily_totals = []
+    for d in dt_raw:
+        bu = ID_TO_BU.get((d.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        daily_totals.append({
+            "id": d["bhf_dailytotalid"],
+            "name": d.get("bhf_name") or "",
+            "company": bu,
+            "date": str(d.get("bhf_date") or "")[:10],
+            "domain": fmt_val(d, "bhf_domain", "Sales"),
+            "origin": fmt_val(d, "bhf_origin", "Dataverse"),
+            "kind": fmt_val(d, "bhf_kind", "Snapshot"),
+            "value": float(d.get("bhf_value") or 0),
+            "previous_value": float(d.get("bhf_previousvalue") or 0),
+            "change": float(d.get("bhf_change") or 0),
+            "row_count": int(d.get("bhf_rowcount") or 0),
+            "version": d.get("bhf_version") or "v1",
+            "notes": d.get("bhf_notes") or "",
+        })
+    print(f"  Treasury/JVs/Recon: {len(external_movements)} external · {len(loans)} loans · {len(jv_partnerships)} JVs · {len(statements)} statements · {len(daily_totals)} daily totals", flush=True)
 
     return {
+        "uoms": uoms,
+        "product_types": product_types,
         "products": products,
+        "regions": regions,
         "sites": sites,
         "equipment": equipment,
+        "company_equipment": company_equipment,
         "drivers": drivers,
+        "company_drivers": company_drivers,
+        "customers": customers_master,
+        "suppliers": suppliers_master,
         "price_rules": price_rules,
+        "credit_terms": credit_terms,
+        "vat_invoices": vat_invoices,
+        "expense_categories": expense_categories,
+        "expense_subcategories": expense_subcategories,
         "sales_tickets": sales_tickets,
         "raw_purchases": raw_purchases,
         "fuel_intakes": fuel_intakes,
@@ -764,6 +1596,21 @@ def fetch_dataverse_records():
         "receipts": receipts,
         "settlements": settlements,
         "salaries": salaries,
+        "employments": employments,
+        "attendance": attendance_records,
+        "freelance_entries": freelance_entries,
+        "freelance_payments": freelance_payments,
+        "logistics_allowances": logistics_allowances,
+        "overtime_rates": overtime_rates,
+        "external_movements": external_movements,
+        "loans": loans,
+        "loan_settlements": loan_settlements,
+        "conversions": conversions,
+        "jv_partnerships": jv_partnerships,
+        "jv_distributions": jv_distributions,
+        "statements": statements,
+        "statement_lines": statement_lines,
+        "daily_totals": daily_totals,
     }
 
 
@@ -975,7 +1822,6 @@ def build_sqlite_and_postgres(snapshot):
     """
     cur.executescript(ddl_sqlite)
 
-    # Seed companies
     cur.executemany(
         "INSERT INTO companies VALUES (?,?,?,?,?,?)",
         [
@@ -985,7 +1831,6 @@ def build_sqlite_and_postgres(snapshot):
         ],
     )
 
-    # Seed users (zero Dataverse seat dependency!)
     cur.executemany(
         "INSERT INTO users VALUES (?,?,?,?,?,?,?,?)",
         [
@@ -1040,134 +1885,22 @@ def build_sqlite_and_postgres(snapshot):
     conn.close()
     print(f"  SQLite DB created -> {db_path} ({db_path.stat().st_size // 1024} KB)", flush=True)
 
-    # Also write PostgreSQL / Supabase DDL with Row-Level Security (RLS)
-    pg_ddl = """-- ============================================================================
--- ISABI Systems — Manufacturing Operations Standalone PostgreSQL / Supabase Schema
--- Replaces Microsoft Dataverse & Power BI PPU with 100% Owned SQL + Row-Level Security
--- Companies: WTC, BBConstruction, Lions Transport
--- ============================================================================
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
-CREATE TABLE IF NOT EXISTS companies (
-    key TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    code TEXT NOT NULL,
-    currency TEXT DEFAULT 'USD',
-    usd_rate NUMERIC(14,2) DEFAULT 90000,
-    min_date DATE DEFAULT '2024-01-01'
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    full_name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL CHECK (role IN ('Full Access (Owner)', 'Supervisor + Entry', 'Supervisor', 'Entry', 'Sales')),
-    companies TEXT[] NOT NULL,
-    pbi_access TEXT DEFAULT 'full',
-    statements_access TEXT DEFAULT 'full',
-    status TEXT DEFAULT 'Active',
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS products (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    official_name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    uom TEXT NOT NULL,
-    ton_factor NUMERIC(10,3) DEFAULT 1.000,
-    input_product TEXT,
-    revenue_account TEXT DEFAULT '701',
-    purchase_account TEXT DEFAULT '601'
-);
-
-CREATE TABLE IF NOT EXISTS sites (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    is_jv BOOLEAN DEFAULT FALSE,
-    region TEXT,
-    supplier TEXT,
-    address TEXT
-);
-
-CREATE TABLE IF NOT EXISTS equipment (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    plate_no TEXT,
-    type TEXT NOT NULL,
-    ownership TEXT NOT NULL,
-    capacity NUMERIC(10,2) DEFAULT 0,
-    supplier TEXT,
-    customer TEXT,
-    default_driver TEXT
-);
-
-CREATE TABLE IF NOT EXISTS price_rules (
-    id UUID PRIMARY KEY,
-    name TEXT,
-    company TEXT NOT NULL,
-    rule_type TEXT NOT NULL,
-    customer TEXT,
-    supplier TEXT,
-    product TEXT,
-    site TEXT,
-    unit TEXT DEFAULT 'm³',
-    unit_price NUMERIC(12,2) DEFAULT 0,
-    trans_unit_price NUMERIC(12,2) DEFAULT 0,
-    start_date DATE,
-    end_date DATE
-);
-
-CREATE TABLE IF NOT EXISTS sales_tickets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT,
-    ticket_no TEXT NOT NULL,
-    date DATE NOT NULL,
-    rep_date DATE NOT NULL,
-    company TEXT NOT NULL,
-    sale_type TEXT NOT NULL,
-    transport_by TEXT NOT NULL,
-    customer TEXT NOT NULL,
-    product TEXT NOT NULL,
-    site TEXT,
-    truck_owner TEXT,
-    truck TEXT,
-    driver TEXT,
-    uom TEXT NOT NULL,
-    qty NUMERIC(12,2) NOT NULL,
-    unit_price NUMERIC(12,2) NOT NULL,
-    price NUMERIC(14,2) NOT NULL,
-    trans_unit_price NUMERIC(12,2) DEFAULT 0,
-    trans_price NUMERIC(14,2) DEFAULT 0,
-    discount NUMERIC(14,2) DEFAULT 0,
-    total NUMERIC(14,2) NOT NULL,
-    vat NUMERIC(14,2) DEFAULT 0,
-    total_ttc NUMERIC(14,2) NOT NULL,
-    method TEXT NOT NULL,
-    vat_invoice TEXT,
-    time TEXT DEFAULT '12:00',
-    overtime BOOLEAN DEFAULT FALSE,
-    created_by TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Business Unit Row-Level Security (RLS) matching Dataverse BU ownership
-ALTER TABLE sales_tickets ENABLE ROW LEVEL SECURITY;
-"""
-    (DATA_DIR / "schema_postgres.sql").write_text(pg_ddl, encoding="utf-8")
-
 
 def main():
     t0 = time.time()
-    print("== Stage 1: Extracting Live Manufacturing Operations Data ==", flush=True)
-    models = {}
-    for key in ("manufacturing-group", "wtc", "bbconstruction", "lionstransport"):
-        models[key] = fetch_model_analytics(key)
+    skip_dax = "--skip-dax" in sys.argv
+    snap_path = DATA_DIR / "mfg_snapshot.json"
+    if skip_dax and snap_path.exists():
+        print("== Stage 1: Reusing fresh DAX models from mfg_snapshot.json ==", flush=True)
+        models = json.loads(snap_path.read_text(encoding="utf-8")).get("models", {})
+    else:
+        print("== Stage 1: Extracting Live Manufacturing Operations Data ==", flush=True)
+        models = {}
+        for key in ("manufacturing-group", "wtc", "bbconstruction", "lionstransport"):
+            models[key] = fetch_model_analytics(key)
 
     records = fetch_dataverse_records()
 
-    # Load m280 AI sentinels report
     sentinels_path = Path(r"C:\Users\HusseinBdeir\bhfirms\manufacturing-operations\exports\m280_ai_sentinels_report.json")
     sentinels = json.loads(sentinels_path.read_text(encoding="utf-8")) if sentinels_path.exists() else {}
 
@@ -1178,7 +1911,6 @@ def main():
         "sentinels": sentinels,
     }
 
-    snap_path = DATA_DIR / "mfg_snapshot.json"
     snap_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)
 

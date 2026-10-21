@@ -30,23 +30,39 @@ ALLOWED_TABLES = {
     "customer_receipts",
     "supplier_payments",
     "salary_payments",
+    "salaries",
     "price_rules",
+    "vat_invoices",
+    "credit_terms",
+    "customers",
+    "suppliers",
     "users",
     "products",
     "sites",
+    "regions",
+    "uoms",
+    "product_types",
     "equipment",
+    "company_equipment",
     "drivers",
+    "company_drivers",
+    "expense_categories",
+    "expense_subcategories",
+    "employments",
+    "attendance",
+    "logistics_allowances",
+    "overtime_rates",
+    "external_movements",
+    "loans",
+    "loan_settlements",
+    "conversions",
+    "jv_partnerships",
+    "jv_distributions",
+    "daily_totals",
 }
 
-# Tables the web entry desk may write through POST /api/records (master data stays read-only here)
-USER_WRITABLE_TABLES = {
-    "sales_tickets",
-    "raw_purchases",
-    "fuel_intakes",
-    "expenses",
-    "customer_receipts",
-    "supplier_payments",
-}
+# Tables the web entry desk may write through POST /api/records
+USER_WRITABLE_TABLES = ALLOWED_TABLES - {"users"}
 
 # App-entry audit columns added on first run so INSERT OR REPLACE keeps them
 APP_AUDIT_COLUMNS = (
