@@ -72,14 +72,17 @@
     return Number.isFinite(n) ? Math.max(RAIL_MIN_W, Math.min(RAIL_MAX_W, Math.round(n))) : RAIL_DEFAULT_W;
   }
 
+  const IS_AUTOMATED_TEST = Boolean((typeof window !== 'undefined' && window.__MFG_HEADLESS_TEST) || (typeof navigator !== 'undefined' && navigator.webdriver));
+  const SAVED_FILTER = (!IS_AUTOMATED_TEST ? lsGet('isabi_mfg_filter_state_v1', null) : null) || {};
+
   const STATE = {
     view: 'overview',
-    company: 'manufacturing-group', // 'manufacturing-group' | 'wtc' | 'bbconstruction' | 'lionstransport'
-    period: 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025' | 'fy2024' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
-    dateGrain: 'all',               // 'all' | 'year' | 'month' | 'week' | 'day'
-    dateFrom: '',
-    dateTo: '',
-    basis: 'rep',                   // 'rep' | 'tx'
+    company: (SAVED_FILTER.company && ['manufacturing-group', 'wtc', 'bbconstruction', 'lionstransport'].includes(SAVED_FILTER.company)) ? SAVED_FILTER.company : 'manufacturing-group',
+    period: SAVED_FILTER.period || 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025' | 'fy2024' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
+    dateGrain: SAVED_FILTER.dateGrain || 'all',            // 'all' | 'year' | 'month' | 'week' | 'day'
+    dateFrom: SAVED_FILTER.dateFrom || '',
+    dateTo: SAVED_FILTER.dateTo || '',
+    basis: (SAVED_FILTER.basis === 'tx' || SAVED_FILTER.basis === 'rep') ? SAVED_FILTER.basis : 'rep',                   // 'rep' | 'tx'
     theme: localStorage.getItem('isabi_mfg_theme') || 'light',
     railCollapsed: localStorage.getItem('isabi_mfg_rail_collapsed') === '1',
     railWidth: clampRailWidth(localStorage.getItem('isabi_mfg_rail_width') || RAIL_DEFAULT_W),
@@ -495,6 +498,28 @@
     return (f > 0 && f !== 1) ? q * f : 0;
   }
 
+  // m18a / m272: Sale = +1 (Cash / Credit / Barter), Return = -1 (C Return / CR Return / Cash Return / Credit Return), Free / Remove / Config = 0
+  function ticketSign(r) {
+    const m = String((r && r.method) || '').trim();
+    if (m === 'C Return' || m === 'CR Return' || m === 'Cash Return' || m === 'Credit Return') return -1;
+    if (m === 'Free' || m === 'Remove' || m === 'Config' || m === 'VATConfig') return 0;
+    return 1;
+  }
+
+  function saveFilterState() {
+    if (IS_AUTOMATED_TEST) return;
+    try {
+      localStorage.setItem('isabi_mfg_filter_state_v1', JSON.stringify({
+        company: STATE.company,
+        period: STATE.period,
+        dateGrain: STATE.dateGrain,
+        dateFrom: STATE.dateFrom,
+        dateTo: STATE.dateTo,
+        basis: STATE.basis
+      }));
+    } catch (_) { /* storage full */ }
+  }
+
   // Keys that are plain sums over records (safe to shift by a per-record delta); ratios are recomputed afterwards.
   const KPI_ADDITIVE_KEYS = ['sales_ttc', 'gross_sales', 'net_sales', 'trans_rev', 'sales_vat', 'loads', 'delivery_loads', 'pickup_loads', 'unregistered_loads',
     'tons_sold', 'qty_sold', 'cash_sales', 'credit_sales', 'raw_cost', 'raw_mat_cost', 'raw_haulage', 'raw_loads', 'raw_tons', 'raw_qty',
@@ -532,25 +557,26 @@
     let sales_ttc = 0, sales_vat = 0, net_sales = 0, gross_sales = 0, trans_rev = 0, qty_sold = 0, tons_sold = 0;
     let cash_sales = 0, credit_sales = 0;
     sales.forEach(s => {
+      const sgn = ticketSign(s);
       loads += 1;
       if (s.sale_type === 'Pickup') pickup_loads += 1;
       else if (s.sale_type === 'Delivery') delivery_loads += 1;
       else unregistered_loads += 1;
-      const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
-      const vat = Number(s.vat || 0);
-      const net = Number(s.total != null ? s.total : (ttc - vat));
-      const tr = Number(s.trans_price || 0);
-      const mat = Number(s.price != null ? s.price : (net - tr));
-      const q = Number(s.qty || 0);
+      const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0) * sgn;
+      const vat = Number(s.vat || 0) * sgn;
+      const net = Number(s.total != null ? s.total : (Number(s.total_ttc || 0) - Number(s.vat || 0))) * sgn;
+      const tr = Number(s.trans_price || 0) * sgn;
+      const mat = Number(s.price != null ? s.price : (Number(s.total || 0) - Number(s.trans_price || 0))) * sgn;
+      const q = Number(s.qty || 0) * sgn;
       sales_ttc += ttc;
       sales_vat += vat;
       net_sales += mat;
       gross_sales += net;
       trans_rev += tr;
       qty_sold += q;
-      tons_sold += ticketTons(s);
-      if (s.method === 'Cash') cash_sales += net;
-      else credit_sales += net;
+      tons_sold += ticketTons(s) * sgn;
+      if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') cash_sales += net;
+      else if (sgn !== 0) credit_sales += net;
     });
 
     let raw_loads = 0, raw_mat_cost = 0, raw_haulage = 0, raw_cost = 0, raw_qty = 0, raw_tons = 0;
@@ -778,6 +804,7 @@
     }
     STATE.shown = {};
     STATE.pbiTablePage = {};
+    saveFilterState();
     renderApp();
   }
 
@@ -1922,12 +1949,39 @@
       return true;
     }), 'sales', 'date', 'desc');
     const shown = rows.slice(0, shownCount('sales'));
-    const sumQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
-    const sumMat = rows.reduce((a, r) => a + Number(r.price || 0), 0);
-    const sumTr = rows.reduce((a, r) => a + Number(r.trans_price || 0), 0);
-    const sumNet = rows.reduce((a, r) => a + Number(r.total != null ? r.total : (Number(r.price || 0) + Number(r.trans_price || 0))), 0);
-    const sumVat = rows.reduce((a, r) => a + Number(r.vat || 0), 0);
-    const sumTtc = rows.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
+    let sumQty = 0, sumMat = 0, sumTr = 0, sumNet = 0, sumVat = 0, sumTtc = 0, sumCash = 0, sumCredit = 0, sumDisc = 0;
+    const byCo = {
+      WTC: { loads: 0, net: 0, cash: 0, credit: 0, vat: 0, ttc: 0, disc: 0 },
+      BBConstruction: { loads: 0, net: 0, cash: 0, credit: 0, vat: 0, ttc: 0, disc: 0 }
+    };
+    rows.forEach(r => {
+      const sgn = ticketSign(r);
+      const q = Number(r.qty || 0);
+      const mat = sgn * Number(r.price || 0);
+      const tr = sgn * Number(r.trans_price || 0);
+      const net = sgn * Number(r.total != null ? r.total : (Number(r.price || 0) + Number(r.trans_price || 0)));
+      const vat = sgn * Number(r.vat || 0);
+      const ttc = sgn * Number(r.total_ttc != null ? r.total_ttc : (Number(r.total || 0) + Number(r.vat || 0)));
+      const disc = Number(r.discount || 0);
+      const isCash = /^cash|^c\b/i.test(String(r.method || ''));
+      sumQty += q;
+      sumMat += mat;
+      sumTr += tr;
+      sumNet += net;
+      sumVat += vat;
+      sumTtc += ttc;
+      sumDisc += disc;
+      if (isCash) sumCash += net; else sumCredit += net;
+      const bucket = byCo[r.company];
+      if (bucket) {
+        bucket.loads += 1;
+        bucket.net += net;
+        if (isCash) bucket.cash += net; else bucket.credit += net;
+        bucket.vat += vat;
+        bucket.ttc += ttc;
+        bucket.disc += disc;
+      }
+    });
     const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all');
     const mdlProds = getModel().products || [];
     const mdlSites = getModel().sites || [];
@@ -1947,9 +2001,10 @@
           };
           map.set(name, cur);
         }
+        const sgn = ticketSign(r);
         const q = Number(r.qty || 0);
-        const ttc = Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
-        const net = Number(r.total != null ? r.total : (ttc - Number(r.vat || 0)));
+        const ttc = sgn * Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
+        const net = sgn * Number(r.total != null ? r.total : (Number(r.total_ttc || 0) - Number(r.vat || 0)));
         cur.loads += 1;
         cur.qty_sold += q;
         cur.tons_sold += ticketTons(r);
@@ -1971,10 +2026,11 @@
           cur = { Site: name, JV: ref.JV || (ref.is_jv ? 'Yes' : 'No'), loads: 0, tons_sold: 0, trans_rev: 0, sales_ttc: 0 };
           map.set(name, cur);
         }
+        const sgn = ticketSign(r);
         cur.loads += 1;
         cur.tons_sold += ticketTons(r);
-        cur.trans_rev += Number(r.trans_price || 0);
-        cur.sales_ttc += Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
+        cur.trans_rev += sgn * Number(r.trans_price || 0);
+        cur.sales_ttc += sgn * Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
       });
       return Array.from(map.values());
     })();
@@ -1983,21 +2039,25 @@
     const prodAvgNet = !isSalesFiltered ? k.avg_price_net : (prodTotQty > 0 ? round2((sumTtc - sumVat) / prodTotQty) : 0);
     const prodAvgTtc = !isSalesFiltered ? k.avg_price_ttc : (prodTotQty > 0 ? round2(prodTotTtc / prodTotQty) : 0);
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+    const wtcS = byCo.WTC;
+    const bbcS = byCo.BBConstruction;
+    const isGroupScope = STATE.company === 'manufacturing-group';
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">WEIGHBRIDGE &amp; DISPATCH LEDGER · 35 SMART FORM RULES</div>
+          <div class="cockpit-eyebrow">WEIGHBRIDGE &amp; DISPATCH LEDGER · ${isGroupScope ? 'ALL GROUP (WTC + BBCONSTRUCTION)' : esc((COMPANY_BU_MATCH[STATE.company] || STATE.company).toUpperCase()) + ' SCOPE'}</div>
           <div class="cockpit-title">Sales &amp; Deliveries Register</div>
           <div class="cockpit-sub">Automatic Price Agreement lookup · Delivery vs Pickup transport gating · 11% VAT invoice calculation · Overtime shift detection.</div>
         </div>
         <div class="cockpit-pills">
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Sales TTC</div><div class="cockpit-pill-val brass">${fmtUSD(k.sales_ttc, 0)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Sales Ex-VAT</div><div class="cockpit-pill-val">${fmtUSD(k.gross_sales || k.net_sales, 0)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">VAT (11%)</div><div class="cockpit-pill-val">${fmtUSD(k.sales_vat, 0)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Loads</div><div class="cockpit-pill-val">${fmtNum(k.loads)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Delivery / Pickup</div><div class="cockpit-pill-val">${fmtNum(k.delivery_loads)} / ${fmtNum(k.pickup_loads)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Tons Sold</div><div class="cockpit-pill-val emerald">${fmtNum(k.tons_sold, 0)} t</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Sales (Ex-VAT)</div><div class="cockpit-pill-val brass">${fmtUSD(sumNet, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cash Sales</div><div class="cockpit-pill-val">${fmtUSD(sumCash, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Credit Sales</div><div class="cockpit-pill-val">${fmtUSD(sumCredit, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">VAT (11%)</div><div class="cockpit-pill-val">${fmtUSD(sumVat, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Sales VAT Incl.</div><div class="cockpit-pill-val emerald">${fmtUSD(sumTtc, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Discount</div><div class="cockpit-pill-val">${fmtUSD(sumDisc, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Loads</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
           ${appPill('sales_tickets', 'total_ttc', 'tickets')}
         </div>
       </div>
@@ -2016,17 +2076,65 @@
           </div>
         </div>
 
+        ${isGroupScope ? `
+        <div class="sales-entity-recon">
+          <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only (matches WTC Old Power BI)">
+            <div class="sales-recon-head">
+              <span class="badge badge-brass">WTC</span>
+              <b>${fmtNum(wtcS.loads)} Loads</b>
+              <span class="sales-recon-act">Filter WTC Only →</span>
+            </div>
+            <div class="sales-recon-metrics">
+              <span><small>Sales Ex-VAT</small><b>${fmtUSD(wtcS.net, 2)}</b></span>
+              <span><small>Cash</small><b>${fmtUSD(wtcS.cash, 2)}</b></span>
+              <span><small>Credit</small><b>${fmtUSD(wtcS.credit, 2)}</b></span>
+              <span><small>VAT (11%)</small><b>${fmtUSD(wtcS.vat, 2)}</b></span>
+              <span><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(wtcS.ttc, 2)}</b></span>
+              <span><small>Discount</small><b>${fmtUSD(wtcS.disc, 2)}</b></span>
+            </div>
+          </div>
+          <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+            <div class="sales-recon-head">
+              <span class="badge badge-info">BBConstruction</span>
+              <b>${fmtNum(bbcS.loads)} Loads</b>
+              <span class="sales-recon-act">Filter BBC Only →</span>
+            </div>
+            <div class="sales-recon-metrics">
+              <span><small>Sales Ex-VAT</small><b>${fmtUSD(bbcS.net, 2)}</b></span>
+              <span><small>Cash</small><b>${fmtUSD(bbcS.cash, 2)}</b></span>
+              <span><small>Credit</small><b>${fmtUSD(bbcS.credit, 2)}</b></span>
+              <span><small>VAT (11%)</small><b>${fmtUSD(bbcS.vat, 2)}</b></span>
+              <span><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(bbcS.ttc, 2)}</b></span>
+              <span><small>Discount</small><b>${fmtUSD(bbcS.disc, 2)}</b></span>
+            </div>
+          </div>
+        </div>
+        ` : `
+        <div class="sales-entity-recon single">
+          <div class="sales-recon-single">
+            <span><span class="badge badge-brass">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span> <b>${fmtNum(rows.length)} Loads</b></span>
+            <span>Sales Ex-VAT: <b>${fmtUSD(sumNet, 2)}</b> (Cash <b>${fmtUSD(sumCash, 2)}</b> · Credit <b>${fmtUSD(sumCredit, 2)}</b>)</span>
+            <span>VAT 11%: <b>${fmtUSD(sumVat, 2)}</b></span>
+            <span>Sales VAT Incl.: <b class="brass">${fmtUSD(sumTtc, 2)}</b></span>
+            <span>Discount: <b>${fmtUSD(sumDisc, 2)}</b></span>
+            <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
+          </div>
+        </div>
+        `}
+
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
               <tr>
                 ${th('sales', 'Date', 'date')}${th('sales', 'Ticket #', 'ticket_no')}${th('sales', 'Co.', 'company')}${th('sales', 'Type', 'sale_type')}
-                ${th('sales', 'Customer', 'customer')}${th('sales', 'Product', 'product')}${th('sales', 'Destination Site', 'site')}${th('sales', 'Truck / Driver', 'truck')}
-                ${th('sales', 'Qty', 'qty', 'r')}${th('sales', 'Mat ($)', 'price', 'r')}${th('sales', 'Trans ($)', 'trans_price', 'r')}${th('sales', 'VAT ($)', 'vat', 'r')}${th('sales', 'Total TTC ($)', 'total_ttc', 'r')}${th('sales', 'Method', 'method')}
+                ${th('sales', 'Customer', 'customer')}${th('sales', 'Product', 'product')}${th('sales', 'Site', 'site')}${th('sales', 'Truck / Driver', 'truck')}
+                ${th('sales', 'Qty', 'qty', 'r')}${th('sales', 'Mat ($)', 'price', 'r')}${th('sales', 'Trans ($)', 'trans_price', 'r')}${th('sales', 'Sales Ex-VAT ($)', 'total', 'r')}${th('sales', 'VAT ($)', 'vat', 'r')}${th('sales', 'Sales VAT Incl. ($)', 'total_ttc', 'r')}${th('sales', 'Method', 'method')}
               </tr>
             </thead>
             <tbody>
-              ${shown.map(r => `
+              ${shown.map(r => {
+                const netVal = r.total != null ? r.total : (Number(r.price || 0) + Number(r.trans_price || 0));
+                return `
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDate(r))}${appCell(r, 'sales_tickets')}</td>
                   <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''}</td>
@@ -2039,21 +2147,27 @@
                   <td class="r">${fmtNum(r.qty, 2)} ${esc(r.uom)}</td>
                   <td class="r">${fmtUSD(r.price, 2)}</td>
                   <td class="r">${fmtUSD(r.trans_price, 2)}</td>
+                  <td class="r"><strong>${fmtUSD(netVal, 2)}</strong></td>
                   <td class="r">${Number(r.vat || 0) ? fmtUSD(r.vat, 2) : '—'}</td>
                   <td class="r"><strong>${fmtUSD(r.total_ttc, 2)}</strong></td>
                   <td><span class="badge ${r.method === 'Cash' ? 'badge-ok' : 'badge-info'}">${esc(r.method)}</span></td>
                 </tr>
-              `).join('') || emptyRow(14, periodEmptyMsg(SEED.records.sales_tickets, 'sales tickets'))}
-              ${showMoreRow('sales', rows.length, 14)}
+              `;
+              }).join('') || emptyRow(15, periodEmptyMsg(SEED.records.sales_tickets, 'sales tickets'))}
+              ${showMoreRow('sales', rows.length, 15)}
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="8"><b>TOTAL (${fmtNum(rows.length)} LOADS · Ex-VAT ${fmtUSD(sumNet, 2)})</b></td>
-                <td class="r"><b>${fmtNum(sumQty, 0)}</b></td>
-                <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
-                <td class="r"><b>${fmtUSD(sumTr, 2)}</b></td>
-                <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
-                <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
+                <td colspan="8">
+                  <b>TOTAL (${fmtNum(rows.length)} LOADS · Ex-VAT ${fmtUSD(sumNet, 2)} · Cash ${fmtUSD(sumCash, 2)} · Credit ${fmtUSD(sumCredit, 2)})</b>
+                  ${isGroupScope ? `<div class="tfoot-sub-split">WTC (${fmtNum(wtcS.loads)}): Ex-VAT ${fmtUSD(wtcS.net, 2)} · VAT ${fmtUSD(wtcS.vat, 2)} · Incl. ${fmtUSD(wtcS.ttc, 2)} &nbsp;|&nbsp; BBC (${fmtNum(bbcS.loads)}): Ex-VAT ${fmtUSD(bbcS.net, 2)} · VAT ${fmtUSD(bbcS.vat, 2)} · Incl. ${fmtUSD(bbcS.ttc, 2)}</div>` : ''}
+                </td>
+                <td class="r"><span class="tfoot-col-lbl">QTY</span><b>${fmtNum(sumQty, 0)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">MAT ($)</span><b>${fmtUSD(sumMat, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">TRANS ($)</span><b>${fmtUSD(sumTr, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">SALES EX-VAT</span><b>${fmtUSD(sumNet, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">VAT (11%)</span><b>${fmtUSD(sumVat, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">SALES VAT INCL.</span><b>${fmtUSD(sumTtc, 2)}</b></td>
                 <td></td>
               </tr>
             </tfoot>
@@ -7829,11 +7943,22 @@
     }
 
     container.querySelectorAll('[data-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.chipFilter = btn.getAttribute('data-chip'); STATE.shown = {}; renderApp(); }));
-    container.querySelectorAll('[data-jump-co]').forEach(row => row.addEventListener('click', () => {
-      const targetCo = row.getAttribute('data-jump-co');
-      if (getAllowedCompanyKeys(activeUserRow).includes(targetCo)) { STATE.company = targetCo; renderApp(); }
-      else toast('Your seat is not scoped to that entity', 'err');
-    }));
+    container.querySelectorAll('[data-jump-co]').forEach(row => {
+      const goCo = () => {
+        const targetCo = row.getAttribute('data-jump-co');
+        if (getAllowedCompanyKeys(activeUserRow).includes(targetCo)) {
+          STATE.company = targetCo;
+          STATE.shown = {};
+          STATE.pbiTablePage = {};
+          saveFilterState();
+          renderApp();
+        } else {
+          toast('Your seat is not scoped to that entity', 'err');
+        }
+      };
+      row.addEventListener('click', goCo);
+      if (row.getAttribute('role') === 'button') row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goCo(); } });
+    });
     container.querySelectorAll('[data-nav-jump]').forEach(btn => {
       const go = () => {
         const stmt = btn.getAttribute('data-stmt-jump');
@@ -8349,7 +8474,7 @@
     const brand = $('brandHomeLink');
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
-    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.addEventListener('click', () => { STATE.company = btn.getAttribute('data-company'); STATE.shown = {}; STATE.pbiTablePage = {}; renderApp(); }));
+    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.addEventListener('click', () => { STATE.company = btn.getAttribute('data-company'); STATE.shown = {}; STATE.pbiTablePage = {}; saveFilterState(); renderApp(); }));
     document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-grain') })));
     const periodSel = $('periodSelect');
     if (periodSel) periodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
@@ -8359,7 +8484,7 @@
     if (dateToEl) dateToEl.addEventListener('change', e => setDateFilter({ to: e.target.value }));
     const dateRstEl = $('dateRangeResetBtn');
     if (dateRstEl) dateRstEl.addEventListener('click', () => setDateFilter({ reset: true }));
-    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); renderApp(); }));
+    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); saveFilterState(); renderApp(); }));
 
     const toggleTheme = () => { STATE.theme = STATE.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('isabi_mfg_theme', STATE.theme); renderApp(); };
     const themeBtn = $('themeToggleBtn');

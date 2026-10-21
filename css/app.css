@@ -6344,3 +6344,124 @@ table.ledger-table tfoot tr td:last-child {
     max-width: 100%;
   }
 }
+
+/* v6.4 — Sales Entity Split & Reconciliation Bar + Self-Labeled Footer Totals */
+.sales-entity-recon {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.sales-entity-recon.single {
+  display: block;
+  padding: 8px 16px;
+}
+.sales-recon-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3.5px solid var(--brass);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: border-color 0.14s, box-shadow 0.14s, background 0.14s;
+}
+.sales-recon-card[data-jump-co="bbconstruction"] {
+  border-left-color: var(--steel);
+}
+.sales-recon-card:hover {
+  border-color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 5%, var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+.sales-recon-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.sales-recon-act {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brass);
+}
+.sales-recon-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+.sales-recon-metrics span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sales-recon-metrics small {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sales-recon-metrics b {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.sales-recon-metrics b.brass,
+.sales-recon-single b.brass {
+  color: var(--brass);
+}
+.sales-recon-single {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.sales-recon-reset {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.tfoot-col-lbl {
+  display: block;
+  font-family: "Archivo", sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+.tfoot-sub-split {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+#salesPanel table.ledger-table th,
+#salesPanel table.ledger-table td {
+  padding-left: 6px;
+  padding-right: 6px;
+  font-size: 11.4px;
+}
+@media (max-width: 1100px) {
+  .sales-entity-recon {
+    grid-template-columns: 1fr;
+  }
+  .sales-recon-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
