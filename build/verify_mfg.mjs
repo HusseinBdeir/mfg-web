@@ -210,8 +210,23 @@ try {
   const loanCell = await evaluate(`(() => { const tr = document.querySelector('#tablesHubPanel tbody tr.rrow'); return tr ? tr.innerText : ''; })()`);
   /\$\d/.test(loanCell) && !/^—/.test(loanCell) ? pass('tables · loans show principal + date', loanCell.replace(/\s+/g, ' ').slice(0, 70)) : fail('tables loans', loanCell.slice(0, 80));
 
-  // 5. Record inspector on a register row
+  // 5. Record inspector on a register row + full-dataset tfoot totals (no "Show more" or "SHOWN OF")
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click()`); await sleep(300);
+  const salesTotalsProbe = await evaluate(`(() => {
+    const showMoreBtns = document.querySelectorAll('[data-show-more], tr.show-more-row').length;
+    const tfootTxt = (document.querySelector('#salesPanel tfoot tr') || {}).innerText || '';
+    const hasShownWord = /SHOWN|SHOWING/i.test(tfootTxt);
+    // Click Pickup filter chip and verify total updates only on filter change
+    const pickupChip = document.querySelector('#salesPanel [data-chip="pickup"]');
+    if (pickupChip) pickupChip.click();
+    const filteredTxt = (document.querySelector('#salesPanel tfoot tr') || {}).innerText || '';
+    const allChip = document.querySelector('#salesPanel [data-chip="all"]');
+    if (allChip) allChip.click();
+    return { showMoreBtns, tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(), hasShownWord, filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim() };
+  })()`);
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,8\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt
+    ? pass('sales tfoot · full tab dataset total (no Show More / no SHOWN OF) & updates on filter', salesTotalsProbe.tfootTxt)
+    : fail('sales tfoot totals', JSON.stringify(salesTotalsProbe));
   await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(200);
   const insp = await evaluate(`(() => { const p = document.getElementById('recordInspector'); return p && !p.hidden ? document.querySelectorAll('#inspectorBody .inspector-cell').length : 0; })()`);
   insp > 8 ? pass('record inspector opens', `${insp} fields`) : fail('record inspector', String(insp));

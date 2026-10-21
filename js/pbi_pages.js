@@ -3360,12 +3360,11 @@
                   }).join('')}
                 </tr>
               `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}
-              ${showMoreRow('tbl_' + meta.key, rows.length, meta.cols.length)}
             </tbody>
             <tfoot>
               <tr>
                 ${meta.cols.map((c, ci) => {
-                  if (ci === 0) return `<td><b>TOTAL (${fmtNum(rows.length)} MATCHING · ${fmtNum(shown.length)} SHOWN)</b></td>`;
+                  if (ci === 0) return `<td><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`;
                   const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c);
                   const isMoney = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till/.test(c) && !/rate$/.test(c);
                   const isNum = !isBoolCol && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|count|odometer|interest_rate|exchange_rate/.test(c);

@@ -41,7 +41,7 @@
   const VAT_RATE = 0.11;
   const DAY_SHIFT_FROM = 6 * 60;   // m48: Day shift 06:00–17:59, Night otherwise
   const DAY_SHIFT_TO = 17 * 60 + 59;
-  const PAGE = 25;
+  const PAGE = 100;
   const SEED_DATE = String(SEED.generated_at || '').slice(0, 10) || todayISO();
 
   const DEFAULT_USERS = [
@@ -852,10 +852,8 @@
 
   function shownCount(view) { return STATE.shown[view] || PAGE; }
 
-  function showMoreRow(view, total, cols) {
-    const n = shownCount(view);
-    if (total <= n) return '';
-    return `<tr class="show-more-row"><td colspan="${cols}"><button type="button" class="btn" data-show-more="${esc(view)}">Show ${Math.min(PAGE, total - n)} more · ${fmtNum(total - n)} remaining</button></td></tr>`;
+  function showMoreRow() {
+    return '';
   }
 
   function emptyRow(cols, msg) {
@@ -1373,13 +1371,14 @@
     const opProfit = STATE.basis === 'rep' ? (k.op_profit_rep_date || k.operating_profit) : k.operating_profit;
 
     const sentinelRows = buildSentinelItems().slice(0, 4);
-    const soaRows = (m.soa_stream || []).slice(0, 8);
+    const soaAll = m.soa_stream || [];
+    const soaRows = soaAll.slice(0, 8);
     const tb = tbStatus(k);
     const booksCount = STATE.company === 'manufacturing-group' ? '2' : (modelHasLedger() ? '1' : '0');
     const booksUnit = STATE.company === 'manufacturing-group' ? ' of 3 live' : ' of 1';
 
     let totDeb = 0, totCred = 0;
-    soaRows.forEach(r => { totDeb += Number(r.debit || 0); totCred += Number(r.credit || 0); });
+    soaAll.forEach(r => { totDeb += Number(r.debit || 0); totCred += Number(r.credit || 0); });
 
     if (!modelHasLedger()) {
       return `
@@ -1637,7 +1636,7 @@
               </tbody>
               <tfoot>
                 <tr class="total">
-                  <td colspan="4"><b>Total (${soaRows.length} shown legs) · TB variance ${fmtUSD(k.tb_check || 0, 2)}</b></td>
+                  <td colspan="4"><b>Total (${fmtNum(soaAll.length)} legs) · TB variance ${fmtUSD(k.tb_check || 0, 2)}</b></td>
                   <td class="n"><b>${fmtUSD(totDeb, 2)}</b></td>
                   <td class="n"><b>${fmtUSD(totCred, 2)}</b></td>
                 </tr>
@@ -1861,13 +1860,65 @@
       return true;
     }), 'sales', 'date', 'desc');
     const shown = rows.slice(0, shownCount('sales'));
-    const sumQty = shown.reduce((a, r) => a + Number(r.qty || 0), 0);
-    const sumMat = shown.reduce((a, r) => a + Number(r.price || 0), 0);
-    const sumTr = shown.reduce((a, r) => a + Number(r.trans_price || 0), 0);
-    const sumVat = shown.reduce((a, r) => a + Number(r.vat || 0), 0);
-    const sumTtc = shown.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
-    const allProds = getModel().products || [];
-    const allSites = getModel().sites || [];
+    const sumQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
+    const sumMat = rows.reduce((a, r) => a + Number(r.price || 0), 0);
+    const sumTr = rows.reduce((a, r) => a + Number(r.trans_price || 0), 0);
+    const sumVat = rows.reduce((a, r) => a + Number(r.vat || 0), 0);
+    const sumTtc = rows.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
+    const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all' || STATE.basis === 'rep');
+    const mdlProds = getModel().products || [];
+    const mdlSites = getModel().sites || [];
+    const allProds = !isSalesFiltered ? mdlProds : (() => {
+      const map = new Map();
+      rows.forEach(r => {
+        const name = r.product || '(Unspecified)';
+        let cur = map.get(name);
+        if (!cur) {
+          const ref = mdlProds.find(p => norm(p.Product) === norm(name)) || productByName(name) || {};
+          cur = {
+            Product: name,
+            'Material Family': ref['Material Family'] || ref.type || 'Aggregate',
+            UoM: ref.UoM || ref.uom || r.uom || 'm³',
+            list_price: ref.list_price != null ? ref.list_price : listPrice(name),
+            loads: 0, qty_sold: 0, tons_sold: 0, net_sum: 0, sales_ttc: 0
+          };
+          map.set(name, cur);
+        }
+        const q = Number(r.qty || 0);
+        const ttc = Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
+        const net = Number(r.total != null ? r.total : (ttc - Number(r.vat || 0)));
+        cur.loads += 1;
+        cur.qty_sold += q;
+        cur.tons_sold += ticketTons(r);
+        cur.net_sum += net;
+        cur.sales_ttc += ttc;
+      });
+      return Array.from(map.values()).map(p => Object.assign(p, {
+        avg_price_net: p.qty_sold > 0 ? round2(p.net_sum / p.qty_sold) : 0,
+        avg_price_ttc: p.qty_sold > 0 ? round2(p.sales_ttc / p.qty_sold) : 0
+      }));
+    })();
+    const allSites = !isSalesFiltered ? mdlSites : (() => {
+      const map = new Map();
+      rows.forEach(r => {
+        const name = r.site || '(no site on ticket)';
+        let cur = map.get(name);
+        if (!cur) {
+          const ref = mdlSites.find(s => norm(s.Site) === norm(name)) || siteInfo(name) || {};
+          cur = { Site: name, JV: ref.JV || (ref.is_jv ? 'Yes' : 'No'), loads: 0, tons_sold: 0, trans_rev: 0, sales_ttc: 0 };
+          map.set(name, cur);
+        }
+        cur.loads += 1;
+        cur.tons_sold += ticketTons(r);
+        cur.trans_rev += Number(r.trans_price || 0);
+        cur.sales_ttc += Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
+      });
+      return Array.from(map.values());
+    })();
+    const prodTotQty = allProds.reduce((a, p) => a + Number(p.qty_sold || 0), 0);
+    const prodTotTtc = allProds.reduce((a, p) => a + Number(p.sales_ttc || 0), 0);
+    const prodAvgNet = !isSalesFiltered ? k.avg_price_net : (prodTotQty > 0 ? round2((sumTtc - sumVat) / prodTotQty) : 0);
+    const prodAvgTtc = !isSalesFiltered ? k.avg_price_ttc : (prodTotQty > 0 ? round2(prodTotTtc / prodTotQty) : 0);
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
 
     return `
@@ -1932,13 +1983,13 @@
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="8"><b>TOTAL (${fmtNum(shown.length)} SHOWN OF ${fmtNum(rows.length)} MATCHING · BOOK ARCHIVE ${fmtNum(k.loads)} LOADS)</b></td>
+                <td colspan="8"><b>TOTAL (${fmtNum(rows.length)} LOADS)</b></td>
                 <td class="r"><b>${fmtNum(sumQty, 0)}</b></td>
                 <td class="r"><b>${fmtUSD(sumMat, 0)}</b></td>
                 <td class="r"><b>${fmtUSD(sumTr, 0)}</b></td>
                 <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
-                <td><b>SHOWN</b></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -1982,9 +2033,9 @@
                   <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.qty_sold || 0), 0), 0)}</b></td>
                   <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
                   <td class="r">—</td>
-                  <td class="r"><b>${fmtUSD(k.avg_price_net, 2)}</b></td>
-                  <td class="r"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
-                  <td class="r"><b>${fmtUSD(allProds.reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(prodAvgNet, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(prodAvgTtc, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(prodTotTtc, 0)}</b></td>
                 </tr>
               </tfoot>
             </table>
@@ -2046,8 +2097,11 @@
     }), 'raw', 'date', 'desc');
     const shown = rows.slice(0, shownCount('raw'));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumMat = shown.reduce((a, r) => a + Number(r.cost || 0), 0);
-    const sumHaul = shown.reduce((a, r) => a + Number(r.trans_cost || 0), 0);
+    const sumQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
+    const sumMat = rows.reduce((a, r) => a + Number(r.cost || 0), 0);
+    const sumHaul = rows.reduce((a, r) => a + Number(r.trans_cost || 0), 0);
+    const sumTot = rows.reduce((a, r) => a + Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0))), 0);
+    const rawSites = (m.sites || []).filter(s => !STATE.search || Object.values(s).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
 
     return `
       <div class="cockpit-banner">
@@ -2105,7 +2159,7 @@
                 ${showMoreRow('raw', rows.length, 11)}
               </tbody>
               <tfoot>
-                <tr><td colspan="7"><b>TOTAL (${fmtNum(shown.length)} SHOWN OF ${fmtNum(rows.length)} MATCHING RECEIPTS)</b></td><td class="r"><b>${fmtNum(shown.reduce((a, r) => a + Number(r.qty || 0), 0), 1)}</b></td><td class="r"><b>${fmtUSD(sumMat, 0)}</b></td><td class="r"><b>${fmtUSD(sumHaul, 0)}</b></td><td class="r"><b>${fmtUSD(sumMat + sumHaul, 2)}</b></td></tr>
+                <tr><td colspan="7"><b>TOTAL (${fmtNum(rows.length)} RECEIPTS)</b></td><td class="r"><b>${fmtNum(sumQty, 1)}</b></td><td class="r"><b>${fmtUSD(sumMat, 0)}</b></td><td class="r"><b>${fmtUSD(sumHaul, 0)}</b></td><td class="r"><b>${fmtUSD(sumTot, 2)}</b></td></tr>
               </tfoot>
             </table>
           </div>
@@ -2114,7 +2168,7 @@
         <div class="panel-card" id="sitesPanel">
           <div class="panel-head">
             <div class="panel-title"><span>TOP QUARRIES &amp; CUSTOMER SITES BY VOLUME</span></div>
-            <span class="panel-meta">${fmtNum(SEED.records.sites.length)} Registered Sites ${exportBtn('sitesPanel', 'Sites')}</span>
+            <span class="panel-meta">${fmtNum(rawSites.length)} Sites ${exportBtn('sitesPanel', 'Sites')}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -2124,7 +2178,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sortRows((m.sites || []), 'sites', 'sales_ttc', 'desc').slice(0, 18).map(s => `
+                ${sortRows(rawSites, 'sites', 'sales_ttc', 'desc').map(s => `
                   <tr>
                     <td><strong>${esc(s.Site || '(no site on ticket)')}</strong></td>
                     <td>${s.JV === 'Yes' ? '<span class="badge badge-brass">JV</span>' : '—'}</td>
@@ -2137,11 +2191,11 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="2"><b>TOTAL (${fmtNum((m.sites || []).length)} SITES)</b></td>
-                  <td class="r"><b>${fmtNum((m.sites || []).reduce((a, s) => a + Number(s.loads || 0), 0))}</b></td>
-                  <td class="r"><b>${fmtUSD((m.sites || []).reduce((a, s) => a + Number(s.sales_ttc || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtNum((m.sites || []).reduce((a, s) => a + Number(s.raw_loads || 0), 0))}</b></td>
-                  <td class="r"><b>${fmtUSD((m.sites || []).reduce((a, s) => a + Number(s.raw_cost || 0), 0), 0)}</b></td>
+                  <td colspan="2"><b>TOTAL (${fmtNum(rawSites.length)} SITES)</b></td>
+                  <td class="r"><b>${fmtNum(rawSites.reduce((a, s) => a + Number(s.loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD(rawSites.reduce((a, s) => a + Number(s.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtNum(rawSites.reduce((a, s) => a + Number(s.raw_loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD(rawSites.reduce((a, s) => a + Number(s.raw_cost || 0), 0), 0)}</b></td>
                 </tr>
               </tfoot>
             </table>
@@ -2199,12 +2253,13 @@
       return true;
     }), 'fuel', 'date', 'desc');
     const shownFuel = fuelRows.slice(0, shownCount('fuel'));
-    const litres = shownFuel.reduce((a, f) => a + Number(f.litres || 0), 0);
+    const litres = fuelRows.reduce((a, f) => a + Number(f.litres || 0), 0);
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const flagged = allFuel.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
     const tank = fleet.diesel_stock_balance_l != null ? Number(fleet.diesel_stock_balance_l) : Number(k.diesel_in_tank || 0);
     const equipRows = sortRows((m.equipment || []).filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'equip', 'total_cost', 'desc');
     const shownEquip = equipRows.slice(0, shownCount('equip'));
+    const eqRegRows = sortRows(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'eqreg', 'name', 'asc');
 
     return `
       <div class="cockpit-banner">
@@ -2308,7 +2363,7 @@
                 }).join('') || emptyRow(9, periodEmptyMsg(SEED.records.fuel_intakes, 'fuel intakes'))}
                 ${showMoreRow('fuel', fuelRows.length, 9)}
               </tbody>
-              <tfoot><tr><td colspan="6"><b>TOTAL (${fmtNum(shownFuel.length)} SHOWN OF ${fmtNum(fuelRows.length)} INTAKES)</b></td><td class="r"><b>${fmtNum(litres, 0)} L</b></td><td colspan="2"></td></tr></tfoot>
+              <tfoot><tr><td colspan="6"><b>TOTAL (${fmtNum(fuelRows.length)} INTAKES)</b></td><td class="r"><b>${fmtNum(litres, 0)} L</b></td><td colspan="2"></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -2327,7 +2382,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sortRows(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())), 'eqreg', 'name', 'asc').slice(0, shownCount('eqreg')).map(e => `
+                ${eqRegRows.slice(0, shownCount('eqreg')).map(e => `
                   <tr>
                     <td class="mono"><strong>${esc(e.name)}</strong></td>
                     <td>${esc(e.type || 'Truck')}</td>
@@ -2338,12 +2393,12 @@
                     <td>${esc(e.default_driver || '—')}</td>
                   </tr>
                 `).join('') || emptyRow(7, 'No matching equipment units')}
-                ${showMoreRow('eqreg', SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())).length, 7)}
+                ${showMoreRow('eqreg', eqRegRows.length, 7)}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3"><b>TOTAL (${fmtNum(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())).length)} UNITS IN REGISTRY)</b></td>
-                  <td class="r"><b>${fmtNum(SEED.records.equipment.reduce((a, e) => a + Number(e.capacity || 0), 0), 0)}</b></td>
+                  <td colspan="3"><b>TOTAL (${fmtNum(eqRegRows.length)} UNITS IN REGISTRY)</b></td>
+                  <td class="r"><b>${fmtNum(eqRegRows.reduce((a, e) => a + Number(e.capacity || 0), 0), 0)}</b></td>
                   <td colspan="3"></td>
                 </tr>
               </tfoot>
@@ -2396,7 +2451,7 @@
             ${searchBox('Search customer, quarry supplier, product, site, agreement code...')}
             <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${typeChips}</div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center"><span class="panel-meta">Showing ${fmtNum(shown.length)} of ${fmtNum(rules.length)}</span>${exportBtn('pricingPanel', 'Price_Agreements')}</div>
+          <div style="display:flex;gap:8px;align-items:center"><span class="panel-meta">${fmtNum(rules.length)} Agreements</span>${exportBtn('pricingPanel', 'Price_Agreements')}</div>
         </div>
         <div class="table-wrap">
           <table class="ledger-table">
@@ -2495,7 +2550,8 @@
     const shown = rcpts.slice(0, shownCount('receipts'));
     const methods = uniqSorted(SEED.records.receipts.map(r => r.method));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumAmt = shown.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumAmt = rcpts.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumDisc = rcpts.reduce((a, r) => a + Number(r.discount || 0), 0);
 
     return `
       <div class="cockpit-banner">
@@ -2589,7 +2645,7 @@
                 `).join('') || emptyRow(7, periodEmptyMsg(SEED.records.receipts, 'customer receipts'))}
                 ${showMoreRow('receipts', rcpts.length, 7)}
               </tbody>
-              <tfoot><tr><td colspan="5">SHOWING ${fmtNum(shown.length)} OF ${fmtNum(rcpts.length)}</td><td class="r">${fmtUSD(sumAmt, 2)}</td><td></td></tr></tfoot>
+              <tfoot><tr><td colspan="5"><b>TOTAL (${fmtNum(rcpts.length)} RECEIPTS)</b></td><td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td><td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -2611,7 +2667,8 @@
     const shown = spays.slice(0, shownCount('settle'));
     const methods = uniqSorted(SEED.records.settlements.map(r => r.method));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumAmt = shown.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumAmt = spays.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumDisc = spays.reduce((a, r) => a + Number(r.discount || 0), 0);
 
     return `
       <div class="cockpit-banner">
@@ -2703,7 +2760,7 @@
                 `).join('') || emptyRow(7, periodEmptyMsg(SEED.records.settlements, 'supplier settlements'))}
                 ${showMoreRow('settle', spays.length, 7)}
               </tbody>
-              <tfoot><tr><td colspan="5">SHOWING ${fmtNum(shown.length)} OF ${fmtNum(spays.length)}</td><td class="r">${fmtUSD(sumAmt, 2)}</td><td></td></tr></tfoot>
+              <tfoot><tr><td colspan="5"><b>TOTAL (${fmtNum(spays.length)} SETTLEMENTS)</b></td><td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td><td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -2727,8 +2784,8 @@
     const salRows = sortRows(filterRecords(SEED.records.salaries), 'salaries', 'date', 'desc');
     const shownSal = salRows.slice(0, shownCount('salaries'));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumExp = shownExp.reduce((a, r) => a + Number(r.amount || 0), 0);
-    const sumSal = shownSal.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumExp = expRows.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const sumSal = salRows.reduce((a, r) => a + Number(r.amount || 0), 0);
 
     return `
       <div class="cockpit-banner">
@@ -2780,7 +2837,7 @@
                 `).join('') || emptyRow(8, periodEmptyMsg(SEED.records.expenses, 'expenses'))}
                 ${showMoreRow('expenses', expRows.length, 8)}
               </tbody>
-              <tfoot><tr><td colspan="7">SHOWING ${fmtNum(shownExp.length)} OF ${fmtNum(expRows.length)}</td><td class="r">${fmtUSD(sumExp, 2)}</td></tr></tfoot>
+              <tfoot><tr><td colspan="7"><b>TOTAL (${fmtNum(expRows.length)} EXPENSES)</b></td><td class="r"><b>${fmtUSD(sumExp, 2)}</b></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -2814,7 +2871,7 @@
                 `).join('') || emptyRow(6, periodEmptyMsg(SEED.records.salaries, 'salary payments'))}
                 ${showMoreRow('salaries', salRows.length, 6)}
               </tbody>
-              <tfoot><tr><td colspan="5">SHOWING ${fmtNum(shownSal.length)} OF ${fmtNum(salRows.length)}</td><td class="r">${fmtUSD(sumSal, 2)}</td></tr></tfoot>
+              <tfoot><tr><td colspan="5"><b>TOTAL (${fmtNum(salRows.length)} PAYMENTS)</b></td><td class="r"><b>${fmtUSD(sumSal, 2)}</b></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -3027,7 +3084,7 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="5"><b>TOTAL (${fmtNum(shownSal.length)} SHOWN OF ${fmtNum(salAll.length)} PAYMENTS)</b></td>
+                  <td colspan="5"><b>TOTAL (${fmtNum(salAll.length)} PAYMENTS)</b></td>
                   <td class="r"><b>${fmtUSD(salAll.reduce((a, s) => a + Number(s.amount || 0), 0), 2)}</b></td>
                   <td></td>
                 </tr>
@@ -3163,6 +3220,9 @@
     tbAll.forEach(r => { totDr += Number(r.debit || 0); totCr += Number(r.credit || 0); });
     const diff = round2(totDr - totCr);
     const tied = Math.abs(diff) < 0.005;
+    let tbDr = 0, tbCr = 0;
+    tb.forEach(r => { tbDr += Number(r.debit || 0); tbCr += Number(r.credit || 0); });
+    const tbDiff = round2(tbDr - tbCr);
 
     return `
       <div class="cockpit-banner">
@@ -3205,10 +3265,10 @@
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="3">TOTAL TRIAL BALANCE (${tbAll.length} ACTIVE GL ACCOUNTS)</td>
-                <td class="r">${fmtUSD(totDr, 2)}</td>
-                <td class="r">${fmtUSD(totCr, 2)}</td>
-                <td class="r">${fmtUSD(diff, 2)}</td>
+                <td colspan="3"><b>TOTAL TRIAL BALANCE (${fmtNum(tb.length)} ACTIVE GL ACCOUNTS)</b></td>
+                <td class="r"><b>${fmtUSD(tbDr, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(tbCr, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(tbDiff, 2)}</b></td>
               </tr>
             </tfoot>
           </table>
@@ -6606,6 +6666,26 @@
       renderApp();
       if (ws) ws.scrollTop = y;
     }));
+    // Seamless infinite scroll inside .table-wrap (no "Show more" button required; totals in tfoot always sum 100% of matching rows)
+    container.querySelectorAll('.table-wrap').forEach(wrap => {
+      const thEl = wrap.querySelector('th[data-sort-view]');
+      const v = thEl && thEl.getAttribute('data-sort-view');
+      if (!v) return;
+      wrap.addEventListener('scroll', () => {
+        if (wrap.scrollTop + wrap.clientHeight < wrap.scrollHeight - 160) return;
+        const rendered = wrap.querySelectorAll('tbody tr').length;
+        if (rendered < shownCount(v)) return;
+        const prevTop = wrap.scrollTop;
+        const ws = $('workspace');
+        const wsY = ws ? ws.scrollTop : 0;
+        STATE.shown[v] = shownCount(v) + PAGE;
+        renderApp();
+        if (ws) ws.scrollTop = wsY;
+        const nextTh = container.querySelector(`th[data-sort-view="${v}"]`);
+        const nextWrap = nextTh && nextTh.closest('.table-wrap');
+        if (nextWrap) nextWrap.scrollTop = prevTop;
+      }, { passive: true });
+    });
     container.querySelectorAll('[data-export-csv]').forEach(btn => btn.addEventListener('click', () => {
       const panel = $(btn.getAttribute('data-export-csv'));
       const tables = panel ? Array.from(panel.querySelectorAll('table')) : [];
