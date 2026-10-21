@@ -31,8 +31,10 @@ async function waitHttp(url, tries = 60) {
   return false;
 }
 
-const server = spawn('python', ['server.py', String(PORT)], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
 const udd = fs.mkdtempSync(path.join(os.tmpdir(), 'mfg-verify-'));
+const tempDb = path.join(udd, 'mfg.db');
+try { fs.copyFileSync(path.join(ROOT, 'data', 'mfg.db'), tempDb); } catch (_) {}
+const server = spawn('python', ['server.py', String(PORT)], { cwd: ROOT, env: Object.assign({}, process.env, { MFG_DB_PATH: tempDb }), stdio: 'ignore', windowsHide: true });
 const edge = spawn(EDGE, [`--headless=new`, `--remote-debugging-port=${DBG}`, `--user-data-dir=${udd}`, '--no-first-run', '--disable-gpu', '--window-size=1366,768', 'about:blank'], { stdio: 'ignore', windowsHide: true });
 
 let ws, msgId = 0; const pending = new Map(); const events = [];
@@ -85,7 +87,9 @@ try {
     else if (m.method) events.push(m);
   };
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
-  if (MOBILE) await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await send('Emulation.setDeviceMetricsOverride', MOBILE
+    ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }
+    : { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?demo=1&nosse=1` });
   await sleep(600);
   await waitPageReady();
@@ -287,11 +291,17 @@ try {
 
   const enrolFlow = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
+    const vidBefore = document.getElementById('enrolFaceVideo');
+    const cbWidth = document.getElementById('enrolRequire2faCb') ? document.getElementById('enrolRequire2faCb').getBoundingClientRect().width : 999;
     T.selectEnrolSeat('husseinbdeir@bhfirms.com');
     const c1 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.002));
+    // Verify Pose 1 is already auto-stored in enrolledSeats immediately upon capture (before clicking Save)
+    const autoStoredAfterPose1 = T.state().enrolledSeats.includes('husseinbdeir@bhfirms.com');
     const c2 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.005));
     const c3 = await T.captureSyntheticPose(T.makeSyntheticVector(1, 0.008));
     await T.saveEnrolment();
+    const capturedSlotsAfterSave = document.querySelectorAll('#enrolThumbStrip .enrol-thumb-slot.captured').length;
+    const sameVideoNode = document.getElementById('enrolFaceVideo') === vidBefore;
 
     // Select Zeinab and verify duplicate-person guard blocks Hussein's face vector
     T.selectEnrolSeat('zeinabrkein@bhfirms.com');
@@ -303,6 +313,10 @@ try {
     const cal = T.runCalibration();
     return {
       cCount: c3.count,
+      autoStoredAfterPose1,
+      capturedSlotsAfterSave,
+      sameVideoNode,
+      cbWidth,
       dupReason: dup.reason,
       dupOther: dup.other,
       zCount: z3.count,
@@ -311,8 +325,8 @@ try {
       calMinDist: cal && cal.pairs[0] ? cal.pairs[0].d : 0
     };
   })()`);
-  enrolFlow.cCount === 3 && enrolFlow.zCount === 3 && enrolFlow.enrolled.length === 2
-    ? pass('face enrolment · 3-pose 128-d capture & persistence', enrolFlow.enrolled.join(', '))
+  enrolFlow.cCount === 3 && enrolFlow.zCount === 3 && enrolFlow.enrolled.length === 2 && enrolFlow.autoStoredAfterPose1 && enrolFlow.capturedSlotsAfterSave === 3 && enrolFlow.sameVideoNode && enrolFlow.cbWidth <= 20
+    ? pass('face enrolment · auto-stores on every capture, keeps 3 stored cards visible, preserves live <video>, crisp checkbox layout', enrolFlow.enrolled.join(', '))
     : fail('face enrolment', JSON.stringify(enrolFlow));
   enrolFlow.dupReason === 'duplicate-person' && enrolFlow.dupOther === 'husseinbdeir@bhfirms.com'
     ? pass('face duplicate guard · blocks enrolling same face on a second seat')
@@ -424,13 +438,16 @@ try {
     // Reset back to All-Time
     const rst = document.getElementById('pbiDateResetBtn');
     if (rst) rst.click();
+    const resetFrom = (document.getElementById('dateFromInput') || {}).value || '';
+    const resetTo = (document.getElementById('dateToInput') || {}).value || '';
+    const maxAttr = (document.getElementById('dateToInput') || {}).max || '';
     const overflowP06 = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
     return {
       salesCnt, rawCnt, minSalesDate,
       maxBodyRows, pagers, wrapMaxH, page2Text,
       yearOpts, monthOpts, weekOpts, dayOpts,
-      rangeMeta, overflowP06
+      rangeMeta, resetFrom, resetTo, maxAttr, overflowP06
     };
   })()`);
   pbiHistoryProbe.salesCnt >= 25000 && pbiHistoryProbe.rawCnt >= 24000 && pbiHistoryProbe.minSalesDate.startsWith('2024-01-')
@@ -439,9 +456,56 @@ try {
   pbiHistoryProbe.maxBodyRows <= 15 && pbiHistoryProbe.pagers >= 3 && /Page 2/.test(pbiHistoryProbe.page2Text) && pbiHistoryProbe.wrapMaxH !== 'none'
     ? pass('pbiTable · compact 15-row pages, bounded scroll & interactive pager', `${pbiHistoryProbe.pagers} pagers, maxRows=${pbiHistoryProbe.maxBodyRows}, maxH=${pbiHistoryProbe.wrapMaxH}`)
     : fail('pbiTable pagination', JSON.stringify(pbiHistoryProbe));
-  pbiHistoryProbe.yearOpts >= 3 && pbiHistoryProbe.monthOpts >= 34 && pbiHistoryProbe.weekOpts >= 140 && pbiHistoryProbe.dayOpts >= 700 && /2024-06-01/.test(pbiHistoryProbe.rangeMeta) && pbiHistoryProbe.overflowP06 === 0
-    ? pass('date slicer · Year/Month/Week/Day grains + From–To date range (0px overflow)', `Y=${pbiHistoryProbe.yearOpts}, M=${pbiHistoryProbe.monthOpts}, W=${pbiHistoryProbe.weekOpts}, D=${pbiHistoryProbe.dayOpts}`)
+  pbiHistoryProbe.yearOpts >= 7 && pbiHistoryProbe.monthOpts >= 84 && pbiHistoryProbe.weekOpts >= 360 && pbiHistoryProbe.dayOpts >= 700 && /2024-06-01/.test(pbiHistoryProbe.rangeMeta) && pbiHistoryProbe.resetFrom === '2024-01-01' && pbiHistoryProbe.resetTo === '2030-12-31' && pbiHistoryProbe.maxAttr === '2030-12-31' && pbiHistoryProbe.overflowP06 === 0
+    ? pass('date slicer · 2024–2030 Year/Month/Week/Day grains + From–To date range (0px overflow)', `Y=${pbiHistoryProbe.yearOpts}, M=${pbiHistoryProbe.monthOpts}, W=${pbiHistoryProbe.weekOpts}, D=${pbiHistoryProbe.dayOpts}, range=${pbiHistoryProbe.resetFrom}..${pbiHistoryProbe.resetTo}`)
     : fail('date slicer grains/range', JSON.stringify(pbiHistoryProbe));
+
+  // 7d. Sticky tfoot Totals, Unjammed P04 Tables & Collapsible Left Rail (Manufacturing Command)
+  await evaluate(`document.querySelector('[data-pbi-page="p04_sales"]').click()`); await sleep(250);
+  const p04LayoutAndFoot = await evaluate(`(() => {
+    const tables = Array.from(document.querySelectorAll('#pbiCanvasPanel table.ledger-table'));
+    const tfoots = tables.map(t => {
+      const tf = t.querySelector('tfoot tr');
+      return tf ? tf.innerText.replace(/\\s+/g, ' ').trim() : '';
+    });
+    const allHaveTfoot = tables.length >= 3 && tfoots.every(txt => /TOTAL/i.test(txt) && /\\$[0-9]/.test(txt));
+    // Verify no cell breaks 'Litres' mid-word across lines
+    const brokenLitres = Array.from(document.querySelectorAll('#pbiCanvasPanel td')).some(td => {
+      const txt = (td.innerText || '').trim();
+      return /Litre\\s*\\n\\s*s/i.test(txt);
+    });
+    return { tableCount: tables.length, allHaveTfoot, sampleFoot: tfoots[0] || '', brokenLitres };
+  })()`);
+  p04LayoutAndFoot.allHaveTfoot && !p04LayoutAndFoot.brokenLitres
+    ? pass('pbi P04 · all tables have sticky tfoot TOTAL row & zero mid-word wrapping', `${p04LayoutAndFoot.tableCount} tables · ${p04LayoutAndFoot.sampleFoot.slice(0, 70)}`)
+    : fail('pbi P04 tfoot / wrapping', JSON.stringify(p04LayoutAndFoot));
+
+  if (!MOBILE) {
+    const railToggleProbe = await evaluate(`(() => {
+      const shell = document.getElementById('appShell');
+      const main = document.querySelector('.main-area');
+      const collapseBtn = document.getElementById('railCollapseBtn');
+      const topToggleBtn = document.getElementById('mobileMenuBtn');
+      const wBefore = main.getBoundingClientRect().width;
+      collapseBtn.click();
+      const collapsedClass = shell.classList.contains('rail-collapsed');
+      const wCollapsed = main.getBoundingClientRect().width;
+      const overflowCollapsed = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      topToggleBtn.click();
+      const restoredClass = !shell.classList.contains('rail-collapsed');
+      const wRestored = main.getBoundingClientRect().width;
+      return {
+        collapsedClass,
+        restoredClass,
+        gainedPx: Math.round(wCollapsed - wBefore),
+        restoredDiff: Math.round(Math.abs(wRestored - wBefore)),
+        overflowCollapsed
+      };
+    })()`);
+    railToggleProbe.collapsedClass && railToggleProbe.restoredClass && railToggleProbe.gainedPx >= 220 && railToggleProbe.overflowCollapsed === 0
+      ? pass('desktop sidebar toggle · hides left Manufacturing Command rail & expands main view', `+${railToggleProbe.gainedPx}px width gained · 0px overflow`)
+      : fail('desktop sidebar toggle', JSON.stringify(railToggleProbe));
+  }
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

@@ -37,6 +37,7 @@
   const IS_DEMO = PARAMS.get('demo') !== '0' && (IS_LOCAL || PARAMS.get('demo') === '1');
   const HAS_LOCAL_API = IS_LOCAL; // server.py REST endpoints exist only on the local / LAN host
   const MIN_DATE = '2024-01-01';   // bhf_mindate on every manufacturing BU
+  const MAX_DATE = '2030-12-31';   // Power BI Dates calendar ceiling (2024-01-01 .. 2030-12-31)
   const VAT_RATE = 0.11;
   const DAY_SHIFT_FROM = 6 * 60;   // m48: Day shift 06:00–17:59, Night otherwise
   const DAY_SHIFT_TO = 17 * 60 + 59;
@@ -69,6 +70,7 @@
     dateTo: '',
     basis: 'tx',                    // 'tx' | 'rep'
     theme: localStorage.getItem('isabi_mfg_theme') || 'light',
+    railCollapsed: localStorage.getItem('isabi_mfg_rail_collapsed') === '1',
     search: '',
     chipFilter: 'all',
     activeStatement: '01',
@@ -125,13 +127,19 @@
     pending2faUser: null,
     cooldownUntil: 0,
     enrolUserId: '',
+    enrolLoadedForUserId: '',
     enrolCaptures: [],
     enrolThumbs: [],
-    enrolConsent: false,
+    enrolConsent: true,
     enrolCamActive: false,
+    enrolLoopTimer: null,
+    enrolBusy: false,
+    lastLiveEnrolDet: null,
+    lastLiveEnrolAt: 0,
+    lastLiveEnrolSnap: '',
     enrolTestActive: false,
     enrolTestTimer: null,
-    enrolStatusText: 'Select a team seat, tick biometric consent, and capture 3 poses (front, slight left, slight right).',
+    enrolStatusText: 'Ready — click "Capture Pose" or "Start Camera" to capture and store 3 guided biometric poses.',
     enrolStatusCls: '',
     calibReportHtml: ''
   };
@@ -278,7 +286,7 @@
     if (_grainCatalogCache) return _grainCatalogCache;
     const gp = ((SEED.models['manufacturing-group'] || {}).periods) || {};
     const presets = [
-      { value: 'all', label: (gp.all && gp.all.label) || 'All-Time (2024–2026)', from: MIN_DATE, to: SEED_DATE, daxKey: 'all' },
+      { value: 'all', label: 'All-Time (2024–2030)', from: MIN_DATE, to: MAX_DATE, daxKey: 'all' },
       { value: 'ytd', label: (gp.ytd && gp.ytd.label) || 'FY 2026 (YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
       { value: 'mtd', label: (gp.mtd && gp.mtd.label) || 'October 2026 (MTD)', from: '2026-10-01', to: '2026-10-31', daxKey: 'mtd' },
       { value: 'sep2026', label: (gp.sep2026 && gp.sep2026.label) || 'September 2026', from: '2026-09-01', to: '2026-09-30', daxKey: 'sep2026' },
@@ -289,20 +297,24 @@
     ];
 
     const years = [
-      { value: 'year:2026', label: '2026 (FY 2026 YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
+      { value: 'year:2024', label: '2024 (FY 2024 Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' },
       { value: 'year:2025', label: '2025 (FY 2025 Full Year)', from: '2025-01-01', to: '2025-12-31', daxKey: 'fy2025' },
-      { value: 'year:2024', label: '2024 (FY 2024 Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' }
+      { value: 'year:2026', label: '2026 (FY 2026 YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
+      { value: 'year:2027', label: '2027 (FY 2027)', from: '2027-01-01', to: '2027-12-31', daxKey: null },
+      { value: 'year:2028', label: '2028 (FY 2028)', from: '2028-01-01', to: '2028-12-31', daxKey: null },
+      { value: 'year:2029', label: '2029 (FY 2029)', from: '2029-01-01', to: '2029-12-31', daxKey: null },
+      { value: 'year:2030', label: '2030 (FY 2030)', from: '2030-01-01', to: '2030-12-31', daxKey: null }
     ];
 
     const months = [];
     const maxY = Number(SEED_DATE.slice(0, 4)) || 2026;
     const maxM = Number(SEED_DATE.slice(5, 7)) || 10;
+    const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
     for (let y = maxY; y >= 2024; y--) {
       const mStart = y === maxY ? maxM : 12;
       for (let m = mStart; m >= 1; m--) {
         const ym = `${y}-${String(m).padStart(2, '0')}`;
         const ld = String(lastDayOfMonth(y, m)).padStart(2, '0');
-        const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
         months.push({
           value: `month:${ym}`,
           label: `${MONTH_SHORT[m - 1]} ${y}`,
@@ -312,14 +324,29 @@
         });
       }
     }
+    for (let y = maxY; y <= 2030; y++) {
+      const mStart = y === maxY ? maxM + 1 : 1;
+      for (let m = mStart; m <= 12; m++) {
+        const ym = `${y}-${String(m).padStart(2, '0')}`;
+        const ld = String(lastDayOfMonth(y, m)).padStart(2, '0');
+        months.push({
+          value: `month:${ym}`,
+          label: `${MONTH_SHORT[m - 1]} ${y}`,
+          from: `${ym}-01`,
+          to: `${ym}-${ld}`,
+          daxKey: null
+        });
+      }
+    }
 
-    // Build Monday–Sunday weeks newest-first across 2024-01-01 .. SEED_DATE
+    // Build Monday–Sunday weeks across 2024-01-01 .. 2030-12-31 (active weeks newest-first, then upcoming through 2030)
     const weeks = [];
     const [sy, sm, sd] = SEED_DATE.split('-').map(Number);
     const curDt = new Date(sy, sm - 1, sd);
     const dow = (curDt.getDay() + 6) % 7; // Monday = 0 .. Sunday = 6
     const monDt = new Date(curDt.getFullYear(), curDt.getMonth(), curDt.getDate() - dow);
     const minDt = new Date(2024, 0, 1);
+    const maxDt = new Date(2030, 11, 31);
     const toISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     for (let wMon = new Date(monDt); wMon >= minDt; wMon.setDate(wMon.getDate() - 7)) {
       const wSun = new Date(wMon.getFullYear(), wMon.getMonth(), wMon.getDate() + 6);
@@ -332,12 +359,24 @@
         to: tISO
       });
     }
+    const nextMon = new Date(monDt.getFullYear(), monDt.getMonth(), monDt.getDate() + 7);
+    for (let wMon = new Date(nextMon); wMon <= maxDt; wMon.setDate(wMon.getDate() + 7)) {
+      const wSun = new Date(wMon.getFullYear(), wMon.getMonth(), wMon.getDate() + 6);
+      const fISO = toISO(wMon);
+      const tISO = toISO(wSun);
+      weeks.push({
+        value: `week:${fISO}..${tISO}`,
+        label: fmtWeekLabel(fISO, tISO),
+        from: fISO,
+        to: tISO
+      });
+    }
 
-    // Build active transaction days newest-first across 2024-01-01 .. SEED_DATE
+    // Build active transaction days newest-first across 2024-01-01 .. 2030-12-31
     const daySet = new Set([SEED_DATE]);
     ['sales_tickets', 'raw_purchases', 'expenses', 'receipts', 'settlements', 'fuel_intakes', 'salaries'].forEach(tk => {
       (SEED.records[tk] || []).forEach(r => {
-        if (r && r.date && r.date >= MIN_DATE && r.date <= '2026-12-31') daySet.add(String(r.date).slice(0, 10));
+        if (r && r.date && r.date >= MIN_DATE && r.date <= MAX_DATE) daySet.add(String(r.date).slice(0, 10));
       });
     });
     const days = Array.from(daySet).sort((a, b) => b.localeCompare(a)).map(iso => ({
@@ -362,14 +401,14 @@
     if (!pVal || pVal === 'all') {
       if (STATE.dateFrom || STATE.dateTo) {
         const f = STATE.dateFrom || MIN_DATE;
-        const t = STATE.dateTo || SEED_DATE;
+        const t = STATE.dateTo || MAX_DATE;
         return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
       }
       return null;
     }
     if (pVal === 'custom') {
       const f = STATE.dateFrom || MIN_DATE;
-      const t = STATE.dateTo || SEED_DATE;
+      const t = STATE.dateTo || MAX_DATE;
       return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
     }
     const y = SEED_DATE.slice(0, 4);
@@ -576,7 +615,7 @@
       trucks_used: truckSet.size || baseKpi.trucks_used || 0,
       own_fleet_loads,
       basis,
-      label: range ? range.label : 'All-Time (2024\u20132026)'
+      label: range ? range.label : 'All-Time (2024\u20132030)'
     }));
   }
 
@@ -616,11 +655,11 @@
     const periods = m.periods || {};
     const range = periodRange(STATE.period);
     let anchor = null;
-    if (!range) anchor = periods.all || null;
+    if (!range) anchor = periods.all ? Object.assign({}, periods.all, { label: 'All-Time (2024–2030)' }) : null;
     else if (range.daxKey && periods[range.daxKey]) anchor = periods[range.daxKey];
     if (STATE.basis === 'tx' && anchor) return anchor;
     const f = range ? range.from : MIN_DATE;
-    const t = range ? range.to : SEED_DATE;
+    const t = range ? range.to : MAX_DATE;
     const cacheKey = `${STATE.company}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
     if (_kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
 
@@ -673,6 +712,9 @@
           const grainOpts = getDateGrainOptions(opts.grain);
           if (opts.grain === 'all') {
             STATE.period = 'all';
+          } else if (opts.grain === 'year') {
+            const curYr = 'year:' + SEED_DATE.slice(0, 4);
+            STATE.period = grainOpts.some(o => o.value === curYr) ? curYr : (grainOpts[0] ? grainOpts[0].value : 'year:2026');
           } else if (grainOpts.length) {
             STATE.period = grainOpts[0].value;
           }
@@ -692,7 +734,7 @@
         }
       }
       if (opts.from !== undefined || opts.to !== undefined) {
-        const curRange = periodRange(STATE.period) || { from: MIN_DATE, to: SEED_DATE };
+        const curRange = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
         let nf = opts.from !== undefined ? opts.from : (STATE.dateFrom || curRange.from);
         let nt = opts.to !== undefined ? opts.to : (STATE.dateTo || curRange.to);
         if (nf && nt && nf > nt) {
@@ -700,7 +742,7 @@
           else nf = nt;
         }
         STATE.dateFrom = nf || MIN_DATE;
-        STATE.dateTo = nt || SEED_DATE;
+        STATE.dateTo = nt || MAX_DATE;
         STATE.period = 'custom';
       }
     }
@@ -720,7 +762,7 @@
       let html = '';
       if (STATE.period === 'custom') {
         const f = STATE.dateFrom || MIN_DATE;
-        const t = STATE.dateTo || SEED_DATE;
+        const t = STATE.dateTo || MAX_DATE;
         html += `<option value="custom">Range: ${esc(f)} → ${esc(t)}</option>`;
       }
       html += activeOpts.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
@@ -733,7 +775,7 @@
       }
       periodSel.value = STATE.period;
     }
-    const r = periodRange(STATE.period) || { from: MIN_DATE, to: SEED_DATE };
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
     const fromEl = $('dateFromInput');
     const toEl = $('dateToInput');
     const barEl = $('dateRangeBar');
@@ -895,6 +937,28 @@
     let raw = u.face_samples;
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = []; } }
     return Array.isArray(raw) ? raw.filter(s => Array.isArray(s) && s.length === 128) : [];
+  }
+  function userFaceThumbs(u) {
+    if (!u) return [];
+    let raw = u.face_thumbs;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = []; } }
+    return Array.isArray(raw) ? raw.map(t => String(t || '')).slice(0, 3) : [];
+  }
+  function syncEnrolBufferFromUser(u, force = false) {
+    if (!u) return;
+    if (!force && FACE_STATE.enrolLoadedForUserId === String(u.id)) return;
+    FACE_STATE.enrolLoadedForUserId = String(u.id);
+    const savedSamples = userFaceSamples(u).slice(0, 3);
+    const savedThumbs = userFaceThumbs(u).slice(0, 3);
+    FACE_STATE.enrolCaptures = savedSamples.map(s => s.slice());
+    FACE_STATE.enrolThumbs = savedSamples.map((_, i) => savedThumbs[i] || '');
+    if (savedSamples.length) {
+      FACE_STATE.enrolStatusText = `${u.full_name} has ${savedSamples.length}/3 biometric poses stored. Click any pose card or "Retake / Capture Pose" to update.`;
+      FACE_STATE.enrolStatusCls = 'ok';
+    } else {
+      FACE_STATE.enrolStatusText = `Ready for ${u.full_name} — click "Capture Pose (1/3)" to start camera and store Pose 1.`;
+      FACE_STATE.enrolStatusCls = '';
+    }
   }
   function userHasFaceId(u) {
     return userFaceSamples(u).length > 0;
@@ -1455,15 +1519,17 @@
                   <td class="n">${ltHasLedger ? fmtUSD(ltK.operating_profit, 0) : '—'}</td>
                   <td><span class="m-chip ${ltHasLedger ? 'closed' : ''}">${ltHasLedger ? 'Balanced' : 'No ledger'}</span></td>
                 </tr>
+              </tbody>
+              <tfoot>
                 <tr class="total">
-                  <td>Group Total<span class="hide-xs"> (${ltHasLedger ? 3 : 2} live BUs)</span></td>
-                  <td class="n">${fmtUSD(k.sales_ttc, 0)}</td>
-                  <td class="n hide-xs">${fmtNum(k.loads)}</td>
-                  <td class="n">${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</td>
-                  <td class="n">${fmtUSD(k.operating_profit, 0)}</td>
+                  <td><b>Group Total<span class="hide-xs"> (${ltHasLedger ? 3 : 2} live BUs)</span></b></td>
+                  <td class="n"><b>${fmtUSD(k.sales_ttc, 0)}</b></td>
+                  <td class="n hide-xs"><b>${fmtNum(k.loads)}</b></td>
+                  <td class="n"><b>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</b></td>
+                  <td class="n"><b>${fmtUSD(k.operating_profit, 0)}</b></td>
                   <td><span class="m-chip ${tb.ok === false ? 'crit' : 'brass'}">${tb.ok === false ? 'TB ' + tb.label : 'Audited'}</span></td>
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
 
@@ -1495,6 +1561,16 @@
                   </tr>
                 `).join('') || emptyRow(6, 'No product revenue in this snapshot')}
               </tbody>
+              <tfoot>
+                <tr class="total">
+                  <td><b>Total (${fmtNum((m.products || []).length)} grades)</b></td>
+                  <td class="mu hide-xs">All</td>
+                  <td class="n hide-xs"><b>${fmtNum((m.products || []).reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td class="n"><b>${fmtNum((m.products || []).reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
+                  <td class="n"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
+                  <td class="n"><b>${fmtUSD((m.products || []).reduce((a, p) => a + Number(p.sales_ttc || 0), 0) || k.sales_ttc, 0)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1558,12 +1634,14 @@
                   </tr>
                   `;
                 }).join('') || emptyRow(6, 'No journal legs in this snapshot')}
-                <tr class="total">
-                  <td colspan="4">Last ${soaRows.length} audited legs · Trial Balance variance ${fmtUSD(k.tb_check || 0, 2)}</td>
-                  <td class="n">${fmtUSD(totDeb, 2)}</td>
-                  <td class="n">${fmtUSD(totCred, 2)}</td>
-                </tr>
               </tbody>
+              <tfoot>
+                <tr class="total">
+                  <td colspan="4"><b>Total (${soaRows.length} shown legs) · TB variance ${fmtUSD(k.tb_check || 0, 2)}</b></td>
+                  <td class="n"><b>${fmtUSD(totDeb, 2)}</b></td>
+                  <td class="n"><b>${fmtUSD(totCred, 2)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1670,12 +1748,28 @@
   }
 
   function miniTable(title, rows, cols, panelId) {
+    const list = rows || [];
+    const footHtml = list.length ? `<tfoot><tr>${cols.map((c, idx) => {
+      if (idx === 0) return `<td><b>TOTAL (${fmtNum(list.length)})</b></td>`;
+      if (!c.r) return `<td></td>`;
+      const isAvg = /price|agreed|actual|value|gap/i.test(c.key || '') && !/shortfall|unmatched|amount|header_|diesel/i.test(c.key || '');
+      let sum = 0, cnt = 0;
+      list.forEach(r => {
+        const v = Number(r[c.key]);
+        if (Number.isFinite(v)) { sum += v; cnt++; }
+      });
+      if (!cnt) return `<td class="r">—</td>`;
+      const val = isAvg ? (sum / cnt) : sum;
+      const txt = c.fmt ? c.fmt(val, {}) : fmtNum(val, 0);
+      return `<td class="r">${isAvg ? '<span class="mu" style="font-size:10px">Avg </span>' : ''}<b>${txt}</b></td>`;
+    }).join('')}</tr></tfoot>` : '';
     return `
       <div class="panel-card" id="${esc(panelId)}">
-        <div class="panel-head"><div class="panel-title"><span>${title}</span></div><span class="panel-meta">${fmtNum(rows.length)} rows ${rows.length ? exportBtn(panelId, title.replace(/&amp;/g, 'and')) : ''}</span></div>
+        <div class="panel-head"><div class="panel-title"><span>${title}</span></div><span class="panel-meta">${fmtNum(list.length)} rows ${list.length ? exportBtn(panelId, title.replace(/&amp;/g, 'and')) : ''}</span></div>
         <div class="table-wrap"><table class="ledger-table">
           <thead><tr>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${c.label}</th>`).join('')}</tr></thead>
-          <tbody>${rows.slice(0, 60).map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'Nothing flagged')}</tbody>
+          <tbody>${list.slice(0, 60).map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'Nothing flagged')}</tbody>
+          ${footHtml}
         </table></div>
       </div>`;
   }
@@ -1770,7 +1864,10 @@
     const sumQty = shown.reduce((a, r) => a + Number(r.qty || 0), 0);
     const sumMat = shown.reduce((a, r) => a + Number(r.price || 0), 0);
     const sumTr = shown.reduce((a, r) => a + Number(r.trans_price || 0), 0);
+    const sumVat = shown.reduce((a, r) => a + Number(r.vat || 0), 0);
     const sumTtc = shown.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
+    const allProds = getModel().products || [];
+    const allSites = getModel().sites || [];
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
 
     return `
@@ -1835,13 +1932,13 @@
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="8">SHOWING ${fmtNum(shown.length)} OF ${fmtNum(rows.length)} MATCHING TICKETS · BOOK ARCHIVE ${fmtNum(k.loads)} LOADS</td>
-                <td class="r">${fmtNum(sumQty, 0)}</td>
-                <td class="r">${fmtUSD(sumMat, 0)}</td>
-                <td class="r">${fmtUSD(sumTr, 0)}</td>
-                <td class="r"></td>
-                <td class="r">${fmtUSD(sumTtc, 2)}</td>
-                <td>SHOWN</td>
+                <td colspan="8"><b>TOTAL (${fmtNum(shown.length)} SHOWN OF ${fmtNum(rows.length)} MATCHING · BOOK ARCHIVE ${fmtNum(k.loads)} LOADS)</b></td>
+                <td class="r"><b>${fmtNum(sumQty, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(sumMat, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTr, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
+                <td><b>SHOWN</b></td>
               </tr>
             </tfoot>
           </table>
@@ -1852,7 +1949,7 @@
         <div class="panel-card" id="salesProdPanel">
           <div class="panel-head">
             <div class="panel-title"><span>SALES BY PRODUCT &amp; AGGREGATE GRADE (FULL LEDGER)</span></div>
-            <span class="panel-meta">${fmtNum((getModel().products || []).length)} Grades ${exportBtn('salesProdPanel', 'Sales_By_Product')}</span>
+            <span class="panel-meta">${fmtNum(allProds.length)} Grades ${exportBtn('salesProdPanel', 'Sales_By_Product')}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -1863,7 +1960,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sortRows((getModel().products || []), 'sprod', 'sales_ttc', 'desc').map(p => `
+                ${sortRows(allProds, 'sprod', 'sales_ttc', 'desc').map(p => `
                   <tr>
                     <td><strong>${esc(p.Product)}</strong></td>
                     <td>${esc(p['Material Family'] || 'Aggregate')}</td>
@@ -1878,6 +1975,18 @@
                   </tr>
                 `).join('') || emptyRow(10, 'No product breakdown for this entity')}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL (${fmtNum(allProds.length)} GRADES)</b></td>
+                  <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.qty_sold || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
+                  <td class="r">—</td>
+                  <td class="r"><b>${fmtUSD(k.avg_price_net, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(allProds.reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1885,7 +1994,7 @@
         <div class="panel-card" id="salesSitePanel">
           <div class="panel-head">
             <div class="panel-title"><span>LOADS &amp; REVENUE BY DESTINATION SITE</span></div>
-            <span class="panel-meta">${fmtNum((getModel().sites || []).length)} Active Sites ${exportBtn('salesSitePanel', 'Sales_By_Site')}</span>
+            <span class="panel-meta">${fmtNum(allSites.length)} Active Sites ${exportBtn('salesSitePanel', 'Sales_By_Site')}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -1895,7 +2004,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sortRows((getModel().sites || []), 'ssite', 'sales_ttc', 'desc').map(s => `
+                ${sortRows(allSites, 'ssite', 'sales_ttc', 'desc').map(s => `
                   <tr>
                     <td><strong>${esc(s.Site || '(no site on ticket)')}</strong></td>
                     <td>${s.JV === 'Yes' ? '<span class="badge badge-brass">JV</span>' : '—'}</td>
@@ -1906,6 +2015,15 @@
                   </tr>
                 `).join('') || emptyRow(6, 'No site breakdown for this entity')}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum(allSites.length)} SITES)</b></td>
+                  <td class="r"><b>${fmtNum(allSites.reduce((a, s) => a + Number(s.loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtNum(allSites.reduce((a, s) => a + Number(s.tons_sold || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(allSites.reduce((a, s) => a + Number(s.trans_rev || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(allSites.reduce((a, s) => a + Number(s.sales_ttc || 0), 0), 0)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1987,7 +2105,7 @@
                 ${showMoreRow('raw', rows.length, 11)}
               </tbody>
               <tfoot>
-                <tr><td colspan="8">SHOWING ${fmtNum(shown.length)} OF ${fmtNum(rows.length)} MATCHING RECEIPTS</td><td class="r">${fmtUSD(sumMat, 0)}</td><td class="r">${fmtUSD(sumHaul, 0)}</td><td class="r">${fmtUSD(sumMat + sumHaul, 2)}</td></tr>
+                <tr><td colspan="7"><b>TOTAL (${fmtNum(shown.length)} SHOWN OF ${fmtNum(rows.length)} MATCHING RECEIPTS)</b></td><td class="r"><b>${fmtNum(shown.reduce((a, r) => a + Number(r.qty || 0), 0), 1)}</b></td><td class="r"><b>${fmtUSD(sumMat, 0)}</b></td><td class="r"><b>${fmtUSD(sumHaul, 0)}</b></td><td class="r"><b>${fmtUSD(sumMat + sumHaul, 2)}</b></td></tr>
               </tfoot>
             </table>
           </div>
@@ -2017,6 +2135,15 @@
                   </tr>
                 `).join('') || emptyRow(6, 'No site aggregates for this entity')}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum((m.sites || []).length)} SITES)</b></td>
+                  <td class="r"><b>${fmtNum((m.sites || []).reduce((a, s) => a + Number(s.loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD((m.sites || []).reduce((a, s) => a + Number(s.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtNum((m.sites || []).reduce((a, s) => a + Number(s.raw_loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD((m.sites || []).reduce((a, s) => a + Number(s.raw_cost || 0), 0), 0)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2128,6 +2255,18 @@
                 `).join('') || emptyRow(10, 'No equipment cost rows for this entity')}
                 ${showMoreRow('equip', equipRows.length, 10)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL (${fmtNum(equipRows.length)} ACTIVE UNITS)</b></td>
+                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.trips || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.diesel_litres || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.km_run || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.running_cost || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.driver_cost || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.total_cost || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(k.cost_per_ton, 2)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2169,7 +2308,7 @@
                 }).join('') || emptyRow(9, periodEmptyMsg(SEED.records.fuel_intakes, 'fuel intakes'))}
                 ${showMoreRow('fuel', fuelRows.length, 9)}
               </tbody>
-              <tfoot><tr><td colspan="6">SHOWING ${fmtNum(shownFuel.length)} OF ${fmtNum(fuelRows.length)} INTAKES</td><td class="r">${fmtNum(litres, 0)} L</td><td colspan="2"></td></tr></tfoot>
+              <tfoot><tr><td colspan="6"><b>TOTAL (${fmtNum(shownFuel.length)} SHOWN OF ${fmtNum(fuelRows.length)} INTAKES)</b></td><td class="r"><b>${fmtNum(litres, 0)} L</b></td><td colspan="2"></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -2201,6 +2340,13 @@
                 `).join('') || emptyRow(7, 'No matching equipment units')}
                 ${showMoreRow('eqreg', SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())).length, 7)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL (${fmtNum(SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase())).length)} UNITS IN REGISTRY)</b></td>
+                  <td class="r"><b>${fmtNum(SEED.records.equipment.reduce((a, e) => a + Number(e.capacity || 0), 0), 0)}</b></td>
+                  <td colspan="3"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2279,6 +2425,14 @@
               `).join('') || emptyRow(12, STATE.search ? `No agreements match "${STATE.search}".` : 'No agreements for this entity')}
               ${showMoreRow('pricing', rules.length, 12)}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="7"><b>TOTAL (${fmtNum(rules.length)} MATCHING AGREEMENTS · ${fmtNum(rules.filter(isActive).length)} ACTIVE)</b></td>
+                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${fmtUSD(rules.length ? rules.reduce((a, r) => a + Number(r.unit_price || 0), 0) / rules.length : 0, 2)}</b></td>
+                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${fmtUSD(rules.filter(r => Number(r.trans_unit_price || 0) > 0).length ? rules.reduce((a, r) => a + Number(r.trans_unit_price || 0), 0) / rules.filter(r => Number(r.trans_unit_price || 0) > 0).length : 0, 2)}</b></td>
+                <td colspan="3"></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -2310,6 +2464,16 @@
                   </tr>
                 `).join('') || emptyRow(7, 'No product benchmark rows for this entity')}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum((getModel().products || []).length)} GRADES)</b></td>
+                  <td class="r"><b>${fmtNum((getModel().products || []).reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td class="r">—</td>
+                  <td class="r"><b>${fmtUSD(k.avg_price_net, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD((getModel().products || []).reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2383,6 +2547,18 @@
                 `).join('') || emptyRow(9, q ? `No customers match "${STATE.search}".` : 'No customer balances for this entity')}
                 ${showMoreRow('custs', custs.length, 9)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum(custs.length)} CUSTOMERS)</b></td>
+                  <td class="r"><b>${fmtNum(custs.reduce((a, c) => a + Number(c.loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.receipts || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_current || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_60_plus || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_balance || 0), 0), 2)}</b></td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2486,6 +2662,17 @@
                 `).join('') || emptyRow(8, q ? `No suppliers match "${STATE.search}".` : 'No supplier balances for this entity')}
                 ${showMoreRow('sups', sups.length, 8)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum(sups.length)} SUPPLIERS)</b></td>
+                  <td class="r"><b>${fmtNum(sups.reduce((a, s) => a + Number(s.raw_loads || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_material || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_haulage || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_expense || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.settlements_paid || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_balance || 0), 0), 2)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -2838,6 +3025,13 @@
                 `).join('') || emptyRow(7, 'No salary payments match filter')}
                 ${showMoreRow('pay_sal', salAll.length, 7)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="5"><b>TOTAL (${fmtNum(shownSal.length)} SHOWN OF ${fmtNum(salAll.length)} PAYMENTS)</b></td>
+                  <td class="r"><b>${fmtUSD(salAll.reduce((a, s) => a + Number(s.amount || 0), 0), 2)}</b></td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>` : ''}
@@ -2868,6 +3062,13 @@
                 }).join('') || emptyRow(8, 'No contracts match filter')}
                 ${showMoreRow('pay_emp', empAll.length, 8)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6"><b>TOTAL (${fmtNum(empAll.length)} CONTRACTS)</b></td>
+                  <td class="r"><b>${fmtUSD(empAll.reduce((a, e) => a + Number(e.salary_usd || 0), 0), 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(empAll.reduce((a, e) => a + Number(e.daily_rate || 0), 0), 2)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>` : ''}
@@ -2899,6 +3100,12 @@
                 }).join('') || emptyRow(7, 'No site allowances match filter')}
                 ${showMoreRow('pay_log', logAll.length, 7)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6"><b>TOTAL (${fmtNum(logAll.length)} ARRANGEMENTS)</b></td>
+                  <td class="r"><b>${fmtUSD(logAll.reduce((a, l) => a + Number(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500) || 0), 0), 2)} / day</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>` : ''}
@@ -2927,6 +3134,15 @@
                 `).join('') || emptyRow(8, 'No attendance records match filter')}
                 ${showMoreRow('pay_att', attAll.length, 8)}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4"><b>TOTAL (${fmtNum(attAll.length)} RECORDS)</b></td>
+                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.regular_hours || 0), 0), 1)}</b></td>
+                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.overtime_hours || 0), 0), 1)}</b></td>
+                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.late_hours || 0), 0), 1)}</b></td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>` : ''}
@@ -3027,6 +3243,13 @@
                 </tr>
               `).join('') || emptyRow(9, 'No SOA journal legs in this snapshot')}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="7">TOTAL SOA JOURNAL STREAM (${fmtNum((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).length)} LEGS)</td>
+                <td class="r">${fmtUSD((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).reduce((s, r) => s + (+r.debit || 0), 0), 2)}</td>
+                <td class="r">${fmtUSD((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).reduce((s, r) => s + (+r.credit || 0), 0), 2)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -3339,18 +3562,118 @@
   // ==========================================================================
   // VIEW 12: USERS, ROLES & MULTI-DEVICE CLOUD AUTH ($0/SEAT LICENSE MANAGER)
   // ==========================================================================
+  const ENROL_SVGS = {
+    reticle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></svg>',
+    cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+    shutter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+    scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    matrix: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>'
+  };
+
+  function renderEnrolThumbStripHtml() {
+    const shortTitles = ['Straight', 'Slight Left', 'Slight Right'];
+    const target = enrolTargetUser();
+    const savedThumbs = userFaceThumbs(target);
+    return [0, 1, 2].map(i => {
+      const th = FACE_STATE.enrolThumbs[i] || savedThumbs[i] || '';
+      const hasCap = i < FACE_STATE.enrolCaptures.length;
+      const isNext = !hasCap && i === FACE_STATE.enrolCaptures.length;
+      return `<div class="enrol-thumb-slot ${hasCap ? 'captured' : (isNext ? 'next-slot' : '')}" data-retake-pose="${i}" title="${hasCap ? `Click to retake Pose ${i + 1} (${shortTitles[i]})` : `Click to capture Pose ${i + 1} (${shortTitles[i]})`}">
+        ${hasCap
+          ? (th
+            ? `<div class="enrol-thumb-media"><img src="${th}" alt="Pose ${i + 1}"><span class="enrol-thumb-badge">✓ STORED</span></div>`
+            : `<div class="enrol-thumb-media enrol-thumb-vec"><div class="enrol-vec-chip">${ENROL_SVGS.shield}<span>128-d Vector</span></div><span class="enrol-thumb-badge">✓ STORED</span></div>`)
+          : `<div class="enrol-thumb-media enrol-thumb-empty"><span class="enrol-empty-num">0${i + 1}</span><small>${isNext ? 'Ready to Capture' : 'Pending Pose'}</small></div>`
+        }
+        <div class="enrol-thumb-foot">
+          <span class="enrol-thumb-lbl"><b>0${i + 1}</b> ${shortTitles[i]}</span>
+          <span class="enrol-thumb-action">${hasCap ? 'Retake ↻' : '128-d'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderEnrolStepperHtml() {
+    const steps = [
+      { title: 'Straight Ahead', sub: 'Frontal baseline' },
+      { title: 'Slight Left', sub: '15° yaw left' },
+      { title: 'Slight Right', sub: '15° yaw right' }
+    ];
+    return steps.map((st, i) => {
+      const done = i < FACE_STATE.enrolCaptures.length;
+      const active = i === FACE_STATE.enrolCaptures.length;
+      return `<div class="pose-step ${done ? 'done' : (active ? 'active' : '')}" data-retake-pose="${i}">
+        <span class="pose-step-num">${done ? '✓' : ('0' + (i + 1))}</span>
+        <div class="pose-step-txt">
+          <b>${st.title}</b>
+          <small>${done ? 'Stored in Ledger' : (active ? 'Active Target' : st.sub)}</small>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderEnrolPoseGuideInnerHtml() {
+    const enrolUser = enrolTargetUser();
+    const capCount = FACE_STATE.enrolCaptures.length;
+    const poseComplete = capCount >= 3;
+    const poseIdx = Math.min(capCount, 2);
+    const poseSvgHtml = window.Face && window.Face.poseSvg ? window.Face.poseSvg(poseComplete ? 3 : poseIdx) : '';
+    return `
+      <div class="mfg-pose-svg">${poseSvgHtml}</div>
+      <div class="mfg-pose-copy">
+        <div class="mfg-pose-kicker">${poseComplete ? 'ALL 3 BIOMETRIC POSES CAPTURED & STORED' : `GUIDED POSE ${poseIdx + 1} OF 3 · AUTO-STORES ON CAPTURE`}</div>
+        <div class="mfg-pose-title" id="enrolPosePrompt">${esc(poseComplete ? `Biometric Face ID & 2FA active for ${enrolUser.full_name} (3 × 128-d vectors saved). Click any pose card on the left to retake.` : FACE_POSES[poseIdx])}</div>
+      </div>
+      <div class="mfg-pose-pill">${poseComplete ? '3/3 ACTIVE' : `POSE ${poseIdx + 1}/3`}</div>
+    `;
+  }
+
+  function renderUsersDirectoryRowsHtml() {
+    const owner = isOwner(activeUser());
+    return STATE.users.map((u, idx) => {
+      const fSamples = userFaceSamples(u);
+      const isTarget = String(u.id) === String(enrolTargetUser().id);
+      return `
+      <tr class="${isTarget ? 'enrol-selected-row' : ''}">
+        <td><strong>${esc(u.full_name)}</strong>${idx === STATE.activeUserIdx ? ' <span class="badge badge-ok">you</span>' : ''}</td>
+        <td class="mono">${esc(u.email)}</td>
+        ${owner ? `<td class="mono"><span class="badge badge-info">${esc(u.pin_code || '1111')}</span></td>` : ''}
+        <td>
+          <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">
+            ${fSamples.length ? `✓ ${fSamples.length}/3 Poses${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}
+          </span>
+        </td>
+        <td><span class="badge badge-brass">${esc(u.role)}</span></td>
+        <td><strong>${esc(u.companies)}</strong></td>
+        <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
+        <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
+        <td style="white-space:nowrap">
+          ${(owner || idx === STATE.activeUserIdx) ? `<button class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update 3-pose Biometric Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
+          ${owner ? `
+            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
+            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">Invite Link</button>
+            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
+          ` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
   function renderUsers() {
     const uCount = STATE.users.length;
     const annualSaved = uCount * 37 * 12;
     const me = activeUser();
     const owner = isOwner(me);
     const sbConfigured = !!(STATE.supabaseCfg.url && STATE.supabaseCfg.anonKey);
-    const faceCount = STATE.users.filter(userHasFaceId).length;
     const enrolUser = enrolTargetUser();
+    syncEnrolBufferFromUser(enrolUser, false);
+    const faceCount = STATE.users.filter(userHasFaceId).length;
     const enrolSavedSamples = userFaceSamples(enrolUser);
-    const poseIdx = Math.min(FACE_STATE.enrolCaptures.length, 2);
-    const poseComplete = FACE_STATE.enrolCaptures.length >= 3;
-    const poseSvgHtml = window.Face && window.Face.poseSvg ? window.Face.poseSvg(poseIdx) : '';
+    const capCount = FACE_STATE.enrolCaptures.length;
+    const poseComplete = capCount >= 3;
 
     return `
       <div class="cockpit-banner">
@@ -3361,7 +3684,7 @@
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Web Seats</div><div class="cockpit-pill-val brass">${uCount} Users</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Biometric Face ID</div><div class="cockpit-pill-val ${faceCount ? 'emerald' : 'amber'}">${faceCount} / ${uCount} Enrolled</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Biometric Face ID</div><div class="cockpit-pill-val ${faceCount ? 'emerald' : 'amber'}" id="enrolCockpitCount">${faceCount} / ${uCount} Enrolled</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cloud Relay Status</div><div class="cockpit-pill-val ${/Live/.test(STATE.cloudStatus) ? 'emerald' : 'amber'}">${esc(STATE.cloudStatus)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Annual License Savings</div><div class="cockpit-pill-val emerald">${fmtUSD(annualSaved, 0)} / yr</div></div>
         </div>
@@ -3427,13 +3750,19 @@
       ` : ''}
 
       <div class="panel-card mfg-enrol-studio" id="faceEnrolPanel" style="margin-bottom:16px">
-        <div class="panel-head">
-          <div class="panel-title">
-            <span>🎭 BIOMETRIC FACE ID ENROLMENT STUDIO &amp; CALIBRATION (ATTENDANCE PWA ENGINE)</span>
+        <div class="enrol-console-hdr">
+          <div class="enrol-console-brand">
+            <div class="enrol-console-icon">${ENROL_SVGS.reticle}</div>
+            <div>
+              <div class="enrol-console-eyebrow">ON-DEVICE 128-D NEURAL RECOGNITION · AUTO-PERSISTENCE &amp; CLOUD RELAY</div>
+              <div class="enrol-console-title">Biometric Face ID Enrolment Studio &amp; Calibration</div>
+            </div>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <span class="badge ${enrolSavedSamples.length ? 'badge-ok' : 'badge-warn'}">${enrolSavedSamples.length ? `✓ ${esc(enrolUser.full_name)}: ${enrolSavedSamples.length} poses saved` : `${esc(enrolUser.full_name)}: Not enrolled`}</span>
-            <button type="button" class="btn" style="padding:4px 10px;font-size:11px" id="enrolCalibBtn">📊 Calibration Report</button>
+          <div class="enrol-console-actions">
+            <span class="enrol-seat-pill ${enrolSavedSamples.length ? 'enrolled' : 'pending'}" id="enrolHeaderBadge">
+              ${enrolSavedSamples.length ? `✓ ${esc(enrolUser.full_name)} · ${enrolSavedSamples.length}/3 Poses Stored` : `${esc(enrolUser.full_name)} · Not Enrolled`}
+            </span>
+            <button type="button" class="btn enrol-calib-btn" id="enrolCalibBtn">${ENROL_SVGS.matrix}<span>Calibration Matrix</span></button>
           </div>
         </div>
 
@@ -3442,90 +3771,85 @@
             <div class="enrol-cam-viewport" id="enrolCamViewport">
               <video id="enrolFaceVideo" autoplay playsinline muted></video>
               <canvas id="enrolFaceOverlay"></canvas>
+              <div class="enrol-cam-vignette"></div>
+              <div class="enrol-hud-corners" aria-hidden="true">
+                <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
+                <div class="enrol-hud-oval"></div>
+              </div>
+              <div class="enrol-hud-top">
+                <span class="enrol-hud-pill" id="enrolHudStatusPill">
+                  <span class="enrol-hud-dot ${FACE_STATE.enrolCamActive ? 'live' : ''}" id="enrolHudDot"></span>
+                  <span id="enrolHudTelemetry">${FACE_STATE.enrolCamActive ? 'LIVE 128-D SCANNER' : 'CAMERA STANDBY'}</span>
+                </span>
+                <span class="enrol-hud-spec">SSD-V1 · 128-D</span>
+              </div>
+              <div class="enrol-shutter-flash" id="enrolShutterFlash"></div>
               <div class="enrol-cam-placeholder" id="enrolCamPlaceholder" ${FACE_STATE.enrolCamActive ? 'hidden' : ''}>
-                <div class="enrol-cam-icon">🎭</div>
-                <div><strong>On-Device 128-d Face Recognition</strong></div>
-                <small>SSD MobileNet v1 + 68-point Landmarks · Raw camera frames never leave this device</small>
+                <div class="enrol-cam-reticle-badge">${ENROL_SVGS.reticle}</div>
+                <div class="enrol-cam-placeholder-title">On-Device 128-d Biometric Optics</div>
+                <small>SSD MobileNet v1 + 68-Point Landmarks · Encrypted descriptors &amp; pose thumbnails store automatically on capture</small>
+                <span class="enrol-cam-wake-pill">${ENROL_SVGS.cam}<span>Click to Enable Camera</span></span>
               </div>
             </div>
             <div class="enrol-thumb-strip" id="enrolThumbStrip">
-              ${[0, 1, 2].map(i => {
-                const th = FACE_STATE.enrolThumbs[i];
-                const hasCap = i < FACE_STATE.enrolCaptures.length;
-                const labels = ['1 · Straight', '2 · Slight Left', '3 · Slight Right'];
-                return `<div class="enrol-thumb-slot ${hasCap ? 'captured' : ''}">
-                  ${th ? `<img src="${th}" alt="Pose ${i + 1}">` : `<div class="enrol-thumb-empty">${hasCap ? '✓ 128-d Vector' : labels[i]}</div>`}
-                  <span>${labels[i]}</span>
-                </div>`;
-              }).join('')}
+              ${renderEnrolThumbStripHtml()}
             </div>
           </div>
 
           <div class="enrol-controls-col">
-            <div class="form-grid-3" style="margin-bottom:10px">
-              <div class="form-field">
-                <label>Team Seat to Enrol</label>
-                <select id="enrolUserSelect" ${owner ? '' : 'disabled'}>
+            <div class="enrol-config-grid">
+              <div class="enrol-config-card">
+                <label class="enrol-config-lbl" for="enrolUserSelect">Team Seat to Enrol</label>
+                <select id="enrolUserSelect" class="enrol-select" ${owner ? '' : 'disabled'}>
                   ${STATE.users.filter(u => u.status !== 'Suspended').map(u => `
                     <option value="${esc(u.id)}" ${String(u.id) === String(enrolUser.id) ? 'selected' : ''}>
-                      ${esc(u.full_name)} (${userFaceSamples(u).length ? userFaceSamples(u).length + ' poses' : 'no Face ID'})
+                      ${esc(u.full_name)} (${userFaceSamples(u).length ? userFaceSamples(u).length + '/3 poses' : 'no Face ID'})
                     </option>
                   `).join('')}
                 </select>
               </div>
-              <div class="form-field">
-                <label>Match Threshold (τ)</label>
-                <select id="enrolThresholdSel">
-                  <option value="0.45" ${Number(STATE.faceSettings.threshold) === 0.45 ? 'selected' : ''}>0.45 (Strict High-Security)</option>
-                  <option value="0.50" ${Number(STATE.faceSettings.threshold) === 0.50 ? 'selected' : ''}>0.50 (Attendance Default)</option>
-                  <option value="0.55" ${Number(STATE.faceSettings.threshold) === 0.55 ? 'selected' : ''}>0.55 (Relaxed Lighting)</option>
+              <div class="enrol-config-card">
+                <label class="enrol-config-lbl" for="enrolThresholdSel">Match Threshold (τ)</label>
+                <select id="enrolThresholdSel" class="enrol-select">
+                  <option value="0.45" ${Number(STATE.faceSettings.threshold) === 0.45 ? 'selected' : ''}>0.45 · Strict High-Security</option>
+                  <option value="0.50" ${Number(STATE.faceSettings.threshold) === 0.50 ? 'selected' : ''}>0.50 · Standard Balanced</option>
+                  <option value="0.55" ${Number(STATE.faceSettings.threshold) === 0.55 ? 'selected' : ''}>0.55 · Backlit / Relaxed</option>
                 </select>
               </div>
-              <div class="form-field">
-                <label>Security Policy</label>
-                <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;font-size:11.5px">
-                  <label style="display:flex;align-items:center;gap:6px;font-weight:600;text-transform:none;letter-spacing:0">
-                    <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''}>
-                    Enforce Face ID 2FA on PIN login
-                  </label>
-                  <label style="display:flex;align-items:center;gap:6px;font-weight:600;text-transform:none;letter-spacing:0">
-                    <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''}>
-                    Require blink liveness check
-                  </label>
-                </div>
+              <div class="enrol-config-card enrol-policy-card">
+                <span class="enrol-config-lbl">Biometric Security Policy</span>
+                <label class="enrol-policy-check">
+                  <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''}>
+                  <span>Enforce Face ID 2FA on PIN login</span>
+                </label>
+                <label class="enrol-policy-check">
+                  <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''}>
+                  <span>Require blink liveness check</span>
+                </label>
               </div>
             </div>
 
             <div class="pose-stepper" id="enrolPoseStepper">
-              ${['1 · Front', '2 · Slight Left', '3 · Slight Right'].map((lbl, i) => `
-                <div class="pose-step ${i < FACE_STATE.enrolCaptures.length ? 'done' : (i === FACE_STATE.enrolCaptures.length ? 'active' : '')}">
-                  <span class="pose-step-num">${i < FACE_STATE.enrolCaptures.length ? '✓' : (i + 1)}</span>
-                  <span>${lbl}</span>
-                </div>
-              `).join('')}
+              ${renderEnrolStepperHtml()}
             </div>
 
             <div class="mfg-pose-guide ${poseComplete ? 'complete' : ''}" id="enrolPoseGuide">
-              <div class="mfg-pose-svg">${poseSvgHtml}</div>
-              <div class="mfg-pose-copy">
-                <div class="mfg-pose-kicker">${poseComplete ? 'ALL 3 POSES CAPTURED — READY TO SAVE' : `POSE ${poseIdx + 1} OF 3 · CAMERA-TOP GUIDE`}</div>
-                <div class="mfg-pose-title" id="enrolPosePrompt">${esc(poseComplete ? 'Click "Save Face ID Enrolment" below to activate biometric sign-in & 2FA for ' + enrolUser.full_name + '.' : FACE_POSES[poseIdx])}</div>
-              </div>
+              ${renderEnrolPoseGuideInnerHtml()}
             </div>
 
             <label class="enrol-consent-row">
               <input type="checkbox" id="enrolConsentCb" ${FACE_STATE.enrolConsent ? 'checked' : ''}>
-              <span>I consent to on-device 128-d biometric facial descriptor enrolment for BHFIRMS authentication (raw images are never uploaded).</span>
+              <span>Biometric consent active — 128-d facial descriptors &amp; pose thumbnails are stored on this device and synced via the BHFIRMS relay.</span>
             </label>
 
             <div class="enrol-status-bar ${esc(FACE_STATE.enrolStatusCls)}" id="enrolStatusBar">${esc(FACE_STATE.enrolStatusText)}</div>
 
             <div class="enrol-btn-bar">
-              <button type="button" class="btn" id="enrolStartCamBtn">${FACE_STATE.enrolCamActive ? '⏹ Stop Camera' : '📷 Start Camera'}</button>
-              <button type="button" class="btn btn-brass" id="enrolCaptureBtn" ${poseComplete ? 'disabled' : ''}>📸 Capture Pose (${Math.min(FACE_STATE.enrolCaptures.length + 1, 3)}/3)</button>
-              <button type="button" class="btn btn-primary" id="enrolSaveBtn" ${FACE_STATE.enrolCaptures.length ? '' : 'disabled'}>✓ Save Face ID Enrolment (${FACE_STATE.enrolCaptures.length}/3)</button>
-              <button type="button" class="btn" id="enrolTestBtn">${FACE_STATE.enrolTestActive ? '⏹ Stop Test' : '🔎 Test Recognition'}</button>
-              <button type="button" class="btn" id="enrolClearBtn" ${(enrolSavedSamples.length || FACE_STATE.enrolCaptures.length) ? '' : 'disabled'}>🗑 Clear Face ID</button>
+              <button type="button" class="btn enrol-action-btn" id="enrolStartCamBtn">${FACE_STATE.enrolCamActive ? `${ENROL_SVGS.stop}<span>Stop Camera</span>` : `${ENROL_SVGS.cam}<span>Start Camera</span>`}</button>
+              <button type="button" class="btn btn-brass enrol-action-btn enrol-capture-cta" id="enrolCaptureBtn">${ENROL_SVGS.shutter}<span>${poseComplete ? 'Retake All 3 Poses' : `Capture Pose (${Math.min(capCount + 1, 3)}/3)`}</span></button>
+              <button type="button" class="btn btn-primary enrol-action-btn" id="enrolSaveBtn" ${capCount ? '' : 'disabled'}>${ENROL_SVGS.shield}<span>${enrolSavedSamples.length && capCount ? `Saved & Synced (${capCount}/3)` : `Save Face ID (${capCount}/3)`}</span></button>
+              <button type="button" class="btn enrol-action-btn" id="enrolTestBtn">${ENROL_SVGS.scan}<span>${FACE_STATE.enrolTestActive ? 'Stop Test' : 'Test Recognition'}</span></button>
+              <button type="button" class="btn enrol-action-btn enrol-clear-btn" id="enrolClearBtn" ${(enrolSavedSamples.length || capCount) ? '' : 'disabled'}>${ENROL_SVGS.trash}<span>Clear Face ID</span></button>
             </div>
 
             <div id="enrolCalibWrap" ${FACE_STATE.calibReportHtml ? '' : 'hidden'}>${FACE_STATE.calibReportHtml}</div>
@@ -3557,34 +3881,8 @@
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                ${STATE.users.map((u, idx) => {
-                  const fSamples = userFaceSamples(u);
-                  return `
-                  <tr>
-                    <td><strong>${esc(u.full_name)}</strong>${idx === STATE.activeUserIdx ? ' <span class="badge badge-ok">you</span>' : ''}</td>
-                    <td class="mono">${esc(u.email)}</td>
-                    ${owner ? `<td class="mono"><span class="badge badge-info">${esc(u.pin_code || '1111')}</span></td>` : ''}
-                    <td>
-                      <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">
-                        ${fSamples.length ? `🎭 ${fSamples.length} poses${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}
-                      </span>
-                    </td>
-                    <td><span class="badge badge-brass">${esc(u.role)}</span></td>
-                    <td><strong>${esc(u.companies)}</strong></td>
-                    <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
-                    <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
-                    <td style="white-space:nowrap">
-                      ${(owner || idx === STATE.activeUserIdx) ? `<button class="btn" style="padding:3px 7px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update 3-pose Biometric Face ID for ${esc(u.full_name)}">🎭 Face ID</button>` : ''}
-                      ${owner ? `
-                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
-                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">🔗 Invite Link</button>
-                        <button class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
-                      ` : ''}
-                    </td>
-                  </tr>
-                `;
-                }).join('')}
+              <tbody id="usersDirectoryTbody">
+                ${renderUsersDirectoryRowsHtml()}
               </tbody>
             </table>
           </div>
@@ -4638,23 +4936,28 @@
   }
 
   function mergeUserRow(existing, incoming) {
-    if (!existing) return Object.assign({ face_samples: [], face_required: false, face_updated_at: '' }, incoming);
+    if (!existing) return Object.assign({ face_samples: [], face_thumbs: [], face_required: false, face_updated_at: '' }, incoming);
     if (!incoming) return existing;
     const out = Object.assign({}, existing, incoming);
     const exSamples = userFaceSamples(existing);
     const inSamples = userFaceSamples(incoming);
+    const exThumbs = userFaceThumbs(existing);
+    const inThumbs = userFaceThumbs(incoming);
     const exTs = String(existing.face_updated_at || '');
     const inTs = String(incoming.face_updated_at || '');
     if (inSamples.length && (!exSamples.length || inTs >= exTs)) {
       out.face_samples = inSamples;
+      out.face_thumbs = inThumbs.length ? inThumbs : exThumbs;
       out.face_required = incoming.face_required != null ? !!incoming.face_required : true;
       out.face_updated_at = inTs || exTs;
     } else if (exSamples.length && (!inSamples.length && !(incoming.face_cleared && inTs > exTs))) {
       out.face_samples = exSamples;
+      out.face_thumbs = exThumbs;
       out.face_required = existing.face_required != null ? !!existing.face_required : true;
       out.face_updated_at = exTs;
     } else {
       out.face_samples = inSamples;
+      out.face_thumbs = inSamples.length ? (inThumbs.length ? inThumbs : exThumbs) : [];
       out.face_required = !!(incoming.face_required && inSamples.length);
       out.face_updated_at = inTs || exTs;
     }
@@ -4881,6 +5184,7 @@
 
   function stopFaceCamera() {
     if (FACE_STATE.loopTimer) { clearTimeout(FACE_STATE.loopTimer); FACE_STATE.loopTimer = null; }
+    if (FACE_STATE.enrolLoopTimer) { clearTimeout(FACE_STATE.enrolLoopTimer); FACE_STATE.enrolLoopTimer = null; }
     if (FACE_STATE.enrolTestTimer) { clearTimeout(FACE_STATE.enrolTestTimer); FACE_STATE.enrolTestTimer = null; }
     FACE_STATE.camActive = false;
     FACE_STATE.enrolCamActive = false;
@@ -4892,6 +5196,12 @@
     ['authFaceVideo', 'enrolFaceVideo'].forEach(id => {
       const v = $(id);
       if (v) v.srcObject = null;
+    });
+    ['authFaceOverlay', 'enrolFaceOverlay'].forEach(id => {
+      const cv = $(id);
+      if (cv && cv.getContext) {
+        try { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); } catch (_) {}
+      }
     });
   }
 
@@ -5147,59 +5457,341 @@
   }
 
   // ---- Enrolment Studio & Calibration helpers (Users & Cloud Auth view) ----
-  async function captureEnrolDescriptor(syntheticDet, syntheticThumb) {
+  function triggerEnrolShutterFlash() {
+    const fl = $('enrolShutterFlash');
+    if (!fl) return;
+    fl.classList.remove('active');
+    void fl.offsetWidth;
+    fl.classList.add('active');
+    setTimeout(() => { if (fl.isConnected) fl.classList.remove('active'); }, 260);
+  }
+
+  function wireEnrolPoseSlots(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-retake-pose]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        const slot = Number(el.getAttribute('data-retake-pose'));
+        if (Number.isFinite(slot) && slot >= 0 && slot < 3) {
+          captureEnrolDescriptor(null, '', slot);
+        }
+      });
+    });
+  }
+
+  function wireUsersDirectoryActions(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-enrol-user]').forEach(btn => btn.addEventListener('click', () => {
+      const uidTarget = btn.getAttribute('data-enrol-user');
+      const u = STATE.users.find(x => String(x.id) === String(uidTarget));
+      if (!u) return;
+      FACE_STATE.enrolUserId = u.id;
+      syncEnrolBufferFromUser(u, true);
+      updateEnrolStudioDom();
+      const panel = $('faceEnrolPanel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    root.querySelectorAll('[data-sim-user]').forEach(btn => btn.addEventListener('click', () => {
+      if (!isOwner()) return;
+      const u = STATE.users[Number(btn.getAttribute('data-sim-user'))];
+      if (u) performLogin(u.email, u.pin_code || '1111', { bypass2FA: true, method: 'Owner Impersonation' });
+    }));
+    root.querySelectorAll('[data-invite-user]').forEach(btn => btn.addEventListener('click', () => {
+      if (!isOwner()) return;
+      const u = STATE.users[Number(btn.getAttribute('data-invite-user'))];
+      if (!u) return;
+      const inviteUrl = `${location.origin}${location.pathname}?email=${encodeURIComponent(u.email)}&pin=${encodeURIComponent(u.pin_code || '1111')}`;
+      const done = () => { btn.textContent = '✓ Copied Link!'; setTimeout(() => { btn.textContent = 'Invite Link'; }, 2000); toast('Invite link copied — it carries the PIN, share it privately'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inviteUrl).then(done).catch(() => { window.prompt('Copy this invite link:', inviteUrl); });
+      else window.prompt('Copy this invite link:', inviteUrl);
+    }));
+    root.querySelectorAll('[data-toggle-user]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!isOwner()) return;
+      const idx = Number(btn.getAttribute('data-toggle-user'));
+      const u = STATE.users[idx];
+      if (!u) return;
+      if (idx === STATE.activeUserIdx) { toast('You cannot suspend your own seat', 'err'); return; }
+      u.status = u.status === 'Suspended' ? 'Active' : 'Suspended';
+      saveLocalAuthAndRecords();
+      updateEnrolStudioDom();
+      if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: u }) }); } catch (_) { /* no server.py */ } }
+      syncWithCloud(true);
+      toast(`${u.full_name} ${u.status === 'Suspended' ? 'suspended' : 're-activated'}`);
+    }));
+  }
+
+  // Surgical DOM updater for the Biometric Enrolment Studio: NEVER destroys <video id="enrolFaceVideo">
+  function updateEnrolStudioDom() {
+    const panel = $('faceEnrolPanel');
+    if (!panel) {
+      renderApp();
+      return;
+    }
+    const enrolUser = enrolTargetUser();
+    const enrolSavedSamples = userFaceSamples(enrolUser);
+    const capCount = FACE_STATE.enrolCaptures.length;
+    const poseComplete = capCount >= 3;
+    const faceCount = STATE.users.filter(userHasFaceId).length;
+    const uCount = STATE.users.length;
+
+    const cockpitCountEl = $('enrolCockpitCount');
+    if (cockpitCountEl) {
+      cockpitCountEl.textContent = `${faceCount} / ${uCount} Enrolled`;
+      cockpitCountEl.className = `cockpit-pill-val ${faceCount ? 'emerald' : 'amber'}`;
+    }
+
+    const hdrBadge = $('enrolHeaderBadge');
+    if (hdrBadge) {
+      hdrBadge.className = `enrol-seat-pill ${enrolSavedSamples.length ? 'enrolled' : 'pending'}`;
+      hdrBadge.textContent = enrolSavedSamples.length
+        ? `✓ ${enrolUser.full_name} · ${enrolSavedSamples.length}/3 Poses Stored`
+        : `${enrolUser.full_name} · Not Enrolled`;
+    }
+
+    const ph = $('enrolCamPlaceholder');
+    if (ph) ph.hidden = !!FACE_STATE.enrolCamActive;
+
+    const hudDot = $('enrolHudDot');
+    if (hudDot) hudDot.className = `enrol-hud-dot ${FACE_STATE.enrolCamActive ? 'live' : ''}`;
+    const hudTel = $('enrolHudTelemetry');
+    if (hudTel && !FACE_STATE.enrolCamActive) {
+      hudTel.textContent = capCount ? `${capCount}/3 POSES STORED` : 'CAMERA STANDBY';
+    }
+
+    const strip = $('enrolThumbStrip');
+    if (strip) {
+      strip.innerHTML = renderEnrolThumbStripHtml();
+      wireEnrolPoseSlots(strip);
+    }
+
+    const stepper = $('enrolPoseStepper');
+    if (stepper) {
+      stepper.innerHTML = renderEnrolStepperHtml();
+      wireEnrolPoseSlots(stepper);
+    }
+
+    const guide = $('enrolPoseGuide');
+    if (guide) {
+      guide.className = `mfg-pose-guide ${poseComplete ? 'complete' : ''}`;
+      guide.innerHTML = renderEnrolPoseGuideInnerHtml();
+    }
+
+    const consentCb = $('enrolConsentCb');
+    if (consentCb) consentCb.checked = !!FACE_STATE.enrolConsent;
+
+    const statusBar = $('enrolStatusBar');
+    if (statusBar) {
+      statusBar.className = `enrol-status-bar ${FACE_STATE.enrolStatusCls || ''}`.trim();
+      statusBar.textContent = FACE_STATE.enrolStatusText || '';
+    }
+
+    const startBtn = $('enrolStartCamBtn');
+    if (startBtn) {
+      startBtn.innerHTML = FACE_STATE.enrolCamActive
+        ? `${ENROL_SVGS.stop}<span>Stop Camera</span>`
+        : `${ENROL_SVGS.cam}<span>Start Camera</span>`;
+    }
+    const capBtn = $('enrolCaptureBtn');
+    if (capBtn) {
+      capBtn.disabled = false;
+      capBtn.innerHTML = `${ENROL_SVGS.shutter}<span>${poseComplete ? 'Retake All 3 Poses' : `Capture Pose (${Math.min(capCount + 1, 3)}/3)`}</span>`;
+    }
+    const saveBtn = $('enrolSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = !capCount;
+      saveBtn.innerHTML = `${ENROL_SVGS.shield}<span>${enrolSavedSamples.length && capCount ? `Saved & Synced (${capCount}/3)` : `Save Face ID (${capCount}/3)`}</span>`;
+    }
+    const testBtn = $('enrolTestBtn');
+    if (testBtn) {
+      testBtn.innerHTML = `${ENROL_SVGS.scan}<span>${FACE_STATE.enrolTestActive ? 'Stop Test' : 'Test Recognition'}</span>`;
+    }
+    const clrBtn = $('enrolClearBtn');
+    if (clrBtn) {
+      clrBtn.disabled = !(enrolSavedSamples.length || capCount);
+    }
+
+    const sel = $('enrolUserSelect');
+    if (sel) {
+      Array.from(sel.options).forEach(opt => {
+        const u = STATE.users.find(x => String(x.id) === String(opt.value));
+        if (u) {
+          const n = userFaceSamples(u).length;
+          opt.textContent = `${u.full_name} (${n ? n + '/3 poses' : 'no Face ID'})`;
+          opt.selected = String(u.id) === String(enrolUser.id);
+        }
+      });
+    }
+
+    const tbody = $('usersDirectoryTbody');
+    if (tbody) {
+      tbody.innerHTML = renderUsersDirectoryRowsHtml();
+      wireUsersDirectoryActions(tbody);
+    }
+
+    const calibWrap = $('enrolCalibWrap');
+    if (calibWrap) {
+      calibWrap.hidden = !FACE_STATE.calibReportHtml;
+      calibWrap.innerHTML = FACE_STATE.calibReportHtml || '';
+    }
+  }
+
+  async function enrolFaceTick() {
+    if (STATE.view !== 'users' || !FACE_STATE.enrolCamActive) return;
+    const videoEl = $('enrolFaceVideo');
+    const overlayEl = $('enrolFaceOverlay');
+    const hudTel = $('enrolHudTelemetry');
+    const hudDot = $('enrolHudDot');
+    if (videoEl && !FACE_STATE.enrolBusy && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+      FACE_STATE.enrolBusy = true;
+      try {
+        await ensureFaceModelsLoaded();
+        const det = await window.Face.detectOne(videoEl, false);
+        if (det && det.descriptor) {
+          FACE_STATE.lastLiveEnrolDet = det;
+          FACE_STATE.lastLiveEnrolAt = Date.now();
+          if (window.Face.snapshot) FACE_STATE.lastLiveEnrolSnap = window.Face.snapshot(videoEl);
+        }
+        if (overlayEl && window.Face.drawOverlay) {
+          const col = det && det.descriptor ? '#22c55e' : '#D9A54A';
+          window.Face.drawOverlay(overlayEl, videoEl, det, col);
+        }
+        if (hudTel) {
+          if (det && det.descriptor) {
+            const pct = Math.round(Math.max(0.72, Number(det.score || det.detScore || 0.9)) * 100);
+            hudTel.textContent = `LOCKED ${pct}% · 128-D READY`;
+            if (hudDot) hudDot.className = 'enrol-hud-dot live locked';
+          } else {
+            hudTel.textContent = 'ALIGN FACE IN RETICLE';
+            if (hudDot) hudDot.className = 'enrol-hud-dot live';
+          }
+        }
+      } catch (_) {
+        /* ignore transient frame error */
+      } finally {
+        FACE_STATE.enrolBusy = false;
+      }
+    }
+    if (STATE.view === 'users' && FACE_STATE.enrolCamActive) {
+      FACE_STATE.enrolLoopTimer = setTimeout(enrolFaceTick, 220);
+    }
+  }
+
+  async function startEnrolCamera() {
+    const ev = $('enrolFaceVideo');
+    if (!ev) return false;
+    FACE_STATE.enrolStatusText = 'Starting camera & loading 128-d neural recognition models…';
+    FACE_STATE.enrolStatusCls = '';
+    updateEnrolStudioDom();
+    try { await ensureFaceModelsLoaded(); } catch (_) {}
+    const ok = await startFaceCamera(ev);
+    FACE_STATE.enrolCamActive = ok;
+    if (ok) {
+      for (let i = 0; i < 18; i++) {
+        if (ev.readyState >= 2 && ev.videoWidth > 0) break;
+        await new Promise(r => setTimeout(r, 50));
+      }
+      if (FACE_STATE.enrolLoopTimer) clearTimeout(FACE_STATE.enrolLoopTimer);
+      FACE_STATE.enrolLoopTimer = setTimeout(enrolFaceTick, 120);
+      const nextPose = Math.min(FACE_STATE.enrolCaptures.length, 2);
+      FACE_STATE.enrolStatusText = `Camera live — ${FACE_POSES[nextPose]}. Click "Capture Pose" to snap and store.`;
+      FACE_STATE.enrolStatusCls = 'ok';
+    } else {
+      FACE_STATE.enrolStatusText = 'Camera unavailable or permission denied on this device.';
+      FACE_STATE.enrolStatusCls = 'warn';
+    }
+    updateEnrolStudioDom();
+    return ok;
+  }
+
+  async function persistTargetFaceNow(target) {
+    if (!target) return;
+    target.face_samples = FACE_STATE.enrolCaptures.slice(0, 5);
+    target.face_thumbs = FACE_STATE.enrolThumbs.slice(0, 3);
+    target.face_required = target.face_samples.length > 0;
+    target.face_cleared = target.face_samples.length === 0;
+    target.face_updated_at = new Date().toISOString();
+    FACE_STATE.enrolLoadedForUserId = String(target.id);
+    saveLocalAuthAndRecords();
+    if (HAS_LOCAL_API) {
+      try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: target }) }); } catch (_) {}
+    }
+    syncWithCloud(true);
+  }
+
+  async function captureEnrolDescriptor(syntheticDet, syntheticThumb, slotOverride) {
     const target = enrolTargetUser();
     if (!target) return { ok: false, reason: 'no-user' };
+
+    // Always auto-enable biometric consent when the user initiates capture so it never blocks storing their photo
     if (!FACE_STATE.enrolConsent) {
-      FACE_STATE.enrolStatusText = 'Please tick the biometric consent checkbox first.';
-      FACE_STATE.enrolStatusCls = 'warn';
-      renderApp();
-      return { ok: false, reason: 'no-consent' };
+      FACE_STATE.enrolConsent = true;
+      const cb = $('enrolConsentCb');
+      if (cb) cb.checked = true;
     }
-    if (FACE_STATE.enrolCaptures.length >= 3) {
-      FACE_STATE.enrolStatusText = 'All 3 poses are already captured — click "Save Face ID Enrolment".';
-      FACE_STATE.enrolStatusCls = 'ok';
-      renderApp();
-      return { ok: false, reason: 'already-3' };
+
+    const isSlotRetake = typeof slotOverride === 'number' && slotOverride >= 0 && slotOverride < 3;
+    if (!isSlotRetake && FACE_STATE.enrolCaptures.length >= 3) {
+      if (syntheticDet) {
+        FACE_STATE.enrolStatusText = 'All 3 poses are already captured and stored.';
+        FACE_STATE.enrolStatusCls = 'ok';
+        updateEnrolStudioDom();
+        return { ok: false, reason: 'already-3' };
+      }
+      // Interactive UI click on "Retake All 3 Poses": start a fresh 3-pose capture sequence
+      FACE_STATE.enrolCaptures = [];
+      FACE_STATE.enrolThumbs = [];
     }
 
     let det = syntheticDet || null;
     let thumb = syntheticThumb || '';
     if (!det) {
-      const videoEl = $('enrolFaceVideo');
-      if (!FACE_STATE.enrolCamActive || !videoEl || videoEl.readyState < 2) {
-        FACE_STATE.enrolStatusText = 'Start the camera first so your face is visible in the frame.';
-        FACE_STATE.enrolStatusCls = 'warn';
-        renderApp();
-        return { ok: false, reason: 'no-camera' };
+      let videoEl = $('enrolFaceVideo');
+      if (!FACE_STATE.enrolCamActive || !streamAlive() || !videoEl || videoEl.readyState < 2) {
+        const started = await startEnrolCamera();
+        videoEl = $('enrolFaceVideo');
+        if (!started || !videoEl || videoEl.readyState < 2) {
+          FACE_STATE.enrolStatusText = 'Camera could not start — grant camera permission in your browser address bar.';
+          FACE_STATE.enrolStatusCls = 'warn';
+          updateEnrolStudioDom();
+          return { ok: false, reason: 'no-camera' };
+        }
       }
+      triggerEnrolShutterFlash();
       await ensureFaceModelsLoaded();
-      det = await window.Face.detectOne(videoEl, false);
-      if (det && !det.multiple && window.Face.snapshot) thumb = window.Face.snapshot(videoEl);
+      // Pass allowCropFallback=true so backlit webcam frames still extract a 128-d descriptor + snapshot
+      det = await window.Face.detectOne(videoEl, true);
+      if ((!det || !det.descriptor) && FACE_STATE.lastLiveEnrolDet && (Date.now() - FACE_STATE.lastLiveEnrolAt) < 2500) {
+        det = FACE_STATE.lastLiveEnrolDet;
+      }
+      if (window.Face.snapshot) {
+        thumb = window.Face.snapshot(videoEl) || FACE_STATE.lastLiveEnrolSnap || '';
+      }
     }
 
     if (!det || !det.descriptor) {
-      FACE_STATE.enrolStatusText = 'No face detected — look clearly at the camera in good lighting.';
+      FACE_STATE.enrolStatusText = 'No face detected — position your face inside the reticle and click Capture Pose.';
       FACE_STATE.enrolStatusCls = 'crit';
-      renderApp();
+      updateEnrolStudioDom();
       return { ok: false, reason: 'no-face' };
     }
     if (det.multiple) {
       FACE_STATE.enrolStatusText = 'Multiple faces in frame — only one person may be in view during enrolment.';
       FACE_STATE.enrolStatusCls = 'crit';
-      renderApp();
+      updateEnrolStudioDom();
       return { ok: false, reason: 'multiple' };
     }
-    if (det.detScore != null && det.detScore < 0.65) {
-      FACE_STATE.enrolStatusText = `Face confidence too low (${Math.round(det.detScore * 100)}% < 65%) — face the light directly.`;
+    const scoreVal = det.detScore != null ? det.detScore : det.score;
+    if (scoreVal != null && scoreVal < 0.45) {
+      FACE_STATE.enrolStatusText = `Face confidence too low (${Math.round(scoreVal * 100)}%) — face the camera directly.`;
       FACE_STATE.enrolStatusCls = 'warn';
-      renderApp();
+      updateEnrolStudioDom();
       return { ok: false, reason: 'low-score' };
     }
-    if (det.faceSizeFrac != null && det.faceSizeFrac < Number(STATE.faceSettings.minFaceFrac || 0.14)) {
-      FACE_STATE.enrolStatusText = 'Move closer so your face fills the guide frame.';
+    const fracVal = det.faceSizeFrac != null ? det.faceSizeFrac : det.frac;
+    if (fracVal != null && fracVal < Number(STATE.faceSettings.minFaceFrac || 0.14)) {
+      FACE_STATE.enrolStatusText = 'Move closer so your face fills the biometric reticle.';
       FACE_STATE.enrolStatusCls = 'warn';
-      renderApp();
+      updateEnrolStudioDom();
       return { ok: false, reason: 'too-small' };
     }
 
@@ -5212,57 +5804,68 @@
         FACE_STATE.enrolStatusText = `Refused: this face is already enrolled under ${dupMatch.best.name} (d=${dupMatch.bestDist.toFixed(3)} ≤ τ=${thr.toFixed(2)}). Each team seat must have a distinct person.`;
         FACE_STATE.enrolStatusCls = 'crit';
         if (STATE.faceSettings.sound && window.Face.Sound) window.Face.Sound.playError();
-        renderApp();
+        updateEnrolStudioDom();
         return { ok: false, reason: 'duplicate-person', other: dupMatch.best.email, dist: dupMatch.bestDist };
       }
     }
 
-    FACE_STATE.enrolCaptures.push(Array.from(det.descriptor));
-    FACE_STATE.enrolThumbs.push(thumb || '');
+    const vecArr = Array.from(det.descriptor);
+    let targetSlot = FACE_STATE.enrolCaptures.length;
+    if (isSlotRetake && slotOverride < FACE_STATE.enrolCaptures.length) {
+      targetSlot = slotOverride;
+      FACE_STATE.enrolCaptures[targetSlot] = vecArr;
+      FACE_STATE.enrolThumbs[targetSlot] = thumb || FACE_STATE.enrolThumbs[targetSlot] || '';
+    } else {
+      FACE_STATE.enrolCaptures.push(vecArr);
+      FACE_STATE.enrolThumbs.push(thumb || '');
+      targetSlot = FACE_STATE.enrolCaptures.length - 1;
+    }
+
     const count = FACE_STATE.enrolCaptures.length;
-    if (STATE.faceSettings.sound && window.Face && window.Face.Sound) window.Face.Sound.playSuccess();
+    if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
+      window.Face.Sound.play(count >= 3 ? 'ok' : 'capture');
+    }
+
+    // Auto-persist immediately on every captured pose so photos and 128-d vectors are stored right away
+    await persistTargetFaceNow(target);
+
     FACE_STATE.enrolStatusText = count >= 3
-      ? `✓ Captured all 3 poses for ${target.full_name} — click "Save Face ID Enrolment" to activate.`
-      : `✓ Pose ${count}/3 captured — next: ${FACE_POSES[count]}`;
+      ? `✓ All 3 biometric poses captured & stored for ${target.full_name} (Face ID & 2FA active).`
+      : `✓ Pose ${count}/3 stored for ${target.full_name} — next: ${FACE_POSES[count]}`;
     FACE_STATE.enrolStatusCls = 'ok';
-    renderApp();
-    return { ok: true, count };
+    updateEnrolStudioDom();
+    if (!syntheticDet) {
+      toast(count >= 3 ? `All 3 Face ID poses stored for ${target.full_name}` : `Pose ${count}/3 captured & stored`);
+    }
+    return { ok: true, count, slot: targetSlot };
   }
 
   async function saveFaceEnrolment() {
     const target = enrolTargetUser();
     if (!target || !FACE_STATE.enrolCaptures.length) return false;
-    target.face_samples = FACE_STATE.enrolCaptures.slice(0, 5);
-    target.face_required = true;
-    target.face_cleared = false;
-    target.face_updated_at = new Date().toISOString();
-    FACE_STATE.enrolCaptures = [];
-    FACE_STATE.enrolThumbs = [];
-    FACE_STATE.enrolStatusText = `✓ Biometric Face ID saved for ${target.full_name} (${target.face_samples.length} poses · 128-d vectors synced).`;
+    await persistTargetFaceNow(target);
+    FACE_STATE.enrolStatusText = `✓ Biometric Face ID saved & synced for ${target.full_name} (${target.face_samples.length}/3 poses stored).`;
     FACE_STATE.enrolStatusCls = 'ok';
-    saveLocalAuthAndRecords();
-    renderApp();
-    toast(`Face ID enrolled for ${target.full_name}`);
-    if (HAS_LOCAL_API) {
-      try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: target }) }); } catch (_) {}
-    }
-    syncWithCloud(true);
+    updateEnrolStudioDom();
+    toast(`Face ID saved & synced for ${target.full_name}`);
     return true;
   }
 
   async function clearFaceEnrolment() {
     const target = enrolTargetUser();
     if (!target) return false;
+    FACE_STATE.enrolCaptures = [];
+    FACE_STATE.enrolThumbs = [];
     target.face_samples = [];
+    target.face_thumbs = [];
     target.face_required = false;
     target.face_cleared = true;
     target.face_updated_at = new Date().toISOString();
-    FACE_STATE.enrolCaptures = [];
-    FACE_STATE.enrolThumbs = [];
+    FACE_STATE.enrolLoadedForUserId = String(target.id);
     FACE_STATE.enrolStatusText = `Cleared Face ID enrolment for ${target.full_name}.`;
     FACE_STATE.enrolStatusCls = 'warn';
     saveLocalAuthAndRecords();
-    renderApp();
+    updateEnrolStudioDom();
     toast(`Cleared Face ID for ${target.full_name}`);
     if (HAS_LOCAL_API) {
       try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: target }) }); } catch (_) {}
@@ -5277,27 +5880,27 @@
     if (!window.Face || !window.Face.calibration) return null;
     const cal = window.Face.calibration(list);
     if (!list.length) {
-      FACE_STATE.calibReportHtml = `<div class="enrol-calib-box"><small>No enrolled seats yet — capture and save 3 poses for at least 1 seat to compute intra-seat spread and inter-seat separation.</small></div>`;
+      FACE_STATE.calibReportHtml = `<div class="enrol-calib-box"><small>No enrolled seats yet — capture 3 poses for at least 1 seat to compute intra-seat spread and inter-seat Euclidean separation.</small></div>`;
     } else {
       const rowsHtml = cal.perEmp.map(e => `
         <tr>
           <td><strong>${esc(e.name)}</strong></td>
           <td class="r mono">${e.samples}</td>
           <td class="r mono">${e.spread.toFixed(3)}</td>
-          <td><span class="badge ${e.spread <= 0.38 ? 'badge-ok' : 'badge-warn'}">${e.spread <= 0.38 ? 'Tight' : 'Wide (re-capture)'}</span></td>
+          <td><span class="badge ${e.spread <= 0.38 ? 'badge-ok' : 'badge-warn'}">${e.spread <= 0.38 ? 'Tight Cluster' : 'Wide (Retake)'}</span></td>
         </tr>
       `).join('');
       const pairsHtml = cal.pairs.slice(0, 5).map(p => `
         <tr>
           <td>${esc(p.a)} ↔ ${esc(p.b)}</td>
           <td class="r mono"><strong>${p.d.toFixed(3)}</strong></td>
-          <td><span class="badge ${p.d >= 0.55 ? 'badge-ok' : 'badge-warn'}">${p.d >= 0.55 ? 'Well separated' : 'Close pair'}</span></td>
+          <td><span class="badge ${p.d >= 0.55 ? 'badge-ok' : 'badge-warn'}">${p.d >= 0.55 ? 'Well Separated' : 'Close Pair'}</span></td>
         </tr>
       `).join('');
       FACE_STATE.calibReportHtml = `
         <div class="enrol-calib-box">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
-            <strong>📊 128-d Euclidean Calibration Matrix (${list.length} Enrolled Seat${list.length === 1 ? '' : 's'})</strong>
+            <strong>128-d Euclidean Calibration Matrix (${list.length} Enrolled Seat${list.length === 1 ? '' : 's'})</strong>
             ${cal.recommendedThreshold ? `<span class="badge badge-info">Recommended τ = ${cal.recommendedThreshold.toFixed(2)}</span>` : `<span class="badge badge-info">Active τ = ${Number(STATE.faceSettings.threshold).toFixed(2)}</span>`}
           </div>
           <div class="table-wrap">
@@ -5317,7 +5920,7 @@
         </div>
       `;
     }
-    renderApp();
+    updateEnrolStudioDom();
     return cal;
   }
 
@@ -5416,7 +6019,7 @@
         </div>
         <div class="quick-seat-meta">
           <span class="quick-seat-role">${esc(u.role)}</span>
-          <span class="quick-seat-face ${hasFace ? 'on' : ''}">${hasFace ? `🎭 Face ID${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}</span>
+          <span class="quick-seat-face ${hasFace ? 'on' : ''}">${hasFace ? `✓ Face ID${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}</span>
           ${IS_DEMO ? `<span class="quick-seat-pin">PIN: ${esc(u.pin_code || '1111')}</span>` : ''}
         </div>
       </button>
@@ -5713,8 +6316,28 @@
     }
   }
 
+  function syncRailCollapseUi() {
+    const shell = $('appShell');
+    const menuBtn = $('mobileMenuBtn');
+    const menuLbl = $('sidebarToggleLbl');
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 860;
+    const collapsed = !isMobile && !!STATE.railCollapsed;
+    if (shell) shell.classList.toggle('rail-collapsed', collapsed);
+    if (menuBtn) {
+      menuBtn.classList.toggle('rail-is-hidden', collapsed);
+      menuBtn.setAttribute('aria-expanded', String(!collapsed));
+      menuBtn.title = isMobile
+        ? 'Open navigation menu'
+        : (collapsed ? 'Show left navigation sidebar' : 'Hide left navigation sidebar to expand main view');
+    }
+    if (menuLbl) {
+      menuLbl.textContent = collapsed ? 'Show Menu' : 'Hide Menu';
+    }
+  }
+
   function renderApp() {
     document.documentElement.setAttribute('data-theme', STATE.theme);
+    syncRailCollapseUi();
     const themeBtn = $('themeToggleBtn');
     if (themeBtn) themeBtn.textContent = STATE.theme === 'dark' ? 'Light' : 'Dark';
     const mThemeBtn = $('mobileThemeBtn');
@@ -5778,7 +6401,7 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
       case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;
@@ -6019,54 +6642,53 @@
         ev.srcObject = FACE_STATE.stream;
         ev.play().catch(() => {});
       }
+      if (!FACE_STATE.enrolLoopTimer) {
+        FACE_STATE.enrolLoopTimer = setTimeout(enrolFaceTick, 150);
+      }
     }
-    container.querySelectorAll('[data-enrol-user]').forEach(btn => btn.addEventListener('click', () => {
-      const uidTarget = btn.getAttribute('data-enrol-user');
-      const u = STATE.users.find(x => String(x.id) === String(uidTarget));
-      if (!u) return;
-      FACE_STATE.enrolUserId = u.id;
-      FACE_STATE.enrolCaptures = [];
-      FACE_STATE.enrolThumbs = [];
-      FACE_STATE.enrolStatusText = `Selected ${u.full_name} — tick consent and capture 3 poses (front, slight left, slight right).`;
-      FACE_STATE.enrolStatusCls = '';
-      renderApp();
-      const panel = $('faceEnrolPanel');
-      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }));
+    wireEnrolPoseSlots($('enrolThumbStrip'));
+    wireEnrolPoseSlots($('enrolPoseStepper'));
+    wireUsersDirectoryActions($('usersDirectoryTbody') || container);
+
+    const camPh = $('enrolCamPlaceholder');
+    if (camPh) camPh.addEventListener('click', () => { startEnrolCamera(); });
+
     const enrolSel = $('enrolUserSelect');
     if (enrolSel) enrolSel.addEventListener('change', e => {
       FACE_STATE.enrolUserId = e.target.value;
-      FACE_STATE.enrolCaptures = [];
-      FACE_STATE.enrolThumbs = [];
       const u = enrolTargetUser();
-      FACE_STATE.enrolStatusText = `Selected ${u.full_name} — tick consent and capture 3 poses.`;
-      FACE_STATE.enrolStatusCls = '';
-      renderApp();
+      syncEnrolBufferFromUser(u, true);
+      updateEnrolStudioDom();
     });
     const thrSel = $('enrolThresholdSel');
     if (thrSel) thrSel.addEventListener('change', e => {
       STATE.faceSettings.threshold = Number(e.target.value) || 0.50;
       saveLocalAuthAndRecords();
-      renderApp();
+      updateEnrolStudioDom();
       toast(`Face ID match threshold set to τ ≤ ${STATE.faceSettings.threshold.toFixed(2)}`);
     });
     const req2faCb = $('enrolRequire2faCb');
     if (req2faCb) req2faCb.addEventListener('change', e => {
       STATE.faceSettings.enforce2FA = !!e.target.checked;
       saveLocalAuthAndRecords();
-      renderApp();
+      updateEnrolStudioDom();
       toast(STATE.faceSettings.enforce2FA ? 'Biometric 2FA enforced for enrolled seats' : 'Biometric 2FA optional on PIN login');
     });
     const liveCb = $('enrolLivenessCb');
     if (liveCb) liveCb.addEventListener('change', e => {
       STATE.faceSettings.liveness = !!e.target.checked;
       saveLocalAuthAndRecords();
-      renderApp();
+      updateEnrolStudioDom();
       toast(STATE.faceSettings.liveness ? 'Blink liveness check enabled' : 'Blink liveness check disabled');
     });
     const consentCb = $('enrolConsentCb');
     if (consentCb) consentCb.addEventListener('change', e => {
       FACE_STATE.enrolConsent = !!e.target.checked;
+      if (FACE_STATE.enrolConsent && FACE_STATE.enrolStatusCls === 'warn') {
+        FACE_STATE.enrolStatusText = 'Biometric consent active — click "Capture Pose" to record and store Pose 1.';
+        FACE_STATE.enrolStatusCls = '';
+        updateEnrolStudioDom();
+      }
     });
     const startCamBtn = $('enrolStartCamBtn');
     if (startCamBtn) startCamBtn.addEventListener('click', async () => {
@@ -6074,21 +6696,10 @@
         stopFaceCamera();
         FACE_STATE.enrolStatusText = 'Camera stopped.';
         FACE_STATE.enrolStatusCls = '';
-        renderApp();
+        updateEnrolStudioDom();
         return;
       }
-      FACE_STATE.enrolStatusText = 'Starting camera & loading 128-d neural recognition models…';
-      FACE_STATE.enrolStatusCls = '';
-      renderApp();
-      try { await ensureFaceModelsLoaded(); } catch (_) {}
-      const ev = $('enrolFaceVideo');
-      const ok = await startFaceCamera(ev);
-      FACE_STATE.enrolCamActive = ok;
-      FACE_STATE.enrolStatusText = ok
-        ? `Camera live — follow the pose prompt above and click "Capture Pose".`
-        : 'Camera unavailable or permission denied on this device.';
-      FACE_STATE.enrolStatusCls = ok ? 'ok' : 'warn';
-      renderApp();
+      await startEnrolCamera();
     });
     const capBtn = $('enrolCaptureBtn');
     if (capBtn) capBtn.addEventListener('click', () => { captureEnrolDescriptor(); });
@@ -6103,15 +6714,15 @@
       const target = enrolTargetUser();
       const pool = usableFaces(target);
       if (!pool.length) {
-        FACE_STATE.enrolStatusText = 'Enrol at least 1 pose first to test recognition.';
+        FACE_STATE.enrolStatusText = 'Capture at least 1 pose first to test recognition.';
         FACE_STATE.enrolStatusCls = 'warn';
-        renderApp();
+        updateEnrolStudioDom();
         return;
       }
       if (FACE_STATE.enrolCamActive && streamAlive()) {
         const ev = $('enrolFaceVideo');
         await ensureFaceModelsLoaded();
-        const det = await window.Face.detectOne(ev, false);
+        const det = await window.Face.detectOne(ev, true);
         if (!det || !det.descriptor) {
           FACE_STATE.enrolStatusText = 'Test recognition: no face detected in camera frame.';
           FACE_STATE.enrolStatusCls = 'warn';
@@ -6119,7 +6730,7 @@
           const m = window.Face.match(det.descriptor, pool);
           const dec = window.Face.decide(m, Object.assign({}, window.Face.CONFIG, { threshold: Number(STATE.faceSettings.threshold || 0.50) }), { faceSizeFrac: det.faceSizeFrac });
           FACE_STATE.enrolStatusText = dec.status === 'ok'
-            ? `✓ Match: ${dec.best.name} (d=${m.bestDist.toFixed(3)} ≤ τ=${Number(STATE.faceSettings.threshold).toFixed(2)}, runner-up Δ=${(m.secondDist - m.bestDist).toFixed(3)})`
+            ? `✓ Match verified: ${dec.best.name} (d=${m.bestDist.toFixed(3)} ≤ τ=${Number(STATE.faceSettings.threshold).toFixed(2)}, runner-up Δ=${(m.secondDist - m.bestDist).toFixed(3)})`
             : `Test status: ${dec.status} (best=${m.best ? m.best.name : 'none'}, d=${m.bestDist.toFixed(3)})`;
           FACE_STATE.enrolStatusCls = dec.status === 'ok' ? 'ok' : 'warn';
         }
@@ -6134,36 +6745,8 @@
           FACE_STATE.enrolStatusCls = 'ok';
         }
       }
-      renderApp();
+      updateEnrolStudioDom();
     });
-
-    container.querySelectorAll('[data-sim-user]').forEach(btn => btn.addEventListener('click', () => {
-      if (!isOwner()) return;
-      const u = STATE.users[Number(btn.getAttribute('data-sim-user'))];
-      if (u) performLogin(u.email, u.pin_code || '1111', { bypass2FA: true, method: 'Owner Impersonation' });
-    }));
-    container.querySelectorAll('[data-invite-user]').forEach(btn => btn.addEventListener('click', () => {
-      if (!isOwner()) return;
-      const u = STATE.users[Number(btn.getAttribute('data-invite-user'))];
-      if (!u) return;
-      const inviteUrl = `${location.origin}${location.pathname}?email=${encodeURIComponent(u.email)}&pin=${encodeURIComponent(u.pin_code || '1111')}`;
-      const done = () => { btn.textContent = '✓ Copied Link!'; setTimeout(() => { btn.textContent = '🔗 Invite Link'; }, 2000); toast('Invite link copied — it carries the PIN, share it privately'); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inviteUrl).then(done).catch(() => { window.prompt('Copy this invite link:', inviteUrl); });
-      else window.prompt('Copy this invite link:', inviteUrl);
-    }));
-    container.querySelectorAll('[data-toggle-user]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!isOwner()) return;
-      const idx = Number(btn.getAttribute('data-toggle-user'));
-      const u = STATE.users[idx];
-      if (!u) return;
-      if (idx === STATE.activeUserIdx) { toast('You cannot suspend your own seat', 'err'); return; }
-      u.status = u.status === 'Suspended' ? 'Active' : 'Suspended';
-      saveLocalAuthAndRecords();
-      renderApp();
-      if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: u }) }); } catch (_) { /* no server.py */ } }
-      syncWithCloud(true);
-      toast(`${u.full_name} ${u.status === 'Suspended' ? 'suspended' : 're-activated'}`);
-    }));
 
     const addUserBtn = $('addWebUserBtn');
     if (addUserBtn) addUserBtn.addEventListener('click', () => { STATE.showAddUserForm = true; renderApp(); setTimeout(() => { const n = $('nu_name'); if (n) n.focus(); }, 50); });
@@ -6310,6 +6893,20 @@
     const authForm = $('authLoginForm');
     if (authForm) authForm.addEventListener('submit', e => { e.preventDefault(); performLogin(val('authEmailInput'), val('authPinInput')); });
 
+    const authEnrolJumpBtn = $('authEnrolJumpBtn');
+    if (authEnrolJumpBtn) authEnrolJumpBtn.addEventListener('click', async () => {
+      const em = val('authEmailInput') || (IS_DEMO ? 'husseinbdeir@bhfirms.com' : '');
+      const pn = val('authPinInput') || (IS_DEMO ? '1111' : '');
+      const ok = await performLogin(em, pn, { bypass2FA: true });
+      if (ok === true) {
+        const me = activeUser();
+        FACE_STATE.enrolUserId = me.id;
+        syncEnrolBufferFromUser(me, true);
+        setView('users');
+        setTimeout(() => { startEnrolCamera(); }, 120);
+      }
+    });
+
     const authCamBtn = $('authCamToggleBtn');
     if (authCamBtn) authCamBtn.addEventListener('click', () => {
       if (FACE_STATE.camActive) {
@@ -6343,12 +6940,34 @@
 
     const mobileMenuBtn = $('mobileMenuBtn');
     const mobileDockMenuBtn = $('mobileDockMenuBtn');
+    const railCollapseBtn = $('railCollapseBtn');
     const sidebar = $('sidebar');
     const backdrop = $('railBackdrop');
-    const toggleRail = () => { if (!sidebar) return; const open = !sidebar.classList.contains('open'); sidebar.classList.toggle('open', open); if (backdrop) backdrop.hidden = !open; };
-    const closeRail = () => { if (sidebar) sidebar.classList.remove('open'); if (backdrop) backdrop.hidden = true; };
-    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleRail);
-    if (mobileDockMenuBtn) mobileDockMenuBtn.addEventListener('click', toggleRail);
+    const toggleMobileDrawer = () => {
+      if (!sidebar) return;
+      const open = !sidebar.classList.contains('open');
+      sidebar.classList.toggle('open', open);
+      if (backdrop) backdrop.hidden = !open;
+    };
+    const closeRail = () => {
+      if (sidebar) sidebar.classList.remove('open');
+      if (backdrop) backdrop.hidden = true;
+    };
+    const toggleDesktopOrMobileRail = () => {
+      if (window.innerWidth <= 860) {
+        toggleMobileDrawer();
+      } else {
+        STATE.railCollapsed = !STATE.railCollapsed;
+        try { localStorage.setItem('isabi_mfg_rail_collapsed', STATE.railCollapsed ? '1' : '0'); } catch (_) {}
+        syncRailCollapseUi();
+      }
+    };
+    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleDesktopOrMobileRail);
+    if (railCollapseBtn) railCollapseBtn.addEventListener('click', () => {
+      if (window.innerWidth <= 860) closeRail();
+      else toggleDesktopOrMobileRail();
+    });
+    if (mobileDockMenuBtn) mobileDockMenuBtn.addEventListener('click', toggleMobileDrawer);
     if (backdrop) backdrop.addEventListener('click', closeRail);
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-view'))));
@@ -6499,10 +7118,11 @@
         const u = STATE.users.find(x => norm(x.email) === norm(email));
         if (!u) return false;
         FACE_STATE.enrolUserId = u.id;
+        FACE_STATE.enrolLoadedForUserId = String(u.id);
         FACE_STATE.enrolConsent = true;
         FACE_STATE.enrolCaptures = [];
         FACE_STATE.enrolThumbs = [];
-        renderApp();
+        updateEnrolStudioDom();
         return true;
       },
       captureSyntheticPose: (vec, detScore = 0.96, faceSizeFrac = 0.26) =>

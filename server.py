@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = ROOT / "data" / "mfg.db"
+DB_PATH = Path(os.environ.get("MFG_DB_PATH") or (ROOT / "data" / "mfg.db"))
 
 ALLOWED_TABLES = {
     "sales_tickets",
@@ -102,6 +102,8 @@ def ensure_auth_schema():
         cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT DEFAULT ''")
     if "face_samples" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN face_samples TEXT DEFAULT '[]'")
+    if "face_thumbs" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN face_thumbs TEXT DEFAULT '[]'")
     if "face_required" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN face_required INTEGER DEFAULT 0")
     if "face_updated_at" not in cols:
@@ -224,6 +226,14 @@ class MfgHandler(SimpleHTTPRequestHandler):
                         d["face_samples"] = []
                 elif not isinstance(raw_fs, list):
                     d["face_samples"] = []
+                raw_ft = d.get("face_thumbs")
+                if isinstance(raw_ft, str):
+                    try:
+                        d["face_thumbs"] = json.loads(raw_ft) if raw_ft.strip() else []
+                    except Exception:
+                        d["face_thumbs"] = []
+                elif not isinstance(raw_ft, list):
+                    d["face_thumbs"] = []
                 d["face_required"] = bool(d.get("face_required"))
                 rows.append(d)
             sessions = [dict(r) for r in conn.execute("SELECT * FROM auth_sessions ORDER BY logged_in_at DESC LIMIT 25").fetchall()]
@@ -300,23 +310,26 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            existing = cur.execute("SELECT face_samples, face_required, face_updated_at FROM users WHERE lower(email) = lower(?)", (u.get("email").strip(),)).fetchone()
+            existing = cur.execute("SELECT face_samples, face_thumbs, face_required, face_updated_at FROM users WHERE lower(email) = lower(?)", (u.get("email").strip(),)).fetchone()
             if "face_samples" in u and isinstance(u.get("face_samples"), list):
                 fs_json = json.dumps(u["face_samples"], ensure_ascii=False)
+                ft_json = json.dumps(u.get("face_thumbs") if isinstance(u.get("face_thumbs"), list) else [], ensure_ascii=False)
                 f_req = 1 if u.get("face_required") else 0
                 f_upd = str(u.get("face_updated_at") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             elif existing:
                 fs_json = existing["face_samples"] or "[]"
+                ft_json = json.dumps(u["face_thumbs"], ensure_ascii=False) if ("face_thumbs" in u and isinstance(u.get("face_thumbs"), list)) else (existing["face_thumbs"] or "[]")
                 f_req = int(u["face_required"]) if "face_required" in u else (existing["face_required"] or 0)
                 f_upd = existing["face_updated_at"] or ""
             else:
                 fs_json = "[]"
+                ft_json = "[]"
                 f_req = 1 if u.get("face_required") else 0
                 f_upd = ""
             cur.execute(
                 """
-                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_required, face_updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_thumbs, face_required, face_updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(email) DO UPDATE SET
                     full_name = excluded.full_name,
                     pin_code = excluded.pin_code,
@@ -326,6 +339,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
                     statements_access = excluded.statements_access,
                     status = excluded.status,
                     face_samples = excluded.face_samples,
+                    face_thumbs = excluded.face_thumbs,
                     face_required = excluded.face_required,
                     face_updated_at = excluded.face_updated_at
                 """,
@@ -341,6 +355,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
                     u.get("status") or "Active",
                     u.get("last_login_at") or "",
                     fs_json,
+                    ft_json,
                     f_req,
                     f_upd,
                 ),

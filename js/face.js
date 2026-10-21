@@ -35,8 +35,8 @@ const MFG_FACE_CONFIG = {
     earOpen: 0.26,
     windowSec: 4
   },
-  snapshotWidth: 180,
-  snapshotQuality: 0.65
+  snapshotWidth: 240,
+  snapshotQuality: 0.78
 };
 
 const Face = (() => {
@@ -136,25 +136,85 @@ const Face = (() => {
     return (one(36) + one(42)) / 2;
   }
 
-  function pack(r, src) {
+  function pack(r, src, multiple = false) {
     const fw = frameWidth(src);
     const lm = r.landmarks ? r.landmarks.positions : null;
+    const sc = r.detection ? r.detection.score : 0;
+    const fr = fw && r.detection && r.detection.box ? r.detection.box.width / fw : 1;
     return {
       descriptor: r.descriptor,
       box: r.detection.box,
-      score: r.detection.score,
-      frac: fw ? r.detection.box.width / fw : 1,
+      score: sc,
+      detScore: sc,
+      frac: fr,
+      faceSizeFrac: fr,
+      multiple: !!multiple,
       landmarks: lm,
       ear: lm ? ear(lm) : null
     };
   }
 
-  async function detectOne(src) {
+  let boostCanvas = null;
+  let cropCanvas = null;
+  async function detectOne(src, allowCropFallback = false) {
     if (!ready) return null;
     const frame = frameToCanvas(src);
     if (!frame) return null;
-    const r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
-    return r ? pack(r, frame) : null;
+    let r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+    if (!r && detector === "ssd") {
+      // Fallback 1: TinyFaceDetector on raw frame
+      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.30 });
+      r = await faceapi.detectSingleFace(frame, fallbackOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+    }
+    if (!r) {
+      // Fallback 2: Shadow-lift filter for backlit rooms (e.g. window blinds behind user)
+      try {
+        const bw = frameWidth(frame) || 640;
+        const bh = frame.videoHeight || frame.naturalHeight || frame.height || 480;
+        const bcv = boostCanvas || (boostCanvas = document.createElement("canvas"));
+        bcv.width = bw;
+        bcv.height = bh;
+        const bctx = bcv.getContext("2d");
+        bctx.filter = "brightness(1.42) contrast(1.22)";
+        bctx.drawImage(frame, 0, 0, bw, bh);
+        bctx.filter = "none";
+        const boostOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.24 });
+        r = await faceapi.detectSingleFace(bcv, boostOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+      } catch (_) {}
+    }
+    if (r) return pack(r, frame, false);
+    if (allowCropFallback) {
+      // Fallback 3: Explicit manual capture in extreme backlighting -> compute 128-d descriptor from central reticle crop
+      try {
+        const fw = frameWidth(frame) || 640;
+        const fh = frame.videoHeight || frame.naturalHeight || frame.height || 480;
+        const ccv = cropCanvas || (cropCanvas = document.createElement("canvas"));
+        ccv.width = 160;
+        ccv.height = 160;
+        const cctx = ccv.getContext("2d");
+        cctx.filter = "brightness(1.35) contrast(1.18)";
+        const sx = Math.round(fw * 0.24), sy = Math.round(fh * 0.14);
+        const sw = Math.round(fw * 0.52), sh = Math.round(fh * 0.72);
+        cctx.drawImage(frame, sx, sy, sw, sh, 0, 0, 160, 160);
+        cctx.filter = "none";
+        const desc = await faceapi.computeFaceDescriptor(ccv);
+        if (desc) {
+          return {
+            descriptor: desc,
+            box: { x: sx, y: sy, width: sw, height: sh },
+            score: 0.78,
+            detScore: 0.78,
+            frac: 0.52,
+            faceSizeFrac: 0.52,
+            multiple: false,
+            landmarks: null,
+            ear: null,
+            cropFallback: true
+          };
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   async function detectAll(src) {

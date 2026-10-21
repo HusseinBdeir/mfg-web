@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=4.10">
+  <link rel="stylesheet" href="css/app.css?v=5.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -72,6 +72,9 @@
             <small class="brand-sub">Manufacturing Command</small>
           </div>
         </a>
+        <button type="button" class="rail-collapse-btn" id="railCollapseBtn" title="Hide left navigation sidebar to expand main view" aria-label="Hide left navigation sidebar">
+          <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.2"/><line x1="7.5" y1="3" x2="7.5" y2="17"/><polyline points="12.5 7.5 9.5 10 12.5 12.5"/></svg>
+        </button>
       </div>
 
       <nav class="rail-nav" id="sidebarNav" aria-label="Manufacturing Modules">
@@ -139,7 +142,7 @@
           <em class="nav-pill">A4</em>
         </button>
         <button type="button" class="nav-item" data-view="users">
-          <span>Users &amp; Cloud Auth</span>
+          <span>Team Auth &amp; Users</span>
           <em class="nav-pill brass" id="navCountUsers">10 Seats</em>
         </button>
       </nav>
@@ -165,7 +168,10 @@
     <div class="main-area">
       <header class="top" id="topbar">
         <div class="top-left">
-          <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Navigation">☰</button>
+          <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle Left Navigation Sidebar" title="Hide / show left navigation sidebar">
+            <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.2"/><line x1="7.5" y1="3" x2="7.5" y2="17"/></svg>
+            <span class="sidebar-toggle-lbl" id="sidebarToggleLbl">Sidebar</span>
+          </button>
           <div class="crumb">
             <span id="topbarEyebrow">ISABI Systems · Manufacturing Operations · Double-Entry Ledger</span>
             <b id="topbarTitle">Consolidated Group Overview (WTC · BBConstruction · Lions Transport)</b>
@@ -209,7 +215,7 @@
 
             <!-- Period Slicer -->
             <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
-              <option value="all">All-Time (2024–2026)</option>
+              <option value="all">All-Time (2024–2030)</option>
               <option value="ytd">FY 2026 (YTD)</option>
               <option value="mtd">October 2026 (MTD)</option>
               <option value="sep2026">September 2026</option>
@@ -221,10 +227,10 @@
 
             <!-- Custom Date Range Slicer (Power BI "Period (between)" From – To) -->
             <div class="date-range-bar" id="dateRangeBar" role="group" aria-label="Date Range Filter">
-              <input type="date" id="dateFromInput" class="date-range-input" min="2024-01-01" max="2026-12-31" aria-label="From Date" title="Start Date (From)">
+              <input type="date" id="dateFromInput" class="date-range-input" min="2024-01-01" max="2030-12-31" value="2024-01-01" aria-label="From Date" title="Start Date (From)">
               <span class="date-range-sep">–</span>
-              <input type="date" id="dateToInput" class="date-range-input" min="2024-01-01" max="2026-12-31" aria-label="To Date" title="End Date (To)">
-              <button type="button" id="dateRangeResetBtn" class="date-range-reset" title="Reset to All-Time (2024–2026)" aria-label="Reset Date Filter" hidden>✕</button>
+              <input type="date" id="dateToInput" class="date-range-input" min="2024-01-01" max="2030-12-31" value="2030-12-31" aria-label="To Date" title="End Date (To)">
+              <button type="button" id="dateRangeResetBtn" class="date-range-reset" title="Reset to All-Time (2024–2030)" aria-label="Reset Date Filter" hidden>✕</button>
             </div>
 
             <!-- Date Basis -->
@@ -445,8 +451,8 @@
         <form id="authLoginForm" class="auth-form" autocomplete="on">
           <div class="auth-form-row">
             <label class="auth-label">
-              <span>Team Email Address</span>
-              <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com" required autocomplete="username">
+              <span>Team Email Address <em>Or tap seat on right</em></span>
+              <input type="email" id="authEmailInput" class="auth-input" placeholder="name@bhfirms.com (optional if PIN is unique)" autocomplete="username">
             </label>
             <label class="auth-label">
               <span>Access PIN <em>4–8 Digits</em></span>
@@ -454,9 +460,15 @@
             </label>
           </div>
           <div id="authErrorBox" class="auth-error" hidden></div>
-          <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
-            Sign In to Manufacturing Command
-          </button>
+          <div class="auth-submit-row">
+            <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
+              Sign In to Manufacturing Command
+            </button>
+            <button type="button" class="btn auth-enrol-btn" id="authEnrolJumpBtn" title="Sign in with your PIN and immediately launch 3-pose Face ID Auto-Enrolment">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></svg>
+              Sign In &amp; Auto-Enrol Face ID (3 Poses)
+            </button>
+          </div>
         </form>
 
         <div class="auth-footer-note">
@@ -472,7 +484,7 @@
         </div>
         <div class="quick-seat-list" id="quickSeatList"></div>
         <div class="auth-right-ftr">
-          Enrol <b>Face ID (3 Poses)</b> or issue PINs &amp; WhatsApp invite links under <b>Users &amp; Cloud Auth</b>. Enrolled 128-d face templates sync across all devices via the BHFIRMS Cloud Relay.
+          Enrol <b>Face ID (3 Poses)</b> with <b>Auto-Enrol</b> or issue PINs &amp; WhatsApp invite links under <b>Team Auth &amp; Users</b>. Enrolled 128-d face templates sync across all devices via the BHFIRMS Cloud Relay.
         </div>
       </div>
     </div>
@@ -481,13 +493,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=4.10"></script>
-  <script src="js/face.js?v=4.10"></script>
-  <script src="js/endpoints.js?v=4.10"></script>
-  <script src="js/seed_data.js?v=4.10"></script>
-  <script src="js/forms_engine.js?v=4.10"></script>
-  <script src="js/pbi_pages.js?v=4.10"></script>
-  <script src="js/app.js?v=4.10"></script>
+  <script src="vendor/face-api.js?v=5.2"></script>
+  <script src="js/face.js?v=5.2"></script>
+  <script src="js/endpoints.js?v=5.2"></script>
+  <script src="js/seed_data.js?v=5.2"></script>
+  <script src="js/forms_engine.js?v=5.2"></script>
+  <script src="js/pbi_pages.js?v=5.2"></script>
+  <script src="js/app.js?v=5.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

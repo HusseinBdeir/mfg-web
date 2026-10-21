@@ -130,7 +130,7 @@ def fetch_model_analytics(model_key):
         "ytd": ('DATE(2026, 1, 1)', 'DATE(2026, 10, 31)', 'FY 2026 (YTD)'),
         "fy2025": ('DATE(2025, 1, 1)', 'DATE(2025, 12, 31)', 'FY 2025'),
         "fy2024": ('DATE(2024, 1, 1)', 'DATE(2024, 12, 31)', 'FY 2024'),
-        "all": ('DATE(2024, 1, 1)', 'DATE(2026, 12, 31)', 'All-Time (2024-2026)'),
+        "all": ('DATE(2024, 1, 1)', 'DATE(2030, 12, 31)', 'All-Time (2024–2030)'),
     }
 
     period_kpis = {}

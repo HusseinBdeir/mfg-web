@@ -464,6 +464,68 @@
 
   let _activePbiState = null;
 
+  // Automatic sticky bottom totals generator for Power BI tables when opts.foot is not explicitly passed
+  function buildAutoFoot(cols, list, opts = {}) {
+    if (opts.noFoot || !list || !list.length || !cols || !cols.length) return null;
+    let firstNumIdx = cols.findIndex((c, idx) => idx > 0 && c.r);
+    if (firstNumIdx < 0) firstNumIdx = 1;
+    const span = Math.min(Math.max(1, firstNumIdx), Math.min(4, cols.length));
+    const footCells = [{
+      v: `<b>TOTAL (${fmtNum(list.length)} ${esc(opts.unitLabel || 'rows')})</b>`,
+      span
+    }];
+
+    for (let ci = span; ci < cols.length; ci++) {
+      const c = cols[ci];
+      if (typeof c.foot === 'function') {
+        footCells.push({ v: c.foot(list), r: !!c.r });
+        continue;
+      }
+      if (!c.r || c.agg === 'none') {
+        footCells.push({ v: c.r ? '—' : '', r: !!c.r });
+        continue;
+      }
+      const kName = String(c.key || '');
+      const lName = String(c.label || '');
+      // Non-numeric tier strings or meter readings
+      if (/^(Tier 1|Tier 2|Meter|Odometer|Share|Limit used|% of Net)$/i.test(lName) || /^(odometer)$/.test(kName)) {
+        footCells.push({ v: '—', r: true });
+        continue;
+      }
+      // Closing balance columns (latest row at index 0)
+      if (kName === 'running' || kName === 'cash_till') {
+        const latest = list[0] ? (typeof c.raw === 'function' ? c.raw(list[0], 0) : list[0][kName]) : 0;
+        const nLat = Number(latest || 0);
+        const fmtLat = c.fmt ? c.fmt(nLat, {}, -1) : fmtUSD(nLat, 2);
+        footCells.push({ v: /<[bB]|<strong/.test(String(fmtLat)) ? fmtLat : `<b>${fmtLat}</b>`, r: true, neg: nLat < -0.0001 });
+        continue;
+      }
+      let sum = 0, countNum = 0;
+      list.forEach((r, idx) => {
+        const rv = typeof c.raw === 'function' ? c.raw(r, idx) : (c.key ? r[c.key] : null);
+        if (rv != null && rv !== '' && (typeof rv === 'number' || (typeof rv === 'string' && /^-?\d+(\.\d+)?$/.test(rv.trim())))) {
+          const n = Number(rv);
+          if (Number.isFinite(n)) { sum += n; countNum++; }
+        }
+      });
+      if (!countNum) {
+        footCells.push({ v: '—', r: true });
+        continue;
+      }
+      const isAvgCol = /^(list_price|avg_price_net|avg_price_ttc|avg_raw_cost|agreed_price|last_price|actual_price|unit_price|trans_unit_price|cost_per_ton|l_per_100km|daily_rate|interest_rate|exchange_rate|percentage|pct|credit_days|gap_days)$/.test(kName) ||
+        /^(List|Avg|Agreed|Last Sold|Last Price|Actual Price|Variance \/ u|Last − Agreed|Unit \(\$\)|Trans \/ u|Rate|Daily Rate|Per working day|Daily \/ Shift Rate|LBP Rate|Cost \/ Ton|L \/ 100|Consumption|Completeness|Interest Rate|Exchange Rate|Credit Days|Gap)/i.test(lName);
+      const val = isAvgCol ? (sum / countNum) : sum;
+      const formatted = c.fmt ? c.fmt(val, {}, -1) : fmtNum(val, isAvgCol ? 2 : 0);
+      const wrapped = /<[bB]|<strong/.test(String(formatted)) ? formatted : `<b>${formatted}</b>`;
+      footCells.push({
+        v: isAvgCol ? `<span class="mu" style="font-weight:600;font-size:10px">Avg </span>${wrapped}` : wrapped,
+        r: true,
+        neg: (c.negRed || c.bar) && val < -0.0001
+      });
+    }
+    return footCells;
+  }
+
   // 10. Power BI Table with Inline Data Bars, Red Negatives, Amber/Navy Row Highlights, Sticky Totals & Interactive Pagination
   function pbiTable(title, cols, rows, opts = {}) {
     const list = rows || [];
@@ -475,6 +537,7 @@
     const curPage = Math.min(totalPages - 1, Math.max(0, Number(rawPage) || 0));
     const startIdx = curPage * pageSize;
     const shown = list.slice(startIdx, startIdx + pageSize);
+    const footCells = opts.foot || buildAutoFoot(cols, list, opts);
 
     // Compute max per bar column for proportional inline data bars
     const barMax = {};
@@ -542,7 +605,7 @@
               }).join('')}</tr>`;
             }).join('') || `<tr><td colspan="${cols.length}" class="empty-row" style="text-align:center;padding:18px;color:var(--muted)">${esc(opts.emptyMsg || 'No matching rows for the selected filters')}</td></tr>`}
           </tbody>
-          ${opts.foot ? `<tfoot><tr>${opts.foot.map(f => `<td class="${f.r ? 'r' : ''} ${f.neg ? 'pbi-neg' : ''}" ${f.span ? `colspan="${f.span}"` : ''}>${f.v}</td>`).join('')}</tr></tfoot>` : ''}
+          ${footCells ? `<tfoot><tr>${footCells.map(f => `<td class="${f.r ? 'r' : ''} ${f.neg ? 'pbi-neg' : ''}" ${f.span ? `colspan="${f.span}"` : ''}>${f.v}</td>`).join('')}</tr></tfoot>` : ''}
         </table>
       </div>
       ${pagerHtml}
@@ -702,6 +765,7 @@
     const k = getKPI();
     const today = ctx.SEED_DATE || String(SEED.generated_at || '').slice(0, 10) || '2026-10-19';
     const minDate = ctx.MIN_DATE || '2024-01-01';
+    const maxDate = ctx.MAX_DATE || '2030-12-31';
     const activeRange = ctx.periodRange ? ctx.periodRange(STATE.period) : null;
     const activePageId = STATE.pbiPage || 'p01_overview';
     const activePage = PBI_PAGES.find(p => p.id === activePageId) || PBI_PAGES[0];
@@ -963,7 +1027,7 @@
     const grainCat = ctx.getDateGrainCatalog ? ctx.getDateGrainCatalog() : { all: [] };
     const activeGrainOpts = grainCat[STATE.dateGrain] || grainCat.all || [];
     const curFrom = activeRange ? activeRange.from : minDate;
-    const curTo = activeRange ? activeRange.to : today;
+    const curTo = activeRange ? activeRange.to : maxDate;
     const isDateFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
 
     // Studio Header + Page Strip + Embedded Date Grain/Range Slicer + Dynamic Per-Page Slicer Bar
@@ -1016,9 +1080,9 @@
             </div>
             <div class="pbi-date-right">
               <span class="pbi-date-lbl">Period (Between)</span>
-              <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2026-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
+              <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
               <span style="color:rgba(244,242,238,0.6);font-weight:700">–</span>
-              <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2026-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
+              <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
               ${isDateFiltered ? '<button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px">✕ All-Time</button>' : ''}
             </div>
           </div>
@@ -1239,7 +1303,16 @@
             { label: 'BBConstruction', key: 'bv', r: true, mono: true },
             { label: 'Lions Transport', key: 'lv', r: true, mono: true },
             { label: 'Consolidated Group', key: 'gv', r: true, mono: true, fmt: v => `<b>${esc(v)}</b>` }
-          ], compRows, { unitLabel: 'metrics' })}
+          ], compRows, {
+            unitLabel: 'metrics',
+            foot: [
+              { v: '<b>OPERATING PROFIT · TB CHECK ($0.00 TIED)</b>' },
+              { v: `<b>${fmtUSD(w.operating_profit, 2)}</b>`, r: true },
+              { v: `<b>${fmtUSD(b.operating_profit, 2)}</b>`, r: true },
+              { v: '<b>$0.00 TB</b>', r: true },
+              { v: `<b>${fmtUSD(g.operating_profit, 2)}</b>`, r: true }
+            ]
+          })}
         </div>
       `;
     }
@@ -1391,11 +1464,9 @@
 
         <div class="pbi-grid-2">
           ${pbiTable('Products — volume, revenue, list vs realised price', [
-            { label: 'Product / Grade', key: 'Product', bold: true },
-            { label: 'Family', key: 'Material Family' },
-            { label: 'UoM', key: 'UoM', mono: true },
+            { label: 'Product / Grade', key: 'Product', fmt: (v, r) => `<b>${esc(v || '—')}</b>${r && r['Material Family'] && r['Material Family'] !== v ? ` <span class="mu">· ${esc(r['Material Family'])}</span>` : ''}` },
             { label: 'Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
-            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: v => fmtNum(v, 0) },
+            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: (v, r) => `${fmtNum(v, 0)}${r && r.UoM ? ' ' + esc(r.UoM) : ''}` },
             { label: 'Tons', key: 'tons_sold', r: true, fmt: v => fmtNum(v, 0) },
             { label: 'List ($)', key: 'list_price', r: true, fmt: v => v != null ? fmtUSD(v, 2) : '—' },
             { label: 'Avg Net ($)', key: 'avg_price_net', r: true, fmt: v => fmtUSD(v, 2) },
@@ -1421,8 +1492,8 @@
             { label: 'Customer', key: 'customer', bold: true },
             { label: 'Product', key: 'product' },
             { label: 'Site', key: 'site' },
-            { label: 'Truck / Driver', raw: r => `${r.truck || '—'}${r.driver ? ' · ' + r.driver : ''}`, mono: true },
-            { label: 'Qty', raw: r => r.qty, r: true, fmt: (v, r) => `${fmtNum(v, 2)} ${esc(r.uom || '')}` },
+            { label: 'Truck / Driver', raw: r => r.truck || '', fmt: (v, r) => `<span class="mono">${esc((r && r.truck) || '—')}</span>${r && r.driver ? ` <span class="mu">· ${esc(r.driver)}</span>` : ''}` },
+            { label: 'Qty', raw: r => r.qty, r: true, fmt: (v, r) => `${fmtNum(v, 2)}${r && r.uom ? ' ' + esc(r.uom) : ''}` },
             { label: 'Unit ($)', key: 'unit_price', r: true, fmt: v => fmtUSD(v, 2) },
             { label: 'Material ($)', key: 'price', r: true, fmt: v => fmtUSD(v, 2) },
             { label: 'Transport ($)', key: 'trans_price', r: true, fmt: v => fmtUSD(v, 2) },
@@ -1912,8 +1983,7 @@
 
           ${pbiTable('Products — sold vs purchased unit economics', [
             { label: 'Product / Grade', key: 'Product', bold: true },
-            { label: 'UoM', key: 'UoM', mono: true },
-            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: v => fmtNum(v, 0) },
+            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: (v, r) => `${fmtNum(v, 0)}${r && r.UoM ? ' ' + esc(r.UoM) : ''}` },
             { label: 'Avg Sell ($)', key: 'avg_price_net', r: true, fmt: v => fmtUSD(v, 2) },
             { label: 'Raw Qty', key: 'raw_qty', r: true, fmt: v => fmtNum(v, 0) },
             { label: 'Avg Raw ($)', key: 'avg_raw_cost', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' },
@@ -2000,8 +2070,7 @@
             { label: 'Driver', key: 'driver' },
             { label: 'Item', key: 'item', fmt: v => esc(v || 'Diesel') },
             { label: 'Litres', key: 'litres', r: true, bar: 'brass', fmt: v => `<b>${fmtNum(v, 1)} L</b>` },
-            { label: 'Odometer', key: 'odometer', r: true, mono: true, fmt: v => v != null && v !== '' ? fmtNum(v, 0) : '—' },
-            { label: 'Hours', key: 'hours', r: true, mono: true, fmt: v => v != null && v !== '' ? fmtNum(v, 1) : '—' }
+            { label: 'Meter', raw: r => r.odometer != null && r.odometer !== '' ? r.odometer : r.hours, r: true, mono: true, agg: 'none', fmt: (v, r) => r && r.odometer != null && r.odometer !== '' ? fmtNum(r.odometer, 0) + ' km' : (r && r.hours != null && r.hours !== '' ? fmtNum(r.hours, 1) + ' h' : '—') }
           ], fuelRows, { rkey: 'fuel_intakes', limit: 45, unitLabel: 'intakes' })}
         </div>
       `;
@@ -2593,8 +2662,7 @@
             { label: 'Invoice #', key: 'invoice_no', mono: true, bold: true },
             { label: 'Co.', key: 'company' },
             { label: 'Customer', key: 'customer', bold: true },
-            { label: 'Period Start', key: 'start_date', mono: true },
-            { label: 'Period End', key: 'end_date', mono: true },
+            { label: 'Tax Period', raw: r => `${r.start_date || '—'} → ${r.end_date || '—'}`, mono: true },
             { label: 'Net ($)', key: 'net_amount', r: true, fmt: v => fmtUSD(v, 2) },
             { label: 'VAT 11% ($)', key: 'vat_amount', r: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], vatInvRows, { rkey: 'vat_invoices', limit: 45, unitLabel: 'invoices' })}
@@ -2834,10 +2902,17 @@
         <div class="pbi-grid-2">
           ${pbiTable('Income Statement (Lebanese CoA Class 7 & Class 6)', [
             { label: 'CoA', key: 'code', mono: true, bold: true },
-            { label: 'Income Statement Line', key: 'name', fmt: (v, r) => r.bold ? `<b>${esc(v)}</b>` : esc(v) },
-            { label: 'Amount (USD)', key: 'amt', r: true, bar: true, negRed: true, fmt: (v, r) => r.bold ? `<b>${fmtUSD(v, 0)}</b>` : fmtUSD(v, 0) },
+            { label: 'Income Statement Line', key: 'name', fmt: (v, r) => r && r.bold ? `<b>${esc(v)}</b>` : esc(v) },
+            { label: 'Amount (USD)', key: 'amt', r: true, bar: true, negRed: true, fmt: (v, r) => r && r.bold ? `<b>${fmtUSD(v, 0)}</b>` : fmtUSD(v, 0) },
             { label: '% of Net', key: 'pct', r: true, mono: true }
-          ], pnlRows, { unitLabel: 'lines' })}
+          ], pnlRows, {
+            unitLabel: 'lines',
+            foot: [
+              { v: '<b>OPERATING PROFIT (CASH VIEW)</b>', span: 2 },
+              { v: `<b>${fmtUSD(k.operating_profit || 0, 0)}</b>`, r: true, neg: Number(k.operating_profit || 0) < 0 },
+              { v: `<b>${fmtPct(k.op_margin_pct, k.operating_profit, k.net_sales)}</b>`, r: true }
+            ]
+          })}
 
           <div class="pbi-panel">
             <div class="pbi-panel-hdr">
@@ -2860,13 +2935,21 @@
                       <td class="r ${Number(r.balance || 0) < 0 ? 'pbi-neg' : ''}"><b>${fmtUSD(r.balance, 2)}</b></td>
                     </tr>
                   `).join('')}
-                  <tr class="total">
+                  <tr class="total" hidden>
                     <td colspan="3"><b>TOTAL TRIAL BALANCE</b></td>
                     <td class="r"><b>${fmtUSD(totDr, 2)}</b></td>
                     <td class="r"><b>${fmtUSD(totCr, 2)}</b></td>
                     <td class="r"><b>${fmtUSD(totDr - totCr, 2)}</b></td>
                   </tr>
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3"><b>TOTAL TRIAL BALANCE (${tb.length} ACCOUNTS)</b></td>
+                    <td class="r"><b>${fmtUSD(totDr, 2)}</b></td>
+                    <td class="r"><b>${fmtUSD(totCr, 2)}</b></td>
+                    <td class="r"><b>${fmtUSD(totDr - totCr, 2)}</b></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -3279,6 +3362,30 @@
               `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}
               ${showMoreRow('tbl_' + meta.key, rows.length, meta.cols.length)}
             </tbody>
+            <tfoot>
+              <tr>
+                ${meta.cols.map((c, ci) => {
+                  if (ci === 0) return `<td><b>TOTAL (${fmtNum(rows.length)} MATCHING · ${fmtNum(shown.length)} SHOWN)</b></td>`;
+                  const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c);
+                  const isMoney = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till/.test(c) && !/rate$/.test(c);
+                  const isNum = !isBoolCol && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|count|odometer|interest_rate|exchange_rate/.test(c);
+                  if (!isMoney && !isNum) return `<td></td>`;
+                  let sum = 0, cnt = 0;
+                  rows.forEach(r => {
+                    const v = cellValue(r, c);
+                    if (v != null && v !== '' && typeof v !== 'boolean') {
+                      const n = Number(v);
+                      if (Number.isFinite(n)) { sum += n; cnt++; }
+                    }
+                  });
+                  if (!cnt) return `<td class="r">—</td>`;
+                  const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price)$/.test(c);
+                  const val = isAvg ? (sum / cnt) : sum;
+                  const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
+                  return `<td class="r">${isAvg ? '<span class="mu" style="font-size:10px">Avg </span>' : ''}<b>${txt}</b></td>`;
+                }).join('')}
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
