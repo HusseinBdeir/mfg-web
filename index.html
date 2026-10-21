@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=6.1">
+  <link rel="stylesheet" href="css/app.css?v=6.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -244,8 +244,8 @@
 
             <!-- Date Basis -->
             <div class="basis-switch" id="basisSwitch" role="group" aria-label="Accounting Date Basis">
-              <button type="button" class="basis-btn active" data-basis="tx" title="Operational Transaction Date">Tx Date</button>
-              <button type="button" class="basis-btn" data-basis="rep" title="Statutory Reporting Date">Rep Date</button>
+              <button type="button" class="basis-btn active" data-basis="rep" title="Statutory Reporting Date">Rep Date</button>
+              <button type="button" class="basis-btn" data-basis="tx" title="Operational Transaction Date">Tx Date</button>
             </div>
           </div>
 
@@ -504,13 +504,13 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=6.1"></script>
-  <script src="js/face.js?v=6.1"></script>
-  <script src="js/endpoints.js?v=6.1"></script>
-  <script src="js/seed_data.js?v=6.1"></script>
-  <script src="js/forms_engine.js?v=6.1"></script>
-  <script src="js/pbi_pages.js?v=6.1"></script>
-  <script src="js/app.js?v=6.1"></script>
+  <script src="vendor/face-api.js?v=6.2"></script>
+  <script src="js/face.js?v=6.2"></script>
+  <script src="js/endpoints.js?v=6.2"></script>
+  <script src="js/seed_data.js?v=6.2"></script>
+  <script src="js/forms_engine.js?v=6.2"></script>
+  <script src="js/pbi_pages.js?v=6.2"></script>
+  <script src="js/app.js?v=6.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

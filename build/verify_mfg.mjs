@@ -671,7 +671,7 @@ try {
       df.value = '2026-06-01'; df.dispatchEvent(new Event('change', { bubbles: true }));
       const posCustom = basisPos();
       document.getElementById('dateRangeResetBtn').click();
-      const basisStable = posAll.sameRowAsCompany && posAll.top === posDay.top && posAll.top === posYear.top && posAll.top === posCustom.top && posAll.left === posDay.left && posAll.left === posCustom.left;
+      const basisBtns = Array.from(document.querySelectorAll('#basisSwitch .basis-btn')); const basisOrderOk = basisBtns.map(b => b.getAttribute('data-basis')).join(',') === 'rep,tx' && basisBtns[0].classList.contains('active'); const basisStable = basisOrderOk && posAll.sameRowAsCompany && posAll.top === posDay.top && posAll.top === posYear.top && posAll.top === posCustom.top && posAll.left === posDay.left && posAll.left === posCustom.left;
 
       return {
         railDefaultW,

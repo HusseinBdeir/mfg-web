@@ -79,7 +79,7 @@
     dateGrain: 'all',               // 'all' | 'year' | 'month' | 'week' | 'day'
     dateFrom: '',
     dateTo: '',
-    basis: 'tx',                    // 'tx' | 'rep'
+    basis: 'rep',                   // 'rep' | 'tx'
     theme: localStorage.getItem('isabi_mfg_theme') || 'light',
     railCollapsed: localStorage.getItem('isabi_mfg_rail_collapsed') === '1',
     railWidth: clampRailWidth(localStorage.getItem('isabi_mfg_rail_width') || RAIL_DEFAULT_W),
@@ -687,7 +687,7 @@
     let anchor = null;
     if (!range) anchor = periods.all ? Object.assign({}, periods.all, { label: 'All-Time (2024–2030)' }) : null;
     else if (range.daxKey && periods[range.daxKey]) anchor = periods[range.daxKey];
-    if (STATE.basis === 'tx' && anchor) return anchor;
+    if ((STATE.basis === 'tx' || (!range && !(STATE.customRecords.sales_tickets || []).length)) && anchor) return Object.assign({}, anchor, { sales_rep_date: anchor.sales_ttc, raw_rep_date: anchor.raw_cost, exp_rep_date: anchor.expenses, op_profit_rep_date: anchor.operating_profit, basis: STATE.basis });
     const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : MAX_DATE;
     const cacheKey = `${STATE.company}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
@@ -1928,7 +1928,7 @@
     const sumNet = rows.reduce((a, r) => a + Number(r.total != null ? r.total : (Number(r.price || 0) + Number(r.trans_price || 0))), 0);
     const sumVat = rows.reduce((a, r) => a + Number(r.vat || 0), 0);
     const sumTtc = rows.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
-    const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all' || STATE.basis === 'rep');
+    const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all');
     const mdlProds = getModel().products || [];
     const mdlSites = getModel().sites || [];
     const allProds = !isSalesFiltered ? mdlProds : (() => {
