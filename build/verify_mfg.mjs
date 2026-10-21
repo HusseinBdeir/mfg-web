@@ -150,16 +150,27 @@ try {
   insp > 8 ? pass('record inspector opens', `${insp} fields`) : fail('record inspector', String(insp));
   await evaluate(`document.getElementById('inspectorDoneBtn').click()`); await sleep(100);
 
-  // 6. Entry desk: 24 forms open; sales tier adjustment is per load; expense subcategory cascade
+  // 6. Entry desk: 24 forms open; switching groups/tabs (especially Group 4 Payroll) never scrolls the modal card downward; sales tier adjustment is per load; expense subcategory cascade
   await evaluate(`document.getElementById('newEntryBtn').click()`); await sleep(300);
+  const groupScrollShifts = [];
+  for (const gid of ['dispatch', 'pricing', 'hq', 'ops']) {
+    await evaluate(`document.querySelector('[data-pa-group="${gid}"]').click()`);
+    await sleep(110);
+    const sc = await evaluate(`(() => { const c = document.querySelector('#entryModal .modal-card'); const b = document.getElementById('modalBody'); return { card: c ? c.scrollTop : 0, body: b ? b.scrollTop : 0, win: window.scrollY }; })()`);
+    if (sc.card !== 0 || sc.body !== 0 || sc.win !== 0) groupScrollShifts.push(`${gid}:${JSON.stringify(sc)}`);
+  }
+  groupScrollShifts.length === 0 ? pass('entry desk · group tabs 1–4 keep scrollTop at 0px (no downward push on Group 4 Payroll)') : fail('entry desk group scroll', groupScrollShifts.join(', '));
   const forms = ['sales', 'raw', 'receipt', 'settlement', 'fuel', 'expense', 'pricerule', 'vatinvoice', 'creditterm', 'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'salary', 'attendance', 'freelance', 'employment', 'logistics', 'triprate', 'treasury', 'jv'];
-  let opened = 0;
+  let opened = 0, formScrollShifts = [];
   for (const f of forms) {
     const ok = await evaluate(`(() => { const groups = window.MFG_FORMS.FORM_GROUPS; const g = groups.find(x => x.forms.some(y => y.id === '${f}')); document.querySelector('[data-pa-group="' + g.id + '"]').click(); const t = document.querySelector('.modal-tab[data-form="${f}"]'); if (!t) return false; t.click(); return document.getElementById('modalBody').querySelectorAll('input, select').length > 3; })()`);
     if (ok) opened++; else fail(`form ${f}`, 'did not render inputs');
-    await sleep(60);
+    await sleep(80);
+    const sc = await evaluate(`(() => { const c = document.querySelector('#entryModal .modal-card'); const b = document.getElementById('modalBody'); return (c ? c.scrollTop : 0) + (b ? b.scrollTop : 0); })()`);
+    if (sc !== 0) formScrollShifts.push(`${f}:${sc}px`);
   }
   opened === 24 ? pass('entry desk · 24 forms render') : fail('entry desk forms', `${opened}/24`);
+  formScrollShifts.length === 0 ? pass('entry desk · all 24 forms keep scrollTop at 0px after 80ms') : fail('entry desk form scroll', formScrollShifts.join(', '));
 
   // sales tier test: find a tiered Sales (Pickup) rule with an active window and a truck of that capacity
   const tierProbe = await evaluate(`(() => {

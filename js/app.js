@@ -3185,9 +3185,11 @@
     } catch (e) { console.error('recalc', e); return {}; }
   }
 
-  function wireModalLiveCalc() {
+  let modalFocusTimer = null;
+  function wireModalLiveCalc(autoFocus = false) {
     const body = $('modalBody');
     if (!body) return;
+    clearTimeout(modalFocusTimer);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false;
     FORM_UI.lastCompany = val('f_company'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
     body.querySelectorAll('input, select').forEach(el => {
@@ -3207,8 +3209,23 @@
       el.addEventListener('change', handler);
     });
     recalcForm();
-    const first = body.querySelector('#f_ticketno, #f_customer, #f_supplier, #f_truck, #f_category');
-    if (first && window.matchMedia('(min-width: 861px)').matches) setTimeout(() => first.focus(), 60);
+    if (autoFocus && window.matchMedia('(min-width: 861px)').matches) {
+      const first = body.querySelector('#f_ticketno, #f_customer, #f_supplier, #f_staff, #f_name, #f_counterparty, #f_truck, #f_category');
+      if (first) {
+        modalFocusTimer = setTimeout(() => {
+          const modal = $('entryModal');
+          const card = modal && modal.querySelector('.modal-card');
+          if (card) {
+            const cr = card.getBoundingClientRect();
+            const fr = first.getBoundingClientRect();
+            if (fr.bottom > cr.bottom - 16) return;
+          }
+          try { first.focus({ preventScroll: true }); } catch (_) {}
+          if (card) card.scrollTop = 0;
+          if (body) body.scrollTop = 0;
+        }, 60);
+      }
+    }
   }
 
   // ---- validation + posting ---------------------------------------------------
@@ -3442,6 +3459,7 @@
     if (!canEnterForm(form)) { toast('Your seat has no entry rights for this form', 'err'); return; }
     STATE.modalForm = form;
     const modal = $('entryModal');
+    const wasClosed = !modal || modal.hidden;
     const body = $('modalBody');
     const title = $('modalTitle');
     const tabsWrap = $('modalTabs');
@@ -3484,10 +3502,16 @@
         body.dataset.enterWired = '1';
         body.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list) { e.preventDefault(); saveModalEntry(); } });
       }
+      body.scrollTop = 0;
     }
-    if (modal) { modal.hidden = false; modal.scrollTop = 0; }
+    if (modal) {
+      modal.hidden = false;
+      modal.scrollTop = 0;
+      const card = modal.querySelector('.modal-card');
+      if (card) card.scrollTop = 0;
+    }
     document.body.classList.add('modal-open');
-    wireModalLiveCalc();
+    wireModalLiveCalc(wasClosed);
   }
 
   function closeEntryModal(force) {
@@ -3608,7 +3632,7 @@
       customRecords: trimmed,
       updatedAt: new Date().toISOString(),
       updatedBy: activeUser().email,
-      appVersion: '4.2'
+      appVersion: '4.3'
     };
   }
 

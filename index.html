@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=4.2">
+  <link rel="stylesheet" href="css/app.css?v=4.4">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -121,8 +121,12 @@
           <em class="nav-pill" id="navCountAP">3 Legs</em>
         </button>
         <button type="button" class="nav-item" data-view="expenses">
-          <span>Expenses &amp; Payroll</span>
+          <span>Expenses &amp; Overhead</span>
           <em class="nav-pill" id="navCountExp">—</em>
+        </button>
+        <button type="button" class="nav-item" data-view="payroll">
+          <span>Payroll &amp; Workforce</span>
+          <em class="nav-pill" id="navCountPayroll">—</em>
         </button>
         <button type="button" class="nav-item" data-view="ledger">
           <span>General Ledger &amp; SOA</span>
@@ -404,11 +408,11 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="js/endpoints.js?v=4.2"></script>
-  <script src="js/seed_data.js?v=4.2"></script>
-  <script src="js/forms_engine.js?v=4.2"></script>
-  <script src="js/pbi_pages.js?v=4.2"></script>
-  <script src="js/app.js?v=4.2"></script>
+  <script src="js/endpoints.js?v=4.4"></script>
+  <script src="js/seed_data.js?v=4.4"></script>
+  <script src="js/forms_engine.js?v=4.4"></script>
+  <script src="js/pbi_pages.js?v=4.4"></script>
+  <script src="js/app.js?v=4.4"></script>
   <script>
     if ('serviceWorker' in navigator) {
       let refreshing = false;
