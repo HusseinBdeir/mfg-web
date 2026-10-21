@@ -1673,7 +1673,7 @@ def _restore_app_state(cur, keep):
     if keep["auth_sessions"]:
         cur.execute("CREATE TABLE IF NOT EXISTS auth_sessions (id TEXT PRIMARY KEY, user_id TEXT, email TEXT, full_name TEXT, role TEXT, companies TEXT, device TEXT, logged_in_at TEXT, method TEXT DEFAULT 'PIN', confidence REAL)")
         for s in keep["auth_sessions"]:
-            cur.execute("INSERT OR REPLACE INTO auth_sessions VALUES (?,?,?,?,?,?,?,?,?,?)",
+            cur.execute("INSERT OR REPLACE INTO auth_sessions (id, user_id, email, full_name, role, companies, device, logged_in_at, method, confidence) VALUES (?,?,?,?,?,?,?,?,?,?)",
                         (s.get("id"), s.get("user_id"), s.get("email"), s.get("full_name"), s.get("role"), s.get("companies"), s.get("device"), s.get("logged_in_at"), s.get("method") or "PIN", s.get("confidence")))
 
 
@@ -1893,7 +1893,7 @@ def build_sqlite_and_postgres(snapshot):
     cur.executescript(ddl_sqlite)
 
     cur.executemany(
-        "INSERT INTO companies VALUES (?,?,?,?,?,?)",
+        "INSERT INTO companies (key, name, code, currency, usd_rate, min_date) VALUES (?,?,?,?,?,?)",
         [
             ("wtc", "WTC (World Trading & Construction)", "WT", "USD", 90000, "2024-01-01"),
             ("bbconstruction", "BBConstruction", "BB", "USD", 90000, "2024-01-01"),
@@ -1920,40 +1920,40 @@ def build_sqlite_and_postgres(snapshot):
 
     rec = snapshot["records"]
     for p in rec["products"]:
-        cur.execute("INSERT OR IGNORE INTO products VALUES (?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO products (id, name, official_name, type, uom, ton_factor, input_product) VALUES (?,?,?,?,?,?,?)",
                     (p["id"], p["name"], p["official_name"], p["type"], p["uom"], p["ton_factor"], p["input_product"]))
     for s in rec["sites"]:
-        cur.execute("INSERT OR IGNORE INTO sites VALUES (?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO sites (id, name, is_jv, region, supplier, address) VALUES (?,?,?,?,?,?)",
                     (s["id"], s["name"], 1 if s["is_jv"] else 0, s["region"], s["supplier"], s["address"]))
     for e in rec["equipment"]:
-        cur.execute("INSERT OR IGNORE INTO equipment VALUES (?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO equipment (id, name, plate_no, type, ownership, capacity, supplier, customer, default_driver) VALUES (?,?,?,?,?,?,?,?,?)",
                     (e["id"], e["name"], e["plate_no"], e["type"], e["ownership"], e["capacity"], e["supplier"], e["customer"], e["default_driver"]))
     for d in rec["drivers"]:
-        cur.execute("INSERT OR IGNORE INTO drivers VALUES (?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO drivers (id, name, phone, truck_owner) VALUES (?,?,?,?)",
                     (d["id"], d["name"], d["phone"], d["truck_owner"]))
     for pr in rec["price_rules"]:
-        cur.execute("INSERT OR IGNORE INTO price_rules VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO price_rules (id, name, company, rule_type, customer, supplier, product, site, unit, unit_price, trans_unit_price, start_date, end_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (pr["id"], pr["name"], pr["company"], pr["rule_type"], pr["customer"], pr["supplier"], pr["product"], pr["site"], pr["unit"], pr["unit_price"], pr["trans_unit_price"], pr["start_date"], pr["end_date"]))
     for t in rec["sales_tickets"]:
-        cur.execute("INSERT OR IGNORE INTO sales_tickets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO sales_tickets (id, name, ticket_no, date, rep_date, company, sale_type, transport_by, customer, product, site, truck_owner, truck, driver, uom, qty, unit_price, price, trans_unit_price, trans_price, discount, total, vat, total_ttc, method, vat_invoice, time, overtime) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (t["id"], t["name"], t["ticket_no"], t["date"], t["rep_date"], t["company"], t["sale_type"], t["transport_by"], t["customer"], t["product"], t["site"], t["truck_owner"], t["truck"], t["driver"], t["uom"], t["qty"], t["unit_price"], t["price"], t["trans_unit_price"], t["trans_price"], t["discount"], t["total"], t["vat"], t["total_ttc"], t["method"], t["vat_invoice"], t["time"], 1 if t["overtime"] else 0))
     for r in rec["raw_purchases"]:
-        cur.execute("INSERT OR IGNORE INTO raw_purchases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO raw_purchases (id, name, ticket_no, date, rep_date, company, product, site, site_owner, transport_by, truck_owner, truck, driver, uom, qty, unit_cost, cost, trans_unit_cost, trans_cost, total, method, time, overtime) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (r["id"], r["name"], r["ticket_no"], r["date"], r["rep_date"], r["company"], r["product"], r["site"], r["site_owner"], r["transport_by"], r["truck_owner"], r["truck"], r["driver"], r["uom"], r["qty"], r["unit_cost"], r["cost"], r["trans_unit_cost"], r["trans_cost"], r["total"], r["method"], r["time"], 1 if r["overtime"] else 0))
     for f in rec["fuel_intakes"]:
-        cur.execute("INSERT OR IGNORE INTO fuel_intakes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO fuel_intakes (id, name, ticket_no, date, company, fuel_type, item, equipment, driver, litres, odometer, hours, location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (f["id"], f["name"], f["ticket_no"], f["date"], f["company"], f["fuel_type"], f["item"], f["equipment"], f["driver"], f["litres"], f["odometer"], f["hours"], f["location"]))
     for x in rec["expenses"]:
-        cur.execute("INSERT OR IGNORE INTO expenses VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO expenses (id, name, date, rep_date, company, category, subcategory, supplier, equipment, method, qty, amount, reference) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (x["id"], x["name"], x["date"], x["rep_date"], x["company"], x["category"], x["subcategory"], x["supplier"], x["equipment"], x["method"], x["qty"], x["amount"], x["reference"]))
     for rc in rec["receipts"]:
-        cur.execute("INSERT OR IGNORE INTO customer_receipts VALUES (?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO customer_receipts (id, name, date, company, customer, method, amount, discount, reference) VALUES (?,?,?,?,?,?,?,?,?)",
                     (rc["id"], rc["name"], rc["date"], rc["company"], rc["customer"], rc["method"], rc["amount"], rc["discount"], rc["reference"]))
     for sp in rec["settlements"]:
-        cur.execute("INSERT OR IGNORE INTO supplier_payments VALUES (?,?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO supplier_payments (id, name, date, company, supplier, method, amount, discount, reference) VALUES (?,?,?,?,?,?,?,?,?)",
                     (sp["id"], sp["name"], sp["date"], sp["company"], sp["supplier"], sp["method"], sp["amount"], sp["discount"], sp["reference"]))
     for sl in rec["salaries"]:
-        cur.execute("INSERT OR IGNORE INTO salary_payments VALUES (?,?,?,?,?,?,?,?)",
+        cur.execute("INSERT OR IGNORE INTO salary_payments (id, name, date, payroll_month, company, staff, method, amount) VALUES (?,?,?,?,?,?,?,?)",
                     (sl["id"], sl["name"], sl["date"], sl["payroll_month"], sl["company"], sl["staff"], sl["method"], sl["amount"]))
 
     _restore_app_state(cur, keep)
