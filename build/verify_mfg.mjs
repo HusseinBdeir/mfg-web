@@ -804,25 +804,35 @@ try {
     set('f_truckowner', 'Aawad');
     const rawOwnerChangeClearedOk = document.getElementById('f_truck').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
 
-    // Check Truck Owner (Supplier) form: multi-select Category + no #f_istruckowner button + auto Hauler Fleet & Drivers section
+    // Check Truck Owner (Supplier) form: concise 6-category multi-select (no 50-item filter, no explanation badges, fixed 36px trigger height)
     document.querySelector('[data-pa-group="hq"]').click();
     document.querySelector('.modal-tab[data-form="supplier"]').click();
-    const noTruckOwnerButton = !document.getElementById('f_istruckowner') && !!document.getElementById('supCategoryTrigger');
-    // Selecting 'Aahed' hydrates multi-select categories ('Hauler / Truck Owner, Raw Material Settlements')
+    const trigEl = document.getElementById('supCategoryTrigger');
+    const noTruckOwnerButton = !document.getElementById('f_istruckowner') && !!trigEl;
+    if (trigEl) trigEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    const menuOpts = Array.from(document.querySelectorAll('#supCategoryMenu .pa-ms-option'));
+    const noExplanationBadges = document.querySelectorAll('#supCategoryMenu .pa-suggest-meta').length === 0 && !document.querySelector('#supCategoryMenu .pa-select-filter');
+    const sixCleanCategoriesOk = menuOpts.length === 6 && noExplanationBadges;
+    if (trigEl) trigEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    // Selecting 'Aahed' hydrates normalized categories ('Hauler / Truck Owner, Quarry & Raw Materials') and keeps trigger single-line <= 40px
     set('f_supplier', 'Aahed');
     const aahedChips = Array.from(document.querySelectorAll('#supCategoryChips .pa-ms-chip')).map(c => c.getAttribute('data-ms-val'));
-    const multiCatHydratedOk = aahedChips.includes('Hauler / Truck Owner') && aahedChips.includes('Raw Material Settlements');
-    // Removing Hauler / Truck Owner and picking non-hauler categories hides #wrap_sup_drivers automatically
+    const multiCatHydratedOk = aahedChips.includes('Hauler / Truck Owner') && aahedChips.includes('Quarry & Raw Materials') && (trigEl ? trigEl.getBoundingClientRect().height <= 40 : false);
+    // Selecting 'IPT' deduplicates legacy 'Fuel' + 'Oils' into 1 category ('Fuel & Lubricants')
+    set('f_supplier', 'IPT');
+    const iptChips = Array.from(document.querySelectorAll('#supCategoryChips .pa-ms-chip')).map(c => c.getAttribute('data-ms-val'));
+    const iptNormalizedOk = iptChips.length === 1 && iptChips[0] === 'Fuel & Lubricants';
+    // Removing Hauler / Truck Owner and picking non-hauler categories hides #wrap_sup_drivers automatically & keeps single-line height
     set('f_supplier', 'New Garage Vendor');
-    set('f_category', 'Fuel & Lubricants, Spare Parts & Garage');
-    const nonHaulerHidesDriversWrap = document.getElementById('wrap_sup_drivers')?.hidden === true && document.querySelectorAll('#supCategoryChips .pa-ms-chip').length === 2;
+    set('f_category', 'Fuel & Lubricants, Spare Parts & Repairs, Supplies & Services');
+    const nonHaulerHidesDriversWrap = document.getElementById('wrap_sup_drivers')?.hidden === true && document.querySelectorAll('#supCategoryChips .pa-ms-chip').length === 3 && (trigEl ? trigEl.getBoundingClientRect().height <= 40 : false) && document.getElementById('supCategoryCount')?.textContent === '3';
     // Selecting 'Ali Lakis' re-hydrates Hauler / Truck Owner, reveals #wrap_sup_drivers, shows his 7 trucks, and stages a driver
     set('f_supplier', 'Ali Lakis');
     const supDriversWrapVisible = document.getElementById('wrap_sup_drivers') && !document.getElementById('wrap_sup_drivers').hidden;
     set('f_sup_drv_name', 'Karim Substitute');
     document.getElementById('btnAddSupDriver')?.click();
     const supPanelTxt = document.getElementById('supOwnerDriversList')?.textContent || '';
-    const supDriverStagedOk = noTruckOwnerButton && multiCatHydratedOk && nonHaulerHidesDriversWrap && supDriversWrapVisible && /Karim Substitute/i.test(supPanelTxt) && /355948/.test(supPanelTxt);
+    const supDriverStagedOk = noTruckOwnerButton && sixCleanCategoriesOk && multiCatHydratedOk && iptNormalizedOk && nonHaulerHidesDriversWrap && supDriversWrapVisible && /Karim Substitute/i.test(supPanelTxt) && /355948/.test(supPanelTxt);
 
     // Check Truck (Equipment) form: has Default Driver location filtered to the Truck Owner's drivers
     document.querySelector('[data-pa-group="hq"]').click();
@@ -1975,6 +1985,43 @@ try {
     document.querySelector('[data-pa-group="ops"]').click();
     document.querySelector('.modal-tab[data-form="companyequipment"]').click();
     const coEquipHasCompanyField = Boolean(document.getElementById('f_company'));
+
+    // 6. Verify Universal Registry duplicate main-column guard blocks duplicates across Supplier ("Aahed Jomaa"), Customer, Product, Site, Equipment & Driver
+    const setField = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    document.querySelector('[data-pa-group="hq"]').click();
+    const supCountBefore = (window.MFG_SEED.records.suppliers || []).length;
+    document.querySelector('.modal-tab[data-form="supplier"]').click();
+    setField('f_supplier', 'aahed jomaa');
+    const supLiveDupHint = Boolean(document.querySelector('#modalBody .univ-dup-hint'));
+    document.getElementById('dynSaveModalBtn').click();
+    const supErrBox = document.getElementById('formErrors');
+    const supDupBlocked = Boolean(supErrBox && !supErrBox.hidden && /already exists in the Universal Supplier Registry/i.test(supErrBox.innerText));
+    const supCountAfter = (window.MFG_SEED.records.suppliers || []).length;
+    const aahedRows = (window.MFG_SEED.records.suppliers || []).filter(s => s && String(s.name || '').trim().toLowerCase() === 'aahed jomaa');
+
+    document.querySelector('.modal-tab[data-form="customer"]').click();
+    setField('f_customer', (window.MFG_SEED.records.customers[0].name || window.MFG_SEED.records.customers[0].Customer));
+    document.getElementById('dynSaveModalBtn').click();
+    const custDupBlocked = Boolean(document.getElementById('formErrors') && !document.getElementById('formErrors').hidden && /already exists in the Universal Customer Registry/i.test(document.getElementById('formErrors').innerText));
+
+    document.querySelector('.modal-tab[data-form="equipment"]').click();
+    setField('f_truck', '339216');
+    document.getElementById('dynSaveModalBtn').click();
+    const eqDupBlocked = Boolean(document.getElementById('formErrors') && !document.getElementById('formErrors').hidden && /already exists in the Universal Equipment Registry/i.test(document.getElementById('formErrors').innerText));
+
+    document.querySelector('.modal-tab[data-form="driver"]').click();
+    setField('f_driver', 'Aahed Jomaa');
+    document.getElementById('dynSaveModalBtn').click();
+    const drvDupBlocked = Boolean(document.getElementById('formErrors') && !document.getElementById('formErrors').hidden && /already exists in the Universal Driver Registry/i.test(document.getElementById('formErrors').innerText));
+
+    const univDupGuardOk = supLiveDupHint && supDupBlocked && supCountBefore === 1166 && supCountAfter === 1166 && aahedRows.length === 1 && custDupBlocked && eqDupBlocked && drvDupBlocked;
+
     document.getElementById('closeModalBtn').click();
     document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
 
@@ -1988,13 +2035,16 @@ try {
       consistentAcrossBUs,
       hqSeparatedCleanly,
       hqHasNoCompanyField,
-      coEquipHasCompanyField
+      coEquipHasCompanyField,
+      univDupGuardOk,
+      supCountAfter,
+      aahedCount: aahedRows.length
     };
   })()`);
   univProbe.hasUnivSection && univProbe.allSidebarTabsExist && !univProbe.fleetHasOldUnivPanel && univProbe.fleetHasBuAssignPanel &&
   univProbe.catalogGroupedCleanly && univProbe.tabButtonsCount === 11 && univProbe.consistentAcrossBUs &&
-  univProbe.hqSeparatedCleanly && univProbe.hqHasNoCompanyField && univProbe.coEquipHasCompanyField
-    ? pass('universal registries · dedicated sidebar section (8 tabs) + 11-tab studio + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field')
+  univProbe.hqSeparatedCleanly && univProbe.hqHasNoCompanyField && univProbe.coEquipHasCompanyField && univProbe.univDupGuardOk
+    ? pass('universal registries · dedicated sidebar section (8 tabs) + 11-tab studio + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field + duplicate main-column guard')
     : fail('universal registries separation', JSON.stringify(univProbe));
 
   // 7e. Unified 4-Kiosk Suite (Sales · Raw Material · Fuel & Lubricants · Attendance Biometric) + Bluetooth ESC/POS Printer (80mm/58mm · Priced/Unpriced)

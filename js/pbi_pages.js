@@ -351,12 +351,23 @@
       else if (r.category) rawCats.push(...String(r.category).split(/\s*,\s*/));
       [r.category1, r.category2, r.category3].forEach(x => { if (x) rawCats.push(x); });
       if (r.is_truck_owner && !rawCats.some(x => /hauler|truck\s*owner|transport/i.test(String(x)))) {
-        rawCats.push('Hauler / Truck Owner');
+        rawCats.unshift('Hauler / Truck Owner');
       }
+      const normCat = raw => {
+        const s = String(raw || '').trim();
+        if (!s) return '';
+        if (/hauler|truck\s*owner|transport/i.test(s)) return 'Hauler / Truck Owner';
+        if (/quarry|raw\s*material|aggregate/i.test(s)) return 'Quarry & Raw Materials';
+        if (/fuel|lubricant|diesel|oil|bowser/i.test(s)) return 'Fuel & Lubricants';
+        if (/spare\s*part|repair|maintenance|garage|tyre|tire|workshop|tool/i.test(s)) return 'Spare Parts & Repairs';
+        if (/capital\s*expenditure|minor\s*equipment|machinery|equipment/i.test(s)) return 'Equipment & Machinery';
+        if (/supply|supplies|service|general\s*vendor|utilit|licence|license|fee|insurance|rent|office|skilled\s*labor|other\s*cost|social\s*security|tip|pool|food|beverage|sanitation|furniture|marketing/i.test(s)) return 'Supplies & Services';
+        return s;
+      };
       const seen = new Set();
       const uniq = [];
       rawCats.forEach(x => {
-        const s = String(x || '').trim();
+        const s = normCat(x);
         const k = s.toLowerCase();
         if (s && !seen.has(k)) { seen.add(k); uniq.push(s); }
       });
@@ -3822,11 +3833,11 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search ' + meta.label + ' (or type col:value)...')}
+            ${searchBox('Search ' + meta.label + '...')}
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('tablesHubPanel', meta.key)}
-            ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/s$/, ''))}</button>` : ''}
+            ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/ies$/, 'y').replace(/s$/, ''))}</button>` : ''}
           </div>
         </div>
         ${typeof ctx.renderColFilterBar === 'function' ? ctx.renderColFilterBar('tbl_' + meta.key, meta.cols) : ''}
@@ -4064,11 +4075,11 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search ' + meta.label + ' (All BUs · or type col:value)...')}
+            ${searchBox('Search ' + meta.label + '...')}
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('univRegPanel', meta.key)}
-            ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/s$/, ''))}</button>` : ''}
+            ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/ies$/, 'y').replace(/s$/, ''))}</button>` : ''}
           </div>
         </div>
         ${typeof ctx.renderColFilterBar === 'function' ? ctx.renderColFilterBar('ureg_' + meta.key, meta.cols) : ''}

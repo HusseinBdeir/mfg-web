@@ -1240,7 +1240,7 @@
 
   // ---- multi-column filtering, relational cell resolution & sorting ----------
   const _tablePoolCache = {};
-  const MULTI_TOKEN_COLS = new Set(['companies_list', 'assigned_trucks', 'category1', 'category']);
+  const MULTI_TOKEN_COLS = new Set(['companies_list', 'assigned_trucks', 'trucks_list', 'drivers_list', 'category1', 'category']);
   const VIEW_TABLE_KEY_MAP = {
     sales: 'sales_tickets',
     raw: 'raw_purchases',
@@ -1258,15 +1258,16 @@
   };
 
   const COL_KEY_ALIASES = {
-    type: ['type', 'Type', 'sale_type', 'rule_type', 'fuel_type'],
+    type: ['type', 'Type', 'sale_type', 'rule_type', 'fuel_type', 'supplier_role'],
+    role: ['supplier_role', 'role', 'type'],
     ownership: ['ownership', 'Ownership', 'transport_by'],
     owner: ['supplier', 'Supplier', 'truck_owner', 'site_owner', 'ownership', 'Ownership'],
     supplier: ['supplier', 'Supplier', 'truck_owner', 'site_owner'],
     hauler: ['supplier', 'Supplier', 'truck_owner'],
     customer: ['customer', 'Customer'],
-    driver: ['default_driver', 'driver', 'day_operator', 'night_operator'],
-    truck: ['name', 'plate_no', 'truck', 'equipment', 'Equipment', 'assigned_trucks'],
-    plate: ['plate_no', 'name', 'truck', 'equipment', 'Equipment'],
+    driver: ['default_driver', 'driver', 'drivers_list', 'day_operator', 'night_operator'],
+    truck: ['name', 'plate_no', 'truck', 'equipment', 'Equipment', 'assigned_trucks', 'trucks_list'],
+    plate: ['plate_no', 'name', 'truck', 'equipment', 'Equipment', 'trucks_list'],
     company: ['company', 'companies_list', 'bu'],
     bu: ['company', 'companies_list', 'bu'],
     site: ['site', 'Site', 'location'],
@@ -1274,10 +1275,10 @@
     grade: ['product', 'Product'],
     method: ['method'],
     status: ['status', 'gps_status'],
-    category: ['category', 'category1', 'cost_class'],
+    category: ['category', 'category1', 'cost_class', 'supplier_role'],
     capacity: ['capacity'],
     cap: ['capacity'],
-    loads: ['loads_hauled', 'sales_loads', 'raw_loads', 'loads', 'trips'],
+    loads: ['loads_hauled', 'haul_loads', 'sales_loads', 'raw_loads', 'loads', 'trips'],
     fills: ['fuel_fills'],
     notes: ['notes']
   };
@@ -1292,13 +1293,21 @@
     capacity: 'Capacity (m³)',
     supplier: 'Supplier / Owner',
     Supplier: 'Supplier',
+    supplier_role: 'Role / Type',
+    trucks_list: 'Owned Trucks',
+    drivers_list: 'Linked Drivers',
+    haul_loads: 'Haul Loads',
+    expenses_count: 'Expense Bills',
+    iva: 'IVA (VAT)',
+    mof_no: 'MOF Tax #',
+    gps_status: 'GPS Pin',
     default_driver: 'Default Driver',
-    companies_list: 'Assigned BU',
+    companies_list: 'Assigned BUs',
     loads_hauled: 'Loads Hauled',
     fuel_fills: 'Fuel Fills',
     assigned_trucks: 'Assigned Trucks',
     truck_owner: 'Truck Owner',
-    site_owner: 'Site Owner',
+    site_owner: 'Quarry Owner',
     sale_type: 'Sale Type',
     rule_type: 'Rule Type',
     customer: 'Customer',
@@ -1313,24 +1322,25 @@
     method: 'Method',
     category: 'Category',
     subcategory: 'Subcategory',
+    cost_class: 'Cost Class',
     equipment: 'Equipment',
     Equipment: 'Equipment',
     driver: 'Driver',
     staff: 'Staff Member',
     status: 'Status',
     company: 'Company (BU)',
-    ar_balance: 'Open AR ($)',
-    ap_balance: 'Open AP ($)',
+    ar_balance: 'AR Balance ($)',
+    ap_balance: 'AP Balance ($)',
     sales_loads: 'Sales Loads',
-    raw_loads: 'Raw Loads',
-    active_rules: 'Active Rules',
+    raw_loads: 'Quarry Loads',
+    active_rules: 'Price Rules',
     total_ttc: 'Total TTC ($)',
     total: 'Total ($)',
     amount: 'Amount ($)',
     litres: 'Litres (L)',
     unit_price: 'Unit Price ($)',
-    is_jv: 'JV Quarry',
-    vat_registered: 'VAT Reg',
+    is_jv: 'JV 50/50',
+    vat_registered: 'VAT (11%)',
     is_truck_owner: 'Truck Owner?'
   };
 
@@ -1462,6 +1472,28 @@
     return r[colKey];
   }
 
+  function resolveColTokens(r, colKey, view) {
+    if (!r || !colKey) return [];
+    const rel = (window.MFG_PBI && window.MFG_PBI.getHubRelIndex) ? window.MFG_PBI.getHubRelIndex(SEED) : null;
+    if (colKey === 'trucks_list' || colKey === 'drivers_list') {
+      const se = rel && rel.suppByName ? rel.suppByName[norm(r.name)] : null;
+      const setOrArr = colKey === 'trucks_list'
+        ? (se && se.trucks && se.trucks.size ? Array.from(se.trucks) : (Array.isArray(r.trucks) ? r.trucks : []))
+        : (se && se.drivers && se.drivers.size ? Array.from(se.drivers) : (Array.isArray(r.drivers) ? r.drivers : []));
+      if (setOrArr && setOrArr.length) {
+        return setOrArr.map(x => String(x || '').trim()).filter(Boolean);
+      }
+    }
+    const raw = resolveColVal(r, colKey, view);
+    const disp = normalizeColDisplayVal(raw, colKey);
+    if (!disp || disp === '—') return [];
+    return disp
+      .replace(/\s*\(\+\d+\)\s*$/, '')
+      .split(',')
+      .map(s => s.replace(/\s*\(\+\d+\)\s*$/, '').trim())
+      .filter(s => s && s !== '—');
+  }
+
   function isBooleanColKey(colKey, sampleVal) {
     if (typeof sampleVal === 'boolean') return true;
     return /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(String(colKey || ''));
@@ -1488,16 +1520,18 @@
     return String(rawVal).trim();
   }
 
-  function matchColFilterValue(rawVal, specRaw, colKey) {
+  function matchColFilterValue(rawVal, specRaw, colKey, r, view) {
     const spec = String(specRaw == null ? '' : specRaw).trim();
     if (!spec) return true;
     const disp = normalizeColDisplayVal(rawVal, colKey);
     if (spec === '__nonempty__') {
+      if (MULTI_TOKEN_COLS.has(colKey) && r) return resolveColTokens(r, colKey, view).length > 0;
       if (!disp || disp === '—') return false;
       if (typeof rawVal === 'number' && rawVal === 0) return false;
       return true;
     }
     if (spec === '__empty__') {
+      if (MULTI_TOKEN_COLS.has(colKey) && r) return resolveColTokens(r, colKey, view).length === 0;
       return !disp || disp === '—' || (typeof rawVal === 'number' && rawVal === 0);
     }
     const rangeMatch = spec.match(/^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/);
@@ -1521,9 +1555,15 @@
       if (op === '=') return Math.abs(n - target) <= 1e-6;
     }
     const want = (spec.startsWith('=') ? spec.slice(1) : spec).trim().toLowerCase();
+    if (MULTI_TOKEN_COLS.has(colKey) && r) {
+      const toks = resolveColTokens(r, colKey, view).map(t => t.toLowerCase());
+      if (!toks.length) return want === '';
+      if (toks.includes(want)) return true;
+      if (!spec.startsWith('=') && toks.some(t => t.includes(want))) return true;
+    }
     if (!disp) return want === '';
     if (MULTI_TOKEN_COLS.has(colKey)) {
-      const parts = disp.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const parts = disp.replace(/\s*\(\+\d+\)\s*$/, '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
       if (parts.includes(want) || disp.toLowerCase() === want) return true;
     }
     if (disp.toLowerCase() === want) return true;
@@ -1545,7 +1585,7 @@
     return (rows || []).filter(r => {
       for (const [colKey, spec] of activeEntries) {
         const v = resolveColVal(r, colKey, view);
-        if (!matchColFilterValue(v, spec, colKey)) return false;
+        if (!matchColFilterValue(v, spec, colKey, r, view)) return false;
       }
       return true;
     });
@@ -1607,7 +1647,7 @@
                 v = window.MFG_PBI.cellValue(r, ck, tk, rel);
               }
               if (v === undefined || v === null || v === '') return false;
-              return matchColFilterValue(v, t.val, ck);
+              return matchColFilterValue(v, t.val, ck, r, tk ? ('tbl_' + tk) : '');
             });
             if (!matchedCol) return false;
           } else {
@@ -1666,12 +1706,14 @@
     });
   }
 
+  const TH_FUNNEL_SVG = '<svg viewBox="0 0 12 12" width="9.5" height="9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="1.2,2 10.8,2 7.1,6.3 7.1,10.2 4.9,9.1 4.9,6.3"/></svg>';
+
   function th(view, label, key, cls) {
     const s = STATE.sortBy[view] || {};
     const on = s.key === key;
     const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
     const hasFilter = Boolean(cf[key] && String(cf[key]).trim());
-    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click to sort by ${esc(label)} · Click ⧩ to filter column">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter ${esc(label)} column">⧩</span></th>`;
+    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered th-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click header to sort by ${esc(label)} · Click filter icon for column filter &amp; width">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter or resize ${esc(label)} column">${TH_FUNNEL_SVG}</span></th>`;
   }
 
   function getColLabel(colKey) {
@@ -1694,11 +1736,23 @@
       return [
         { key: 'type', label: 'Type' },
         { key: 'ownership', label: 'Ownership' },
-        { key: 'companies_list', label: 'Assigned BU' },
+        { key: 'companies_list', label: 'Assigned BUs' },
         { key: 'supplier', label: 'Supplier / Owner' },
         { key: 'default_driver', label: 'Default Driver' },
         { key: 'capacity', label: 'Capacity (m³)', kind: 'numeric' },
         { key: 'loads_hauled', label: 'Loads Hauled', kind: 'numeric' }
+      ];
+    }
+    if (tk === 'suppliers' && (view === 'ureg_suppliers' || view === 'tbl_suppliers')) {
+      return [
+        { key: 'supplier_role', label: 'Role / Type' },
+        { key: 'method', label: 'Method' },
+        { key: 'trucks_list', label: 'Owned Trucks' },
+        { key: 'drivers_list', label: 'Linked Drivers' },
+        { key: 'haul_loads', label: 'Haul Loads', kind: 'numeric' },
+        { key: 'raw_loads', label: 'Quarry Loads', kind: 'numeric' },
+        { key: 'iva', label: 'IVA (VAT)' },
+        { key: 'ap_balance', label: 'AP Balance ($)', kind: 'numeric' }
       ];
     }
     if (VIEW_COL_DEFS[view]) return VIEW_COL_DEFS[view];
@@ -1706,7 +1760,7 @@
       ? colsOverride
       : ((window.MFG_PBI && (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === tk) || {}).cols || []);
     if (!cols.length) return [];
-    const skipAuto = new Set(['date', 'rep_date', 'start_date', 'end_date', 'notes', 'reference', 'latitude', 'longitude']);
+    const skipAuto = new Set(['name', 'ticket_no', 'invoice_no', 'date', 'rep_date', 'start_date', 'end_date', 'notes', 'reference', 'latitude', 'longitude', 'phone', 'address', 'mof_no', 'code']);
     const prioritized = [];
     const seen = new Set();
     const addCol = ck => {
@@ -1718,7 +1772,6 @@
         kind: isNumericColKey(ck) ? 'numeric' : 'categorical'
       });
     };
-    ['type', 'ownership', 'company', 'companies_list', 'rule_type', 'sale_type', 'status', 'category', 'subcategory', 'region', 'uom', 'method', 'customer', 'supplier', 'site_owner', 'truck_owner', 'product', 'site', 'truck', 'equipment', 'driver', 'default_driver', 'staff', 'is_jv', 'vat_registered', 'is_truck_owner'].forEach(addCol);
     cols.forEach(ck => {
       if (prioritized.length < 7 && !skipAuto.has(ck)) addCol(ck);
     });
@@ -1781,6 +1834,18 @@
     let nonEmptyCnt = 0, emptyCnt = 0;
     const isMulti = MULTI_TOKEN_COLS.has(colKey);
     pool.forEach(r => {
+      if (isMulti) {
+        const toks = resolveColTokens(r, colKey, view);
+        if (!toks.length) {
+          emptyCnt++;
+          return;
+        }
+        nonEmptyCnt++;
+        toks.forEach(tok => {
+          counts.set(tok, (counts.get(tok) || 0) + 1);
+        });
+        return;
+      }
       const raw = resolveColVal(r, colKey, view);
       const disp = normalizeColDisplayVal(raw, colKey);
       if (!disp || disp === '—') {
@@ -1788,20 +1853,10 @@
         return;
       }
       nonEmptyCnt++;
-      if (isMulti) {
-        disp.split(',').map(s => s.trim()).filter(Boolean).forEach(tok => {
-          counts.set(tok, (counts.get(tok) || 0) + 1);
-        });
-      } else {
-        counts.set(disp, (counts.get(disp) || 0) + 1);
-      }
+      counts.set(disp, (counts.get(disp) || 0) + 1);
     });
     const entries = Array.from(counts.entries());
-    if (entries.length <= 12) {
-      entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
-    } else {
-      entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
-    }
+    entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
     const opts = [];
     if (emptyCnt > 0 && nonEmptyCnt > 0) {
       opts.push({ v: '__nonempty__', l: `✦ Has ${getColLabel(colKey)} (${fmtNum(nonEmptyCnt)})` });
@@ -1822,8 +1877,8 @@
     const filteredCount = applyColFiltersForView(pool, view).length;
 
     return `
-      <div class="col-filter-bar" data-cf-bar="${esc(view)}">
-        <span class="cf-bar-lbl" title="Filter rows by combining any columns below (or click ⧩ on any column header)">⧩ Column Filters:</span>
+      <div class="col-filter-bar${activeEntries.length ? ' has-active' : ''}" data-cf-bar="${esc(view)}">
+        <span class="cf-bar-lbl" title="Click any column pill below or the funnel icon on any table column header to filter &amp; sort">${TH_FUNNEL_SVG}<span>Filter by Column</span></span>
         <div class="cf-controls">
           ${defs.map(def => {
             const curVal = String(cf[def.key] || '');
@@ -1832,11 +1887,17 @@
               ? buildNumericFilterOptions(pool, def.key, view)
               : buildCategoricalFilterOptions(pool, def.key, view, 75);
             const hasCurInOpts = !curVal || opts.some(o => o.v === curVal);
+            const humanVal = curVal ? formatFilterSpecHuman(curVal) : 'All';
             return `
-              <div class="cf-item${curVal ? ' is-active' : ''}">
-                <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}">
+              <div class="cf-item${curVal ? ' is-active active' : ''}">
+                <button type="button" class="cf-pill-trigger${curVal ? ' is-active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(def.key)}" data-th-filter-label="${esc(def.label)}" aria-label="Filter by ${esc(def.label)}">
+                  <span class="cf-pill-key">${esc(def.label)}</span>
+                  <span class="cf-pill-val">${esc(humanVal)}</span>
+                  <span class="cf-pill-caret" aria-hidden="true">▾</span>
+                </button>
+                <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}" hidden aria-hidden="true" tabindex="-1">
                   <option value="">${esc(def.label)}: All</option>
-                  ${!hasCurInOpts ? `<option value="${esc(curVal)}" selected>${esc(def.label)}: ${esc(formatFilterSpecHuman(curVal))}</option>` : ''}
+                  ${!hasCurInOpts ? `<option value="${esc(curVal)}" selected>${esc(def.label)}: ${esc(humanVal)}</option>` : ''}
                   ${opts.map(o => `<option value="${esc(o.v)}" ${curVal === o.v ? 'selected' : ''}>${esc(curVal === o.v ? (def.label + ': ' + o.l) : o.l)}</option>`).join('')}
                 </select>
               </div>
@@ -1851,7 +1912,7 @@
                 <span class="cf-pill-x">✕</span>
               </button>
             `).join('')}
-            <button type="button" class="cf-clear-all-btn" data-cf-clear-all="${esc(view)}" title="Clear all column filters">✕ Clear (${fmtNum(filteredCount)}/${fmtNum(pool.length)})</button>
+            <button type="button" class="cf-clear-all-btn" data-cf-clear-all="${esc(view)}" title="Clear all column filters">✕ Reset (${fmtNum(filteredCount)}/${fmtNum(pool.length)})</button>
           </div>
         ` : ''}
       </div>
@@ -1860,7 +1921,10 @@
 
   function closeColFilterPopover() {
     const pop = document.getElementById('colFilterPopover');
-    if (pop) pop.hidden = true;
+    if (pop) {
+      pop.hidden = true;
+      pop.dataset.openKey = '';
+    }
   }
 
   function openColFilterPopover(btnEl) {
@@ -1878,11 +1942,18 @@
       pop.hidden = true;
       document.body.appendChild(pop);
       document.addEventListener('mousedown', e => {
-        if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.th-filter-btn')) {
-          pop.hidden = true;
+        if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-th-filter-key]')) {
+          closeColFilterPopover();
         }
       });
     }
+
+    const openKey = `${view}:${colKey}`;
+    if (!pop.hidden && pop.dataset.openKey === openKey) {
+      closeColFilterPopover();
+      return;
+    }
+    pop.dataset.openKey = openKey;
 
     const pool = _tablePoolCache[view] || [];
     const curFilter = ((STATE.colFilters && STATE.colFilters[view]) || {})[colKey] || '';
@@ -1891,10 +1962,13 @@
     const catOpts = buildCategoricalFilterOptions(pool, colKey, view, 200);
     const numOpts = isNum ? buildNumericFilterOptions(pool, colKey, view) : [];
     const allOpts = isNum ? numOpts : catOpts;
+    const distinctOpts = allOpts.filter(o => o.v !== '__nonempty__' && o.v !== '__empty__');
+    const targetTh = btnEl.closest('th[data-sort-view]') || document.querySelector(`th[data-sort-view="${CSS.escape(view)}"][data-sort-key="${CSS.escape(colKey)}"]`);
+    const hasColTools = Boolean(targetTh && targetTh.querySelector('[data-th-hide]'));
 
     pop.innerHTML = `
       <div class="cf-pop-hdr">
-        <div>
+        <div class="cf-pop-hdr-titles">
           <span class="cf-pop-eyebrow">COLUMN FILTER &amp; SORT</span>
           <strong class="cf-pop-title">${esc(colLabel)}</strong>
         </div>
@@ -1905,32 +1979,51 @@
         <button type="button" class="cf-pop-sort-btn ${curSort.key === colKey && curSort.dir === 'desc' ? 'active' : ''}" id="cfPopSortDescBtn">▼ Sort ${isNum ? 'High → Low' : 'Z → A'}</button>
       </div>
       <div class="cf-pop-custom-row">
-        <input type="text" id="cfpSearchInput" class="cf-pop-input" value="${esc(curFilter.startsWith('=') ? curFilter.slice(1) : (curFilter === '__nonempty__' || curFilter === '__empty__' ? '' : curFilter))}" placeholder="${isNum ? 'e.g. >0, >=25, 10..50, =30' : 'Contains text or =Exact...'}" autocomplete="off">
-        <button type="button" class="btn btn-primary cf-pop-apply-btn" id="cfpApplyBtn">Apply</button>
+        <input type="text" id="cfpSearchInput" class="cf-pop-input" value="${esc(curFilter.startsWith('=') ? curFilter.slice(1) : (curFilter === '__nonempty__' || curFilter === '__empty__' ? '' : curFilter))}" placeholder="${isNum ? 'Search values or type >=25, 10..50...' : `Search ${distinctOpts.length} values or type filter...`}" autocomplete="off">
+        <button type="button" class="cf-pop-apply-btn" id="cfpApplyBtn">Apply</button>
       </div>
       <div class="cf-pop-quick-row">
         <button type="button" class="cf-pop-qpill ${!curFilter ? 'active' : ''}" data-cf-pop-val="">All (${fmtNum(pool.length)})</button>
         <button type="button" class="cf-pop-qpill ${curFilter === '__nonempty__' ? 'active' : ''}" data-cf-pop-val="__nonempty__">✦ Has Value</button>
         <button type="button" class="cf-pop-qpill ${curFilter === '__empty__' ? 'active' : ''}" data-cf-pop-val="__empty__">∅ Blank</button>
       </div>
-      ${allOpts.length > 5 ? `<div class="cf-pop-search-wrap"><input type="search" id="cfPopValueSearch" class="cf-pop-input" placeholder="Search ${allOpts.length} distinct values..." autocomplete="off"></div>` : ''}
       <div class="cf-pop-list" id="cfPopValuesList">
-        ${allOpts.filter(o => o.v !== '__nonempty__' && o.v !== '__empty__').map(o => `
-          <button type="button" class="cf-pop-opt ${curFilter === o.v ? 'active' : ''}" data-cf-pop-val="${esc(o.v)}">
-            <span class="cf-pop-opt-lbl">${esc(o.l)}</span>
-            ${curFilter === o.v ? '<span class="cf-pop-check">✓</span>' : ''}
-          </button>
-        `).join('') || '<div class="cf-pop-empty">No distinct values in current scope</div>'}
+        ${distinctOpts.map(o => {
+          const rawLabel = o.rawVal !== undefined ? o.rawVal : o.l.replace(/\s*\([\d,]+\)\s*$/, '');
+          const cntBadge = o.count !== undefined ? fmtNum(o.count) : ((o.l.match(/\(([\d,]+)\)\s*$/) || [])[1] || '');
+          return `
+            <button type="button" class="cf-pop-opt ${curFilter === o.v ? 'active' : ''}" data-cf-pop-val="${esc(o.v)}">
+              <span class="cf-pop-opt-lbl">${esc(rawLabel)}</span>
+              <span class="cf-pop-opt-meta">
+                ${cntBadge ? `<b class="cf-pop-opt-cnt">${esc(cntBadge)}</b>` : ''}
+                ${curFilter === o.v ? '<span class="cf-pop-check">✓</span>' : ''}
+              </span>
+            </button>
+          `;
+        }).join('') || '<div class="cf-pop-empty">No distinct values in current scope</div>'}
       </div>
+      ${hasColTools ? `
+        <div class="cf-pop-coltools">
+          <span class="cf-pop-coltools-lbl">Column Width</span>
+          <div class="cf-pop-coltools-btns">
+            <button type="button" class="cf-pop-coltool-btn" id="cfPopNarrowBtn" title="Narrow column width">− Narrow</button>
+            <button type="button" class="cf-pop-coltool-btn" id="cfPopWidenBtn" title="Widen column width">+ Widen</button>
+            <button type="button" class="cf-pop-coltool-btn cf-pop-coltool-hide" id="cfPopHideColBtn" title="Hide this column (restore anytime via Columns menu)">Hide</button>
+          </div>
+        </div>
+      ` : ''}
     `;
 
     pop.hidden = false;
     const rect = btnEl.getBoundingClientRect();
-    const popW = 268;
-    const left = Math.max(8, Math.min(window.innerWidth - popW - 8, rect.right - popW));
-    const top = Math.min(window.innerHeight - 340, rect.bottom + 6);
+    const popW = 284;
+    const left = Math.max(8, Math.min(window.innerWidth - popW - 8, rect.left));
+    const popH = Math.min(390, pop.offsetHeight || 350);
+    const top = (rect.bottom + popH + 12 > window.innerHeight && rect.top > popH + 12)
+      ? Math.max(8, rect.top - popH - 6)
+      : Math.max(8, Math.min(window.innerHeight - popH - 8, rect.bottom + 6));
     pop.style.left = left + 'px';
-    pop.style.top = Math.max(8, top) + 'px';
+    pop.style.top = top + 'px';
 
     const applyFilterVal = valStr => {
       if (!STATE.colFilters[view]) STATE.colFilters[view] = {};
@@ -1957,10 +2050,23 @@
       renderApp();
     });
 
+    const listBox = document.getElementById('cfPopValuesList');
     const customInp = document.getElementById('cfpSearchInput');
     const applyBtn = document.getElementById('cfpApplyBtn');
-    if (applyBtn && customInp) {
-      applyBtn.addEventListener('click', () => applyFilterVal(customInp.value.trim()));
+    if (customInp) {
+      customInp.addEventListener('input', () => {
+        if (!listBox) return;
+        const q = customInp.value.trim().toLowerCase();
+        const isExpr = /^(>=|<=|!=|>|<|=|-?\d+(\.\d+)?\s*\.\.)/.test(q);
+        listBox.querySelectorAll('.cf-pop-opt').forEach(optBtn => {
+          if (!q || isExpr) {
+            optBtn.hidden = false;
+            return;
+          }
+          const txt = (optBtn.textContent || '').toLowerCase();
+          optBtn.hidden = !txt.includes(q);
+        });
+      });
       customInp.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -1969,25 +2075,33 @@
           closeColFilterPopover();
         }
       });
+      setTimeout(() => { try { customInp.focus({ preventScroll: true }); } catch (_) {} }, 20);
+    }
+    if (applyBtn && customInp) {
+      applyBtn.addEventListener('click', () => applyFilterVal(customInp.value.trim()));
     }
 
     pop.querySelectorAll('[data-cf-pop-val]').forEach(b => {
       b.addEventListener('click', () => applyFilterVal(b.getAttribute('data-cf-pop-val') || ''));
     });
 
-    const valSearch = document.getElementById('cfPopValueSearch');
-    const listBox = document.getElementById('cfPopValuesList');
-    if (valSearch && listBox) {
-      valSearch.addEventListener('input', () => {
-        const q = valSearch.value.trim().toLowerCase();
-        listBox.querySelectorAll('.cf-pop-opt').forEach(optBtn => {
-          const txt = (optBtn.textContent || '').toLowerCase();
-          optBtn.hidden = Boolean(q && !txt.includes(q));
-        });
+    if (targetTh) {
+      const narrowBtn = document.getElementById('cfPopNarrowBtn');
+      const widenBtn = document.getElementById('cfPopWidenBtn');
+      const hideColBtn = document.getElementById('cfPopHideColBtn');
+      if (narrowBtn) narrowBtn.addEventListener('click', () => {
+        const b = targetTh.querySelector('[data-th-narrow]');
+        if (b) b.click();
       });
-      setTimeout(() => { try { valSearch.focus({ preventScroll: true }); } catch (_) {} }, 20);
-    } else if (customInp) {
-      setTimeout(() => { try { customInp.focus({ preventScroll: true }); } catch (_) {} }, 20);
+      if (widenBtn) widenBtn.addEventListener('click', () => {
+        const b = targetTh.querySelector('[data-th-widen]');
+        if (b) b.click();
+      });
+      if (hideColBtn) hideColBtn.addEventListener('click', () => {
+        const b = targetTh.querySelector('[data-th-hide]');
+        closeColFilterPopover();
+        if (b) b.click();
+      });
     }
   }
 
@@ -2071,7 +2185,11 @@
   }
 
   function searchBox(placeholder) {
-    return `<input type="search" id="tableSearchInput" class="search-input" value="${esc(STATE.search)}" placeholder="${esc(placeholder)}" autocomplete="off">`;
+    const cleanPh = String(placeholder || 'Search table...')
+      .replace(/\s*\(All BUs\s*·\s*or type col:value\)/i, '')
+      .replace(/\s*\(or type col:value\)/i, '')
+      .replace(/\s*—\s*or type\s+[^.]+/i, '');
+    return `<input type="search" id="tableSearchInput" class="search-input" value="${esc(STATE.search)}" placeholder="${esc(cleanPh)}" title="Search any text or type column:value (e.g. type:Truck, method:Cash, cap:>=25)" autocomplete="off">`;
   }
 
   // ---- seats, roles & row-level security -------------------------------------
@@ -2982,14 +3100,8 @@
       [dvn.category1, dvn.category2, dvn.category3].forEach(c => { if (c) rawCats.push(c); });
     }
     const isTo = !!((dvn && (dvn.is_truck_owner || Number(dvn.trucks_count || 0) > 0)) || rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c))));
-    if (isTo && !rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) rawCats.push('Hauler / Truck Owner');
-    const seenCat = new Set();
-    const categories = [];
-    rawCats.forEach(c => {
-      const s = String(c || '').trim();
-      const k = s.toLowerCase();
-      if (s && !seenCat.has(k)) { seenCat.add(k); categories.push(s); }
-    });
+    if (isTo && !rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) rawCats.unshift('Hauler / Truck Owner');
+    const categories = parseSupplierCategories(rawCats);
     return Object.assign({}, dvn || {}, mdl || {}, {
       Supplier: (mdl && mdl.Supplier) || (dvn && dvn.name) || name,
       categories,
@@ -8403,6 +8515,15 @@
         const isVat = val('f_vatreg') === 'Yes';
         setFieldVisible('wrap_cust_mof', isVat);
         if (!isVat && $('f_mof') && $('f_mof').value) $('f_mof').value = '';
+        syncUniversalMainDupHint('f_customer', 'customers', 'Customer');
+        return {};
+      }
+      if (STATE.modalForm === 'product') {
+        syncUniversalMainDupHint('f_product', 'products', 'Product');
+        return {};
+      }
+      if (STATE.modalForm === 'site') {
+        syncUniversalMainDupHint('f_site', 'sites', 'Site');
         return {};
       }
       if (STATE.modalForm === 'supplier') {
@@ -8442,6 +8563,7 @@
           dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, false)).join('');
         }
         renderSupplierDriversPanel();
+        syncUniversalMainDupHint('f_supplier', 'suppliers', 'Supplier');
         return {};
       }
       if (STATE.modalForm === 'equipment' || STATE.modalForm === 'companyequipment') {
@@ -8493,6 +8615,9 @@
                   : `No drivers registered to ${curSup} yet — type a driver name here to set as default & link to ${curSup}`)
               : 'Select Truck Owner first to filter its drivers, or type a default driver name')
           : `${ownerDrvs.length} company fleet driver${ownerDrvs.length === 1 ? '' : 's'} — auto-selected first when this unit is dispatched`, ownerDrvs.length ? 'ok' : '');
+        if (STATE.modalForm === 'equipment') {
+          syncUniversalMainDupHint('f_truck', 'equipment', 'Equipment / Truck');
+        }
         return {};
       }
       if (STATE.modalForm === 'driver') {
@@ -8516,6 +8641,7 @@
             FORM_UI.lastTruck = '';
           }
         }
+        syncUniversalMainDupHint('f_driver', 'drivers', 'Driver');
         return {};
       }
       if (STATE.modalForm === 'attendance') {
@@ -8562,6 +8688,27 @@
     return res;
   }
 
+  const SUPPLIER_CATEGORIES = [
+    'Hauler / Truck Owner',
+    'Quarry & Raw Materials',
+    'Fuel & Lubricants',
+    'Spare Parts & Repairs',
+    'Equipment & Machinery',
+    'Supplies & Services'
+  ];
+
+  function normalizeSupplierCategory(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/hauler|truck\s*owner|transport/i.test(s)) return 'Hauler / Truck Owner';
+    if (/quarry|raw\s*material|aggregate/i.test(s)) return 'Quarry & Raw Materials';
+    if (/fuel|lubricant|diesel|oil|bowser/i.test(s)) return 'Fuel & Lubricants';
+    if (/spare\s*part|repair|maintenance|garage|tyre|tire|workshop|tool/i.test(s)) return 'Spare Parts & Repairs';
+    if (/capital\s*expenditure|minor\s*equipment|machinery|equipment/i.test(s)) return 'Equipment & Machinery';
+    if (/supply|supplies|service|general\s*vendor|utilit|licence|license|fee|insurance|rent|office|skilled\s*labor|other\s*cost|social\s*security|tip|pool|food|beverage|sanitation|furniture|marketing/i.test(s)) return 'Supplies & Services';
+    return s;
+  }
+
   function parseSupplierCategories(rawVal) {
     const arr = Array.isArray(rawVal)
       ? rawVal
@@ -8569,7 +8716,7 @@
     const seen = new Set();
     const out = [];
     arr.forEach(item => {
-      const s = String(item || '').trim();
+      const s = normalizeSupplierCategory(item);
       const k = s.toLowerCase();
       if (s && !seen.has(k)) {
         seen.add(k);
@@ -8585,68 +8732,46 @@
   }
 
   function getSupplierCategoryCatalog() {
-    const core = [
-      { value: 'Hauler / Truck Owner', label: 'Hauler / Truck Owner', meta: '3rd-Party Haulage & Fleet', core: true },
-      { value: 'Quarry / Raw Material', label: 'Quarry / Raw Material', meta: 'Aggregate & Quarry Payee', core: true },
-      { value: 'Fuel & Lubricants', label: 'Fuel & Lubricants', meta: 'Diesel, Oils & Bowser', core: true },
-      { value: 'Spare Parts & Garage', label: 'Spare Parts & Garage', meta: 'Parts, Tyres & Workshop', core: true },
-      { value: 'General Vendor', label: 'General Vendor', meta: 'Supplies & Services', core: true }
-    ];
-    const seen = new Set(core.map(c => c.value.toLowerCase()));
-    const extra = [];
-    const addExtra = (nm, metaLbl) => {
-      const s = String(nm || '').trim();
-      const k = s.toLowerCase();
-      if (!s || seen.has(k)) return;
-      seen.add(k);
-      extra.push({ value: s, label: s, meta: metaLbl || 'Expense / Ledger Category', core: false });
-    };
-    ['Raw Material Settlements', 'Transportation', 'Repairs and Maintenance', 'Spare Parts', 'Fuel', 'Oils', 'Tools', 'Utilities', 'Capital Expenditures', 'Minor Equipment', 'Skilled Labor', 'Licences and Fees', 'Insurance', 'Rent', 'Office Supplies', 'Other Costs'].forEach(c => addExtra(c, 'Supplier & Expense Category'));
-    (SEED.records.suppliers || []).forEach(s => {
-      [s.category1, s.category2, s.category3].forEach(c => addExtra(c, 'Supplier Category'));
-    });
-    (SEED.records.expense_categories || []).forEach(c => {
-      if (c && c.name) addExtra(c.name, 'Expense Category');
-    });
-    return core.concat(extra);
+    return SUPPLIER_CATEGORIES.map(c => ({ value: c, label: c, core: true }));
   }
 
   function syncSupplierCategoryUI() {
     const catInp = $('f_category');
     const chipsBox = $('supCategoryChips');
+    const countBadge = $('supCategoryCount');
     const trigger = $('supCategoryTrigger');
     if (!catInp || !chipsBox || !trigger) return;
     const cats = parseSupplierCategories(catInp.value);
-    if (!cats.length) {
-      chipsBox.innerHTML = `<span class="pa-ms-placeholder">Select one or more categories...</span>`;
-    } else {
-      chipsBox.innerHTML = cats.map(c => {
-        const isHauler = /hauler|truck\s*owner|transport/i.test(c);
-        return `<span class="pa-ms-chip${isHauler ? ' is-hauler-chip' : ''}" data-ms-val="${esc(c)}"><span class="pa-ms-chip-txt">${esc(c)}</span><i class="pa-ms-chip-rm" data-ms-rm="${esc(c)}" title="Remove ${esc(c)}">×</i></span>`;
-      }).join('');
+    const canonicalVal = cats.join(', ');
+    if (catInp.value !== canonicalVal) {
+      catInp.value = canonicalVal;
     }
-    chipsBox.querySelectorAll('[data-ms-rm]').forEach(rmBtn => {
-      const removeCat = ev => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const target = rmBtn.getAttribute('data-ms-rm') || '';
-        const next = parseSupplierCategories(catInp.value).filter(c => c.toLowerCase() !== target.toLowerCase());
-        catInp.value = next.join(', ');
-        syncSupplierCategoryUI();
-        const menu = $('supCategoryMenu');
-        if (menu && !menu.hidden && typeof menu._refreshMultiRows === 'function') menu._refreshMultiRows();
-        recalcForm();
-      };
-      rmBtn.addEventListener('mousedown', removeCat);
-      rmBtn.addEventListener('click', removeCat);
-    });
+    if (!cats.length) {
+      chipsBox.innerHTML = `<span class="pa-ms-placeholder">Select category...</span>`;
+      trigger.title = 'Select one or more categories';
+    } else {
+      chipsBox.innerHTML = cats.map((c, idx) => {
+        const isHauler = /hauler|truck\s*owner|transport/i.test(c);
+        const sep = idx > 0 ? `<span class="pa-ms-sep" aria-hidden="true"> · </span>` : '';
+        return `${sep}<span class="pa-ms-chip${isHauler ? ' is-hauler-chip' : ''}" data-ms-val="${esc(c)}">${esc(c)}</span>`;
+      }).join('');
+      trigger.title = cats.join(' · ');
+    }
+    if (countBadge) {
+      if (cats.length > 1) {
+        countBadge.textContent = String(cats.length);
+        countBadge.hidden = false;
+      } else {
+        countBadge.hidden = true;
+      }
+    }
     const hasHauler = isHaulerCategoryList(cats);
     if (cats.length === 0) {
-      setHint('hint_sup_category', 'Select at least one category (e.g. Hauler / Truck Owner, Quarry / Raw Material)', 'warn');
+      setHint('hint_sup_category', 'Select at least one category', 'warn');
     } else if (hasHauler) {
-      setHint('hint_sup_category', `${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} selected · Hauler Fleet & Drivers active below`, 'ok');
+      setHint('hint_sup_category', `Hauler Fleet & Drivers active below`, 'ok');
     } else {
-      setHint('hint_sup_category', `${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} selected · Add "Hauler / Truck Owner" if this vendor also owns trucks`, '');
+      setHint('hint_sup_category', `${cats.join(' · ')}`, '');
     }
   }
 
@@ -9247,14 +9372,13 @@
         const allCats = getSupplierCategoryCatalog();
         closeAll(supMsMenu);
         supMsMenu.innerHTML = `
-          <div class="pa-select-filter-wrap pa-ms-head-bar">
-            <input type="text" class="pa-select-filter" placeholder="Filter ${allCats.length} categories..." autocomplete="off" spellcheck="false">
+          <div class="pa-ms-head-bar">
+            <span class="pa-ms-head-lbl">Select all that apply</span>
             <button type="button" class="pa-ms-quick-btn" data-ms-action="clear" title="Clear selected categories">Clear</button>
           </div>
           <div class="pa-suggest-list-rows pa-ms-rows-scroll"></div>
         `;
         const rowsBox = supMsMenu.querySelector('.pa-suggest-list-rows');
-        const filterInput = supMsMenu.querySelector('.pa-select-filter');
         const clearBtn = supMsMenu.querySelector('[data-ms-action="clear"]');
         if (clearBtn) {
           clearBtn.addEventListener('mousedown', ev => {
@@ -9267,31 +9391,22 @@
           });
         }
 
-        const renderMultiRows = qRaw => {
-          const q = String(qRaw !== undefined ? qRaw : (filterInput ? filterInput.value : '')).trim();
-          const ql = q.toLowerCase();
+        const renderMultiRows = () => {
           const selected = parseSupplierCategories(supCatInp.value);
           const selSet = new Set(selected.map(s => s.toLowerCase()));
+          if (clearBtn) clearBtn.hidden = selected.length === 0;
           const pool = allCats.slice();
           selected.forEach(s => {
             if (!pool.some(o => o.value.toLowerCase() === s.toLowerCase())) {
-              pool.unshift({ value: s, label: s, meta: 'Custom Category', core: true });
+              pool.push({ value: s, label: s, core: true });
             }
           });
-          const filtered = ql
-            ? pool.filter(o => o.label.toLowerCase().includes(ql) || (o.meta && o.meta.toLowerCase().includes(ql)))
-            : pool;
-          if (!filtered.length) {
-            rowsBox.innerHTML = `<div class="pa-suggest-more" style="text-align:center;border-top:0">No matching categories</div>`;
-            return;
-          }
-          rowsBox.innerHTML = filtered.map(o => {
+          rowsBox.innerHTML = pool.map(o => {
             const isSel = selSet.has(o.value.toLowerCase());
             return `
               <div class="pa-suggest-item pa-ms-option${isSel ? ' is-selected' : ''}" role="option" aria-selected="${isSel ? 'true' : 'false'}" data-ms-opt="${esc(o.value)}">
                 <span class="pa-ms-chk-box">${isSel ? '✓' : ''}</span>
-                <span class="pa-suggest-label">${highlightMatch(o.label, q)}</span>
-                ${o.meta ? `<span class="pa-suggest-meta">${highlightMatch(o.meta, q)}</span>` : ''}
+                <span class="pa-suggest-label">${esc(o.label)}</span>
               </div>
             `;
           }).join('');
@@ -9307,21 +9422,10 @@
         };
 
         supMsMenu._refreshMultiRows = () => renderMultiRows();
-        renderMultiRows('');
+        renderMultiRows();
         supMsMenu.hidden = false;
         supMsWrap.classList.add('open');
         supMsTrig.setAttribute('aria-expanded', 'true');
-        if (filterInput) {
-          filterInput.addEventListener('mousedown', ev => ev.stopPropagation());
-          filterInput.addEventListener('input', () => renderMultiRows(filterInput.value));
-          filterInput.addEventListener('keydown', ev => {
-            if (ev.key === 'Escape' || ev.key === 'Tab') {
-              closeAll(null);
-              supMsTrig.setAttribute('aria-expanded', 'false');
-            }
-          });
-          try { filterInput.focus({ preventScroll: true }); } catch (_) {}
-        }
       };
 
       supMsTrig.addEventListener('mousedown', ev => {
@@ -9507,6 +9611,85 @@
   }
 
   // ---- validation + posting ---------------------------------------------------
+  const UNIVERSAL_MAIN_SPEC = {
+    customers: { label: 'Customer', field: 'f_customer', prop: 'name' },
+    suppliers: { label: 'Supplier', field: 'f_supplier', prop: 'name' },
+    products: { label: 'Product', field: 'f_product', prop: 'name' },
+    product_types: { label: 'Product Type', field: 'f_name', prop: 'name' },
+    uoms: { label: 'Unit of Measure', field: 'f_name', prop: 'name' },
+    sites: { label: 'Site', field: 'f_site', prop: 'name' },
+    regions: { label: 'Region', field: 'f_region', prop: 'name' },
+    equipment: { label: 'Equipment / Truck', field: 'f_truck', prop: 'name', altField: 'f_plateno', altProp: 'plate_no' },
+    drivers: { label: 'Driver', field: 'f_driver', prop: 'name' },
+    expense_categories: { label: 'Expense Category', field: 'f_category', prop: 'name' },
+    expense_subcategories: { label: 'Expense Subcategory', field: 'f_subcategory', prop: 'name', compositeProp: 'category' }
+  };
+
+  function universalMainValue(crKey, r) {
+    if (!r) return '';
+    if (crKey === 'drivers') return String(r.name || r.driver || '').trim();
+    if (crKey === 'equipment') return String(r.name || r.equipment || r.Equipment || '').trim();
+    return String(r.name || r.Customer || r.Supplier || r.Product || r.Site || '').trim();
+  }
+
+  function universalMainNormKey(crKey, r) {
+    if (!r) return '';
+    const m = norm(universalMainValue(crKey, r));
+    if (!m) return '';
+    if (crKey === 'expense_subcategories') return norm(r.category) + '|' + m;
+    return m;
+  }
+
+  function findUniversalDuplicate(crKey, mainVal, opts = {}) {
+    if (!UNIVERSAL_MAIN_SPEC[crKey]) return null;
+    const q = norm(mainVal);
+    const qPlate = opts.plateNo ? norm(opts.plateNo) : '';
+    const qCat = opts.category ? norm(opts.category) : '';
+    if (!q && !qPlate) return null;
+    const excludeId = opts.excludeId != null ? String(opts.excludeId) : '';
+    const pool = [].concat(
+      (SEED.records && Array.isArray(SEED.records[crKey])) ? SEED.records[crKey] : [],
+      (STATE.customRecords && Array.isArray(STATE.customRecords[crKey])) ? STATE.customRecords[crKey] : []
+    );
+    for (const r of pool) {
+      if (!r || r.voided) continue;
+      if (excludeId && r.id != null && String(r.id) === excludeId) continue;
+      const rMain = norm(universalMainValue(crKey, r));
+      if (crKey === 'expense_subcategories') {
+        if (q && rMain === q && (!qCat || norm(r.category) === qCat)) return r;
+        continue;
+      }
+      if (q && rMain && rMain === q) return r;
+      if (crKey === 'equipment') {
+        const rPlate = norm(r.plate_no);
+        if (q && rPlate && rPlate === q) return r;
+        if (qPlate && ((rPlate && rPlate === qPlate) || (rMain && rMain === qPlate))) return r;
+      }
+    }
+    return null;
+  }
+
+  function syncUniversalMainDupHint(fieldId, crKey, label, opts = {}) {
+    const el = $(fieldId);
+    const wrap = (el && el.closest('.form-field')) || $('wrap_' + fieldId);
+    if (!wrap) return null;
+    const v = val(fieldId);
+    const dup = v ? findUniversalDuplicate(crKey, v, opts) : null;
+    let span = wrap.querySelector('.univ-dup-hint');
+    if (dup) {
+      if (!span) {
+        span = document.createElement('span');
+        span.className = 'hint warn univ-dup-hint';
+        wrap.appendChild(span);
+      }
+      const existingName = universalMainValue(crKey, dup) || v;
+      span.textContent = `⚠️ "${existingName}" already exists in the Universal ${label} Registry — duplicates are blocked on post.`;
+    } else if (span) {
+      span.remove();
+    }
+    return dup;
+  }
+
   function validateAndBuild(opts = {}) {
     const f = STATE.modalForm;
     const errors = [];
@@ -9639,10 +9822,18 @@
     } else if (f === 'customer') {
       const nm = val('f_customer');
       if (!nm) addErr('f_customer', 'Customer Name is required.');
+      else {
+        const dup = findUniversalDuplicate('customers', nm);
+        if (dup) addErr('f_customer', `Customer "${universalMainValue('customers', dup) || nm}" already exists in the Universal Customer Registry. Duplicate names are not allowed.`);
+      }
       record = { ...base, name: nm, method: val('f_method') || 'Credit', vat_registered: val('f_vatreg') === 'Yes', mof_no: val('f_mof'), phone: val('f_phone'), region: val('f_region'), customer_declared_qty: !!($('f_declqty') && $('f_declqty').checked), external_invoice: !!($('f_extinv') && $('f_extinv').checked) };
     } else if (f === 'supplier') {
       const nm = val('f_supplier');
       if (!nm) addErr('f_supplier', 'Supplier Name is required.');
+      else {
+        const dup = findUniversalDuplicate('suppliers', nm);
+        if (dup) addErr('f_supplier', `Supplier "${universalMainValue('suppliers', dup) || nm}" already exists in the Universal Supplier Registry. Duplicate names are not allowed.`);
+      }
       // Automatically capture any driver name typed in the inline input even if the user clicked Save directly
       if (val('f_sup_drv_name')) {
         addStagedSupplierDriver();
@@ -9680,18 +9871,42 @@
     } else if (f === 'product') {
       const nm = val('f_product');
       if (!nm) addErr('f_product', 'Product Name is required.');
+      else {
+        const dup = findUniversalDuplicate('products', nm);
+        if (dup) addErr('f_product', `Product "${universalMainValue('products', dup) || nm}" already exists in the Universal Product Registry. Duplicate names are not allowed.`);
+      }
       record = { ...base, name: nm, uom: val('f_uom') || 'm³', type: val('f_prodtype') || 'Material', ton_factor: num('f_tonfactor') || 1, list_price: round2(num('f_unitprice')), ticket_product: !!($('f_ticketprod') && $('f_ticketprod').checked), fuel_item: !!($('f_fuelitem') && $('f_fuelitem').checked), input_product: !!($('f_inputprod') && $('f_inputprod').checked) };
     } else if (f === 'site') {
       const nm = val('f_site');
       if (!nm) addErr('f_site', 'Site Name is required.');
+      else {
+        const dup = findUniversalDuplicate('sites', nm);
+        if (dup) addErr('f_site', `Site "${universalMainValue('sites', dup) || nm}" already exists in the Universal Site Registry. Duplicate names are not allowed.`);
+      }
       record = { ...base, name: nm, region: val('f_region'), supplier: val('f_supplier'), customer: val('f_customer'), latitude: val('f_lat') ? num('f_lat') : null, longitude: val('f_lng') ? num('f_lng') : null, is_jv: !!($('f_isjv') && $('f_isjv').checked) };
     } else if (f === 'equipment' || f === 'companyequipment') {
       const nm = val('f_truck');
+      const pl = val('f_plateno') || nm;
       if (!nm) addErr('f_truck', 'Unit Code / Plate Identifier is required.');
-      record = { ...base, name: nm, plate_no: val('f_plateno') || nm, type: val('f_category') || 'Truck', capacity: num('f_capacity') || 0, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model') };
+      else if (f === 'equipment') {
+        const dup = findUniversalDuplicate('equipment', nm);
+        if (dup) addErr('f_truck', `Equipment / Truck "${universalMainValue('equipment', dup) || nm}" already exists in the Universal Equipment Registry. Duplicate unit codes/plates are not allowed.`);
+        else if (pl && norm(pl) !== norm(nm)) {
+          const dupPl = findUniversalDuplicate('equipment', pl, { plateNo: pl });
+          if (dupPl) addErr('f_plateno', `Plate Number "${dupPl.plate_no || universalMainValue('equipment', dupPl) || pl}" already exists in the Universal Equipment Registry.`);
+        }
+      } else if (f === 'companyequipment') {
+        const dupCoEq = (SEED.records.company_equipment || []).find(x => x && !x.voided && norm(x.company) === norm(company) && norm(x.equipment || x.name) === norm(nm));
+        if (dupCoEq) addErr('f_truck', `Equipment "${nm}" is already assigned to ${company}.`);
+      }
+      record = { ...base, name: nm, equipment: nm, plate_no: pl, type: val('f_category') || 'Truck', capacity: num('f_capacity') || 0, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model') };
     } else if (f === 'driver') {
       const nm = val('f_driver');
       if (!nm) addErr('f_driver', 'Driver Name is required.');
+      else {
+        const dup = findUniversalDuplicate('drivers', nm);
+        if (dup) addErr('f_driver', `Driver "${universalMainValue('drivers', dup) || nm}" already exists in the Universal Driver Registry. Duplicate names are not allowed.`);
+      }
       record = { ...base, name: nm, driver: nm, truck_owner: val('f_supplier'), truck: val('f_truck'), phone: val('f_phone'), is_company_driver: !!($('f_iscompanydriver') && $('f_iscompanydriver').checked) };
     } else if (f === 'salary') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
@@ -9891,10 +10106,15 @@
         record.driver_rows.forEach(dr => {
           if (!dr || !dr.name) return;
           const existing = STATE.customRecords.drivers.find(x => !x.voided && norm(x.name || x.driver) === norm(dr.name));
+          const seedExisting = (SEED.records.drivers || []).find(x => x && !x.voided && norm(x.name || x.driver) === norm(dr.name));
           if (existing) {
             existing.truck_owner = record.name;
             if (dr.phone) existing.phone = dr.phone;
             if (dr.truck) existing.truck = dr.truck;
+          } else if (seedExisting) {
+            seedExisting.truck_owner = record.name;
+            if (dr.phone) seedExisting.phone = dr.phone;
+            if (dr.truck) seedExisting.truck = dr.truck;
           } else {
             STATE.customRecords.drivers.unshift({
               id: uid('dr'),
@@ -9919,30 +10139,31 @@
         if (!Array.isArray(STATE.customRecords.drivers)) STATE.customRecords.drivers = [];
         const isCo = /^own/i.test(record.ownership || '');
         const existing = STATE.customRecords.drivers.find(x => !x.voided && norm(x.name || x.driver) === norm(record.default_driver));
+        const seedDrv = (SEED.records.drivers || []).find(x => x && !x.voided && norm(x.name || x.driver) === norm(record.default_driver));
         if (existing) {
           if (!isCo && record.supplier) existing.truck_owner = record.supplier;
           existing.truck = record.name;
+        } else if (seedDrv) {
+          if (!isCo && record.supplier) seedDrv.truck_owner = record.supplier;
+          seedDrv.truck = record.name;
         } else {
-          const seedDrv = driverInfo(record.default_driver);
-          if (!seedDrv || (!isCo && record.supplier && norm(seedDrv.truck_owner) !== norm(record.supplier))) {
-            STATE.customRecords.drivers.unshift({
-              id: uid('dr'),
-              date: record.date,
-              rep_date: record.rep_date,
-              company: record.company,
-              name: record.default_driver,
-              driver: record.default_driver,
-              truck_owner: isCo ? '' : (record.supplier || ''),
-              truck: record.name,
-              phone: (seedDrv && seedDrv.phone) || '',
-              is_company_driver: isCo,
-              source: 'app',
-              entered_by: record.entered_by,
-              entered_by_email: record.entered_by_email,
-              entered_at: record.entered_at,
-              voided: false
-            });
-          }
+          STATE.customRecords.drivers.unshift({
+            id: uid('dr'),
+            date: record.date,
+            rep_date: record.rep_date,
+            company: record.company,
+            name: record.default_driver,
+            driver: record.default_driver,
+            truck_owner: isCo ? '' : (record.supplier || ''),
+            truck: record.name,
+            phone: '',
+            is_company_driver: isCo,
+            source: 'app',
+            entered_by: record.entered_by,
+            entered_by_email: record.entered_by_email,
+            entered_at: record.entered_at,
+            voided: false
+          });
         }
       }
       applyCustomRecordsToSeed();
@@ -11073,7 +11294,7 @@
     if (saveModBtn && modDrawer) {
       saveModBtn.addEventListener('click', () => {
         if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
-        let changedCount = 0;
+        const pendingUpdates = {};
         modDrawer.querySelectorAll('[data-mod-field]').forEach(inp => {
           const fk = inp.getAttribute('data-mod-field');
           if (!fk) return;
@@ -11081,9 +11302,24 @@
           const nextRaw = inp.value;
           const nextVal = (typeof prevVal === 'number' && nextRaw !== '' && !Number.isNaN(Number(nextRaw))) ? Number(nextRaw) : nextRaw;
           if (String(prevVal ?? '') !== String(nextVal ?? '')) {
-            row[fk] = nextVal;
-            changedCount++;
+            pendingUpdates[fk] = nextVal;
           }
+        });
+        if (UNIVERSAL_MAIN_SPEC[key]) {
+          const candidate = Object.assign({}, row, pendingUpdates);
+          const mainVal = universalMainValue(key, candidate);
+          const dup = findUniversalDuplicate(key, mainVal, { excludeId: row.id, plateNo: candidate.plate_no, category: candidate.category });
+          if (dup) {
+            toast(`Duplicate ${UNIVERSAL_MAIN_SPEC[key].label} "${mainVal}" already exists — modification blocked.`, 'err');
+            return;
+          }
+        }
+        let changedCount = 0;
+        Object.entries(pendingUpdates).forEach(([fk, nextVal]) => {
+          row[fk] = nextVal;
+          if (key === 'drivers' && fk === 'driver') row.name = nextVal;
+          if (key === 'equipment' && fk === 'equipment') row.name = nextVal;
+          changedCount++;
         });
         row.modified_by = activeUser().email;
         row.modified_at = new Date().toISOString();
@@ -11221,9 +11457,82 @@
     return out;
   }
 
+  function ensureUniversalCanonicalIndex() {
+    if (SEED._canonicalById && SEED._canonicalByMain) return;
+    SEED._canonicalById = {};
+    SEED._canonicalByMain = {};
+    Object.keys(UNIVERSAL_MAIN_SPEC).forEach(k => {
+      const byId = new Map();
+      const byMain = new Map();
+      const list = (SEED.records && Array.isArray(SEED.records[k])) ? SEED.records[k] : [];
+      list.forEach(r => {
+        if (!r || !r.id) return;
+        const sid = String(r.id);
+        byId.set(sid, Object.assign({}, r));
+        const mk = universalMainNormKey(k, r);
+        if (mk && !byMain.has(mk)) byMain.set(mk, sid);
+      });
+      SEED._canonicalById[k] = byId;
+      SEED._canonicalByMain[k] = byMain;
+    });
+  }
+
+  function sanitizeUniversalCustomRecords() {
+    ensureUniversalCanonicalIndex();
+    let removedAny = false;
+    Object.keys(UNIVERSAL_MAIN_SPEC).forEach(k => {
+      const arr = STATE.customRecords && STATE.customRecords[k];
+      if (!Array.isArray(arr) || !arr.length) return;
+      const canonById = SEED._canonicalById[k] || new Map();
+      const canonByMain = SEED._canonicalByMain[k] || new Map();
+      const voidedIds = new Set();
+      arr.forEach(r => {
+        if (r && r.voided && r.id != null) voidedIds.add(String(r.id));
+      });
+      const seenMainToId = new Map();
+      canonByMain.forEach((sid, mk) => {
+        if (!voidedIds.has(sid)) seenMainToId.set(mk, sid);
+      });
+      const cleaned = [];
+      arr.forEach(r => {
+        if (!r) { removedAny = true; return; }
+        const rid = String(r.id == null ? '' : r.id);
+        if (r.voided) {
+          cleaned.push(r);
+          return;
+        }
+        const mk = universalMainNormKey(k, r);
+        if (!mk) { removedAny = true; return; }
+        const existingId = seenMainToId.get(mk);
+        if (existingId && existingId !== rid) {
+          removedAny = true;
+          const origSeed = canonById.get(existingId);
+          const seedRow = (SEED.records[k] || []).find(x => x && String(x.id) === existingId);
+          if (origSeed && seedRow) {
+            seedRow.source = origSeed.source || '';
+            delete seedRow.entered_by;
+            delete seedRow.entered_by_email;
+            delete seedRow.entered_at;
+          }
+          return;
+        }
+        seenMainToId.set(mk, rid);
+        cleaned.push(r);
+      });
+      if (cleaned.length !== arr.length) {
+        STATE.customRecords[k] = cleaned;
+      }
+    });
+    if (removedAny) {
+      saveLocalAuthAndRecords();
+    }
+    return removedAny;
+  }
+
   // Union-merge another device's app entries into ours. A void tombstone always wins.
   function mergeCustomRecords(remote) {
     if (!remote || typeof remote !== 'object') return false;
+    ensureUniversalCanonicalIndex();
     let changed = false;
     CR_KEYS.forEach(k => {
       const inc = Array.isArray(remote[k]) ? remote[k] : [];
@@ -11236,11 +11545,14 @@
         else if (r.voided && !cur.voided) { cur.voided = true; cur.voided_by = r.voided_by; cur.voided_at = r.voided_at; changed = true; }
       });
     });
+    if (sanitizeUniversalCustomRecords()) changed = true;
     return changed;
   }
 
   // Project the app entries onto the seed registers (voided rows drop out, new rows sort in by date, and fleet owner/driver links stay synchronized)
   function applyCustomRecordsToSeed() {
+    ensureUniversalCanonicalIndex();
+    sanitizeUniversalCustomRecords();
     SEED._customRev = (SEED._customRev || 0) + 1;
     const masterByNameKeys = new Set(['suppliers', 'equipment', 'company_equipment', 'drivers', 'customers', 'products', 'sites']);
     const allKeys = Array.from(new Set([...CR_KEYS, ...Object.keys(STATE.customRecords || {})]));
@@ -11272,14 +11584,33 @@
         if (existingById) {
           Object.assign(existingById, r);
           touched = true;
-        } else if (masterByNameKeys.has(k) && r.name) {
-          const existingByName = list.find(x => x && String(x.id) !== rid && norm(x.name || x.equipment || x.driver) === norm(r.name));
+        } else if (UNIVERSAL_MAIN_SPEC[k] || (masterByNameKeys.has(k) && r.name)) {
+          const mk = UNIVERSAL_MAIN_SPEC[k] ? universalMainNormKey(k, r) : norm(r.name);
+          const existingByName = mk ? list.find(x => x && String(x.id) !== rid && (UNIVERSAL_MAIN_SPEC[k] ? universalMainNormKey(k, x) === mk : norm(x.name || x.equipment || x.driver) === mk)) : null;
           if (existingByName) {
             Object.assign(existingByName, r, { id: existingByName.id || r.id });
+            if (rid) seen.add(rid);
+            touched = true;
+            return;
           }
         }
         if (rid && !seen.has(rid)) { list.push(r); seen.add(rid); touched = true; }
       });
+      if (UNIVERSAL_MAIN_SPEC[k]) {
+        const seenMain = new Set();
+        for (let i = 0; i < list.length; i++) {
+          const item = list[i];
+          const mk = universalMainNormKey(k, item);
+          if (!mk) continue;
+          if (seenMain.has(mk)) {
+            list.splice(i, 1);
+            i--;
+            touched = true;
+          } else {
+            seenMain.add(mk);
+          }
+        }
+      }
       if (touched && list.some(x => x && x.date)) list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     });
 
@@ -16013,7 +16344,7 @@
     }));
     container.querySelectorAll('[data-cf-clear-key]').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
-      const view = btn.getAttribute('data-cf-view');
+      const view = btn.getAttribute('data-cf-clear-view') || btn.getAttribute('data-cf-view');
       const key = btn.getAttribute('data-cf-clear-key');
       if (STATE.colFilters && STATE.colFilters[view]) {
         delete STATE.colFilters[view][key];

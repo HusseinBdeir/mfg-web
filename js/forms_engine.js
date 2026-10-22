@@ -549,18 +549,19 @@
           ${secHdr('1. Supplier / Hauler Identity (Universal Registry · All BUs)')}
           ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type quarry, hauler, or vendor name..."') + dl('dl_suppliers', supNames))}
           <div class="form-field" id="wrap_f_category">
-            <label for="supCategoryTrigger"><span class="pa-fld-lbl">Category (Multi-Select) *</span></label>
+            <label for="supCategoryTrigger"><span class="pa-fld-lbl">Category *</span></label>
             <div class="pa-suggest-wrap pa-multiselect-wrap" id="supCategoryMultiWrap">
               <input type="hidden" id="f_category" value="Hauler / Truck Owner">
               <button type="button" class="pa-multiselect-trigger" id="supCategoryTrigger" aria-haspopup="listbox" aria-expanded="false">
                 <div class="pa-ms-chips" id="supCategoryChips">
-                  <span class="pa-ms-chip" data-ms-val="Hauler / Truck Owner"><span>Hauler / Truck Owner</span><i class="pa-ms-chip-rm" data-ms-rm="Hauler / Truck Owner" title="Remove Hauler / Truck Owner">×</i></span>
+                  <span class="pa-ms-chip is-hauler-chip" data-ms-val="Hauler / Truck Owner">Hauler / Truck Owner</span>
                 </div>
+                <span class="pa-ms-count" id="supCategoryCount" hidden>1</span>
                 <span class="pa-suggest-caret" aria-hidden="true">▾</span>
               </button>
               <div class="pa-suggest-menu pa-multiselect-menu" id="supCategoryMenu" role="listbox" aria-multiselectable="true" hidden></div>
             </div>
-            <span class="hint" id="hint_sup_category">Select all roles that apply — Hauler / Truck Owner opens Fleet &amp; Drivers below</span>
+            <span class="hint" id="hint_sup_category">Hauler / Truck Owner opens Fleet &amp; Drivers below</span>
           </div>
           ${fld('Phone / Contact', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
           ${fld('Default Payment Method', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'))}
