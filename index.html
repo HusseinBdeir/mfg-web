@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '10.7';
+      window.__MFG_SHELL_VER = '10.8';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=10.7">
+  <link rel="stylesheet" href="css/app.css?v=10.8">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -80,7 +80,7 @@
                 <path transform="translate(108.83,0)" d="M256.08 0V-56.39H230.05V-68.65H296.21V-56.39H270.13V0Z"/>
                 <path transform="translate(146.83,0)" d="M307.41 0V-68.65H368.59V-56.78H321.46V-40.94H363.42V-29.07H321.46V-11.87H369.28V0Z"/>
                 <path transform="translate(184.83,0)" d="M383.91 0V-68.65H405.9L419.05 -31.84Q419.7 -30.03 420.56 -27.36Q421.42 -24.7 422.31 -21.99Q423.2 -19.28 423.83 -17.15H424.58Q425.12 -19.03 425.9 -21.62Q426.69 -24.2 427.55 -26.92Q428.41 -29.64 429.16 -31.8L442.31 -68.65H463.96V0H449.9V-38.2Q449.9 -41.41 449.98 -44.81Q450.05 -48.21 450.18 -50.91Q450.3 -53.61 450.35 -54.64H449.55Q449.21 -53.46 448.41 -50.89Q447.61 -48.32 446.76 -45.49Q445.9 -42.66 445.2 -40.6L430.35 0H417.01L402.11 -40.54Q401.36 -42.6 400.57 -45.16Q399.77 -47.73 399.07 -50.28Q398.36 -52.82 397.81 -54.64H397.01Q397.11 -52.66 397.19 -49.78Q397.26 -46.89 397.34 -43.86Q397.42 -40.82 397.42 -38.2V0Z"/>
-                <path transform="translate(222.83,0)" d="M510.6 1.2Q503.89 1.2 497.92 0.09Q491.96 -1.01 487.43 -3.57Q482.9 -6.12 480.34 -10.29Q477.77 -14.45 477.77 -20.57Q477.77 -20.98 477.8 -21.44Q477.82 -21.89 477.87 -22.14H491.88Q491.84 -21.85 491.79 -21.3Q491.74 -20.75 491.74 -20.2Q491.74 -17 494.02 -14.84Q496.3 -12.68 500.58 -11.6Q504.85 -10.52 510.61 -10.52Q513.72 -10.52 516.46 -10.85Q519.2 -11.18 521.46 -11.81Q523.72 -12.44 525.38 -13.41Q206.43 -14.39 527.92 -15.72Q528.8 -17.04 528.8 -18.68Q528.8 -21.44 526.74 -23.17Q524.68 -24.9 521.17 -26.06Q517.66 -27.22 513.26 -28.1Q508.86 -28.98 504.19 -29.96Q499.51 -30.94 495.11 -32.44Q490.71 -33.94 487.2 -36.19Q483.7 -38.44 481.63 -41.93Q479.57 -45.43 479.57 -50.42Q479.57 -55.22 481.74 -58.86Q483.91 -62.51 488.02 -64.96Q492.13 -67.4 497.87 -68.63Q503.62 -69.85 510.76 -69.85Q517.75 -69.85 523.35 -68.58Q528.94 -67.31 532.88 -64.79Q536.82 -62.26 538.9 -58.56Q540.97 -54.86 540.97 -50V-48.6H527.16V-49.75Q527.16 -52.31 525.1 -54.17Q523.04 -56.02 519.43 -57.08Q515.82 -58.13 511.14 -58.13Q505.35 -58.13 501.52 -57.25Q497.7 -56.38 495.81 -54.78Q493.92 -53.18 493.92 -51.02Q493.92 -48.61 495.98 -47.06Q498.04 -45.5 501.55 -44.47Q505.06 -43.44 509.46 -42.58Q513.86 -41.72 518.53 -40.69Q523.21 -39.66 527.61 -38.21Q532.01 -36.76 535.52 -34.46Q539.02 -32.16 541.09 -28.74Q543.15 -25.32 543.15 -20.44Q543.15 -12.59 538.99 -7.82Q534.84 -3.05 527.49 -0.92Q520.15 1.2 510.6 1.2Z"/>
+                <path transform="translate(222.83,0)" d="M510.6 1.2Q503.89 1.2 497.92 0.09Q491.96 -1.01 487.43 -3.57Q482.9 -6.12 480.34 -10.29Q477.77 -14.45 477.77 -20.57Q477.77 -20.98 477.8 -21.44Q477.82 -21.89 477.87 -22.14H491.88Q491.84 -21.85 491.79 -21.3Q491.74 -20.75 491.74 -20.2Q491.74 -17 494.02 -14.84Q496.3 -12.68 500.58 -11.6Q504.85 -10.52 510.61 -10.52Q513.72 -10.52 516.46 -10.85Q519.2 -11.18 521.46 -11.81Q523.72 -12.44 525.38 -13.41Q206.43 -14.39 527.92 -15.72Q528.8 -17.04 528.8 -18.68Q528.8 -21.44 526.74 -23.17Q524.68 -24.9 521.17 -26.06Q517.66 -27.22 513.26 -28.1Q508.86 -28.98 504.19 -29.96Q499.51 -30.94 495.11 -32.44Q490.71 -33.94 487.2 -36.19Q483.7 -38.44 481.63 -41.93Q479.57 -45.43 479.57 -50.42Q479.57 -55.22 481.74 -58.86Q483.91 -62.51 488.02 -64.96Q492.13 -67.4 497.87 -68.63Q503.62 -69.85 510.86 -69.85Q517.75 -69.85 523.35 -68.58Q528.94 -67.31 532.88 -64.79Q536.82 -62.26 538.9 -58.56Q540.97 -54.86 540.97 -50V-48.6H527.16V-49.75Q527.16 -52.31 525.1 -54.17Q523.04 -56.02 519.43 -57.08Q515.82 -58.13 511.14 -58.13Q505.35 -58.13 501.52 -57.25Q497.7 -56.38 495.81 -54.78Q493.92 -53.18 493.92 -51.02Q493.92 -48.61 495.98 -47.06Q498.04 -45.5 501.55 -44.47Q505.06 -43.44 509.46 -42.58Q513.86 -41.72 518.53 -40.69Q523.21 -39.66 527.61 -38.21Q532.01 -36.76 535.52 -34.46Q539.02 -32.16 541.09 -28.74Q543.15 -25.32 543.15 -20.44Q543.15 -12.59 538.99 -7.82Q534.84 -3.05 527.49 -0.92Q520.15 1.2 510.6 1.2Z"/>
               </g>
             </svg>
             <small class="brand-sub">Command Center</small>
@@ -617,15 +617,15 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="vendor/face-api.js?v=10.6"></script>
-  <script src="js/face.js?v=10.7"></script>
-  <script src="js/endpoints.js?v=10.7"></script>
-  <script src="js/seed_data.js?v=10.7"></script>
-  <script src="js/forms_engine.js?v=10.7"></script>
-  <script src="js/pbi_pages.js?v=10.7"></script>
-  <script src="js/rdl_reports.js?v=10.7"></script>
-  <script src="js/kiosk_print.js?v=10.7"></script>
-  <script src="js/table_columns.js?v=10.7"></script>
-  <script src="js/app.js?v=10.7"></script>
+  <script src="js/face.js?v=10.8"></script>
+  <script src="js/endpoints.js?v=10.8"></script>
+  <script src="js/seed_data.js?v=10.8"></script>
+  <script src="js/forms_engine.js?v=10.8"></script>
+  <script src="js/pbi_pages.js?v=10.8"></script>
+  <script src="js/rdl_reports.js?v=10.8"></script>
+  <script src="js/kiosk_print.js?v=10.8"></script>
+  <script src="js/table_columns.js?v=10.8"></script>
+  <script src="js/app.js?v=10.8"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

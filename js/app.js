@@ -2843,7 +2843,12 @@
     eqs.forEach(e => {
       if (!e || !e.name) return;
       eqByName.set(norm(e.name), e);
-      if (e.plate_no) eqByName.set(norm(e.plate_no), e);
+      if (e.plate_no) {
+        const pn = norm(e.plate_no);
+        eqByName.set(pn, e);
+        const baseDigits = pn.replace(/[a-z]+$/i, '');
+        if (baseDigits.length >= 5 && !eqByName.has(baseDigits)) eqByName.set(baseDigits, e);
+      }
     });
     const txTrucksByOwner = new Map();
     const txDriversByOwner = new Map();
@@ -11676,7 +11681,7 @@
     });
 
     (SEED.records.equipment || []).forEach(e => {
-      const isOwn = /^own/i.test(e.ownership || '');
+      const isOwn = /^own/i.test(e.ownership || '') && (!e.supplier || ['wtc', 'bbconstruction', 'lions transport', 'sibline'].includes(norm(e.supplier)));
       if (e.default_driver) {
         let d = drvByName.get(norm(e.default_driver));
         if (!d) {
