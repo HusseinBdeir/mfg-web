@@ -32,13 +32,13 @@ const MFG_FACE_CONFIG = {
   liveness: {
     enabled: true,
     mode: "blink_or_turn",    // "blink_or_turn" | "blink_strict" | "multiframe_only"
-    earClosed: 0.215,
-    earOpen: 0.245,
-    earDropMin: 0.055,        // relative EAR drop from open baseline for fast webcam blinks
-    yawSpanMin: 0.10,         // 3D nose-to-jaw yaw span across frames (~6° head turn)
-    parallaxSpanMin: 0.04,    // 3D nose-over-cheek vs nose-over-eye differential parallax
-    earVarianceMin: 0.022,    // non-rigid eye variance required alongside head turn (rejects tilted 2D photos)
-    windowSec: 5
+    earClosed: 0.228,
+    earOpen: 0.240,
+    earDropMin: 0.024,        // relative EAR drop from open baseline for fast webcam blinks
+    yawSpanMin: 0.020,        // 3D nose-to-jaw yaw span across frames
+    parallaxSpanMin: 0.010,   // 3D nose-over-cheek vs nose-over-eye differential parallax
+    earVarianceMin: 0.005,    // non-rigid eye variance required alongside head turn (rejects tilted 2D photos)
+    windowSec: 6
   },
   snapshotWidth: 240,
   snapshotQuality: 0.78

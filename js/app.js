@@ -127,18 +127,26 @@
     sessions: lsGet('isabi_mfg_sessions_v2', null) || [],
     customRecords: lsGet('isabi_mfg_custom_recs_v2', null) || {},
     supabaseCfg: lsGet('isabi_mfg_supabase_cfg', null) || { url: '', anonKey: '' },
-    faceSettings: Object.assign({
-      threshold: 0.50,
-      margin: 0.08,
-      weakAbove: 0.45,
-      minFaceFrac: 0.14,
-      confirmFrames: 3,
-      liveness: true,
-      livenessMode: 'blink_or_turn', // 'blink_or_turn' | 'blink' | 'turn3d'
-      authMode: 'both',              // 'either' | 'pin_only' | 'face_only' | 'both'
-      enforce2FA: true,
-      sound: false
-    }, lsGet('isabi_mfg_face_settings_v2', null) || {}, { sound: false })
+    faceSettings: (() => {
+      const saved = lsGet('isabi_mfg_face_settings_v2', null) || {};
+      if (!saved.authModeV8Explicit) {
+        saved.authMode = 'either';
+        saved.enforce2FA = false;
+      }
+      return Object.assign({
+        threshold: 0.50,
+        margin: 0.08,
+        weakAbove: 0.45,
+        minFaceFrac: 0.14,
+        confirmFrames: 3,
+        liveness: true,
+        livenessMode: 'blink_or_turn', // 'blink_or_turn' | 'blink' | 'turn3d'
+        authMode: 'either',            // 'either' | 'pin_only' | 'face_only' | 'both'
+        enforce2FA: false,
+        authModeV8Explicit: false,
+        sound: false
+      }, saved, { sound: false });
+    })()
   };
 
   const FACE_POSES = [
@@ -1266,7 +1274,7 @@
     { value: 'turn3d', label: '3D Head-Turn Parallax Required (Left ↔ Right)' }
   ];
 
-  function normalizeAuthMode(mode, fallback = 'both') {
+  function normalizeAuthMode(mode, fallback = 'either') {
     const m = String(mode || '').trim().toLowerCase();
     if (m === 'either' || m === 'pin_only' || m === 'face_only' || m === 'both') return m;
     return fallback;
@@ -1274,15 +1282,16 @@
 
   function getWorkspaceAuthMode() {
     if (STATE.faceSettings && STATE.faceSettings.authMode) {
-      return normalizeAuthMode(STATE.faceSettings.authMode, STATE.faceSettings.enforce2FA === false ? 'either' : 'both');
+      return normalizeAuthMode(STATE.faceSettings.authMode, STATE.faceSettings.enforce2FA === true ? 'both' : 'either');
     }
-    return STATE.faceSettings && STATE.faceSettings.enforce2FA === false ? 'either' : 'both';
+    return STATE.faceSettings && STATE.faceSettings.enforce2FA === true ? 'both' : 'either';
   }
 
   function setWorkspaceAuthMode(mode) {
-    const m = normalizeAuthMode(mode, 'both');
+    const m = normalizeAuthMode(mode, 'either');
     STATE.faceSettings.authMode = m;
     STATE.faceSettings.enforce2FA = (m === 'both');
+    STATE.faceSettings.authModeV8Explicit = true;
     return m;
   }
 
@@ -9258,13 +9267,13 @@
     }
 
     const lvCfg = (window.Face && window.Face.CONFIG && window.Face.CONFIG.liveness) || {};
-    const windowMs = Number(lvCfg.windowSec || 5) * 1000;
-    const earClosedThr = Number(lvCfg.earClosed || 0.215);
-    const earOpenThr = Number(lvCfg.earOpen || 0.245);
-    const earDropMin = Number(lvCfg.earDropMin || 0.052);
-    const yawSpanMin = Number(lvCfg.yawSpanMin || 0.10);
-    const parallaxSpanMin = Number(lvCfg.parallaxSpanMin || 0.035);
-    const earVarMin = Number(lvCfg.earVarianceMin || 0.012);
+    const windowMs = Number(lvCfg.windowSec || 6) * 1000;
+    const earClosedThr = Number(lvCfg.earClosed || 0.228);
+    const earOpenThr = Number(lvCfg.earOpen || 0.240);
+    const earDropMin = Number(lvCfg.earDropMin || 0.024);
+    const yawSpanMin = Number(lvCfg.yawSpanMin || 0.020);
+    const parallaxSpanMin = Number(lvCfg.parallaxSpanMin || 0.010);
+    const earVarMin = Number(lvCfg.earVarianceMin || 0.005);
 
     FACE_STATE.livenessHistory = (FACE_STATE.livenessHistory || []).filter(h => (now - h.t) <= windowMs);
     FACE_STATE.livenessHistory.push({
@@ -9279,7 +9288,7 @@
     }
 
     const hist = FACE_STATE.livenessHistory;
-    // Option 1: Blink detection — absolute threshold (closed <= 0.215 then open >= 0.245) OR relative blink dip (>= 0.052 drop + >= 0.030 recovery)
+    // Option 1: Blink detection — absolute threshold (closed <= 0.228 then open >= 0.240) OR relative blink dip (>= 0.024 drop + >= 0.015 recovery)
     if (typeof ear === 'number' && ear > 0) {
       if (ear <= earClosedThr) {
         FACE_STATE.eyeClosedSeen = true;
@@ -9296,7 +9305,7 @@
         const minEar = ears[minIdx];
         const maxBefore = minIdx > 0 ? Math.max(...ears.slice(0, minIdx)) : ears[0];
         const maxAfter = minIdx < ears.length - 1 ? Math.max(...ears.slice(minIdx + 1)) : ears[ears.length - 1];
-        if ((maxBefore - minEar) >= earDropMin && (maxAfter - minEar) >= 0.030 && maxAfter >= 0.22) {
+        if ((maxBefore - minEar) >= earDropMin && (maxAfter - minEar) >= 0.015 && maxAfter >= 0.215) {
           FACE_STATE.lastBlinkAt = now;
         }
       }
@@ -9305,13 +9314,19 @@
     // Option 2: 3D Head-Turn Parallax — true 3D nose-tip projection vs eye-bridge parallax + non-rigid eye variance
     const yaws = hist.map(h => h.yaw).filter(v => typeof v === 'number');
     const parallaxes = hist.map(h => h.parallax3d).filter(v => typeof v === 'number');
+    const pitches = hist.map(h => h.pitch).filter(v => typeof v === 'number');
     const earsAll = hist.map(h => h.ear).filter(v => typeof v === 'number' && v > 0);
     const yawSpan = yaws.length >= 2 ? (Math.max(...yaws) - Math.min(...yaws)) : 0;
     const parallaxSpan = parallaxes.length >= 2 ? (Math.max(...parallaxes) - Math.min(...parallaxes)) : 0;
+    const pitchSpan = pitches.length >= 2 ? (Math.max(...pitches) - Math.min(...pitches)) : 0;
     const earSpan = earsAll.length >= 2 ? (Math.max(...earsAll) - Math.min(...earsAll)) : 0;
 
     // A rigid 2D phone screenshot tilted in front of the camera has near-zero 3D nose-vs-eye parallax AND zero eye-aspect change
-    if ((parallaxSpan >= parallaxSpanMin && yawSpan >= 0.08) || (yawSpan >= yawSpanMin && earSpan >= earVarMin && parallaxSpan >= 0.018)) {
+    if (
+      (parallaxSpan >= parallaxSpanMin && yawSpan >= yawSpanMin) ||
+      (yawSpan >= yawSpanMin && earSpan >= earVarMin && parallaxSpan >= 0.006) ||
+      ((pitchSpan + parallaxSpan) >= 0.014 && earSpan >= earVarMin)
+    ) {
       FACE_STATE.lastTurnAt = now;
     }
 
@@ -9336,26 +9351,33 @@
     };
   }
 
-  async function completeFaceLogin(user, dist, snapshotUrl, methodLabel) {
+  async function completeFaceLogin(user, dist, snapshotUrl, methodLabel, opts = {}) {
     if (!user) return false;
     const seatMode = effectiveSeatAuthMode(user);
-    // If seat requires BOTH PIN + Face ID and the user scanned Face ID first (before entering PIN), prompt for PIN Step 2!
+    // If seat requires BOTH PIN + Face ID and the user scanned Face ID first (before entering PIN):
     if (seatMode === 'both' && !FACE_STATE.pending2faUser) {
-      FACE_STATE.pendingPinUser = user;
-      FACE_STATE.streakUser = null;
-      FACE_STATE.streakCount = 0;
-      const emEl = $('authEmailInput');
-      const pinEl = $('authPinInput');
-      if (emEl) emEl.value = user.email;
-      const errEl = $('authErrorBox');
-      if (errEl) errEl.hidden = true;
-      updateAuthFaceUi();
-      setAuthHint(`✓ Live Face ID verified for ${user.full_name} — enter your 4-digit PIN below to complete 2FA`, 'ok');
-      if (pinEl) {
-        pinEl.value = '';
-        setTimeout(() => { try { pinEl.focus(); } catch (_) {} }, 40);
+      const typedPin = val('authPinInput');
+      const expectedPin = String(user.pin_code || '1111').trim();
+      // If the user has ALREADY entered their valid PIN in #authPinInput (e.g. typed before/during scan), both factors are satisfied -> sign in immediately!
+      if (!opts.ignoreTypedPin && typedPin && typedPin === expectedPin) {
+        methodLabel = methodLabel ? `${methodLabel} + PIN 2FA` : 'Face ID + PIN 2FA';
+      } else {
+        FACE_STATE.pendingPinUser = user;
+        FACE_STATE.streakUser = null;
+        FACE_STATE.streakCount = 0;
+        const emEl = $('authEmailInput');
+        const pinEl = $('authPinInput');
+        if (emEl) emEl.value = user.email;
+        const errEl = $('authErrorBox');
+        if (errEl) errEl.hidden = true;
+        setAuthStreak(3, 3);
+        updateAuthFaceUi();
+        setAuthHint(`✓ Live Face ID verified for ${user.full_name} — enter your 4-digit PIN below to complete 2FA`, 'ok');
+        if (pinEl && document.activeElement !== pinEl) {
+          setTimeout(() => { try { pinEl.focus(); } catch (_) {} }, 40);
+        }
+        return '2fa_pin_pending';
       }
-      return '2fa_pin_pending';
     }
 
     FACE_STATE.cooldownUntil = Date.now() + 2500;
@@ -9451,6 +9473,17 @@
       setAuthStreak(0, needed);
       setAuthHint(`${dec.best.name} is configured for Access PIN Only — enter your 4-digit PIN below.`, 'warn');
       return { status: 'face-disabled', best: dec.best, dist: m.bestDist };
+    }
+
+    // If Live Face ID Step 1 is already verified for this user in 'both' mode, hold steady at 100% (never re-loop 1/3..3/3 or wipe PIN input)
+    if (FACE_STATE.pendingPinUser && norm(FACE_STATE.pendingPinUser.email) === norm(dec.best.email)) {
+      setAuthStreak(needed, needed);
+      const typedPin = val('authPinInput');
+      if (typedPin && matchedUser && typedPin === String(matchedUser.pin_code || '1111').trim()) {
+        await completeFaceLogin(matchedUser, m.bestDist, snapshotUrl, 'Face ID + PIN 2FA');
+        return { status: 'verified', user: matchedUser, dist: m.bestDist, method: 'Face ID + PIN 2FA' };
+      }
+      return { status: '2fa-pin-pending', user: matchedUser, dist: m.bestDist };
     }
 
     // If step-up 2FA is waiting for a specific seat, verify it matches that exact seat
@@ -12248,6 +12281,18 @@
 
     const authForm = $('authLoginForm');
     if (authForm) authForm.addEventListener('submit', e => { e.preventDefault(); performLogin(val('authEmailInput'), val('authPinInput')); });
+    const authPinInp = $('authPinInput');
+    if (authPinInp) {
+      authPinInp.addEventListener('input', () => {
+        if (FACE_STATE.pendingPinUser) {
+          const typed = String(authPinInp.value || '').trim();
+          const expected = String(FACE_STATE.pendingPinUser.pin_code || '1111').trim();
+          if (typed && typed === expected) {
+            performLogin(FACE_STATE.pendingPinUser.email, typed);
+          }
+        }
+      });
+    }
 
     const authEnrolJumpBtn = $('authEnrolJumpBtn');
     if (authEnrolJumpBtn) authEnrolJumpBtn.addEventListener('click', async () => {
@@ -12284,12 +12329,25 @@
     const authGateReqSel = $('authGateReqSelect');
     if (authGateReqSel) authGateReqSel.addEventListener('change', e => {
       const m = setWorkspaceAuthMode(e.target.value);
+      // Clear any per-seat override when the user sets the requirement mode directly on the login gate
+      STATE.users.forEach(u => {
+        if (u) {
+          u.auth_mode = '';
+          u.face_required = (m === 'both' || m === 'face_only');
+        }
+      });
       saveLocalAuthAndRecords();
       renderQuickSeatsInAuthGate();
       updateAuthFaceUi();
-      const opt = AUTH_MODE_OPTIONS.find(o => o.value === m) || AUTH_MODE_OPTIONS[1];
+      const opt = AUTH_MODE_OPTIONS.find(o => o.value === m) || AUTH_MODE_OPTIONS[0];
       toast(`Sign-in requirement: ${opt.label}`);
       syncWithCloud(true);
+      // If Face ID was already verified and waiting on PIN ('both' mode), switching to 'either' or 'face_only' logs in immediately!
+      if (FACE_STATE.pendingPinUser && (m === 'either' || m === 'face_only')) {
+        const verifiedUser = FACE_STATE.pendingPinUser;
+        FACE_STATE.pendingPinUser = null;
+        completeFaceLogin(verifiedUser, FACE_STATE.bestDist || 0.2, '', 'Face ID');
+      }
     });
 
     const authCamBtn = $('authCamToggleBtn');

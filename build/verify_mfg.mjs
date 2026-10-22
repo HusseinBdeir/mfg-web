@@ -778,14 +778,18 @@ try {
     await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
     await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.003), { ear: 0.17, yaw: 0.0, parallax3d: 0.0 });
     const faceFirstStep = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
+    // Subsequent camera frames while waiting on PIN Step 2 must hold '2fa-pin-pending' steady (never re-loop 1/3..3/3 or wipe typed PIN)
+    document.getElementById('authPinInput').value = '22';
+    const holdWhileTypingPin = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
+    const pinPreservedDuringScan = document.getElementById('authPinInput').value === '22' && holdWhileTypingPin.status === '2fa-pin-pending';
     const pinSecondStep = await T.performLogin('zeinabrkein@bhfirms.com', '2222');
-    const bothFaceThenPinOk = faceFirstStep.status === '2fa-pin-pending' && pinSecondStep === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
+    const bothFaceThenPinOk = faceFirstStep.status === '2fa-pin-pending' && pinPreservedDuringScan && pinSecondStep === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
 
     // Clean up test enrolments and test blank-email + unique-PIN sign-in
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
     T.selectEnrolSeat('husseinbdeir@bhfirms.com'); await T.clearEnrolment();
     T.selectEnrolSeat('zeinabrkein@bhfirms.com'); await T.clearEnrolment();
-    T.setAuthMode('both');
+    T.setAuthMode('either');
     T.signOut();
     const pinOnlyLogin = await T.performLogin('', '1111');
     const unlockedPinOnly = pinOnlyLogin === true && document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
