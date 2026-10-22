@@ -698,12 +698,13 @@ try {
     const modalText = (document.getElementById('modalBody')?.textContent || '') + ' ' + (document.getElementById('paModalSubtabs')?.textContent || '');
     const noInternalCodes = !/\\(m\\d+/i.test(modalText) && !/\\bbhf_[a-z]/i.test(modalText);
 
-    // (4) Check Policy-Locked state + Admin Privilege Unlock Process
+    // (4) Check Policy-Locked state + Admin Privilege Unlock Process (no redundant "Policy Lock Guard" box)
     const upEl = document.getElementById('f_unitprice');
     const upWrap = document.getElementById('wrap_f_unitprice');
     const upPill = document.querySelector('[data-lock-pill="f_unitprice"]');
     const adminBar = document.getElementById('paAdminLockBar');
-    const startsLocked = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked') && /LOCKED/i.test(upPill.textContent) && adminBar && !adminBar.hidden;
+    const noRedundantPolicyGuardBox = !adminBar || adminBar.hidden === true || getComputedStyle(adminBar).display === 'none';
+    const startsLocked = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked') && /LOCKED/i.test(upPill.textContent) && noRedundantPolicyGuardBox;
 
     // Click the lock pill on Unit Price to open the Admin Privilege Unlock Process
     upPill.click();

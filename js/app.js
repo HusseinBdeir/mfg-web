@@ -1099,6 +1099,17 @@
     return recordDateFor(r, STATE.basis);
   }
 
+  function fmtDateDMY(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s || s === '—') return s || '—';
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+  }
+
+  function recordDateDMY(r) {
+    return fmtDateDMY(recordDate(r));
+  }
+
   function filterRecords(list, opts = {}) {
     const scopeKey = String(opts.company || STATE.company || 'manufacturing-group');
     const isIndustryScope = scopeKey.startsWith('industry:');
@@ -1121,7 +1132,7 @@
         if (d && (d < range.from || d > range.to)) return false;
       }
       if (q) {
-        const hay = Object.keys(r).filter(k => k !== 'id').map(k => r[k]).join(' ').toLowerCase();
+        const hay = (Object.keys(r).filter(k => k !== 'id').map(k => r[k]).join(' ') + ' ' + recordDateDMY(r)).toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -2708,7 +2719,7 @@
                   const cp = String(r.detail || r.desc || '').split('·')[0].trim().slice(0, 20);
                   return `
                   <tr>
-                    <td class="mu">${esc(String(r.date || '').slice(0, 10))}</td>
+                    <td class="mu">${esc(fmtDateDMY(r.date))}</td>
                     <td><span class="m-chip brass">${esc(r.company === 'BBConstruction' ? 'BBC' : (r.company || 'WTC'))}</span></td>
                     <td class="mono">${esc(shortDoc)}</td>
                     <td><b>${esc(r.code)}</b> · ${esc(String(r.account || '').slice(0, 18))}${cp ? ` <span class="mu">(${esc(cp)})</span>` : ''}</td>
@@ -2851,7 +2862,7 @@
         <div class="panel-head"><div class="panel-title"><span>${title}</span></div><span class="panel-meta">${fmtNum(list.length)} rows ${list.length ? exportBtn(panelId, title.replace(/&amp;/g, 'and')) : ''}</span></div>
         <div class="table-wrap"><table class="ledger-table">
           <thead><tr>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${c.label}</th>`).join('')}</tr></thead>
-          <tbody>${list.slice(0, 60).map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'Nothing flagged')}</tbody>
+          <tbody>${list.slice(0, 60).map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(/date/i.test(c.key || '') ? fmtDateDMY(r[c.key]) : (r[c.key] == null ? '—' : r[c.key]))}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'Nothing flagged')}</tbody>
           ${footHtml}
         </table></div>
       </div>`;
@@ -3136,7 +3147,7 @@
                 const qFmt = Math.abs(qVal - Math.round(qVal)) < 0.005 ? fmtNum(qVal, 0) : fmtNum(qVal, 2);
                 return `
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
-                  <td class="mono">${esc(recordDate(r))}${appCell(r, 'sales_tickets')}</td>
+                  <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'sales_tickets')}</td>
                   <td class="mono"><strong>${esc(r.ticket_no || '—')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''} <button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
                   <td>${coBadge(r.company)}</td>
                   <td>${r.sale_type === 'Unregistered' ? '<span title="Unregistered">Unreg.<span class="sr-only">istered</span></span>' : esc(r.sale_type)}</td>
@@ -3161,12 +3172,12 @@
                 <td colspan="8">
                   <b>TOTAL (${fmtNum(saleLoads)} LOADS)</b>
                 </td>
-                <td class="r"><span class="tfoot-col-lbl">QTY</span><b>${fmtNum(sumQty, 1)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">MAT ($)</span><b>${fmtUSD(sumMat, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">TRANS ($)</span><b>${fmtUSD(sumTr, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">EX-VAT</span><b>${fmtUSD(sumNet, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">VAT (11%)</span><b>${fmtUSD(sumVat, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">VAT INCL.</span><b>${fmtUSD(sumTtc, 2)}</b></td>
+                <td class="r"><b>${fmtNum(sumQty, 1)}</b></td>
+                <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTr, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumNet, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
                 <td></td>
               </tr>
             </tfoot>
@@ -3377,7 +3388,7 @@
               <tbody>
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
-                    <td class="mono">${esc(recordDate(r))}${appCell(r, 'raw_purchases')}</td>
+                    <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'raw_purchases')}</td>
                     <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong> <button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
                     <td>${coBadge(r.company)}</td>
                     <td>${relLink('sites', r.site, r.site || '—', true)}</td>
@@ -3632,7 +3643,7 @@
                   const g = guards.get(f.id) || { cls: 'badge-ok', label: '● OK' };
                   return `
                   <tr class="rrow" data-rkey="fuel_intakes" data-rid="${esc(f.id)}">
-                    <td class="mono">${esc(recordDate(f))}${appCell(f, 'fuel_intakes')}</td>
+                    <td class="mono">${esc(recordDateDMY(f))}${appCell(f, 'fuel_intakes')}</td>
                     <td class="mono">${esc(f.ticket_no || '—')}</td>
                     <td>${coBadge(f.company)}</td>
                     <td class="mono">${relLink('equipment', f.equipment, f.equipment, true)}</td>
@@ -3681,7 +3692,7 @@
                     <td>${ce.default_driver ? relLink('drivers', ce.default_driver) : '—'}</td>
                     <td>${ce.day_operator ? relLink('drivers', ce.day_operator) : '—'}</td>
                     <td>${ce.site ? relLink('sites', ce.site) : '—'}</td>
-                    <td class="mono">${esc(String(ce.start_date || '—').slice(0, 10))}</td>
+                    <td class="mono">${esc(fmtDateDMY(ce.start_date))}</td>
                   </tr>
                 `).join('') || emptyRow(8, 'No BU company-equipment assignments match the active filter')}
                 ${showMoreRow('coeq', coEquipRows.length, 8)}
@@ -3775,8 +3786,8 @@
                   <td class="mono">${esc(pr.unit)}</td>
                   <td class="r"><strong>${fmtUSD(pr.unit_price, 2)}</strong></td>
                   <td class="r">${pr.trans_unit_price ? fmtUSD(pr.trans_unit_price, 2) : '—'}</td>
-                  <td class="mono">${esc(pr.start_date || '—')}</td>
-                  <td class="mono">${esc(pr.end_date || 'Open')}</td>
+                  <td class="mono">${esc(fmtDateDMY(pr.start_date))}</td>
+                  <td class="mono">${esc(pr.end_date ? fmtDateDMY(pr.end_date) : 'Open')}</td>
                   <td><span class="badge ${isActive(pr) ? 'badge-ok' : 'badge-warn'}">${isActive(pr) ? 'Active' : 'Lapsed'}</span></td>
                 </tr>
               `).join('') || emptyRow(12, STATE.search ? `No agreements match "${STATE.search}".` : 'No agreements for this entity')}
@@ -3939,7 +3950,7 @@
                     <td class="r">${fmtUSD(c.ar_current, 0)}</td>
                     <td class="r">${Number(c.ar_60_plus || 0) > 0 ? `<span style="color:var(--crit)">${fmtUSD(c.ar_60_plus, 0)}</span>` : '—'}</td>
                     <td class="r"><strong>${fmtUSD(c.ar_balance, 2)}</strong></td>
-                    <td class="mono">${esc(String(c.last_sale || '').slice(0, 10) || '—')}</td>
+                    <td class="mono">${esc(fmtDateDMY(c.last_sale))}</td>
                   </tr>
                 `).join('') || emptyRow(9, q ? `No customers match "${STATE.search}".` : 'No customer balances for this entity')}
                 ${showMoreRow('custs', custs.length, 9)}
@@ -4005,7 +4016,7 @@
               <tbody>
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="receipts" data-rid="${esc(r.id)}">
-                    <td class="mono">${esc(recordDate(r))}${appCell(r, 'receipts')}</td>
+                    <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'receipts')}</td>
                     <td class="mono">${esc(r.name)}${r.reference ? ` <span class="mu">· ${esc(r.reference)}</span>` : ''}</td>
                     <td>${coBadge(r.company)}</td>
                     <td>${relLink('customers', r.customer, r.customer, true)}</td>
@@ -4204,7 +4215,7 @@
               <tbody>
                 ${shown.map(sp => `
                   <tr class="rrow" data-rkey="settlements" data-rid="${esc(sp.id)}">
-                    <td class="mono">${esc(recordDate(sp))}${appCell(sp, 'settlements')}</td>
+                    <td class="mono">${esc(recordDateDMY(sp))}${appCell(sp, 'settlements')}</td>
                     <td class="mono">${esc(sp.name)}${sp.reference ? ` <span class="mu">· ${esc(sp.reference)}</span>` : ''}</td>
                     <td>${coBadge(sp.company)}</td>
                     <td>${relLink('suppliers', sp.supplier, sp.supplier, true)}</td>
@@ -4341,7 +4352,7 @@
                   const sgn = expenseSign(x);
                   return `
                   <tr class="rrow" data-rkey="expenses" data-rid="${esc(x.id)}">
-                    <td class="mono">${esc(recordDate(x))}${appCell(x, 'expenses')}</td>
+                    <td class="mono">${esc(recordDateDMY(x))}${appCell(x, 'expenses')}</td>
                     <td>${coBadge(x.company)}</td>
                     <td>${relLink('expense_categories', x.category, x.category, true)}</td>
                     <td>${x.subcategory ? relLink('expense_subcategories', x.subcategory) : '—'}${x.reference ? ` <span class="mu">· ${esc(x.reference)}</span>` : ''}</td>
@@ -4385,7 +4396,7 @@
               <tbody>
                 ${shownSal.map(s => `
                   <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
-                    <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
+                    <td class="mono">${esc(recordDateDMY(s))}${appCell(s, 'salaries')}</td>
                     <td class="mono">${esc(s.payroll_month)}</td>
                     <td>${coBadge(s.company)}</td>
                     <td>${relLink('employments', s.staff, s.staff, true)}</td>
@@ -4595,7 +4606,7 @@
               <tbody>
                 ${shownSal.map(s => `
                   <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
-                    <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
+                    <td class="mono">${esc(recordDateDMY(s))}${appCell(s, 'salaries')}</td>
                     <td class="mono">${esc(s.payroll_month)}</td>
                     <td>${coBadge(s.company)}</td>
                     <td><strong>${esc(s.staff)}</strong></td>
@@ -4634,8 +4645,8 @@
                     <td><strong>${esc(e.staff)}</strong>${appCell(e, 'employments')}</td>
                     <td>${coBadge(e.company)}</td>
                     <td>${esc(e.type || 'Regular')}</td>
-                    <td class="mono">${esc(e.start_date || '—')}</td>
-                    <td class="mono">${esc(e.end_date || 'Open')}</td>
+                    <td class="mono">${esc(fmtDateDMY(e.start_date))}</td>
+                    <td class="mono">${esc(e.end_date ? fmtDateDMY(e.end_date) : 'Open')}</td>
                     <td><span class="badge ${ended ? 'badge-warn' : 'badge-ok'}">${ended ? 'Ended' : (e.status || 'Current')}</span></td>
                     <td class="r"><strong>${fmtUSD(e.salary_usd, 2)}</strong></td>
                     <td class="r">${e.daily_rate ? fmtUSD(e.daily_rate, 2) : '—'}</td>
@@ -4673,8 +4684,8 @@
                     <td>${relLink('employments', l.staff, l.staff, true)}${appCell(l, 'logistics_allowances')}</td>
                     <td>${l.site ? relLink('sites', l.site) : '—'}</td>
                     <td class="mono">${l.equipment ? relLink('equipment', l.equipment) : '—'}</td>
-                    <td class="mono">${esc(l.start_date || '—')}</td>
-                    <td class="mono">${esc(l.end_date || 'Open')}</td>
+                    <td class="mono">${esc(fmtDateDMY(l.start_date))}</td>
+                    <td class="mono">${esc(l.end_date ? fmtDateDMY(l.end_date) : 'Open')}</td>
                     <td>${esc(l.working_days || 'Mon–Sat')}</td>
                     <td class="r"><strong>${fmtUSD(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500), 2)}</strong></td>
                   </tr>`;
@@ -4703,7 +4714,7 @@
               <tbody>
                 ${shownAtt.map(a => `
                   <tr class="rrow" data-rkey="attendance" data-rid="${esc(a.id)}">
-                    <td class="mono">${esc(a.date)}${appCell(a, 'attendance')}</td>
+                    <td class="mono">${esc(fmtDateDMY(a.date))}${appCell(a, 'attendance')}</td>
                     <td>${coBadge(a.company)}</td>
                     <td><strong>${esc(a.staff)}</strong></td>
                     <td><span class="badge ${/Absent|Sick/i.test(a.status) ? 'badge-warn' : 'badge-ok'}">${esc(a.status || 'Present')}</span></td>
@@ -4815,7 +4826,7 @@
             <tbody>
               ${sortRows((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)), 'soa', 'date', 'desc').map(r => `
                 <tr>
-                  <td class="mono">${esc(String(r.date || '').slice(0, 10))}</td>
+                  <td class="mono">${esc(fmtDateDMY(r.date))}</td>
                   <td>${coBadge(r.company || 'WTC')}</td>
                   <td class="mono">${esc(r.doc || '—')}</td>
                   <td class="mono"><strong>${esc(r.code)}</strong></td>
@@ -4872,13 +4883,13 @@
     const displayRows = rows.length > 250 ? rows.slice(0, 250) : rows;
     return `<table class="ledger-table">
       <thead><tr>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${c.label}</th>`).join('')}</tr></thead>
-      <tbody>${displayRows.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key] == null || r[c.key] === '' ? '—' : r[c.key])}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'No rows for this entity / period')}</tbody>
+      <tbody>${displayRows.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r' : ''}${c.mono ? ' mono' : ''}">${c.fmt ? c.fmt(r[c.key], r) : esc(/date|^(last|start|end)$/i.test(c.key || '') ? fmtDateDMY(r[c.key]) : (r[c.key] == null || r[c.key] === '' ? '—' : r[c.key]))}</td>`).join('')}</tr>`).join('') || emptyRow(cols.length, 'No rows for this entity / period')}</tbody>
       ${foot ? `<tfoot><tr>${foot.map(f => `<td class="${f.r ? 'r' : ''}" ${f.span ? `colspan="${f.span}"` : ''}>${f.v}</td>`).join('')}</tr></tfoot>` : ''}
     </table>`;
   }
   const C = {
     usd0: v => fmtUSD(v, 0), usd2: v => fmtUSD(v, 2), num0: v => fmtNum(v, 0), num1: v => fmtNum(v, 1), num2: v => fmtNum(v, 2),
-    date: v => esc(String(v || '').slice(0, 10) || '—')
+    date: v => esc(fmtDateDMY(v))
   };
 
   function groupBy(rows, keyFn) {
@@ -6158,7 +6169,7 @@
     });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
-    const adminHeaderHtml = `<div id="paAdminLockBar"></div><div id="paAdminUnlockBox" hidden></div>`;
+    const adminHeaderHtml = `<div id="paAdminUnlockBox" hidden></div>`;
     const uoms = uniqSorted(((SEED.records && SEED.records.uoms) || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
 
     if (window.MFG_FORMS && !['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(fType)) {
@@ -6484,7 +6495,9 @@
       if (w.hidden) return;
       const fid = w.getAttribute('data-policy-lock');
       const lblEl = w.querySelector('.pa-fld-lbl');
-      const lbl = lblEl ? lblEl.textContent.replace(/\s*\*$/, '').trim() : fid;
+      const lblClone = lblEl ? lblEl.cloneNode(true) : null;
+      if (lblClone) lblClone.querySelectorAll('[hidden]').forEach(h => h.remove());
+      const lbl = (lblClone ? lblClone.textContent : (lblEl ? lblEl.textContent : fid)).replace(/\s*\*$/, '').trim();
       const reason = w.getAttribute('data-lock-reason') || 'Locked by business rule';
       const el = $(fid);
       const lockedNow = !!(el && el.dataset.policyLockedNow === '1');
@@ -6496,59 +6509,12 @@
   }
 
   function renderAdminLockBar() {
+    // Removed (2026-10-22): the "Policy Lock Guard" summary box (#paAdminLockBar) is redundant because clicking
+    // any field's 🔒 LOCKED · Unlock pill opens the Admin Privilege Unlock Process (#paAdminUnlockBox) directly.
     const bar = $('paAdminLockBar');
-    if (!bar) return;
-    const fields = getFormPolicyFields();
-    if (!fields.length) {
+    if (bar) {
       bar.hidden = true;
-      return;
-    }
-    bar.hidden = false;
-    const lockedList = fields.filter(f => f.lockedNow);
-    const unlockedList = fields.filter(f => f.adminOpen);
-    const roleAllowedList = fields.filter(f => f.canUnlock);
-    const who = activeUser();
-    const isAdmin = isAdminUser(who);
-    bar.className = 'pa-admin-lock-bar' + (unlockedList.length ? ' has-overrides' : '');
-    const lockedNames = lockedList.slice(0, 5).map(f => f.label).join(', ') + (lockedList.length > 5 ? ` +${lockedList.length - 5} more` : '');
-    bar.innerHTML = `
-      <div class="pa-admin-lock-info">
-        <span class="pa-admin-badge ${unlockedList.length ? 'override' : ''}">
-          ${unlockedList.length ? '🔓 ADMIN OVERRIDE ACTIVE' : '🔒 POLICY LOCK GUARD'}
-        </span>
-        <span>
-          <b>${lockedList.length}</b> policy-locked field${lockedList.length === 1 ? '' : 's'}${lockedList.length ? ` (${esc(lockedNames)})` : ''}
-          ${unlockedList.length ? ` · <b class="good-text">${unlockedList.length} unlocked by Admin (${esc(unlockedList.map(f => f.label).join(', '))})</b>` : ''}
-        </span>
-        <small class="muted">Seat: <b>${esc(who.full_name)}</b> (${esc(isAdmin ? 'Admin Privilege Verified' : `${who.role} · ${roleAllowedList.length}/${fields.length} Role Unlocks`)})</small>
-      </div>
-      <div class="pa-admin-lock-actions">
-        ${lockedList.length ? `<button type="button" class="pa-admin-btn" id="paOpenAdminUnlockBtn">🔓 ${isAdmin ? 'Admin Unlock Process…' : (roleAllowedList.length ? `Role Unlock (${roleAllowedList.length}/${fields.length})…` : 'Request Admin Unlock…')}</button>` : ''}
-        ${unlockedList.length ? `<button type="button" class="pa-admin-btn secondary" id="paRelockAllBtn">🔒 Re-Lock All (${unlockedList.length})</button>` : ''}
-      </div>
-    `;
-    const openBtn = $('paOpenAdminUnlockBtn');
-    if (openBtn) {
-      openBtn.addEventListener('click', () => {
-        const firstRoleLocked = lockedList.find(f => f.canUnlock);
-        const firstLocked = firstRoleLocked ? firstRoleLocked.id : (lockedList[0] ? lockedList[0].id : (fields[0] ? fields[0].id : ''));
-        openAdminUnlockPrompt(firstLocked);
-      });
-    }
-    const relockBtn = $('paRelockAllBtn');
-    if (relockBtn) {
-      relockBtn.addEventListener('click', () => {
-        FORM_UI.adminUnlocked = {};
-        FORM_UI.priceManual = false;
-        FORM_UI.transManual = false;
-        FORM_UI.methodManual = false;
-        FORM_UI.uomManual = false;
-        FORM_UI.qtyManual = false;
-        const box = $('paAdminUnlockBox');
-        if (box) box.hidden = true;
-        recalcForm();
-        toast('All policy-locked fields restored to Dataverse rules', 'ok');
-      });
+      bar.innerHTML = '';
     }
   }
 
@@ -6563,6 +6529,7 @@
     const isAdmin = isAdminUser(who);
     const canUnlockTarget = isAdmin || canUnlockField(target.id, who);
     const roleUnlockableFields = fields.filter(f => isAdmin || f.canUnlock);
+    const unlockedList = fields.filter(f => f.adminOpen);
     box.hidden = false;
     box.innerHTML = `
       <div class="pa-admin-unlock-hdr">
@@ -6583,6 +6550,7 @@
         <input type="text" id="paAdminUnlockNote" value="${esc(FORM_UI.unlockNote || '')}" placeholder="Optional override reason (e.g. GM spot rate)...">
         <button type="button" class="pa-admin-btn" id="paConfirmFieldUnlockBtn">🔓 Authorize &amp; Unlock "${esc(target.label)}"</button>
         <button type="button" class="pa-admin-btn" id="paConfirmAllUnlockBtn">🔓 ${isAdmin || roleUnlockableFields.length === fields.length ? `Unlock All Policy Fields (${fields.length})` : (roleUnlockableFields.length ? `Unlock Role-Authorized Fields (${roleUnlockableFields.length})` : `Unlock All Policy Fields (${fields.length})`)}</button>
+        ${unlockedList.length ? `<button type="button" class="pa-admin-btn secondary" id="paRelockAllBtn">🔒 Re-Lock All (${unlockedList.length})</button>` : ''}
         <button type="button" class="pa-admin-btn secondary" id="paCancelUnlockBtn">Cancel</button>
       </div>
     `;
@@ -6646,6 +6614,20 @@
           return;
         }
         toast('Admin privilege or valid Admin PIN (2401) is required to unlock policy-locked fields', 'err');
+      });
+    }
+    const btnRelockAll = $('paRelockAllBtn');
+    if (btnRelockAll) {
+      btnRelockAll.addEventListener('click', () => {
+        FORM_UI.adminUnlocked = {};
+        FORM_UI.priceManual = false;
+        FORM_UI.transManual = false;
+        FORM_UI.methodManual = false;
+        FORM_UI.uomManual = false;
+        FORM_UI.qtyManual = false;
+        box.hidden = true;
+        recalcForm();
+        toast('All policy-locked fields restored to Dataverse rules', 'ok');
       });
     }
     const btnCancel = $('paCancelUnlockBtn');
@@ -8941,6 +8923,7 @@
       if (/price|cost|amount|total|vat|discount|tip|limit|salary|balance|adj|principal|value|change|rate_usd|daily_usd|paid|spent|sales_ttc|raw_cost/.test(key) && !/rate$|pct|factor|ton_factor|exchange|count|loads|days|hours/.test(key)) return fmtUSD(v, 2);
       return fmtNum(v, Number.isInteger(v) ? 0 : 2);
     }
+    if (/date|last_sale|last_purchase/i.test(key)) return fmtDateDMY(v);
     return String(v);
   }
 
@@ -9544,7 +9527,7 @@
                       let txt = v == null || v === '' ? '—' : String(v);
                       if (isMoney && v != null && v !== '') txt = fmtUSD(v, 2);
                       else if (isNum && v != null && v !== '') txt = fmtNum(v, /qty|capacity|percentage/.test(c) ? 2 : 0);
-                      else if (/date/.test(c) && v) txt = String(v).slice(0, 10);
+                      else if (/date/.test(c) && v) txt = fmtDateDMY(v);
                       const lk = INSPECT_LOOKUP_FIELD_TARGET[c];
                       const cellHtml = (lk && lk !== sg.targetKey && v != null && v !== '' && txt !== '—')
                         ? `<span class="rel-link" data-rel-key="${esc(lk)}" data-rel-val="${esc(v)}">${esc(txt)}<span class="rel-arr">↗</span></span>`
@@ -13735,7 +13718,7 @@
                         <td>${coBadge(p.company)}</td>
                         <td>${esc(p.site)}</td>
                         <td><span class="badge ${p.direction === 'IN' ? 'badge-ok' : 'badge-warn'}">${esc(p.direction)}</span></td>
-                        <td class="mono">${esc(p.time)} <small class="muted">${esc(p.date.slice(5))}</small></td>
+                        <td class="mono">${esc(p.time)} <small class="muted">${esc(fmtDateDMY(p.date))}</small></td>
                         <td>${esc(p.method)}</td>
                         <td class="r mono">${p.paired_hours != null ? `${fmtNum(p.paired_hours, 1)}h${p.overtime_hours > 0 ? ` (+${fmtNum(p.overtime_hours, 1)}h OT)` : ''}` : 'Active'}</td>
                         <td><button type="button" class="tkt-print-mini" data-flip-punch="${esc(p.id)}" title="Flip IN/OUT direction">⇄</button></td>
@@ -13819,7 +13802,7 @@
                   <tbody>
                     ${activeRecentRows.map(r => `
                       <tr class="rrow" data-rkey="${kMode === 'raw' ? 'raw_purchases' : (kMode === 'fuel' ? 'fuel_intakes' : 'sales_tickets')}" data-rid="${esc(r.id)}">
-                        <td class="mono"><strong>#${esc(r.ticket_no || '—')}</strong><div class="drv-sub">${esc(String(r.date || '').slice(5, 10))}</div></td>
+                        <td class="mono"><strong>#${esc(r.ticket_no || '—')}</strong><div class="drv-sub">${esc(fmtDateDMY(r.date))}</div></td>
                         <td class="kiosk-rec-name-cell">
                           <strong>${esc(kMode === 'raw' ? (r.site || r.site_owner) : (kMode === 'fuel' ? r.equipment : r.customer))}</strong>
                           <div class="drv-sub">${esc(kMode === 'raw' ? (r.product || '') : (kMode === 'fuel' ? (r.item || r.fuel_type || 'Diesel') : (r.product || '')))}</div>

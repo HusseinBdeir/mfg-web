@@ -8120,23 +8120,10 @@ table.rdl-meta-box td.rdl-meta-val.bold {
   color: var(--muted);
 }
 
-/* Policy Lock & Admin Privilege Bar (#paAdminLockBar) */
-.pa-admin-lock-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  border-radius: 7px;
-  border: 1px solid var(--brass-border);
-  background: var(--surface-2);
-  font-size: 11.5px;
-}
-.pa-admin-lock-bar.has-overrides {
-  border-color: rgba(22, 163, 74, 0.45);
-  background: rgba(22, 163, 74, 0.07);
+/* Policy Lock & Admin Privilege Bar (#paAdminLockBar — retired, hidden) */
+.pa-admin-lock-bar,
+#paAdminLockBar {
+  display: none !important;
 }
 .pa-admin-lock-info {
   display: flex;
