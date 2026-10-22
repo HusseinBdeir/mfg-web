@@ -391,6 +391,12 @@
     if (num != null && den) return ((Number(num) / Number(den)) * 100).toFixed(1) + '%';
     return (Number(v || 0) * 100).toFixed(1) + '%';
   }
+  function fmtDateDMY(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s || s === '—') return s || '—';
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+  }
 
   // ==================== POWER BI VISUAL COMPONENT LIBRARY ====================
 
@@ -788,7 +794,7 @@
       const formatted = c.fmt ? c.fmt(val, {}, -1) : fmtNum(val, isAvgCol ? 2 : 0);
       const wrapped = /<[bB]|<strong/.test(String(formatted)) ? formatted : `<b>${formatted}</b>`;
       footCells.push({
-        v: isAvgCol ? `<span class="tfoot-col-lbl">AVG</span>${wrapped}` : wrapped,
+        v: isAvgCol ? `<span class="tfoot-avg-tag">Avg </span>${wrapped}` : wrapped,
         r: true,
         neg: (c.negRed || c.bar) && val < -0.0001
       });
@@ -878,7 +884,10 @@
                   barHtml = `<span class="pbi-bar-bg ${bTone}" style="width:${w}%"></span>`;
                 }
                 const isCoCol = !c.fmt && (c.key === 'company' || c.key === 'bu');
-                const formatted = c.fmt ? c.fmt(rawVal, r, absIdx) : (isCoCol ? shortCoHtml(rawVal) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal)));
+                let formatted = c.fmt ? c.fmt(rawVal, r, absIdx) : (isCoCol ? shortCoHtml(rawVal) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal)));
+                if (/date|last_sale|last_purchase/i.test(String(c.key || '')) || /^(Date|Start|End|Start Date|End Date|Last Sale|Last Purchase|Tx Date|Rpt Date|Last Paid)$/i.test(String(c.label || ''))) {
+                  formatted = String(formatted).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3-$2-$1');
+                }
                 return `<td class="${cls}">${barHtml}${formatted}</td>`;
               }).join('')}</tr>`;
             }).join('') || `<tr><td colspan="${cols.length}" class="empty-row" style="text-align:center;padding:18px;color:var(--muted)">${esc(opts.emptyMsg || 'No matching rows for the selected filters')}</td></tr>`}
@@ -3693,7 +3702,7 @@
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
-                    else if (/date/.test(c) && v) cell = String(v).slice(0, 10);
+                    else if (/date/.test(c) && v) cell = fmtDateDMY(v);
 
                     const lkTarget = HUB_LOOKUP_TARGETS[c];
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
@@ -3735,7 +3744,7 @@
                     const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
                     const val = isAvg ? (sum / cnt) : sum;
                     const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
-                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-col-lbl">AVG</span>' : ''}<b>${txt}</b></td>`);
+                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-avg-tag">Avg </span>' : ''}<b>${txt}</b></td>`);
                   }
                   return out.join('');
                 })()}
@@ -3842,7 +3851,7 @@
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
-                    else if (/date/.test(c) && v) cell = String(v).slice(0, 10);
+                    else if (/date/.test(c) && v) cell = fmtDateDMY(v);
 
                     const lkTarget = HUB_LOOKUP_TARGETS[c];
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
@@ -3884,7 +3893,7 @@
                     const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
                     const val = isAvg ? (sum / cnt) : sum;
                     const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
-                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-col-lbl">AVG</span>' : ''}<b>${txt}</b></td>`);
+                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-avg-tag">Avg </span>' : ''}<b>${txt}</b></td>`);
                   }
                   return out.join('');
                 })()}

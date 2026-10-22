@@ -10134,8 +10134,10 @@
     }
 
     // 2. BHFIRMS Multi-Device Cloud Relay (GitHub Pages + mobile + desktop)
-    if (!CLOUD_URL || !CLOUD_KEY || navigator.webdriver || window.__MFG_HEADLESS_TEST || PARAMS.get('nosse') === '1' || (location.port && Number(location.port) >= 8095)) {
-      STATE.cloudStatus = '● Ready (Local)';
+    // Public demo/autologin visitors on GitHub Pages stay in local sandbox so they never mutate live BHFIRMS cloud state
+    const isPublicDemoSandbox = !IS_LOCAL && (PARAMS.get('demo') === '1' || PARAMS.get('autologin') === '1' || STATE.demoVisitor);
+    if (!CLOUD_URL || !CLOUD_KEY || navigator.webdriver || window.__MFG_HEADLESS_TEST || PARAMS.get('nosse') === '1' || (location.port && Number(location.port) >= 8095) || isPublicDemoSandbox) {
+      STATE.cloudStatus = isPublicDemoSandbox ? '● Demo Sandbox' : '● Ready (Local)';
       updateCloudBadges();
       return;
     }
@@ -14176,7 +14178,7 @@
       titEl.textContent = canonicalViewTitle;
       titEl.title = canonicalViewTitle;
     }
-    document.title = `${canonicalViewTitle} · ISABI Mfg`;
+    document.title = `${canonicalViewTitle} · ISABI Command`;
 
     const aiScope = $('aiDrawerScope');
     if (aiScope) aiScope.textContent = `${String(coFullLbl).split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
@@ -14855,15 +14857,51 @@
       STATE.activeKiosk = qKiosk.toLowerCase();
       STATE.view = 'kiosks';
     }
+    const INDUSTRY_SLUG_MAP = {
+      manufacturing: 'Manufacturing', mfg: 'Manufacturing',
+      hospitality: 'Hospitality & Resorts', hsp: 'Hospitality & Resorts',
+      trading: 'Automotive & Heavy Trading', trd: 'Automotive & Heavy Trading',
+      realestate: 'Real Estate & Property', prop: 'Real Estate & Property',
+      insurance: 'Insurance & Brokerage', ins: 'Insurance & Brokerage',
+      logistics: 'Logistics & Marine', log: 'Logistics & Marine',
+      pos: 'Retail & F&B Outlets', retail: 'Retail & F&B Outlets',
+      energy: 'Energy & Fuel Distribution', nrg: 'Energy & Fuel Distribution',
+      healthcare: 'Healthcare & Diagnostics', med: 'Healthcare & Diagnostics',
+      holding: 'Holding & Treasury', hld: 'Holding & Treasury'
+    };
+    const qIndRaw = String(PARAMS.get('industry') || '').trim().toLowerCase();
+    const qScale = PARAMS.get('scale') === '1';
+    const mappedInd = INDUSTRY_SLUG_MAP[qIndRaw] || (ENTERPRISE_INDUSTRIES.find(x => x.id.toLowerCase() === qIndRaw || x.code.toLowerCase() === qIndRaw) || {}).id || '';
+    if (qScale || (mappedInd && mappedInd !== 'Manufacturing')) {
+      STATE.enterpriseScalePreview = true;
+      STATE.enterprisePreviewCompanies = buildEnterprisePreviewCatalog();
+    }
+    if (mappedInd) {
+      STATE.companySwitchIndFilter = mappedInd;
+      if (mappedInd === 'Manufacturing' && !STATE.enterpriseScalePreview) {
+        STATE.company = 'manufacturing-group';
+      } else {
+        const indKey = `industry:${mappedInd}`;
+        COMPANY_BU_MATCH[indKey] = null;
+        COMPANY_LABELS[indKey] = `All ${mappedInd} Industry`;
+        STATE.company = indKey;
+      }
+    }
     // Keep harmless flags (demo, nosse) but strip credentials / one-shot params; do not append #<view> while locked on #authGate
     const keep = new URLSearchParams();
     ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
     const lockedCleanUrl = location.pathname + (keep.toString() ? '?' + keep.toString() : '');
 
+    const autoLoginDemo = PARAMS.get('autologin') === '1' && !window.__MFG_HEADLESS_TEST;
     const swIdx = swResumeEmail ? STATE.users.findIndex(u => norm(u.email) === norm(swResumeEmail)) : -1;
     if (inviteEmail && invitePin) {
       history.replaceState({ view: STATE.view }, '', lockedCleanUrl); // never leave the PIN in the address bar / history
       performLogin(inviteEmail, invitePin).then(ok => { if (!ok || ok === '2fa_pending') openAuthGate(inviteEmail); });
+    } else if (autoLoginDemo) {
+      STATE.demoVisitor = true;
+      history.replaceState({ view: STATE.view }, '', lockedCleanUrl);
+      const ownerSeat = STATE.users.find(u => isOwner(u)) || STATE.users[0];
+      performLogin(ownerSeat.email, ownerSeat.pin_code || '1111', { bypass2FA: true, method: 'Interactive Sandbox' });
     } else if (swIdx >= 0 && STATE.users[swIdx].status !== 'Suspended') {
       STATE.activeUserIdx = swIdx;
       closeAuthGate();

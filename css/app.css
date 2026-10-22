@@ -10232,43 +10232,56 @@ table.ledger-table td.td-truck-drv {
   white-space: normal;
   overflow-wrap: break-word;
 }
-#salesPanel table.ledger-table td.mono {
-  white-space: normal;
-}
-#salesPanel table.ledger-table th:nth-child(1),
-#salesPanel table.ledger-table td:nth-child(1) {
+#salesPanel table.ledger-table thead th:nth-child(1),
+#salesPanel table.ledger-table tbody td:nth-child(1) {
   width: 72px;
+  white-space: nowrap;
 }
-#salesPanel table.ledger-table th:nth-child(2),
-#salesPanel table.ledger-table td:nth-child(2) {
-  max-width: 78px;
+#salesPanel table.ledger-table thead th:nth-child(2),
+#salesPanel table.ledger-table tbody td:nth-child(2) {
+  max-width: 68px;
   white-space: normal;
   overflow-wrap: break-word;
 }
-#salesPanel table.ledger-table th:nth-child(3),
-#salesPanel table.ledger-table td:nth-child(3) {
-  width: 42px;
+#salesPanel table.ledger-table thead th:nth-child(3),
+#salesPanel table.ledger-table tbody td:nth-child(3) {
+  width: 38px;
 }
-#salesPanel table.ledger-table th:nth-child(4),
-#salesPanel table.ledger-table td:nth-child(4) {
-  width: 52px;
+#salesPanel table.ledger-table thead th:nth-child(4),
+#salesPanel table.ledger-table tbody td:nth-child(4) {
+  width: 46px;
 }
-#salesPanel table.ledger-table td:nth-child(5),
-#salesPanel table.ledger-table td:nth-child(6),
-#salesPanel table.ledger-table td:nth-child(7),
-#salesPanel table.ledger-table td:nth-child(8) {
+#salesPanel table.ledger-table tbody td:nth-child(5),
+#salesPanel table.ledger-table tbody td:nth-child(6),
+#salesPanel table.ledger-table tbody td:nth-child(7),
+#salesPanel table.ledger-table tbody td:nth-child(8) {
   overflow-wrap: anywhere;
 }
-#salesPanel table.ledger-table th:nth-child(7),
-#salesPanel table.ledger-table td:nth-child(7) {
-  max-width: 72px;
+#salesPanel table.ledger-table thead th:nth-child(5),
+#salesPanel table.ledger-table tbody td:nth-child(5) {
+  max-width: 96px;
   white-space: normal;
 }
-#salesPanel table.ledger-table th:nth-child(15),
-#salesPanel table.ledger-table td:nth-child(15) {
-  width: 54px;
+#salesPanel table.ledger-table thead th:nth-child(6),
+#salesPanel table.ledger-table tbody td:nth-child(6) {
+  max-width: 78px;
+  white-space: normal;
 }
-#salesPanel table.ledger-table td:nth-child(15) .badge {
+#salesPanel table.ledger-table thead th:nth-child(7),
+#salesPanel table.ledger-table tbody td:nth-child(7) {
+  max-width: 64px;
+  white-space: normal;
+}
+#salesPanel table.ledger-table thead th:nth-child(8),
+#salesPanel table.ledger-table tbody td:nth-child(8) {
+  width: 68px;
+  max-width: 72px;
+}
+#salesPanel table.ledger-table thead th:nth-child(15),
+#salesPanel table.ledger-table tbody td:nth-child(15) {
+  width: 48px;
+}
+#salesPanel table.ledger-table tbody td:nth-child(15) .badge {
   white-space: normal;
 }
 .mini-table-grid table.ledger-table th,
@@ -10277,19 +10290,47 @@ table.ledger-table td.td-truck-drv {
   font-size: 11.4px;
 }
 
-/* Allow right-aligned table headers & colspan tfoot summary cells to wrap cleanly without stretching columns */
+/* Clean, single-line ledger tfoot bar & strict no-wrap on all numeric/currency cells */
 table.ledger-table th.r,
 table.m-grid th.r {
   white-space: normal;
   line-height: 1.18;
 }
+table.ledger-table tbody td.r,
+table.ledger-table tfoot tr td.r,
+table.m-grid tbody td.n,
+table.m-grid tfoot tr td.n {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  font-variant-numeric: tabular-nums;
+}
+table.ledger-table tfoot tr td,
+table.m-grid tfoot tr td {
+  background: color-mix(in srgb, var(--brass) 8%, var(--surface-2));
+  color: var(--ink);
+  font-weight: 700;
+  border-top: 2px solid var(--brass);
+  border-bottom: 2px solid var(--brass-border);
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  vertical-align: middle;
+}
 table.ledger-table tfoot tr td:first-child,
 table.ledger-table tfoot tr td[colspan],
 table.m-grid tfoot tr td:first-child,
 table.m-grid tfoot tr td[colspan] {
-  white-space: normal;
-  line-height: 1.3;
-  max-width: 200px;
+  white-space: nowrap !important;
+  line-height: 1.25;
+  letter-spacing: 0.015em;
+}
+.tfoot-avg-tag {
+  display: inline;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-right: 2px;
 }
 .tfoot-col-lbl {
   font-size: 9px;
@@ -10305,13 +10346,13 @@ table.m-grid tfoot tr td[colspan] {
 }
 
 /* Allow long agreement codes, vouchers & composite mono cells to wrap instead of forcing 300px+ columns */
-#pricingPanel table.ledger-table td:first-child,
-#soaPanel table.ledger-table td.mono:nth-child(3),
-#rcptPanel table.ledger-table td.mono:nth-child(2),
-#settlePanel table.ledger-table td.mono:nth-child(2),
-#pbiCanvasPanel table.ledger-table td.mono,
-#tablesHubPanel table.ledger-table td.mono,
-#univRegPanel table.ledger-table td.mono {
+#pricingPanel table.ledger-table tbody td:first-child,
+#soaPanel table.ledger-table tbody td.mono:nth-child(3),
+#rcptPanel table.ledger-table tbody td.mono:nth-child(2),
+#settlePanel table.ledger-table tbody td.mono:nth-child(2),
+#pbiCanvasPanel table.ledger-table tbody td.mono:not(:first-child),
+#tablesHubPanel table.ledger-table tbody td.mono:not(:first-child),
+#univRegPanel table.ledger-table tbody td.mono:not(:first-child) {
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -10401,22 +10442,28 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
 
   /* 13–15 columns (#salesPanel 15-col, #payStaffRegPanel 15-col, P04 Sales, P05 Pricing, P10 Fleet) */
   table.ledger-table:has(thead th:nth-child(13)) th,
-  table.ledger-table:has(thead th:nth-child(13)) td,
+  table.ledger-table:has(thead th:nth-child(13)) td {
+    padding: 6px 4px;
+    font-size: 11.6px;
+  }
   #salesPanel table.ledger-table th,
   #salesPanel table.ledger-table td {
-    padding: 6px 4.5px;
-    font-size: 11.6px;
+    padding: 5.5px 3.2px;
+    font-size: 11.5px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th,
   #salesPanel table.ledger-table th {
-    font-size: 10px;
+    font-size: 9.8px;
     letter-spacing: 0.015em;
     line-height: 1.15;
   }
-  table.ledger-table:has(thead th:nth-child(13)) tfoot tr td,
-  #salesPanel table.ledger-table tfoot tr td {
-    padding: 6.5px 4.5px;
+  table.ledger-table:has(thead th:nth-child(13)) tfoot tr td {
+    padding: 6.5px 4px;
     font-size: 11.2px;
+  }
+  #salesPanel table.ledger-table tfoot tr td {
+    padding: 6.5px 3.2px;
+    font-size: 10.9px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th:first-child,
   table.ledger-table:has(thead th:nth-child(13)) td:first-child,
@@ -10607,10 +10654,10 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
     font-size: 11.4px;
   }
   .table-wrap {
-    max-height: clamp(230px, calc(100dvh - 285px), 450px);
+    max-height: clamp(360px, calc(100dvh - 205px), 620px);
   }
   .panel-card:has(.sales-entity-recon) .table-wrap {
-    max-height: clamp(210px, calc(100dvh - 345px), 420px);
+    max-height: clamp(340px, calc(100dvh - 245px), 580px);
   }
 }
 
@@ -10665,10 +10712,10 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
     font-size: 10.6px;
   }
   .table-wrap {
-    max-height: clamp(220px, calc(100dvh - 282px), 318px);
+    max-height: clamp(320px, calc(100dvh - 190px), 460px);
   }
   .panel-card:has(.sales-entity-recon) .table-wrap {
-    max-height: clamp(210px, calc(100dvh - 315px), 285px);
+    max-height: clamp(300px, calc(100dvh - 220px), 430px);
   }
 }
 
@@ -10682,10 +10729,10 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 2px 6px;
-  margin-left: 4px;
-  font-size: 10.5px;
+  gap: 2px;
+  padding: 1px 4.5px;
+  margin-left: 2px;
+  font-size: 10px;
   font-weight: 700;
   border-radius: 4px;
   border: 1px solid var(--brass-border);
@@ -10693,7 +10740,7 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
   color: var(--ink);
   cursor: pointer;
   vertical-align: middle;
-  line-height: 1.3;
+  line-height: 1.15;
   transition: background 0.14s, border-color 0.14s, transform 0.1s;
 }
 .tkt-print-mini:hover {

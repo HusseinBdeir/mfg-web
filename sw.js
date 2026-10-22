@@ -1,9 +1,9 @@
-const CACHE = 'isabi-mfg-v9.4';
+const CACHE = 'isabi-mfg-v9.6';
 const SHELL = [
   './',
   './index.html',
-  './css/app.css?v=9.4',
-  './vendor/face-api.js?v=9.4',
+  './css/app.css?v=9.6',
+  './vendor/face-api.js?v=9.6',
   './vendor/models/tiny_face_detector_model-weights_manifest.json',
   './vendor/models/tiny_face_detector_model.bin',
   './vendor/models/ssd_mobilenetv1_model-weights_manifest.json',
@@ -14,14 +14,14 @@ const SHELL = [
   './vendor/models/face_landmark_68_tiny_model.bin',
   './vendor/models/face_recognition_model-weights_manifest.json',
   './vendor/models/face_recognition_model.bin',
-  './js/face.js?v=9.4',
-  './js/endpoints.js?v=9.4',
-  './js/seed_data.js?v=9.4',
-  './js/forms_engine.js?v=9.4',
-  './js/pbi_pages.js?v=9.4',
-  './js/rdl_reports.js?v=9.4',
-  './js/kiosk_print.js?v=9.4',
-  './js/app.js?v=9.4',
+  './js/face.js?v=9.6',
+  './js/endpoints.js?v=9.6',
+  './js/seed_data.js?v=9.6',
+  './js/forms_engine.js?v=9.6',
+  './js/pbi_pages.js?v=9.6',
+  './js/rdl_reports.js?v=9.6',
+  './js/kiosk_print.js?v=9.6',
+  './js/app.js?v=9.6',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -55,7 +55,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k.startsWith('isabi-mfg-') && k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });

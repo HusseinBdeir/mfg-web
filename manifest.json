@@ -1,7 +1,7 @@
 {
-  "name": "ISABI Systems — Manufacturing Operations",
-  "short_name": "Mfg Ops",
-  "description": "WTC, BBConstruction & Lions Transport Standalone ERP, Fleet & BI Command Center",
+  "name": "ISABI Systems — Enterprise Operations Command",
+  "short_name": "ISABI Command",
+  "description": "Multi-Industry Enterprise ERP, Fleet, Lebanese CoA Ledger & 20-Page Power BI Command Center",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

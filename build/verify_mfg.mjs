@@ -359,11 +359,33 @@ try {
     const truckCell = document.querySelector('#salesPanel td.td-truck-drv');
     const truckColW = truckCell ? Math.round(truckCell.getBoundingClientRect().width) : 0;
     const bodyFontPx = truckCell ? parseFloat(getComputedStyle(truckCell).fontSize) : 0;
-    return { showMoreBtns, tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(), hasShownWord, filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim(), truckColW, bodyFontPx };
+    const dateCell = document.querySelector('#salesPanel tbody tr td:first-child');
+    const dateTxt = dateCell ? dateCell.textContent.trim() : '';
+    const dmyDateOk = /^\\d{2}-\\d{2}-\\d{4}/.test(dateTxt) && (!dateCell || getComputedStyle(dateCell).whiteSpace === 'nowrap');
+    const tfootTds = Array.from(document.querySelectorAll('#salesPanel tfoot tr td'));
+    const tfootColSpanSum = tfootTds.reduce((a, td) => a + (Number(td.getAttribute('colspan')) || 1), 0);
+    const tfootNoStackedLbls = document.querySelectorAll('#salesPanel tfoot .tfoot-col-lbl').length === 0;
+    const tfootNumNoWrap = Array.from(document.querySelectorAll('#salesPanel tfoot tr td.r')).every(td => getComputedStyle(td).whiteSpace === 'nowrap' && td.clientHeight <= 38);
+    const wrapEl = document.querySelector('#salesPanel .table-wrap');
+    const wrapMaxH = wrapEl ? parseFloat(getComputedStyle(wrapEl).maxHeight) : 0;
+    return {
+      showMoreBtns,
+      tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(),
+      hasShownWord,
+      filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim(),
+      truckColW,
+      bodyFontPx,
+      dateTxt,
+      dmyDateOk,
+      tfootColSpanSum,
+      tfootNoStackedLbls,
+      tfootNumNoWrap,
+      wrapMaxH: Math.round(wrapMaxH || 0)
+    };
   })()`);
-  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4))
-    ? pass('sales tfoot & typography · full tab total, compact Truck/Driver col & readable font', `truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
-    : fail('sales tfoot totals / typography', JSON.stringify(salesTotalsProbe));
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && salesTotalsProbe.dmyDateOk && salesTotalsProbe.tfootColSpanSum === 15 && salesTotalsProbe.tfootNoStackedLbls && salesTotalsProbe.tfootNumNoWrap && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4 && salesTotalsProbe.wrapMaxH >= 300))
+    ? pass('sales tfoot, DD-MM-YYYY date & taller table-wrap · 15-col aligned tfoot, single-line totals, DD-MM-YYYY date & taller table', `date=${salesTotalsProbe.dateTxt} · wrapMaxH=${salesTotalsProbe.wrapMaxH}px · truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
+    : fail('sales tfoot totals / DD-MM-YYYY / typography', JSON.stringify(salesTotalsProbe));
   await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(220);
   const insp = await evaluate(`(() => {
     const p = document.getElementById('recordInspector');

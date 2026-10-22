@@ -175,6 +175,25 @@ class MfgHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
+    @staticmethod
+    def _norm_api_path(raw_path: str) -> str:
+        for prefix in ("/isabi/app/api/", "/app/api/", "/isabi/api/"):
+            if raw_path.startswith(prefix):
+                return "/api/" + raw_path[len(prefix):]
+        return raw_path
+
+    def translate_path(self, path: str) -> str:
+        parsed_p = urlparse(path).path
+        showcase_dir = ROOT.parent / "isabi"
+        if parsed_p.startswith("/showcase") and showcase_dir.exists():
+            rel = parsed_p[len("/showcase"):].lstrip("/") or "index.html"
+            return str(showcase_dir / rel)
+        if parsed_p.startswith("/app/") and not (ROOT / "app").exists():
+            path = "/" + parsed_p[len("/app/"):]
+        elif parsed_p == "/app" and not (ROOT / "app").exists():
+            path = "/index.html"
+        return super().translate_path(path)
+
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -200,7 +219,8 @@ class MfgHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/status":
+        api_path = self._norm_api_path(parsed.path)
+        if api_path == "/api/status":
             if not DB_PATH.exists():
                 return self._send_json({"ok": False, "error": "mfg.db not built yet"}, 503)
             conn = sqlite3.connect(str(DB_PATH))
@@ -222,7 +242,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 "counts": counts,
             })
 
-        if parsed.path == "/api/users":
+        if api_path == "/api/users":
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
             rows = []
@@ -260,7 +280,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn.close()
             return self._send_json({"ok": True, "users": rows, "sessions": sessions})
 
-        if parsed.path == "/api/records":
+        if api_path == "/api/records":
             qs = parse_qs(parsed.query)
             table = (qs.get("table") or ["sales_tickets"])[0]
             company = (qs.get("company") or [""])[0]
@@ -286,9 +306,10 @@ class MfgHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        api_path = self._norm_api_path(parsed.path)
         body = self._read_body()
 
-        if parsed.path == "/api/auth/login":
+        if api_path == "/api/auth/login":
             email = str(body.get("email") or "").strip().lower()
             pin = str(body.get("pin") or "").strip()
             method = str(body.get("method") or "PIN").strip()[:40]
@@ -322,7 +343,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
             user["last_login_at"] = now_iso
             return self._send_json({"ok": True, "user": user, "session_id": sess_id})
 
-        if parsed.path == "/api/users":
+        if api_path == "/api/users":
             u = body.get("user") or {}
             if not u.get("email") or not u.get("full_name"):
                 return self._send_json({"ok": False, "error": "Name and email are required."}, 400)
@@ -439,7 +460,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn.close()
             return self._send_json({"ok": True, "id": uid})
 
-        if parsed.path == "/api/records":
+        if api_path == "/api/records":
             table = body.get("table")
             record = body.get("record") or {}
             if table not in USER_WRITABLE_TABLES or not isinstance(record, dict) or not record.get("id"):
