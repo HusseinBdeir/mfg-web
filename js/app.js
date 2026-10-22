@@ -3159,7 +3159,6 @@
     if (!info) return `<option value="${esc(v)}">`;
     const parts = [];
     if (isCoFleet) {
-      parts.push(company ? `${company} Fleet` : 'Company Fleet');
       if (info.default_driver) parts.push(info.default_driver);
     } else if (info.supplier) {
       parts.push(info.supplier);
@@ -8058,7 +8057,7 @@
     if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', FORM_UI.postAttempted ? 'crit' : '');
     else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} fleet — switch Transported By or pick a ${company} truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${isCoFleet ? ' · ' + company + ' Fleet' : (truckRow.supplier ? ' · Owner: ' + truckRow.supplier : '')}`, 'ok');
+    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 

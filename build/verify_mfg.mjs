@@ -748,10 +748,13 @@ try {
     set('f_saletype', 'Delivery');
     set('f_transportby', 'Company fleet');
     const wtcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
+    const wtcCoFleetMetas = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.getAttribute('data-meta') || '');
     const wtcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
     const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 15 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael');
     set('f_truck', 'TB3');
     const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael';
+    const wtcTb3HintTxt = (document.getElementById('hint_truck')?.textContent || '').trim();
+    const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => /Majed Karam/i.test(m)) && !/fleet/i.test(wtcTb3HintTxt);
     set('f_company', 'BBConstruction');
     const bbcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const bbcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
@@ -858,7 +861,7 @@ try {
     document.querySelector('.modal-tab[data-form="sales"]').click();
 
     const cascadeDiag = {
-      truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
+      truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, coFleetTruckNoRedundantFleetBadge, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
       pickupDriverHidden, pickupNoDriverNeeded, delivDriverVisible,
       truckUnlockedByDefault, aahedPopulatedOwner, aahedOwnerLocked, aahedPopulatedDriver, aahedPopulatedQty,
       driverFilteredToOwnerOnly, substituteDriverKept,
