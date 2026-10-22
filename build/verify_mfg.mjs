@@ -435,8 +435,39 @@ try {
   let stOk = 0;
   for (const c of codes) { await evaluate(`document.querySelector('.stmt-card[data-stmt="${c}"]').click()`); await sleep(120); const n = await evaluate(`document.querySelectorAll('#printableSheet table').length`); if (n) stOk++; }
   stOk === 22 ? pass('statements · 22 sheets render') : fail('statements', `${stOk}/22`);
-  const rdlParity = await evaluate(`(() => { document.querySelector('.stmt-card[data-stmt="08"]').click(); const salesParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(','); document.querySelector('.stmt-card[data-stmt="20"]').click(); const invParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(','); const cats = document.querySelectorAll('[data-rdl-cat]').length; const hasViewBtn = !!document.getElementById('rdlViewReportBtn'); const titleTxt = (document.querySelector('#printableSheet .rdl-title-text') || {}).textContent || ''; return { ok: salesParams === 'from,to,customer,product,site' && invParams === 'invoiceNo' && cats === 8 && hasViewBtn && titleTxt.includes('Sales Invoice'), salesParams, invParams, cats, titleTxt }; })()`);
-  rdlParity.ok ? pass('statements · RDL Paginated Suite parity (8 category pills, per-report parameter bar & bilingual headers)', `${rdlParity.salesParams} | ${rdlParity.invParams}`) : fail('statements RDL parity', JSON.stringify(rdlParity));
+  const rdlParity = await evaluate(`(() => {
+    document.querySelector('.stmt-card[data-stmt="08"]').click();
+    const salesParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(',');
+    const nativeSelects08 = document.querySelectorAll('#rdlParamBar select').length;
+    document.querySelector('.stmt-card[data-stmt="20"]').click();
+    const invParams = Array.from(document.querySelectorAll('#rdlParamBar [data-rdl-param]')).map(el => el.getAttribute('data-rdl-param')).join(',');
+    const cats = document.querySelectorAll('[data-rdl-cat]').length;
+    const hasViewBtn = !!document.getElementById('rdlViewReportBtn');
+    const titleTxt = (document.querySelector('#printableSheet .rdl-title-text') || {}).textContent || '';
+
+    // Open RDL-21 Delivery Ticket and test live customer-name search in the custom combobox (menu opens strictly BELOW input)
+    document.querySelector('.stmt-card[data-stmt="21"]').click();
+    const nativeSelects21 = document.querySelectorAll('#rdlParamBar select').length;
+    const tkInp = document.querySelector('#rdlParamBar [data-rdl-param="ticketId"]');
+    const tkMenu = document.querySelector('#rdlParamBar [data-combo-menu="ticketId"]');
+    tkInp.click();
+    tkInp.value = 'Kenyar';
+    tkInp.dispatchEvent(new Event('input', { bubbles: true }));
+    const inpRect = tkInp.getBoundingClientRect();
+    const menuRect = tkMenu.getBoundingClientRect();
+    const menuBelowInput = !tkMenu.hidden && menuRect.top >= inpRect.bottom;
+    const matchedItems = tkMenu.querySelectorAll('.rdl-combo-item').length;
+    const firstOpt = tkMenu.querySelector('.rdl-combo-item');
+    if (firstOpt) firstOpt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const sheetTextAfterPick = (document.getElementById('printableSheet') || {}).innerText || '';
+    const pickedKenyar = /Kenyar/i.test(sheetTextAfterPick);
+
+    return {
+      ok: salesParams === 'from,to,customer,product,site' && invParams === 'invoiceNo' && cats === 8 && hasViewBtn && titleTxt.includes('Sales Invoice') && nativeSelects08 === 0 && nativeSelects21 === 0 && menuBelowInput && matchedItems > 0 && pickedKenyar,
+      salesParams, invParams, cats, titleTxt, nativeSelects08, nativeSelects21, menuBelowInput, matchedItems, pickedKenyar
+    };
+  })()`);
+  rdlParity.ok ? pass('statements · RDL Paginated Suite + Rev 10 searchable combobox (0 native <select>, popover strictly below input, instant name search)', `${rdlParity.salesParams} | Kenyars=${rdlParity.matchedItems}`) : fail('statements RDL parity', JSON.stringify(rdlParity));
 
   // 7b. Biometric Face ID (Attendance PWA parity: 128-d models, 3-pose enrolment, duplicate guard, 2FA step-up, 3-frame biometric sign-in)
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(250);

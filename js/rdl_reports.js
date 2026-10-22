@@ -544,17 +544,20 @@
         if (a.key === '2738') return -1;
         if (b.key === '2738') return 1;
         return String(b.key).localeCompare(String(a.key), undefined, { numeric: true });
-      }).slice(0, 120);
+      });
 
       const ticketCandidates = salesAll
         .filter(r => !r.is_receipt_row && r.ticket_no)
-        .sort((a, b) => rowDate(b, basis).localeCompare(rowDate(a, basis)))
-        .slice(0, 120);
+        .sort((a, b) => rowDate(b, basis).localeCompare(rowDate(a, basis)) || String(b.ticket_no).localeCompare(String(a.ticket_no), undefined, { numeric: true }));
+
+      const ticketById = new Map();
+      ticketCandidates.forEach(t => {
+        ticketById.set(String(t.id || t.ticket_no), t);
+      });
 
       const receiptCandidates = rawReceipts
         .slice()
         .sort((a, b) => rowDate(b, basis).localeCompare(rowDate(a, basis)))
-        .slice(0, 120)
         .map(rc => ({
           id: String(rc.id),
           date: rc.date,
@@ -572,23 +575,28 @@
           paid_usd: Number(rc.usd_amount || rc.amount || 0)
         }));
 
+      const receiptById = new Map();
+      receiptCandidates.forEach(r => {
+        receiptById.set(String(r.id), r);
+      });
+
       _cachedCoKey = sig;
       _cachedCtxData = {
         salesAll, expAll, payAll, rmAll, fuelAll, prodAll: [],
         customers, products, sites, suppliers, categories, staff, equipTypes, equipments, drivers,
-        invoiceList, invMap, ticketCandidates, receiptCandidates
+        invoiceList, invMap, ticketCandidates, ticketById, receiptCandidates, receiptById
       };
     }
 
     const d = _cachedCtxData;
-    if (!rdl.params.invoiceNo || !d.invMap.has(rdl.params.invoiceNo)) {
+    if (!rdl.params.invoiceNo || !d.invMap.has(String(rdl.params.invoiceNo))) {
       const pref = d.invoiceList.find(x => x.key === '2738') || d.invoiceList[0];
       rdl.params.invoiceNo = pref ? pref.key : '';
     }
-    if (!rdl.params.ticketId || !d.ticketCandidates.some(r => String(r.id || r.ticket_no) === String(rdl.params.ticketId))) {
+    if (!rdl.params.ticketId || !d.ticketById.has(String(rdl.params.ticketId))) {
       rdl.params.ticketId = d.ticketCandidates[0] ? String(d.ticketCandidates[0].id || d.ticketCandidates[0].ticket_no) : '';
     }
-    if (!rdl.params.receiptId || !d.receiptCandidates.some(r => String(r.id) === String(rdl.params.receiptId))) {
+    if (!rdl.params.receiptId || !d.receiptById.has(String(rdl.params.receiptId))) {
       rdl.params.receiptId = d.receiptCandidates[0] ? String(d.receiptCandidates[0].id) : '';
     }
 
@@ -745,95 +753,267 @@
   }
 
 
-  function renderParamBarHtml(meta, ctx) {
+  function getParamComboConfig(k, ctx) {
     const p = ctx.rdl.params;
-    const optHtml = (list, cur, allLabel) => {
-      const base = allLabel ? `<option value="ALL" ${cur === 'ALL' ? 'selected' : ''}>${esc(allLabel)}</option>` : '';
-      return base + list.map(v => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(v)}</option>`).join('');
+    const makeSimpleList = (list, allLabel, metaTag) => {
+      const opts = [];
+      if (allLabel) {
+        opts.push({
+          value: 'ALL',
+          code: 'ALL',
+          main: allLabel,
+          meta: 'All records',
+          label: allLabel,
+          q: `all ${allLabel}`.toLowerCase()
+        });
+      }
+      list.forEach(v => {
+        const s = String(v);
+        opts.push({
+          value: s,
+          code: '',
+          main: s,
+          meta: metaTag || '',
+          label: s,
+          q: s.toLowerCase()
+        });
+      });
+      return opts;
     };
 
+    if (k === 'account') {
+      const opts = [{
+        value: 'ALL',
+        code: 'ALL',
+        main: `All Accounts (${COA_ACCOUNTS.length})`,
+        meta: 'Classes 1–7',
+        label: `All Accounts (${COA_ACCOUNTS.length})`,
+        q: 'all accounts coa'
+      }];
+      COA_ACCOUNTS.forEach(a => {
+        opts.push({
+          value: a.code,
+          code: a.code,
+          main: a.name,
+          meta: a.section,
+          label: `${a.code} · ${a.name}`,
+          q: `${a.code} ${a.name} ${a.cls} ${a.section}`.toLowerCase()
+        });
+      });
+      return { label: 'Account', wide: true, placeholder: 'Search account code or name…', badge: `${COA_ACCOUNTS.length} accounts`, options: opts };
+    }
+    if (k === 'subAccount') {
+      const subPool = p.account === '411' ? ctx.customers : (p.account === '401' ? ctx.suppliers : (p.account === '421' ? ctx.staff : [...new Set([...ctx.customers, ...ctx.suppliers])]));
+      return { label: 'Sub-account(s)', wide: false, placeholder: 'Search counterparty name…', badge: `${fmtNum(subPool.length)} parties`, options: makeSimpleList(subPool, `All Sub-accounts (${subPool.length})`, 'Sub-account') };
+    }
+    if (k === 'customer') {
+      return { label: 'Customer', wide: false, placeholder: 'Search customer name…', badge: `${fmtNum(ctx.customers.length)} customers`, options: makeSimpleList(ctx.customers, `All Customers (${ctx.customers.length})`, 'Customer') };
+    }
+    if (k === 'product') {
+      return { label: 'Product', wide: false, placeholder: 'Search product or grade…', badge: `${fmtNum(ctx.products.length)} products`, options: makeSimpleList(ctx.products, `All Products (${ctx.products.length})`, 'Product') };
+    }
+    if (k === 'site') {
+      return { label: 'Site', wide: false, placeholder: 'Search pouring / quarry site…', badge: `${fmtNum(ctx.sites.length)} sites`, options: makeSimpleList(ctx.sites, `All Sites (${ctx.sites.length})`, 'Site') };
+    }
+    if (k === 'supplier') {
+      return { label: 'Supplier', wide: false, placeholder: 'Search supplier or quarry…', badge: `${fmtNum(ctx.suppliers.length)} suppliers`, options: makeSimpleList(ctx.suppliers, `All Suppliers (${ctx.suppliers.length})`, 'Supplier') };
+    }
+    if (k === 'category') {
+      return { label: 'Category', wide: false, placeholder: 'Search expense category…', badge: `${fmtNum(ctx.categories.length)} categories`, options: makeSimpleList(ctx.categories, `All Categories (${ctx.categories.length})`, 'Category') };
+    }
+    if (k === 'staff') {
+      return { label: 'Staff member', wide: false, placeholder: 'Search employee name…', badge: `${fmtNum(ctx.staff.length)} staff`, options: makeSimpleList(ctx.staff, `All Staff (${ctx.staff.length})`, 'Staff') };
+    }
+    if (k === 'equipType') {
+      return { label: 'Equipment type', wide: false, placeholder: 'Search equipment type…', badge: `${fmtNum(ctx.equipTypes.length)} types`, options: makeSimpleList(ctx.equipTypes, 'All Types', 'Type') };
+    }
+    if (k === 'equipment') {
+      return { label: 'Equipment', wide: false, placeholder: 'Search truck or machine…', badge: `${fmtNum(ctx.equipments.length)} units`, options: makeSimpleList(ctx.equipments, `All Equipment (${ctx.equipments.length})`, 'Unit') };
+    }
+    if (k === 'driver') {
+      return { label: 'Driver', wide: false, placeholder: 'Search driver name…', badge: `${fmtNum(ctx.drivers.length)} drivers`, options: makeSimpleList(ctx.drivers, `All Drivers (${ctx.drivers.length})`, 'Driver') };
+    }
+    if (k === 'year') {
+      const yrs = ['ALL', '2026', '2025', '2024', '2023', '2022', '2021', '2020'];
+      const opts = yrs.map(y => ({
+        value: y,
+        code: y === 'ALL' ? 'ALL' : y,
+        main: y === 'ALL' ? 'All Years' : `FY ${y}`,
+        meta: '',
+        label: y === 'ALL' ? 'All Years' : y,
+        q: y === 'ALL' ? 'all years' : y
+      }));
+      return { label: 'Year', wide: false, placeholder: 'Select year…', badge: '', options: opts };
+    }
+    if (k === 'month') {
+      const mos = [
+        ['ALL', 'All Months'], ['01', '01 - Jan'], ['02', '02 - Feb'], ['03', '03 - Mar'],
+        ['04', '04 - Apr'], ['05', '05 - May'], ['06', '06 - Jun'], ['07', '07 - Jul'],
+        ['08', '08 - Aug'], ['09', '09 - Sep'], ['10', '10 - Oct'], ['11', '11 - Nov'], ['12', '12 - Dec']
+      ];
+      const opts = mos.map(([v, l]) => ({
+        value: v,
+        code: v,
+        main: l,
+        meta: '',
+        label: l,
+        q: `${v} ${l}`.toLowerCase()
+      }));
+      return { label: 'Month', wide: false, placeholder: 'Select month…', badge: '', options: opts };
+    }
+    if (k === 'invoiceNo') {
+      const opts = ctx.invoiceList.map(g => {
+        const invNo = String(g.vat_inv || g.invoice_no);
+        const cust = g.customer || '—';
+        const lds = `${g.loads} load${g.loads === 1 ? '' : 's'}`;
+        return {
+          value: String(g.key),
+          code: `#${invNo}`,
+          main: cust,
+          meta: `${g.date || ''} · ${lds} · ${fmtUsd(g.total)}`,
+          label: `#${invNo} · ${cust} · ${lds} (${fmtUsd(g.total)})`,
+          q: `${invNo} ${cust} ${g.site || ''} ${g.date || ''} ${g.total || ''}`.toLowerCase()
+        };
+      });
+      return { label: 'VAT Invoice No', wide: true, steppable: true, placeholder: 'Search customer name, invoice # or date…', badge: `${fmtNum(opts.length)} invoices`, options: opts };
+    }
+    if (k === 'ticketId') {
+      if (!ctx._ticketComboOpts) {
+        ctx._ticketComboOpts = ctx.ticketCandidates.map(t => {
+          const tid = String(t.id || t.ticket_no);
+          const tno = String(t.ticket_no || t.invoice_no || tid);
+          const d = rowDate(t, ctx.basis);
+          const cust = t.customer || '—';
+          const vol = `${fmtNum(t.qty, 1)} m³`;
+          return {
+            value: tid,
+            code: `#${tno}`,
+            main: cust,
+            meta: `${d} · ${t.product || ''} · ${vol} · ${fmtUsd(t.total_usd)}`,
+            label: `#${tno} · ${cust} · ${d} · ${vol}`,
+            q: `${tno} ${cust} ${d} ${t.site || ''} ${t.product || ''} ${t.truck || ''} ${t.driver || ''}`.toLowerCase()
+          };
+        });
+      }
+      return { label: 'Delivery Ticket', wide: true, steppable: true, placeholder: 'Search customer name, ticket #, site or date…', badge: `${fmtNum(ctx._ticketComboOpts.length)} tickets`, options: ctx._ticketComboOpts };
+    }
+    if (k === 'receiptId') {
+      if (!ctx._receiptComboOpts) {
+        ctx._receiptComboOpts = ctx.receiptCandidates.map(r => {
+          const rid = String(r.id);
+          const vno = `RC-${r.invoice_no || r.ticket_no || rid.slice(-4)}`;
+          const d = rowDate(r, ctx.basis);
+          const cust = r.customer || '—';
+          const amt = fmtUsd(r.paid_usd);
+          return {
+            value: rid,
+            code: vno,
+            main: cust,
+            meta: `${d} · ${r.pay_method || 'Cash'} · ${amt}`,
+            label: `${vno} · ${cust} · ${d} · ${amt}`,
+            q: `${vno} ${r.invoice_no || ''} ${cust} ${d} ${r.pay_method || ''} ${amt}`.toLowerCase()
+          };
+        });
+      }
+      return { label: 'Receipt Voucher', wide: true, steppable: true, placeholder: 'Search customer name, voucher #, date or amount…', badge: `${fmtNum(ctx._receiptComboOpts.length)} vouchers`, options: ctx._receiptComboOpts };
+    }
+    return null;
+  }
+
+  function renderParamBarHtml(meta, ctx) {
+    const p = ctx.rdl.params;
     const controls = [];
+
     meta.params.forEach(k => {
       if (k === 'asof') {
-        controls.push(`<label class="rdl-p-item"><span>As at</span><input type="date" data-rdl-param="asof" value="${esc(p.asof)}" /></label>`);
+        controls.push(`
+          <label class="rdl-p-item rdl-p-date">
+            <div class="rdl-p-hdr"><span class="rdl-p-lbl">As at Date</span></div>
+            <input type="date" class="rdl-date-input" data-rdl-param="asof" value="${esc(p.asof)}" />
+          </label>
+        `);
       } else if (k === 'from') {
-        controls.push(`<label class="rdl-p-item"><span>From</span><input type="date" data-rdl-param="from" value="${esc(p.from)}" /></label>`);
+        controls.push(`
+          <label class="rdl-p-item rdl-p-date">
+            <div class="rdl-p-hdr"><span class="rdl-p-lbl">From Date</span></div>
+            <input type="date" class="rdl-date-input" data-rdl-param="from" value="${esc(p.from)}" />
+          </label>
+        `);
       } else if (k === 'to') {
-        controls.push(`<label class="rdl-p-item"><span>To</span><input type="date" data-rdl-param="to" value="${esc(p.to)}" /></label>`);
+        controls.push(`
+          <label class="rdl-p-item rdl-p-date">
+            <div class="rdl-p-hdr"><span class="rdl-p-lbl">To Date</span></div>
+            <input type="date" class="rdl-date-input" data-rdl-param="to" value="${esc(p.to)}" />
+          </label>
+        `);
       } else if (k === 'period') {
         controls.push(`
-          <div class="rdl-p-item">
-            <span>Columns by</span>
+          <div class="rdl-p-item rdl-p-seg">
+            <div class="rdl-p-hdr"><span class="rdl-p-lbl">Columns by</span></div>
             <div class="rdl-seg">
               ${['Month', 'Quarter', 'Year'].map(m => `<button type="button" class="rdl-seg-btn ${p.period === m ? 'active' : ''}" data-rdl-period="${m}">${m}</button>`).join('')}
             </div>
           </div>
         `);
-      } else if (k === 'account') {
-        const acctOpts = COA_ACCOUNTS.map(a => `<option value="${a.code}" ${p.account === a.code ? 'selected' : ''}>${esc(a.code + ' · ' + a.name)}</option>`).join('');
-        controls.push(`<label class="rdl-p-item"><span>Account</span><select data-rdl-param="account"><option value="ALL" ${p.account === 'ALL' ? 'selected' : ''}>All Accounts (${COA_ACCOUNTS.length})</option>${acctOpts}</select></label>`);
-      } else if (k === 'subAccount') {
-        const subPool = p.account === '411' ? ctx.customers : (p.account === '401' ? ctx.suppliers : (p.account === '421' ? ctx.staff : [...new Set([...ctx.customers.slice(0, 35), ...ctx.suppliers.slice(0, 35)])]));
-        controls.push(`<label class="rdl-p-item"><span>Sub-account(s)</span><select data-rdl-param="subAccount">${optHtml(subPool, p.subAccount, 'All Sub-accounts')}</select></label>`);
-      } else if (k === 'customer') {
-        controls.push(`<label class="rdl-p-item"><span>Customer</span><select data-rdl-param="customer">${optHtml(ctx.customers, p.customer, `All Customers (${ctx.customers.length})`)}</select></label>`);
-      } else if (k === 'product') {
-        controls.push(`<label class="rdl-p-item"><span>Product</span><select data-rdl-param="product">${optHtml(ctx.products, p.product, `All Products (${ctx.products.length})`)}</select></label>`);
-      } else if (k === 'site') {
-        controls.push(`<label class="rdl-p-item"><span>Site</span><select data-rdl-param="site">${optHtml(ctx.sites, p.site, `All Sites (${ctx.sites.length})`)}</select></label>`);
-      } else if (k === 'supplier') {
-        controls.push(`<label class="rdl-p-item"><span>Supplier</span><select data-rdl-param="supplier">${optHtml(ctx.suppliers, p.supplier, `All Suppliers (${ctx.suppliers.length})`)}</select></label>`);
-      } else if (k === 'category') {
-        controls.push(`<label class="rdl-p-item"><span>Category</span><select data-rdl-param="category">${optHtml(ctx.categories, p.category, `All Categories (${ctx.categories.length})`)}</select></label>`);
-      } else if (k === 'staff') {
-        controls.push(`<label class="rdl-p-item"><span>Staff member</span><select data-rdl-param="staff">${optHtml(ctx.staff, p.staff, `All Staff (${ctx.staff.length})`)}</select></label>`);
-      } else if (k === 'equipType') {
-        controls.push(`<label class="rdl-p-item"><span>Equipment type</span><select data-rdl-param="equipType">${optHtml(ctx.equipTypes, p.equipType, 'All Types')}</select></label>`);
-      } else if (k === 'equipment') {
-        controls.push(`<label class="rdl-p-item"><span>Equipment</span><select data-rdl-param="equipment">${optHtml(ctx.equipments, p.equipment, `All Equipment (${ctx.equipments.length})`)}</select></label>`);
-      } else if (k === 'driver') {
-        controls.push(`<label class="rdl-p-item"><span>Driver</span><select data-rdl-param="driver">${optHtml(ctx.drivers, p.driver, `All Drivers (${ctx.drivers.length})`)}</select></label>`);
-      } else if (k === 'year') {
-        const yrs = ['ALL', '2026', '2025', '2024', '2023', '2022', '2021', '2020'];
-        controls.push(`<label class="rdl-p-item"><span>Year</span><select data-rdl-param="year">${yrs.map(y => `<option value="${y}" ${String(p.year) === y ? 'selected' : ''}>${y === 'ALL' ? 'All Years' : y}</option>`).join('')}</select></label>`);
-      } else if (k === 'month') {
-        const mos = [
-          ['ALL', 'All Months'], ['01', '01 - Jan'], ['02', '02 - Feb'], ['03', '03 - Mar'],
-          ['04', '04 - Apr'], ['05', '05 - May'], ['06', '06 - Jun'], ['07', '07 - Jul'],
-          ['08', '08 - Aug'], ['09', '09 - Sep'], ['10', '10 - Oct'], ['11', '11 - Nov'], ['12', '12 - Dec']
-        ];
-        controls.push(`<label class="rdl-p-item"><span>Month</span><select data-rdl-param="month">${mos.map(([v, l]) => `<option value="${v}" ${String(p.month) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`);
-      } else if (k === 'invoiceNo') {
-        const invOpts = ctx.invoiceList.map(g => {
-          const lbl = `${g.vat_inv || g.invoice_no} · ${g.customer} · ${g.loads} load${g.loads === 1 ? '' : 's'}`;
-          return `<option value="${esc(g.key)}" ${String(p.invoiceNo) === String(g.key) ? 'selected' : ''}>${esc(lbl)}</option>`;
-        }).join('');
-        controls.push(`<label class="rdl-p-item rdl-p-wide"><span>VAT Invoice No</span><select data-rdl-param="invoiceNo">${invOpts}</select></label>`);
-      } else if (k === 'ticketId') {
-        const tOpts = ctx.ticketCandidates.map(t => {
-          const tid = String(t.id || t.ticket_no);
-          const lbl = `${t.ticket_no || t.invoice_no || tid} · ${rowDate(t, ctx.basis)} · ${t.customer || '—'} · ${fmtNum(t.qty, 1)} m³`;
-          return `<option value="${esc(tid)}" ${String(p.ticketId) === tid ? 'selected' : ''}>${esc(lbl)}</option>`;
-        }).join('');
-        controls.push(`<label class="rdl-p-item rdl-p-wide"><span>Delivery Ticket</span><select data-rdl-param="ticketId">${tOpts}</select></label>`);
-      } else if (k === 'receiptId') {
-        const rOpts = ctx.receiptCandidates.map(r => {
-          const rid = String(r.id);
-          const lbl = `RC-${r.invoice_no || r.ticket_no || rid.slice(-4)} · ${rowDate(r, ctx.basis)} · ${r.customer || '—'} · ${fmtUsd(r.paid_usd)}`;
-          return `<option value="${esc(rid)}" ${String(p.receiptId) === rid ? 'selected' : ''}>${esc(lbl)}</option>`;
-        }).join('');
-        controls.push(`<label class="rdl-p-item rdl-p-wide"><span>Receipt Voucher</span><select data-rdl-param="receiptId">${rOpts}</select></label>`);
+      } else {
+        const cfg = getParamComboConfig(k, ctx);
+        if (!cfg) return;
+        const curVal = String(p[k] !== undefined ? p[k] : '');
+        const activeOpt = cfg.options.find(o => String(o.value) === curVal) || cfg.options[0] || { value: '', label: '' };
+        const hasAll = cfg.options[0] && cfg.options[0].value === 'ALL';
+        const isFiltered = hasAll && activeOpt.value !== 'ALL';
+        controls.push(`
+          <div class="rdl-p-item ${cfg.wide ? 'rdl-p-wide' : ''} ${isFiltered ? 'is-filtered' : ''}">
+            <div class="rdl-p-hdr">
+              <span class="rdl-p-lbl">${esc(cfg.label)}</span>
+              ${cfg.badge ? `<span class="rdl-p-cnt">${esc(cfg.badge)}</span>` : ''}
+            </div>
+            <div class="rdl-combo-row">
+              <div class="rdl-combo" data-combo-wrap="${esc(k)}">
+                <span class="rdl-combo-ico" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6.8" cy="6.8" r="4.8"/><line x1="10.4" y1="10.4" x2="14" y2="14"/></svg>
+                </span>
+                <input type="text"
+                  class="rdl-combo-input"
+                  data-rdl-param="${esc(k)}"
+                  data-raw-value="${esc(activeOpt.value)}"
+                  data-display-label="${esc(activeOpt.label)}"
+                  value="${esc(activeOpt.label)}"
+                  placeholder="${esc(cfg.placeholder)}"
+                  title="Click and type to search by name, number, site or date"
+                  autocomplete="off"
+                  spellcheck="false" />
+                <button type="button" class="rdl-combo-clear" data-combo-clear="${esc(k)}" title="${hasAll ? 'Clear search / Reset to All' : 'Clear search text'}" aria-label="Clear">×</button>
+                <button type="button" class="rdl-combo-caret" data-combo-caret="${esc(k)}" tabindex="-1" aria-label="Open options">
+                  <svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 4.5 6 8 9.5 4.5"/></svg>
+                </button>
+                <div class="rdl-combo-menu" data-combo-menu="${esc(k)}" role="listbox" hidden></div>
+              </div>
+              ${cfg.steppable ? `
+                <div class="rdl-doc-stepper" role="group" aria-label="Step through records">
+                  <button type="button" class="rdl-step-btn" data-rdl-step="${esc(k)}" data-step-dir="-1" title="Previous record">‹</button>
+                  <button type="button" class="rdl-step-btn" data-rdl-step="${esc(k)}" data-step-dir="1" title="Next record">›</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `);
       }
     });
 
+    const L = CO_LEGAL[ctx.co] || CO_LEGAL.WTC;
     return `
       <div class="rdl-param-bar ${ctx.rdl.paramsOpen ? '' : 'collapsed'}" id="rdlParamBar">
         <div class="rdl-param-fields">
           ${controls.join('')}
+          <div class="rdl-param-actions">
+            <button type="button" class="rdl-view-btn" id="rdlViewReportBtn">View report</button>
+            <button type="button" class="rdl-reset-btn" id="rdlResetParamsBtn" title="Reset report parameters to defaults">Reset</button>
+          </div>
         </div>
-        <div class="rdl-param-actions">
-          <button type="button" class="rdl-view-btn" id="rdlViewReportBtn">View report</button>
-          <button type="button" class="rdl-reset-btn" id="rdlResetParamsBtn" title="Reset report parameters">Reset</button>
+        <div class="rdl-param-meta">
+          <span class="rdl-param-scope-badge">${esc(L.short)} · ${ctx.basis === 'rep' ? 'Rep Date' : 'Tx Date'}</span>
+          <span class="rdl-param-search-tip">Type any name, # or date in the selector to filter</span>
         </div>
       </div>
     `;
@@ -2479,7 +2659,7 @@
 
   function render21DeliveryTicket(meta, ctx) {
     const p = ctx.rdl.params;
-    const tk = ctx.ticketCandidates.find(r => String(r.id || r.ticket_no) === String(p.ticketId)) || ctx.ticketCandidates[0] || ctx.salesAll[0] || {};
+    const tk = (ctx.ticketById && ctx.ticketById.get(String(p.ticketId))) || ctx.ticketCandidates.find(r => String(r.id || r.ticket_no) === String(p.ticketId)) || ctx.ticketCandidates[0] || ctx.salesAll[0] || {};
     const d = rowDate(tk, ctx.basis);
     const tNo = tk.ticket_no || tk.invoice_no || 'TK-001';
 
@@ -2539,7 +2719,7 @@
 
   function render22ReceiptVoucher(meta, ctx) {
     const p = ctx.rdl.params;
-    const rc = ctx.receiptCandidates.find(r => String(r.id) === String(p.receiptId)) || ctx.receiptCandidates[0] || ctx.salesAll[0] || {};
+    const rc = (ctx.receiptById && ctx.receiptById.get(String(p.receiptId))) || ctx.receiptCandidates.find(r => String(r.id) === String(p.receiptId)) || ctx.receiptCandidates[0] || ctx.salesAll[0] || {};
     const d = rowDate(rc, ctx.basis);
     const vNo = `RC-${rc.invoice_no || rc.ticket_no || String(rc.id || '1001').slice(-4)}`;
     const paid = Number(rc.paid_usd || rc.total_usd || 0);
@@ -2693,27 +2873,23 @@
         </div>
 
         <div class="rdl-viewer-shell">
-          <div class="rdl-menubar no-print">
-            <span class="rdl-menu-item active">Home</span>
-            <span class="rdl-menu-item" id="rdlMenuPrint">Print / PDF</span>
-            <span class="rdl-menu-item" id="rdlMenuCsv">Export CSV</span>
-            <span class="rdl-menu-sep"></span>
-            <span class="rdl-menu-crumb">${esc(meta.cat)} ▸ <b>RDL-${esc(meta.id)} ${esc(meta.title)}</b> (${esc(meta.ar)})</span>
-          </div>
-
           <div class="rdl-toolbar no-print">
             <div class="rdl-tb-left">
-              <button type="button" class="rdl-tb-btn" id="rdlPrevBtn" title="Previous report">◁</button>
-              <span class="rdl-tb-page">Report <b>${esc(meta.id)}</b> of 22</span>
-              <button type="button" class="rdl-tb-btn" id="rdlNextBtn" title="Next report">▷</button>
+              <div class="rdl-tb-nav-group">
+                <button type="button" class="rdl-tb-btn rdl-tb-icon-btn" id="rdlPrevBtn" title="Previous report">◁</button>
+                <span class="rdl-tb-page">Report <b>${esc(meta.id)}</b> of 22</span>
+                <button type="button" class="rdl-tb-btn rdl-tb-icon-btn" id="rdlNextBtn" title="Next report">▷</button>
+              </div>
               <span class="rdl-tb-divider"></span>
-              <button type="button" class="rdl-tb-btn" id="printStmtBtn" title="Print / Save as PDF">🖨 Print / PDF</button>
-              <button type="button" class="rdl-tb-btn" id="rdlExportCsvBtn" title="Export current report to CSV">⬇ Export CSV</button>
+              <span class="rdl-menu-crumb">${esc(meta.cat)} ▸ <b>RDL-${esc(meta.id)} ${esc(meta.title)}</b> <span class="rdl-crumb-ar" dir="rtl">(${esc(meta.ar)})</span></span>
             </div>
             <div class="rdl-tb-right">
               <button type="button" class="rdl-tb-btn rdl-param-toggle ${ctx.rdl.paramsOpen ? 'active' : ''}" id="rdlToggleParamsBtn">
                 ${ctx.rdl.paramsOpen ? '▽' : '▷'} Parameters
               </button>
+              <span class="rdl-tb-divider"></span>
+              <button type="button" class="rdl-tb-btn" id="printStmtBtn" title="Print / Save as PDF">🖨 Print / PDF</button>
+              <button type="button" class="rdl-tb-btn" id="rdlExportCsvBtn" title="Export current report to CSV">⬇ Export CSV</button>
             </div>
           </div>
 
@@ -2780,7 +2956,7 @@
         const activeId = String(STATE.activeStatement || '01').padStart(2, '0');
         const meta = RDL_CATALOG.find(x => x.id === activeId) || RDL_CATALOG[0];
         const crumb = root.querySelector('.rdl-menu-crumb');
-        if (crumb) crumb.innerHTML = `${esc(meta.cat)} ▸ <b>RDL-${esc(meta.id)} ${esc(meta.title)}</b> (${esc(meta.ar)})`;
+        if (crumb) crumb.innerHTML = `${esc(meta.cat)} ▸ <b>RDL-${esc(meta.id)} ${esc(meta.title)}</b> <span class="rdl-crumb-ar" dir="rtl">(${esc(meta.ar)})</span>`;
         const pg = root.querySelector('.rdl-tb-page');
         if (pg) pg.innerHTML = `Report <b>${esc(meta.id)}</b> of 22`;
         refreshSheetAndParams();
@@ -2835,31 +3011,292 @@
       });
     }
 
+    function highlightComboMatch(text, query) {
+      const s = String(text == null ? '' : text);
+      const q = String(query || '').trim();
+      if (!q) return esc(s);
+      const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!tokens.length) return esc(s);
+      const tok = tokens[0];
+      const idx = s.toLowerCase().indexOf(tok);
+      if (idx < 0) return esc(s);
+      return `${esc(s.slice(0, idx))}<mark class="rdl-combo-mark">${esc(s.slice(idx, idx + tok.length))}</mark>${esc(s.slice(idx + tok.length))}`;
+    }
+
     function wireParamControls() {
-      root.querySelectorAll('[data-rdl-param]').forEach(inp => {
+      const liveCtx = buildRdlContext(SEED, STATE);
+
+      const closeAllCombos = (exceptWrap) => {
+        root.querySelectorAll('.rdl-combo[data-combo-wrap]').forEach(w => {
+          if (w === exceptWrap) return;
+          w.classList.remove('open');
+          const m = w.querySelector('.rdl-combo-menu');
+          if (m) m.hidden = true;
+          const inp = w.querySelector('.rdl-combo-input');
+          if (inp && inp.dataset.typing === '1') {
+            inp.dataset.typing = '';
+            inp.value = inp.dataset.displayLabel || '';
+            if (inp.dataset.origPlaceholder) inp.placeholder = inp.dataset.origPlaceholder;
+          }
+        });
+      };
+
+      // Date inputs
+      root.querySelectorAll('input.rdl-date-input[data-rdl-param]').forEach(inp => {
         inp.addEventListener('change', () => {
           const k = inp.dataset.rdlParam;
-          ctx.rdl.params[k] = inp.value;
-          if (k === 'from' || k === 'to' || k === 'asof') ctx.rdl._dateTouched = true;
+          liveCtx.rdl.params[k] = inp.value;
+          if (k === 'from' || k === 'to' || k === 'asof') liveCtx.rdl._dateTouched = true;
           refreshSheetAndParams();
         });
       });
+
+      // Custom Rev 10 Searchable Comboboxes (always anchored BELOW the input box)
+      root.querySelectorAll('.rdl-combo[data-combo-wrap]').forEach(wrap => {
+        const k = wrap.getAttribute('data-combo-wrap');
+        const inp = wrap.querySelector('.rdl-combo-input');
+        const menu = wrap.querySelector('.rdl-combo-menu');
+        const caret = wrap.querySelector('.rdl-combo-caret');
+        const clearBtn = wrap.querySelector('.rdl-combo-clear');
+        const cfg = getParamComboConfig(k, liveCtx);
+        if (!inp || !menu || !cfg) return;
+
+        let currentMatches = [];
+        let activeIdx = -1;
+
+        const chooseOption = (opt) => {
+          if (!opt) return;
+          inp.dataset.typing = '';
+          inp.dataset.rawValue = String(opt.value);
+          inp.dataset.displayLabel = opt.label;
+          inp.value = opt.label;
+          liveCtx.rdl.params[k] = opt.value;
+          closeAllCombos(null);
+          refreshSheetAndParams();
+        };
+
+        const renderMenu = (useInputQuery) => {
+          const rawQ = useInputQuery ? String(inp.value || '').trim() : '';
+          const ql = rawQ.toLowerCase();
+          const tokens = ql ? ql.split(/\s+/).filter(Boolean) : [];
+          let filtered;
+          if (!tokens.length) {
+            filtered = cfg.options;
+          } else {
+            const starts = [];
+            const contains = [];
+            const firstTok = tokens[0];
+            for (let i = 0; i < cfg.options.length; i++) {
+              const o = cfg.options[i];
+              let ok = true;
+              for (let ti = 0; ti < tokens.length; ti++) {
+                if (!o.q.includes(tokens[ti])) { ok = false; break; }
+              }
+              if (!ok) continue;
+              const mainLow = (o.main || '').toLowerCase();
+              const codeLow = (o.code || '').toLowerCase();
+              if (mainLow.startsWith(firstTok) || codeLow.startsWith(firstTok) || codeLow === '#' + firstTok) {
+                starts.push(o);
+              } else {
+                contains.push(o);
+              }
+            }
+            filtered = starts.concat(contains);
+          }
+
+          const MAX_SHOW = 45;
+          currentMatches = filtered.slice(0, MAX_SHOW);
+          const curRaw = String(liveCtx.rdl.params[k] !== undefined ? liveCtx.rdl.params[k] : '');
+          if (tokens.length) {
+            activeIdx = currentMatches.length ? 0 : -1;
+          } else {
+            activeIdx = currentMatches.findIndex(o => String(o.value) === curRaw);
+          }
+
+          closeAllCombos(wrap);
+          const statusTxt = tokens.length
+            ? (filtered.length
+              ? `<b>${fmtNum(filtered.length)}</b> match${filtered.length === 1 ? '' : 'es'} for "${esc(rawQ)}"${filtered.length > MAX_SHOW ? ` · top ${MAX_SHOW}` : ''}`
+              : `No matches for "${esc(rawQ)}" — try another name, number or date`)
+            : `<b>${fmtNum(cfg.options.length)}</b> ${esc(cfg.label.toLowerCase())} options · Type name, # or date to search`;
+
+          menu.innerHTML = `
+            <div class="rdl-combo-status">${statusTxt}</div>
+            <div class="rdl-combo-list">
+              ${currentMatches.map((opt, idx) => {
+                const isSelected = String(opt.value) === curRaw;
+                const isAct = idx === activeIdx;
+                return `
+                  <div class="rdl-combo-item ${isSelected ? 'is-selected' : ''} ${isAct ? 'active' : ''}" role="option" data-combo-idx="${idx}">
+                    <div class="rdl-opt-left">
+                      ${opt.code ? `<span class="rdl-opt-code">${highlightComboMatch(opt.code, rawQ)}</span>` : ''}
+                      <span class="rdl-opt-main">${highlightComboMatch(opt.main, rawQ)}</span>
+                    </div>
+                    <div class="rdl-opt-right">
+                      ${opt.meta ? `<span class="rdl-opt-meta">${highlightComboMatch(opt.meta, rawQ)}</span>` : ''}
+                      ${isSelected ? `<span class="rdl-opt-check" aria-hidden="true">✓</span>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+          menu.hidden = false;
+          wrap.classList.add('open');
+
+          menu.querySelectorAll('.rdl-combo-item').forEach(row => {
+            row.addEventListener('mousedown', ev => {
+              ev.preventDefault();
+              const idx = Number(row.getAttribute('data-combo-idx'));
+              if (currentMatches[idx]) chooseOption(currentMatches[idx]);
+            });
+            row.addEventListener('mouseenter', () => {
+              activeIdx = Number(row.getAttribute('data-combo-idx'));
+              menu.querySelectorAll('.rdl-combo-item').forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+            });
+          });
+        };
+
+        const enterSearchMode = () => {
+          if (inp.dataset.typing !== '1') {
+            inp.dataset.origPlaceholder = inp.placeholder;
+            inp.placeholder = `Search ${cfg.label.toLowerCase()} by name, # or date… (${inp.dataset.displayLabel || ''})`;
+            inp.value = '';
+            inp.dataset.typing = '1';
+          }
+          renderMenu(Boolean(inp.value.trim()));
+        };
+
+        inp.addEventListener('focus', enterSearchMode);
+        inp.addEventListener('click', enterSearchMode);
+        inp.addEventListener('input', () => {
+          inp.dataset.typing = '1';
+          renderMenu(true);
+        });
+
+        // Support programmatic change events (e.g. headless verification scripts setting inp.value)
+        inp.addEventListener('change', () => {
+          if (inp.dataset.typing === '1') return;
+          const v = String(inp.value || '').trim();
+          const hit = cfg.options.find(o => String(o.value) === v || o.label === v || o.main === v);
+          if (hit) {
+            liveCtx.rdl.params[k] = hit.value;
+            refreshSheetAndParams();
+          }
+        });
+
+        inp.addEventListener('blur', () => {
+          setTimeout(() => {
+            if (document.activeElement !== inp) closeAllCombos(null);
+          }, 150);
+        });
+
+        inp.addEventListener('keydown', ev => {
+          if (menu.hidden) {
+            if (ev.key === 'ArrowDown') {
+              ev.preventDefault();
+              enterSearchMode();
+            }
+            return;
+          }
+          if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            if (!currentMatches.length) return;
+            activeIdx = (activeIdx + 1) % currentMatches.length;
+            const items = menu.querySelectorAll('.rdl-combo-item');
+            items.forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+            if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+          } else if (ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            if (!currentMatches.length) return;
+            activeIdx = (activeIdx - 1 + currentMatches.length) % currentMatches.length;
+            const items = menu.querySelectorAll('.rdl-combo-item');
+            items.forEach((r, ri) => r.classList.toggle('active', ri === activeIdx));
+            if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+          } else if (ev.key === 'Enter') {
+            ev.preventDefault();
+            const pick = currentMatches[activeIdx >= 0 ? activeIdx : 0];
+            if (pick) chooseOption(pick);
+          } else if (ev.key === 'Escape' || ev.key === 'Tab') {
+            closeAllCombos(null);
+          }
+        });
+
+        if (caret) {
+          caret.addEventListener('mousedown', ev => {
+            ev.preventDefault();
+            if (!menu.hidden) {
+              closeAllCombos(null);
+              inp.blur();
+            } else {
+              try { inp.focus({ preventScroll: true }); } catch (_) {}
+              enterSearchMode();
+            }
+          });
+        }
+
+        if (clearBtn) {
+          clearBtn.addEventListener('mousedown', ev => {
+            ev.preventDefault();
+            const hasAll = cfg.options[0] && cfg.options[0].value === 'ALL';
+            if (inp.dataset.typing === '1' && inp.value) {
+              inp.value = '';
+              renderMenu(false);
+              try { inp.focus({ preventScroll: true }); } catch (_) {}
+            } else if (hasAll && String(liveCtx.rdl.params[k]) !== 'ALL') {
+              chooseOption(cfg.options[0]);
+            } else {
+              try { inp.focus({ preventScroll: true }); } catch (_) {}
+              enterSearchMode();
+            }
+          });
+        }
+      });
+
+      // Prev / Next document record stepper buttons (for Sales Invoice, Delivery Ticket, Receipt Voucher)
+      root.querySelectorAll('[data-rdl-step]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const k = btn.getAttribute('data-rdl-step');
+          const dir = Number(btn.getAttribute('data-step-dir') || 1);
+          const cfg = getParamComboConfig(k, liveCtx);
+          if (!cfg || !cfg.options.length) return;
+          const cur = String(liveCtx.rdl.params[k] || '');
+          const idx = Math.max(0, cfg.options.findIndex(o => String(o.value) === cur));
+          const nextIdx = (idx + dir + cfg.options.length) % cfg.options.length;
+          liveCtx.rdl.params[k] = cfg.options[nextIdx].value;
+          refreshSheetAndParams();
+        });
+      });
+
       root.querySelectorAll('[data-rdl-period]').forEach(btn => {
         btn.addEventListener('click', () => {
-          ctx.rdl.params.period = btn.dataset.rdlPeriod || 'Month';
+          liveCtx.rdl.params.period = btn.dataset.rdlPeriod || 'Month';
           refreshSheetAndParams();
         });
       });
+
       const viewBtn = root.querySelector('#rdlViewReportBtn');
       if (viewBtn) {
         viewBtn.addEventListener('click', () => {
-          root.querySelectorAll('[data-rdl-param]').forEach(inp => {
+          root.querySelectorAll('input.rdl-date-input[data-rdl-param]').forEach(inp => {
             const k = inp.dataset.rdlParam;
-            ctx.rdl.params[k] = inp.value;
+            liveCtx.rdl.params[k] = inp.value;
+          });
+          root.querySelectorAll('input.rdl-combo-input[data-rdl-param]').forEach(inp => {
+            const k = inp.dataset.rdlParam;
+            if (inp.dataset.typing === '1' && inp.value.trim()) {
+              const cfg = getParamComboConfig(k, liveCtx);
+              const q = inp.value.trim().toLowerCase();
+              const hit = cfg && cfg.options.find(o => o.q.includes(q));
+              if (hit) liveCtx.rdl.params[k] = hit.value;
+            } else if (inp.dataset.rawValue !== undefined) {
+              liveCtx.rdl.params[k] = inp.dataset.rawValue;
+            }
           });
           refreshSheetAndParams();
         });
       }
+
       const resetBtn = root.querySelector('#rdlResetParamsBtn');
       if (resetBtn) {
         resetBtn.addEventListener('click', () => {
