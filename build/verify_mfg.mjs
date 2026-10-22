@@ -133,8 +133,8 @@ try {
       const navBtn = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]');
       const navSpan = navBtn ? navBtn.querySelector('span') : null;
       const railLabel = navSpan ? navSpan.textContent.trim() : '';
-      const navTitleAttr = navBtn ? (navBtn.getAttribute('title') || '') : '';
-      const spanTitleAttr = navSpan ? (navSpan.getAttribute('title') || '') : '';
+      const navAriaLabel = navBtn ? (navBtn.getAttribute('aria-label') || '') : '';
+      const hasNativeTitleAttr = Boolean((navBtn && navBtn.hasAttribute('title')) || (navSpan && navSpan.hasAttribute('title')));
       const topbarTitle = (document.getElementById('topbarTitle') || {}).textContent?.trim() || '';
       const heroEl = document.querySelector('#workspace .cockpit-title, #workspace .pbi-studio-title, #workspace .rdl-suite-title');
       const heroTitle = heroEl ? heroEl.textContent.trim() : railLabel;
@@ -147,10 +147,10 @@ try {
         railLabel === heroTitle &&
         railLabel === docTitlePrefix &&
         railLabel === subnavLabel &&
-        navTitleAttr === railLabel &&
-        spanTitleAttr === railLabel
+        navAriaLabel === railLabel &&
+        !hasNativeTitleAttr
       );
-      return { allMatch, railLabel, topbarTitle, heroTitle, docTitlePrefix, subnavLabel, navTitleAttr, spanTitleAttr };
+      return { allMatch, railLabel, topbarTitle, heroTitle, docTitlePrefix, subnavLabel, navAriaLabel, hasNativeTitleAttr };
     })()`);
     if (!titleProbe.allMatch) titleMismatches.push(`${v}:${JSON.stringify(titleProbe)}`);
     await overflow(v);
@@ -355,11 +355,14 @@ try {
     const filteredTxt = (document.querySelector('#salesPanel tfoot tr') || {}).innerText || '';
     const allChip = document.querySelector('#salesPanel [data-chip="all"]');
     if (allChip) allChip.click();
-    return { showMoreBtns, tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(), hasShownWord, filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim() };
+    const truckCell = document.querySelector('#salesPanel td.td-truck-drv');
+    const truckColW = truckCell ? Math.round(truckCell.getBoundingClientRect().width) : 0;
+    const bodyFontPx = truckCell ? parseFloat(getComputedStyle(truckCell).fontSize) : 0;
+    return { showMoreBtns, tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(), hasShownWord, filteredTxt: filteredTxt.replace(/\\s+/g, ' ').trim(), truckColW, bodyFontPx };
   })()`);
-  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt
-    ? pass('sales tfoot · full tab dataset total (no Show More / no SHOWN OF) & updates on filter', salesTotalsProbe.tfootTxt)
-    : fail('sales tfoot totals', JSON.stringify(salesTotalsProbe));
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4))
+    ? pass('sales tfoot & typography · full tab total, compact Truck/Driver col & readable font', `truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
+    : fail('sales tfoot totals / typography', JSON.stringify(salesTotalsProbe));
   await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(220);
   const insp = await evaluate(`(() => {
     const p = document.getElementById('recordInspector');
@@ -1430,7 +1433,7 @@ try {
       u8ConsistencyOk: u8CompanySwitchOk && u8BbcReconHidden && !u8LeakedBbcSales && u8StmtTabs === 13,
       u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerHidden && u3NavSentinelsHidden &&
         u3NavPbiText === '15 Pages' && u3PbiTabs === 15 && u3TableChips === 23 && !u3HasSalariesTable,
-      u10ConsistencyOk: u10VisibleNavViews.filter(v => !String(v || '').startsWith('reg_')).join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
+      u10ConsistencyOk: u10VisibleNavViews.filter(v => !String(v || '').startsWith('reg_') && v !== 'kiosks').join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
         u10VisibleForms.join(',') === 'sales,receipt',
       u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3PbiTabs, u3TableChips, u10VisibleNavViews, u10VisibleForms
     };

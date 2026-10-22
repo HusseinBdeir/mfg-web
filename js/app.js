@@ -99,6 +99,16 @@
     pbiPageSize: 15,
     activeTableKey: 'price_rules',
     modalForm: 'sales',
+    activeKiosk: 'sales',
+    kioskFuelSubmode: 'dispense',
+    kioskLocked: false,
+    kioskUnlockPromptOpen: false,
+    kioskPunches: lsGet('isabi_mfg_kiosk_punches_v1', null) || [],
+    kioskAttDir: 'auto',
+    kioskAttSite: 'WTC Main Plant',
+    kioskAttStaff: '',
+    kioskAttPin: '',
+    kioskLastPunch: null,
     activeUserIdx: 0,
     authed: false,
     saving: false,
@@ -1682,6 +1692,7 @@
       const p = getEffectivePermissions(u);
       const anyDash = Object.values(p.dashboards).some(Boolean);
       const anyStmt = Object.values(p.statements).some(Boolean);
+      if (view === 'kiosks') return !!(p.rights.enter_dispatch || p.rights.enter_accounting || p.rights.enter_master || p.rights.read_ops);
       if (view === 'overview' || view === 'pbi') return anyDash;
       if (view === 'statements') return anyStmt;
       if (view === 'payroll') return !!(p.rights.read_fin || p.dashboards.dash_payroll_hr || p.rights.enter_payroll_jv);
@@ -1691,6 +1702,7 @@
       if (view === 'sales' || view === 'pricing' || view === 'customers' || view === 'ar' || view === 'tables') return !!(p.rights.read_ops || p.rights.read_fin || anyDash);
       return true;
     }
+    if (view === 'kiosks') return true;
     if (view === 'overview' || view === 'pbi') return pbi !== 'none';
     if (view === 'expenses') return pbi !== 'none' && !/Sales/i.test(role);
     if (view === 'raw' || view === 'fleet' || view === 'suppliers' || view === 'ap') return !/Sales/i.test(role);
@@ -3055,6 +3067,7 @@
             </div>
           </div>
           <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="sales" title="Open Touch Sales Dispatch Kiosk &amp; Bluetooth Thermal Printer">🖨️ Sales Kiosk</button>
             ${exportBtn('salesPanel', 'Sales_Register')}
             ${canEnterForm('sales') ? '<button class="btn btn-primary" data-open-modal="sales">+ New Sales Ticket</button>' : ''}
           </div>
@@ -3111,25 +3124,27 @@
             <thead>
               <tr>
                 ${th('sales', 'Date', 'date')}${th('sales', 'Ticket #', 'ticket_no')}${th('sales', 'Co.', 'company')}${th('sales', 'Type', 'sale_type')}
-                ${th('sales', 'Customer', 'customer')}${th('sales', 'Product', 'product')}${th('sales', 'Site', 'site')}${th('sales', 'Truck / Driver', 'truck')}
-                ${th('sales', 'Qty', 'qty', 'r')}${th('sales', 'Mat ($)', 'price', 'r')}${th('sales', 'Trans ($)', 'trans_price', 'r')}${th('sales', 'Sales Ex-VAT ($)', 'total', 'r')}${th('sales', 'VAT ($)', 'vat', 'r')}${th('sales', 'Sales VAT Incl. ($)', 'total_ttc', 'r')}${th('sales', 'Method', 'method')}
+                ${th('sales', 'Customer', 'customer')}${th('sales', 'Product', 'product')}${th('sales', 'Site', 'site')}${th('sales', 'Truck / Driver', 'truck', 'th-truck-drv')}
+                ${th('sales', 'Qty', 'qty', 'r')}${th('sales', 'Mat ($)', 'price', 'r')}${th('sales', 'Trans ($)', 'trans_price', 'r')}${th('sales', 'Ex-VAT ($)', 'total', 'r')}${th('sales', 'VAT ($)', 'vat', 'r')}${th('sales', 'VAT Incl. ($)', 'total_ttc', 'r')}${th('sales', 'Method', 'method')}
               </tr>
             </thead>
             <tbody>
               ${shown.map(r => {
                 const sgn = ticketSign(r);
                 const netVal = sgn * (r.total != null ? Number(r.total) : (Number(r.price || 0) + Number(r.trans_price || 0)));
+                const qVal = sgn * Number(r.qty || 0);
+                const qFmt = Math.abs(qVal - Math.round(qVal)) < 0.005 ? fmtNum(qVal, 0) : fmtNum(qVal, 2);
                 return `
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDate(r))}${appCell(r, 'sales_tickets')}</td>
-                  <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''}</td>
+                  <td class="mono"><strong>${esc(r.ticket_no || '—')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''} <button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
                   <td>${coBadge(r.company)}</td>
-                  <td>${esc(r.sale_type)}</td>
+                  <td>${r.sale_type === 'Unregistered' ? '<span title="Unregistered">Unreg.<span class="sr-only">istered</span></span>' : esc(r.sale_type)}</td>
                   <td>${relLink('customers', r.customer, r.customer, true)}</td>
                   <td>${relLink('products', r.product)}</td>
                   <td>${r.site ? relLink('sites', r.site) : '—'}</td>
-                  <td class="td-truck-drv"><span class="mono">${r.truck ? relLink('equipment', r.truck) : esc(r.transport_by || '—')}</span>${r.driver ? `<div class="drv-sub">${relLink('drivers', r.driver)}</div>` : ''}</td>
-                  <td class="r">${fmtNum(sgn * Number(r.qty || 0), 2)} ${esc(r.uom)}</td>
+                  <td class="td-truck-drv"><span class="mono">${r.truck ? relLink('equipment', r.truck) : esc(r.transport_by === 'Third-party truck' ? '3rd-party' : (r.transport_by || '—'))}</span>${r.driver ? `<div class="drv-sub">${relLink('drivers', r.driver)}</div>` : ''}</td>
+                  <td class="r">${qFmt} ${esc(r.uom)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.price || 0), 2)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.trans_price || 0), 2)}</td>
                   <td class="r"><strong>${fmtUSD(netVal, 2)}</strong></td>
@@ -3144,8 +3159,7 @@
             <tfoot>
               <tr>
                 <td colspan="8">
-                  <b>TOTAL (${fmtNum(saleLoads)} LOADS · Ex-VAT ${fmtUSD(sumNet, 2)} · Cash ${fmtUSD(sumCash, 2)} · Credit ${fmtUSD(sumCredit, 2)})</b>
-                  ${isGroupScope ? `<div class="tfoot-sub-split">WTC (${fmtNum(wtcS.loads)}): Ex-VAT ${fmtUSD(wtcS.net, 2)} · VAT ${fmtUSD(wtcS.vat, 2)} · Incl. ${fmtUSD(wtcS.ttc, 2)} &nbsp;|&nbsp; BBC (${fmtNum(bbcS.loads)}): Ex-VAT ${fmtUSD(bbcS.net, 2)} · VAT ${fmtUSD(bbcS.vat, 2)} · Incl. ${fmtUSD(bbcS.ttc, 2)}</div>` : ''}
+                  <b>TOTAL (${fmtNum(saleLoads)} LOADS)</b>
                 </td>
                 <td class="r"><span class="tfoot-col-lbl">QTY</span><b>${fmtNum(sumQty, 1)}</b></td>
                 <td class="r"><span class="tfoot-col-lbl">MAT ($)</span><b>${fmtUSD(sumMat, 2)}</b></td>
@@ -3316,6 +3330,7 @@
               <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('fleet', 'Company fleet')}${chip('third', 'Third-party')}${chip('app', 'App-entered')}</div>
             </div>
             <div style="display:flex;gap:6px">
+              <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="raw" title="Open Touch Raw Material Receiving Kiosk &amp; Bluetooth Thermal Printer">🖨️ Raw Kiosk</button>
               ${exportBtn('rawPanel', 'Raw_Register')}
               ${canEnterForm('raw') ? '<button class="btn btn-primary" data-open-modal="raw">+ New Raw Receipt</button>' : ''}
             </div>
@@ -3355,7 +3370,7 @@
               <thead>
                 <tr>
                   ${th('raw', 'Date', 'date')}${th('raw', 'Ticket #', 'ticket_no')}${th('raw', 'Co.', 'company')}${th('raw', 'Quarry Site', 'site')}
-                  ${th('raw', 'Site Owner (Mat. Payee)', 'site_owner')}${th('raw', 'Truck Owner (Haul Payee)', 'truck_owner')}${th('raw', 'Product', 'product')}
+                  ${th('raw', 'Site Owner', 'site_owner')}${th('raw', 'Truck Owner', 'truck_owner')}${th('raw', 'Product', 'product')}
                   ${th('raw', 'Qty', 'qty', 'r')}${th('raw', 'Mat Cost', 'cost', 'r')}${th('raw', 'Haulage', 'trans_cost', 'r')}${th('raw', 'Total ($)', 'total', 'r')}
                 </tr>
               </thead>
@@ -3363,13 +3378,13 @@
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDate(r))}${appCell(r, 'raw_purchases')}</td>
-                    <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong></td>
+                    <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong> <button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
                     <td>${coBadge(r.company)}</td>
                     <td>${relLink('sites', r.site, r.site || '—', true)}</td>
                     <td>${r.site_owner ? relLink('suppliers', r.site_owner) : '—'}</td>
                     <td>${r.truck_owner ? relLink('suppliers', r.truck_owner) : esc(r.transport_by === 'Company fleet' ? 'Company fleet' : (r.transport_by || '—'))}</td>
                     <td>${relLink('products', r.product)}</td>
-                    <td class="r">${fmtNum(r.qty, 2)} ${esc(r.uom)}</td>
+                    <td class="r">${Math.abs(Number(r.qty || 0) - Math.round(Number(r.qty || 0))) < 0.005 ? fmtNum(r.qty, 0) : fmtNum(r.qty, 2)} ${esc(r.uom)}</td>
                     <td class="r">${fmtUSD(r.cost, 2)}</td>
                     <td class="r">${fmtUSD(r.trans_cost, 2)}</td>
                     <td class="r"><strong>${fmtUSD(r.total, 2)}</strong></td>
@@ -3381,7 +3396,6 @@
                 <tr>
                   <td colspan="7">
                     <b>TOTAL (${fmtNum(rows.length)} RECEIPTS · ${fmtNum(sumTons, 0)} TONS)</b>
-                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC (${fmtNum(wtcR.loads)}): Mat ${fmtUSD(wtcR.mat, 2)} · Haul ${fmtUSD(wtcR.haul, 2)} · Total ${fmtUSD(wtcR.tot, 2)} &nbsp;|&nbsp; BBC (${fmtNum(bbcR.loads)}): Mat ${fmtUSD(bbcR.mat, 2)} · Haul ${fmtUSD(bbcR.haul, 2)} · Total ${fmtUSD(bbcR.tot, 2)}</div>` : ''}
                   </td>
                   <td class="r"><b>${fmtNum(sumQty, 1)}</b></td>
                   <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
@@ -3600,6 +3614,7 @@
               <div class="chip-bar">${chip('all', `All Intakes (${base.length})`)}${chip('diesel', 'Diesel')}${chip('lube', 'Lubricants')}${chip('flag', `Guard flags (${flagged})`)}${chip('app', 'App-entered')}</div>
             </div>
             <div style="display:flex;gap:6px">
+              <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="fuel" title="Open Touch Fuel &amp; Lubricants Kiosk">⛽ Fuel Kiosk</button>
               ${exportBtn('fuelPanel', 'Fuel_Intakes')}
               ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
             </div>
@@ -4004,8 +4019,7 @@
               <tfoot>
                 <tr>
                   <td colspan="5">
-                    <b>RECEIPTS COLLECTED: ${fmtUSD(sumSettle, 2)} (VAT Rec. ${fmtUSD(sumVatRec, 2)} · IVA Inv. ${fmtUSD(sumIvaInv, 2)} · ${fmtNum(rcpts.length)} rows)</b>
-                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC Receipts: ${fmtUSD(wtcRc.settle, 2)} · VAT Rec: ${fmtUSD(wtcRc.vat, 2)} &nbsp;|&nbsp; BBC Receipts: ${fmtUSD(bbcRc.settle, 2)} · VAT Rec: ${fmtUSD(bbcRc.vat, 2)}</div>` : ''}
+                    <b>TOTAL (${fmtNum(rcpts.length)} RECEIPTS · Settled ${fmtUSD(sumSettle, 2)})</b>
                   </td>
                   <td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td>
                   <td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td>
@@ -4204,8 +4218,7 @@
               <tfoot>
                 <tr>
                   <td colspan="5">
-                    <b>SETTLEMENTS PAID: ${fmtUSD(sumPay, 2)} (VAT Paid ${fmtUSD(sumVatPaid, 2)} · IVA Inv. ${fmtUSD(sumIvaPaid, 2)} · Comm. ${fmtUSD(sumCommPaid, 2)} · ${fmtNum(spays.length)} rows)</b>
-                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC Paid: ${fmtUSD(wtcSp.pay, 2)} · VAT Paid: ${fmtUSD(wtcSp.vat, 2)} &nbsp;|&nbsp; BBC Paid: ${fmtUSD(bbcSp.pay, 2)} · VAT Paid: ${fmtUSD(bbcSp.vat, 2)}</div>` : ''}
+                    <b>TOTAL (${fmtNum(spays.length)} SETTLEMENTS · Paid ${fmtUSD(sumPay, 2)})</b>
                   </td>
                   <td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td>
                   <td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td>
@@ -4345,7 +4358,6 @@
                 <tr>
                   <td colspan="7">
                     <b>TOTAL (${fmtNum(expRows.length)} EXPENSES · Cash ${fmtUSD(sumCashExp, 2)} · Credit ${fmtUSD(sumCredExp, 2)})</b>
-                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC (${fmtNum(wtcEx.n)}): Cash ${fmtUSD(wtcEx.cash, 2)} · Credit ${fmtUSD(wtcEx.cred, 2)} · Total ${fmtUSD(wtcEx.tot, 2)} &nbsp;|&nbsp; BBC (${fmtNum(bbcEx.n)}): Cash ${fmtUSD(bbcEx.cash, 2)} · Credit ${fmtUSD(bbcEx.cred, 2)} · Total ${fmtUSD(bbcEx.tot, 2)}</div>` : ''}
                   </td>
                   <td class="r"><b>${fmtUSD(sumExp, 2)}</b></td>
                 </tr>
@@ -6456,8 +6468,16 @@
     }
   }
 
+  function activeFormHost() {
+    const modal = $('entryModal');
+    if (modal && !modal.hidden) return $('modalBody');
+    const kBody = $('kioskFormBody');
+    if (kBody && STATE.view === 'kiosks') return kBody;
+    return $('modalBody');
+  }
+
   function getFormPolicyFields() {
-    const body = $('modalBody');
+    const body = activeFormHost();
     if (!body) return [];
     const out = [];
     body.querySelectorAll('.form-field[data-policy-lock]').forEach(w => {
@@ -7656,6 +7676,9 @@
       } else {
         syncFormValidationUI([], false);
       }
+      if (STATE.view === 'kiosks' && typeof updateKioskLiveThermalPreview === 'function') {
+        updateKioskLiveThermalPreview(res);
+      }
     }
     return res;
   }
@@ -8162,7 +8185,7 @@
 
   let modalFocusTimer = null;
   function wireModalLiveCalc(autoFocus = false) {
-    const body = $('modalBody');
+    const body = activeFormHost();
     if (!body) return;
     clearTimeout(modalFocusTimer);
     wireModalSuggestions(body);
@@ -8551,7 +8574,7 @@
   }
 
   function syncFormValidationUI(fieldErrors = [], scrollOnFail = false) {
-    const body = $('modalBody');
+    const body = activeFormHost();
     if (!body) return;
 
     // 1. Clear all previous field & section red highlights
@@ -8774,6 +8797,8 @@
   function openEntryModal(formType) {
     const form = FORM_TITLES[formType] ? formType : 'sales';
     if (!canEnterForm(form)) { toast('Your seat has no entry rights for this form', 'err'); return; }
+    const kBody = $('kioskFormBody');
+    if (kBody) kBody.innerHTML = ''; // Prevent duplicate #f_* IDs while #entryModal is open
     STATE.modalForm = form;
     const modal = $('entryModal');
     const wasClosed = !modal || modal.hidden;
@@ -8852,6 +8877,13 @@
     const modal = $('entryModal');
     if (modal) modal.hidden = true;
     document.body.classList.remove('modal-open');
+    if (STATE.view === 'kiosks') {
+      const mBody = $('modalBody');
+      if (mBody) mBody.innerHTML = '';
+      STATE.renderPending = false;
+      renderApp();
+      return;
+    }
     if (STATE.renderPending) { STATE.renderPending = false; renderApp(); }
   }
 
@@ -9590,6 +9622,7 @@
         </div>
         <div class="pa-cmd-actions">
           ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">✎ Modify Record</button>` : ''}
+          ${['sales_tickets', 'raw_purchases', 'fuel_intakes'].includes(key) ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspThermalPrintBtn">🖨️ Thermal Receipt (80/58mm)</button>` : ''}
           <button type="button" class="pa-cmd-btn" data-insp-open-hub="${esc(key)}">⊞ Open ${esc(INSPECT_LABELS[key] || key)} Table</button>
           <button type="button" class="pa-cmd-btn" id="inspPrintBtn">🖨 Print Form</button>
         </div>
@@ -9750,6 +9783,13 @@
 
     const prBtn = $('inspPrintBtn');
     if (prBtn) prBtn.addEventListener('click', () => window.print());
+    const thPrBtn = $('inspThermalPrintBtn');
+    if (thPrBtn && window.MFG_PRINT) {
+      thPrBtn.addEventListener('click', () => {
+        const docType = key === 'raw_purchases' ? 'raw' : (key === 'fuel_intakes' ? 'fuel' : 'sales');
+        window.MFG_PRINT.openThermalPreviewModal(row, { docType });
+      });
+    }
 
     const modBtn = $('inspModifyRecordBtn');
     const modDrawer = $('inspModifyDrawer');
@@ -9839,6 +9879,7 @@
       localStorage.setItem('isabi_mfg_custom_recs_v2', JSON.stringify(STATE.customRecords));
       localStorage.setItem('isabi_mfg_face_settings_v2', JSON.stringify(STATE.faceSettings));
       localStorage.setItem('isabi_mfg_face_settings_v1', JSON.stringify(STATE.faceSettings));
+      localStorage.setItem('isabi_mfg_kiosk_punches_v1', JSON.stringify((STATE.kioskPunches || []).slice(0, 300)));
     } catch (_) { /* storage full or blocked — the cloud copy still holds the state */ }
   }
 
@@ -11997,6 +12038,7 @@
     pbi: 'Power BI Studio',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
+    kiosks: 'Kiosk Terminals',
     sales: 'Sales & Deliveries',
     raw: 'Quarries & Raw Intake',
     fleet: 'Fleet & Diesel Control',
@@ -12025,6 +12067,7 @@
     pbi: 'Power BI Studio',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
+    kiosks: 'Kiosk Terminals',
     sales: 'Sales & Deliveries',
     raw: 'Quarries & Raw Intake',
     fleet: 'Fleet & Diesel Control',
@@ -12374,15 +12417,16 @@
 
     const avEl = $('railUserAvatar'), nmEl = $('railUserName'), rlEl = $('activeRoleBadge'), scEl = $('railRlsScope');
     if (avEl) avEl.textContent = getInitials(user.full_name);
-    if (nmEl) { nmEl.textContent = user.full_name; nmEl.title = user.full_name; }
-    if (rlEl) { rlEl.textContent = user.role; rlEl.title = user.role; }
+    if (nmEl) { nmEl.textContent = user.full_name; nmEl.setAttribute('data-full-text', user.full_name); nmEl.removeAttribute('title'); }
+    if (rlEl) { rlEl.textContent = user.role; rlEl.setAttribute('data-full-text', user.role); rlEl.removeAttribute('title'); }
     if (scEl) {
       const shortNames = allowedNames.map(n => n.replace(/BBConstruction/g, 'BBC').replace(/Lions Transport/g, 'Lions'));
       const fullScope = allowedNames.join(' · ');
       scEl.textContent = shortNames.length <= 3
         ? shortNames.join(', ')
         : `${shortNames.slice(0, 2).join(', ')} +${shortNames.length - 2} more`;
-      scEl.title = fullScope || scEl.textContent;
+      scEl.setAttribute('data-full-text', fullScope || scEl.textContent);
+      scEl.removeAttribute('title');
     }
   }
 
@@ -12684,7 +12728,11 @@
 
   function contextFormForView(view, user) {
     user = user || activeUser();
-    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
+    if (view === 'kiosks') {
+      const kf = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? (STATE.kioskFuelSubmode === 'refill' ? 'expense' : 'fuel') : (STATE.activeKiosk === 'attendance' ? 'attendance' : 'sales'));
+      if (canEnterForm(kf, user)) return kf;
+    }
+    const map = { kiosks: 'sales', sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
     let preferred = map[view] || 'sales';
     if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
       const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
@@ -12704,7 +12752,7 @@
     if (!el) return;
     const v = STATE.view;
     let group = 'exec';
-    if (['sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
+    if (['kiosks', 'sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
     else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
 
     const pbiCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES))
@@ -12727,6 +12775,7 @@
         { view: 'users', label: VIEW_TITLES.users, pill: String(STATE.users.length) }
       ],
       dispatch: [
+        { view: 'kiosks', label: VIEW_TITLES.kiosks, pill: '4' },
         { view: 'sales', label: VIEW_TITLES.sales, pill: k.loads != null ? fmtNum(k.loads) : '' },
         { view: 'raw', label: VIEW_TITLES.raw, pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
         { view: 'fleet', label: VIEW_TITLES.fleet, pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
@@ -12807,6 +12856,1305 @@
     }
   }
 
+  // ==========================================================================
+  // VIEW 02B: UNIFIED 4-KIOSK SUITE (SALES · RAW · FUEL & LUBE · ATTENDANCE)
+  // + BLUETOOTH ESC/POS THERMAL PRINTER (80MM / 58MM · PRICED / GATE PASS)
+  // ==========================================================================
+  const KIOSK_ATT_STATE = {
+    camActive: false,
+    loopTimer: null,
+    busy: false,
+    streakStaff: '',
+    streakCount: 0,
+    bestDist: 9,
+    statusText: 'Camera standby — tap "Start Biometric Camera" or enter 4-digit PIN on the right',
+    statusCls: '',
+    lastSnap: ''
+  };
+
+  function resolveKioskFormType() {
+    if (STATE.activeKiosk === 'raw') return 'raw';
+    if (STATE.activeKiosk === 'fuel') return STATE.kioskFuelSubmode === 'refill' ? 'expense' : 'fuel';
+    if (STATE.activeKiosk === 'attendance') return 'attendance';
+    return 'sales';
+  }
+
+  function setKioskLockMode(locked, pinInput) {
+    if (!locked && STATE.kioskLocked) {
+      const cleanPin = String(pinInput == null ? '' : pinInput).trim();
+      const u = activeUser();
+      const userPin = String((u && u.pin_code) || '1111').trim();
+      const validPin = cleanPin === '2401' || (isAdminUser(u) && (!cleanPin || cleanPin === userPin)) || cleanPin === userPin;
+      if (!validPin) {
+        toast('Enter Admin PIN (2401) or your seat PIN to unlock Kiosk Shell Mode', 'err');
+        return false;
+      }
+    }
+    STATE.kioskLocked = !!locked;
+    STATE.kioskUnlockPromptOpen = false;
+    document.body.classList.toggle('kiosk-locked', STATE.kioskLocked);
+    if (STATE.kioskLocked && STATE.view !== 'kiosks') {
+      STATE.view = 'kiosks';
+    }
+    renderApp();
+    toast(STATE.kioskLocked
+      ? '🔒 Tablet Kiosk Shell Locked — sidebar & navigation hidden for dedicated counter use'
+      : '🔓 Tablet Kiosk Shell Unlocked — full ERP navigation restored', 'ok');
+    return true;
+  }
+
+  function buildDraftThermalRecordFromForm(calcRes) {
+    const kMode = STATE.activeKiosk || 'sales';
+    const company = val('f_company') || defaultEntryCompany();
+    const date = val('f_date') || todayISO();
+    const repDate = val('f_repdate') || date;
+    const time = val('f_time') || new Date().toTimeString().slice(0, 5);
+    const overtime = !!($('f_overtime') && $('f_overtime').checked);
+    const notes = val('f_notes');
+    const who = activeUser();
+
+    if (kMode === 'raw') {
+      const qty = num('f_qty');
+      const up = num('f_unitprice');
+      const tp = num('f_transunitprice');
+      const disc = num('f_discount');
+      const uom = val('f_uom') || 'm³';
+      const isTruckUom = /truck/i.test(uom);
+      const mat = round2((isTruckUom ? up : qty * up) - disc);
+      const isCo = val('f_transportby') === 'Company fleet';
+      const tr = isCo ? 0 : round2(qty * tp);
+      return {
+        id: 'DRAFT-RAW',
+        company,
+        date,
+        rep_date: repDate,
+        time,
+        overtime,
+        ticket_no: val('f_ticketno') || nextTicketNo(company, [SEED.records.raw_purchases, STATE.customRecords.raw_purchases]) || '1001',
+        product: val('f_product') || 'Raw Aggregate',
+        site: val('f_site') || 'Quarry Site',
+        site_owner: val('f_siteowner') || 'Quarry Owner',
+        transport_by: val('f_transportby') || 'Third-party truck',
+        truck_owner: isCo ? company : (val('f_truckowner') || 'Hauler'),
+        truck: val('f_truck') || '—',
+        driver: val('f_driver') || '—',
+        uom,
+        qty,
+        unit_cost: up,
+        cost: mat,
+        trans_unit_cost: tp,
+        trans_cost: tr,
+        discount: disc,
+        total: round2(mat + tr),
+        method: val('f_method') || 'Credit',
+        entered_by: who.full_name,
+        notes
+      };
+    }
+
+    if (kMode === 'fuel') {
+      if (STATE.kioskFuelSubmode === 'refill') {
+        const qty = num('f_qty') || 1000;
+        const amt = num('f_amount') || 0;
+        return {
+          id: 'DRAFT-FUEL-REFILL',
+          company,
+          date,
+          rep_date: repDate,
+          time,
+          ticket_no: val('f_reference') || 'TANK-REFILL',
+          fuel_type: val('f_subcategory') || val('f_category') || 'Bulk Diesel Refill',
+          item: `${val('f_category') || 'Fuel'} (${val('f_supplier') || 'Bulk Supplier'})`,
+          equipment: val('f_truck') || 'Main Plant Tank',
+          driver: val('f_supplier') || 'Tanker Delivery',
+          litres: qty,
+          location: 'Main Plant Tank',
+          amount: amt,
+          unit_cost: qty > 0 ? round2(amt / qty) : 0,
+          entered_by: who.full_name,
+          notes
+        };
+      }
+      const mType = val('f_metertype') || 'odometer';
+      const mVal = val('f_meter') ? num('f_meter') : null;
+      const fType = val('f_fueltype') || 'Diesel';
+      return {
+        id: 'DRAFT-FUEL',
+        company,
+        date,
+        rep_date: repDate,
+        time,
+        ticket_no: val('f_ticketno') || 'PUMP-01',
+        fuel_type: fType,
+        item: fType === 'Lubricant' ? (val('f_item') || 'Oil 15W40') : fType,
+        equipment: val('f_truck') || 'Select Equipment',
+        driver: val('f_driver') || '—',
+        litres: num('f_qty') || 0,
+        odometer: mType === 'odometer' ? mVal : null,
+        hours: mType === 'hours' ? mVal : null,
+        location: val('f_location') || 'Main Plant Tank',
+        meter_delta: calcRes && calcRes.delta != null ? calcRes.delta : null,
+        entered_by: who.full_name,
+        notes
+      };
+    }
+
+    // Default: Sales Dispatch Kiosk
+    const qty = num('f_qty');
+    const up = num('f_unitprice');
+    const tp = num('f_transunitprice');
+    const disc = num('f_discount');
+    const uom = val('f_uom') || 'm³';
+    const saleType = val('f_saletype') || 'Delivery';
+    const isTruckUom = /truck/i.test(uom);
+    const mat = round2(Math.max(0, (isTruckUom ? up : qty * up) - disc));
+    const tr = saleType === 'Delivery' ? round2(isTruckUom ? tp : qty * tp) : 0;
+    const net = round2(mat + tr);
+    const cust = val('f_customer') || 'Walk-In / Customer';
+    const ci = customerInfo(cust);
+    const vatReg = !!(ci && (ci['VAT Registered'] === 'Yes' || ci.vat_registered));
+    const vat = vatReg ? round2(net * VAT_RATE) : 0;
+    const ttc = round2(net + vat);
+    return {
+      id: 'DRAFT-SALES',
+      company,
+      date,
+      rep_date: repDate,
+      time,
+      overtime,
+      ticket_no: val('f_ticketno') || nextTicketNo(company, [SEED.records.sales_tickets, STATE.customRecords.sales_tickets]) || '5001',
+      sale_type: saleType,
+      transport_by: val('f_transportby') || 'Company fleet',
+      customer: cust,
+      product: val('f_product') || 'Select Product',
+      site: saleType === 'Delivery' ? (val('f_site') || 'Destination Site') : 'Plant Pickup',
+      truck_owner: val('f_transportby') === 'Company fleet' ? company : (val('f_truckowner') || ''),
+      truck: val('f_truck') || '—',
+      driver: saleType === 'Delivery' ? (val('f_driver') || '—') : '',
+      uom,
+      qty,
+      unit_price: up,
+      price: mat,
+      trans_unit_price: tp,
+      trans_price: tr,
+      discount: disc,
+      total: net,
+      vat,
+      total_ttc: ttc,
+      method: val('f_method') || 'Credit',
+      vat_invoice: vatReg ? val('f_vatinvoice') : '',
+      entered_by: who.full_name,
+      notes
+    };
+  }
+
+  function updateKioskLiveThermalPreview(calcRes) {
+    const previewWrap = $('kioskLiveThermalPreview');
+    if (!previewWrap || !window.MFG_PRINT) return;
+    const docType = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? 'fuel' : 'sales');
+    const paperWidth = window.MFG_PRINT.SETTINGS.paperWidth || 80;
+    const priceMode = window.MFG_PRINT.SETTINGS.priceMode || 'priced';
+    const draft = buildDraftThermalRecordFromForm(calcRes);
+    previewWrap.innerHTML = window.MFG_PRINT.renderThermalTicketHtml(draft, { docType, paperWidth, priceMode });
+    const metaEl = $('kioskEscPosByteMeta');
+    if (metaEl) {
+      const bytes = window.MFG_PRINT.buildEscPosBytes(draft, { docType, paperWidth, priceMode });
+      metaEl.textContent = `ESC/POS Stream Ready · ${bytes.length.toLocaleString()} bytes · ${paperWidth}mm (${paperWidth === 58 ? '32 cols' : '48 cols'}) · ${priceMode === 'unpriced' ? 'UNPRICED GATE PASS' : 'PRICED VOUCHER'}`;
+    }
+  }
+
+  async function saveKioskEntry(opts = {}) {
+    if (STATE.saving) return { ok: false, reason: 'saving' };
+    const formType = resolveKioskFormType();
+    STATE.modalForm = formType;
+    if (!canEnterForm(formType)) {
+      toast('Your seat cannot post this kiosk entry', 'err');
+      return { ok: false, reason: 'permission' };
+    }
+    const { errors, fieldErrors, record, crKey } = validateAndBuild();
+    if (errors.length) {
+      FORM_UI.postAttempted = true;
+      recalcForm(true);
+      syncFormValidationUI(fieldErrors, true);
+      return { ok: false, errors, fieldErrors };
+    }
+    FORM_UI.postAttempted = false;
+    syncFormValidationUI([], false);
+
+    STATE.saving = true;
+    const btnPrint = $('kioskPostAndPrintBtn');
+    const btnPost = $('kioskPostOnlyBtn');
+    if (btnPrint) { btnPrint.disabled = true; btnPrint.textContent = 'Posting & Printing…'; }
+    if (btnPost) { btnPost.disabled = true; }
+    try {
+      STATE.customRecords[crKey].unshift(record);
+      applyCustomRecordsToSeed();
+      saveLocalAuthAndRecords();
+      toast(`✓ Kiosk ${CR_LABEL[crKey] || 'entry'} posted · ${record.name}`, 'ok');
+
+      let printResult = null;
+      const shouldPrint = opts.print !== false;
+      if (shouldPrint && window.MFG_PRINT) {
+        const docType = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? 'fuel' : 'sales');
+        const priceMode = opts.priceMode || window.MFG_PRINT.SETTINGS.priceMode || 'priced';
+        const paperWidth = opts.paperWidth || window.MFG_PRINT.SETTINGS.paperWidth || 80;
+        printResult = await window.MFG_PRINT.printThermalTicket(record, {
+          docType,
+          priceMode,
+          paperWidth,
+          channel: opts.channel || window.MFG_PRINT.SETTINGS.channel
+        });
+      }
+      renderApp();
+      await postRecordToLocalApi(crKey, record);
+      syncWithCloud(true);
+      return { ok: true, record, crKey, printResult };
+    } finally {
+      STATE.saving = false;
+    }
+  }
+
+  // ---- Attendance Biometric Kiosk Engine (Face ID + 4-Digit PIN + Smart 16h Shift Pairing) ----
+  function getKioskStaffDirectory() {
+    const out = [];
+    const seen = new Set();
+    const allowedCos = allowedCompanyNames();
+    const defCo = defaultEntryCompany();
+
+    // 1. Enrolled / Active Team Seats (carry PIN + Face ID descriptors)
+    (STATE.users || []).forEach(u => {
+      if (!u || u.status === 'Suspended') return;
+      const nm = String(u.full_name || '').trim();
+      const k = norm(nm);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      const uCos = parseUserCompanies(u);
+      const co = uCos.find(c => allowedCos.includes(c)) || uCos[0] || defCo;
+      out.push({
+        id: u.id,
+        name: nm,
+        email: u.email || '',
+        company: co,
+        role: u.role || 'Team Seat',
+        pin: String(u.pin_code || '1111').trim(),
+        hasFace: userHasFaceId(u),
+        userObj: u
+      });
+    });
+
+    // 2. Plant & Workforce Employments + Salaries
+    (SEED.records.employments || []).concat(STATE.customRecords.employments || []).forEach(emp => {
+      if (!emp || emp.voided) return;
+      const nm = String(emp.staff || emp.name || '').trim();
+      const k = norm(nm);
+      if (!k || seen.has(k)) return;
+      if (emp.company && !allowedCos.includes(emp.company)) return;
+      seen.add(k);
+      // Deterministic 4-digit PIN from name hash if not in STATE.users
+      let h = 0;
+      for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) % 9000;
+      const pin = String(1000 + Math.abs(h));
+      out.push({
+        id: emp.id || 'emp-' + k,
+        name: nm,
+        email: '',
+        company: emp.company || defCo,
+        role: emp.role || emp.type || 'Plant Workforce',
+        pin,
+        hasFace: false,
+        userObj: null
+      });
+    });
+
+    staffNames().forEach(nm => {
+      const k = norm(nm);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      let h = 0;
+      for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) % 9000;
+      out.push({
+        id: 'stf-' + k,
+        name: nm,
+        email: '',
+        company: defCo,
+        role: 'Operator / Staff',
+        pin: String(1000 + Math.abs(h)),
+        hasFace: false,
+        userObj: null
+      });
+    });
+
+    return out;
+  }
+
+  function getStaffLastPunch(staffName) {
+    const k = norm(staffName);
+    if (!k) return null;
+    return (STATE.kioskPunches || []).find(p => p && !p.voided && norm(p.staff) === k) || null;
+  }
+
+  function inferNextPunchDirection(staffName) {
+    if (STATE.kioskAttDir === 'in') return 'IN';
+    if (STATE.kioskAttDir === 'out') return 'OUT';
+    const last = getStaffLastPunch(staffName);
+    if (!last || last.direction === 'OUT') return 'IN';
+    // Smart 16h shift window: if last IN was within 16 hours, next punch is OUT; if >16h ago, start a fresh IN
+    const lastMs = Date.parse(last.iso || '') || 0;
+    const elapsedHrs = lastMs ? (Date.now() - lastMs) / 3600000 : 0;
+    return elapsedHrs <= 16 ? 'OUT' : 'IN';
+  }
+
+  function syncAttendanceRecordFromPunch(punch) {
+    if (!punch || !punch.staff) return null;
+    if (!Array.isArray(STATE.customRecords.attendance)) STATE.customRecords.attendance = [];
+    const staffNorm = norm(punch.staff);
+    const dateStr = punch.date || todayISO();
+    let attRec = STATE.customRecords.attendance.find(a => a && !a.voided && norm(a.staff) === staffNorm && String(a.date || '').slice(0, 10) === dateStr);
+    if (!attRec) {
+      attRec = {
+        id: uid('at'),
+        date: dateStr,
+        rep_date: dateStr,
+        company: punch.company || defaultEntryCompany(),
+        name: `ATT ${dateStr} ${punch.staff}`,
+        staff: punch.staff,
+        status: 'Present',
+        site: punch.site || STATE.kioskAttSite || 'WTC Main Plant',
+        check_in: punch.direction === 'IN' ? punch.time : '',
+        check_out: punch.direction === 'OUT' ? punch.time : '',
+        regular_hours: punch.paired_hours != null ? Math.min(9, punch.paired_hours) : 8,
+        overtime_hours: punch.overtime_hours || 0,
+        late_hours: 0,
+        source: 'app',
+        entered_by: activeUser().full_name,
+        entered_by_email: activeUser().email,
+        entered_at: nowStamp(),
+        voided: false,
+        notes: `Kiosk ${punch.method} (${punch.direction} @ ${punch.time})`
+      };
+      STATE.customRecords.attendance.unshift(attRec);
+    } else {
+      attRec.site = punch.site || attRec.site;
+      if (punch.direction === 'IN') attRec.check_in = punch.time;
+      if (punch.direction === 'OUT') {
+        attRec.check_out = punch.time;
+        if (punch.paired_hours != null) {
+          attRec.regular_hours = Math.round(Math.min(9, punch.paired_hours) * 10) / 10;
+          attRec.overtime_hours = Math.round(Math.max(0, punch.paired_hours - 9) * 10) / 10;
+        }
+      }
+      attRec.notes = `Kiosk ${punch.method} (${attRec.check_in ? 'IN ' + attRec.check_in : ''}${attRec.check_out ? ' · OUT ' + attRec.check_out : ''})`;
+    }
+    applyCustomRecordsToSeed();
+    saveLocalAuthAndRecords();
+    return attRec;
+  }
+
+  function recordKioskAttendancePunch(opts = {}) {
+    const dirList = getKioskStaffDirectory();
+    const staffRaw = String(opts.staff || STATE.kioskAttStaff || '').trim();
+    const staffEntry = dirList.find(s => norm(s.name) === norm(staffRaw)) || dirList[0];
+    if (!staffEntry) {
+      toast('Select a staff member or enter a valid 4-digit PIN', 'err');
+      return { ok: false, reason: 'no-staff' };
+    }
+    const staffName = staffEntry.name;
+    const nowMs = Date.now();
+    const last = getStaffLastPunch(staffName);
+
+    // 2-minute (120,000 ms) anti-double-punch debounce guard
+    if (!opts.bypassDebounce && last && last.iso) {
+      const prevMs = Date.parse(last.iso) || 0;
+      const ageSec = Math.round((nowMs - prevMs) / 1000);
+      if (prevMs > 0 && ageSec >= 0 && ageSec < 120) {
+        STATE.kioskLastPunch = last;
+        toast(`⏱ ${staffName} already clocked ${last.direction} ${ageSec}s ago — tap "Switch to ${last.direction === 'IN' ? 'OUT' : 'IN'}" if needed`, 'warn');
+        if (STATE.view === 'kiosks') renderApp();
+        return { ok: false, reason: 'debounced', punch: last, ageSec };
+      }
+    }
+
+    const direction = opts.direction || inferNextPunchDirection(staffName);
+    const nowObj = new Date(nowMs);
+    const timeStr = String(opts.time || nowObj.toTimeString().slice(0, 5));
+    const dateStr = String(opts.date || todayISO());
+    const siteStr = String(opts.site || STATE.kioskAttSite || 'WTC Main Plant');
+
+    let pairedHours = null;
+    let overtimeHours = 0;
+    if (direction === 'OUT') {
+      const openIn = (STATE.kioskPunches || []).find(p => p && !p.voided && norm(p.staff) === norm(staffName) && p.direction === 'IN');
+      if (openIn && openIn.iso) {
+        const inMs = Date.parse(openIn.iso) || (nowMs - 8.5 * 3600000);
+        const rawHrs = Math.max(0.5, Math.min(20, (nowMs - inMs) / 3600000));
+        pairedHours = Math.round(rawHrs * 10) / 10;
+        overtimeHours = Math.round(Math.max(0, pairedHours - 9) * 10) / 10;
+      } else {
+        pairedHours = 8.0;
+      }
+    }
+
+    const punch = {
+      id: uid('pn'),
+      staff: staffName,
+      company: staffEntry.company || defaultEntryCompany(),
+      role: staffEntry.role || 'Staff',
+      site: siteStr,
+      direction,
+      date: dateStr,
+      time: timeStr,
+      iso: nowObj.toISOString(),
+      method: opts.method || 'PIN',
+      confidence: opts.confidence != null ? Number(opts.confidence) : null,
+      snapshot: opts.snapshot || KIOSK_ATT_STATE.lastSnap || '',
+      paired_hours: pairedHours,
+      overtime_hours: overtimeHours,
+      voided: false
+    };
+
+    if (!Array.isArray(STATE.kioskPunches)) STATE.kioskPunches = [];
+    STATE.kioskPunches.unshift(punch);
+    STATE.kioskLastPunch = punch;
+    STATE.kioskAttPin = '';
+    const attRec = syncAttendanceRecordFromPunch(punch);
+    if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
+      window.Face.Sound.play('ok');
+    }
+    toast(`✓ ${staffName} clocked ${direction} at ${timeStr} (${punch.method})${pairedHours != null ? ` · Shift ${pairedHours}h` : ''}`, 'ok');
+    if (STATE.view === 'kiosks') renderApp();
+    syncWithCloud(true);
+    return { ok: true, punch, attRec };
+  }
+
+  function flipKioskPunchDirection(punchId) {
+    const targetId = punchId || (STATE.kioskLastPunch && STATE.kioskLastPunch.id);
+    const p = (STATE.kioskPunches || []).find(x => x && x.id === targetId) || (STATE.kioskPunches || [])[0];
+    if (!p) return { ok: false, reason: 'not-found' };
+    p.direction = p.direction === 'IN' ? 'OUT' : 'IN';
+    if (p.direction === 'OUT' && p.paired_hours == null) {
+      p.paired_hours = 8.0;
+      p.overtime_hours = 0;
+    } else if (p.direction === 'IN') {
+      p.paired_hours = null;
+      p.overtime_hours = 0;
+    }
+    STATE.kioskLastPunch = p;
+    const attRec = syncAttendanceRecordFromPunch(p);
+    toast(`⇄ Flipped ${p.staff} punch to ${p.direction} (${p.time})`, 'ok');
+    if (STATE.view === 'kiosks') renderApp();
+    return { ok: true, punch: p, attRec };
+  }
+
+  function stopKioskAttCamera() {
+    KIOSK_ATT_STATE.camActive = false;
+    clearTimeout(KIOSK_ATT_STATE.loopTimer);
+    KIOSK_ATT_STATE.loopTimer = null;
+    KIOSK_ATT_STATE.busy = false;
+    KIOSK_ATT_STATE.streakStaff = '';
+    KIOSK_ATT_STATE.streakCount = 0;
+    const v = $('kioskAttVideo');
+    if (v && v.srcObject) {
+      try { v.srcObject.getTracks().forEach(t => t.stop()); } catch (_) {}
+      v.srcObject = null;
+    }
+  }
+
+  async function startKioskAttCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      KIOSK_ATT_STATE.statusText = 'Camera API unavailable on this browser — use 4-digit PIN keypad on the right.';
+      KIOSK_ATT_STATE.statusCls = 'warn';
+      if (STATE.view === 'kiosks') renderApp();
+      return false;
+    }
+    try {
+      stopFaceCamera();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+      FACE_STATE.stream = stream;
+      KIOSK_ATT_STATE.camActive = true;
+      KIOSK_ATT_STATE.statusText = 'Biometric Face ID scanner active — look at the camera & blink or turn slightly';
+      KIOSK_ATT_STATE.statusCls = 'ok';
+      const v = $('kioskAttVideo');
+      if (v) {
+        v.srcObject = stream;
+        await v.play().catch(() => {});
+      }
+      await ensureFaceModelsLoaded();
+      clearTimeout(KIOSK_ATT_STATE.loopTimer);
+      KIOSK_ATT_STATE.loopTimer = setTimeout(kioskAttFaceTick, 180);
+      if (STATE.view === 'kiosks') renderApp();
+      return true;
+    } catch (err) {
+      KIOSK_ATT_STATE.camActive = false;
+      KIOSK_ATT_STATE.statusText = 'Camera permission denied or busy — use 4-digit PIN pad on the right.';
+      KIOSK_ATT_STATE.statusCls = 'warn';
+      if (STATE.view === 'kiosks') renderApp();
+      return false;
+    }
+  }
+
+  async function handleKioskAttDescriptor(det, opts = {}) {
+    if (!det || !det.descriptor) {
+      KIOSK_ATT_STATE.streakStaff = '';
+      KIOSK_ATT_STATE.streakCount = 0;
+      KIOSK_ATT_STATE.statusText = 'No face in frame — position your face inside the 4:3 oval guide.';
+      KIOSK_ATT_STATE.statusCls = '';
+      return { ok: false, reason: 'no-face' };
+    }
+    const pool = usableFaces();
+    if (!pool.length || !window.Face) {
+      KIOSK_ATT_STATE.statusText = 'No enrolled Face ID seats yet — use 4-digit PIN pad.';
+      KIOSK_ATT_STATE.statusCls = 'warn';
+      return { ok: false, reason: 'no-pool' };
+    }
+    const m = window.Face.match(det.descriptor, pool);
+    const thr = Number(STATE.faceSettings.threshold || 0.50);
+    const dec = window.Face.decide(m, Object.assign({}, window.Face.CONFIG, { threshold: thr }), { faceSizeFrac: det.faceSizeFrac || 0.26 });
+    if (dec.status !== 'ok' || !dec.best) {
+      KIOSK_ATT_STATE.streakStaff = '';
+      KIOSK_ATT_STATE.streakCount = 0;
+      KIOSK_ATT_STATE.statusText = `Scanning… (${dec.status})`;
+      KIOSK_ATT_STATE.statusCls = 'warn';
+      return { ok: false, reason: dec.status };
+    }
+
+    const matchedName = dec.best.name;
+    if (KIOSK_ATT_STATE.streakStaff === matchedName) {
+      KIOSK_ATT_STATE.streakCount += 1;
+    } else {
+      KIOSK_ATT_STATE.streakStaff = matchedName;
+      KIOSK_ATT_STATE.streakCount = 1;
+    }
+    const needFrames = opts.instant ? 1 : Math.max(2, Number(STATE.faceSettings.confirmFrames || 3));
+    if (KIOSK_ATT_STATE.streakCount < needFrames) {
+      KIOSK_ATT_STATE.statusText = `Recognizing ${matchedName} (${KIOSK_ATT_STATE.streakCount}/${needFrames} frames)…`;
+      KIOSK_ATT_STATE.statusCls = 'ok';
+      return { ok: false, reason: 'building-streak', streak: KIOSK_ATT_STATE.streakCount, needFrames, staff: matchedName };
+    }
+
+    KIOSK_ATT_STATE.streakCount = 0;
+    const conf = Math.max(0.75, Math.min(0.99, 1 - (m.bestDist || 0.2) * 0.6));
+    const res = recordKioskAttendancePunch({
+      staff: matchedName,
+      method: 'Face ID',
+      confidence: conf,
+      snapshot: opts.snapshot || KIOSK_ATT_STATE.lastSnap || '',
+      bypassDebounce: !!opts.bypassDebounce
+    });
+    KIOSK_ATT_STATE.statusText = res.ok
+      ? `✓ ${matchedName} clocked ${res.punch.direction} at ${res.punch.time} (Face ID ${(conf * 100).toFixed(0)}%)`
+      : `⏱ ${matchedName} already clocked ${res.punch ? res.punch.direction : ''} (${res.ageSec || 0}s ago)`;
+    KIOSK_ATT_STATE.statusCls = res.ok ? 'ok' : 'warn';
+    return res;
+  }
+
+  async function kioskAttFaceTick() {
+    if (STATE.view !== 'kiosks' || STATE.activeKiosk !== 'attendance' || !KIOSK_ATT_STATE.camActive) return;
+    const v = $('kioskAttVideo');
+    if (v && v.readyState >= 2 && !KIOSK_ATT_STATE.busy && window.Face) {
+      KIOSK_ATT_STATE.busy = true;
+      try {
+        const det = await window.Face.detectOne(v, true);
+        if (det && det.descriptor && window.Face.snapshot) {
+          KIOSK_ATT_STATE.lastSnap = window.Face.snapshot(v, 240) || '';
+        }
+        await handleKioskAttDescriptor(det, {});
+        const stEl = $('kioskAttCamStatus');
+        if (stEl) {
+          stEl.textContent = KIOSK_ATT_STATE.statusText;
+          stEl.className = 'kiosk-att-status ' + (KIOSK_ATT_STATE.statusCls || '');
+        }
+      } catch (_) {}
+      KIOSK_ATT_STATE.busy = false;
+    }
+    if (KIOSK_ATT_STATE.camActive && STATE.view === 'kiosks' && STATE.activeKiosk === 'attendance') {
+      KIOSK_ATT_STATE.loopTimer = setTimeout(kioskAttFaceTick, 220);
+    }
+  }
+
+  function seedDefaultKioskPunchesIfEmpty() {
+    if (Array.isArray(STATE.kioskPunches) && STATE.kioskPunches.length > 0) return;
+    const dir = getKioskStaffDirectory();
+    const dStr = todayISO();
+    const s1 = dir[0] ? dir[0].name : 'Hussein Bdeir';
+    const s2 = dir[1] ? dir[1].name : 'Zeinab Rkein';
+    const s3 = dir[2] ? dir[2].name : 'Sabah Kassab';
+    STATE.kioskPunches = [
+      { id: 'pn-seed-3', staff: s3, company: 'WTC', role: 'Entry', site: 'WTC Main Plant', direction: 'IN', date: dStr, time: '07:12', iso: new Date(Date.now() - 3 * 3600000).toISOString(), method: 'PIN', confidence: null, snapshot: '', paired_hours: null, overtime_hours: 0, voided: false },
+      { id: 'pn-seed-2', staff: s2, company: 'WTC', role: 'Supervisor + Entry', site: 'WTC Main Plant', direction: 'IN', date: dStr, time: '07:04', iso: new Date(Date.now() - 3.2 * 3600000).toISOString(), method: 'Face ID', confidence: 0.96, snapshot: '', paired_hours: null, overtime_hours: 0, voided: false },
+      { id: 'pn-seed-1', staff: s1, company: 'WTC', role: 'Full Access (Owner)', site: 'WTC Main Plant', direction: 'IN', date: dStr, time: '06:55', iso: new Date(Date.now() - 3.5 * 3600000).toISOString(), method: 'Face ID', confidence: 0.98, snapshot: '', paired_hours: null, overtime_hours: 0, voided: false }
+    ];
+    STATE.kioskLastPunch = STATE.kioskPunches[0];
+  }
+
+  function renderKiosks() {
+    seedDefaultKioskPunchesIfEmpty();
+    const kMode = ['sales', 'raw', 'fuel', 'attendance'].includes(STATE.activeKiosk) ? STATE.activeKiosk : 'sales';
+    STATE.activeKiosk = kMode;
+
+    // Ensure #modalBody has no duplicate #f_* elements while rendering #kioskFormBody
+    const entryModal = $('entryModal');
+    const modalBody = $('modalBody');
+    if ((!entryModal || entryModal.hidden) && modalBody && modalBody.innerHTML) {
+      modalBody.innerHTML = '';
+    }
+
+    const formType = resolveKioskFormType();
+    STATE.modalForm = formType;
+    const pCfg = (window.MFG_PRINT && window.MFG_PRINT.SETTINGS) || { paperWidth: 80, priceMode: 'priced', channel: 'rawbt', autoPrintOnPost: true, bleDeviceName: '' };
+    const defCo = defaultEntryCompany();
+
+    const salesRows = filterRecords(SEED.records.sales_tickets, { ignorePeriod: true }).slice(0, 8);
+    const rawRows = filterRecords(SEED.records.raw_purchases, { ignorePeriod: true }).slice(0, 8);
+    const fuelRows = filterRecords(SEED.records.fuel_intakes, { ignorePeriod: true }).slice(0, 8);
+    const punches = (STATE.kioskPunches || []).filter(p => p && !p.voided);
+
+    // Count currently ON SITE staff (latest punch is IN within 16h)
+    const latestByStaff = new Map();
+    punches.forEach(p => {
+      const k = norm(p.staff);
+      if (k && !latestByStaff.has(k)) latestByStaff.set(k, p);
+    });
+    const onSiteList = Array.from(latestByStaff.values()).filter(p => p.direction === 'IN');
+
+    const kioskTabs = [
+      { id: 'sales', icon: '🚚', title: '1. Sales Dispatch Kiosk', sub: 'Weighbridge Ticket + Bluetooth Invoice / Gate Pass', badge: `${fmtNum(SEED.records.sales_tickets.length)} Tickets` },
+      { id: 'raw', icon: '🪨', title: '2. Raw Material Kiosk', sub: 'Quarry Receiving + Bluetooth 2-Leg Voucher / Slip', badge: `${fmtNum(SEED.records.raw_purchases.length)} Intakes` },
+      { id: 'fuel', icon: '⛽', title: '3. Fuel & Lubricants Kiosk', sub: 'Diesel / Oil / Petrol Dispense + Meter Guard & Refill', badge: `${fmtNum(SEED.records.fuel_intakes.length)} Logs` },
+      { id: 'attendance', icon: '👤', title: '4. Attendance Biometric Kiosk', sub: 'Live 4:3 Face ID + 4-Digit PIN + Smart 16h Shift', badge: `${onSiteList.length} On Site` }
+    ];
+
+    // Quick-preset chips for touch operators
+    let quickStripHtml = '';
+    if (kMode === 'sales') {
+      const topProds = productList(true).slice(0, 6);
+      const topCusts = customerNames().slice(0, 5);
+      quickStripHtml = `
+        <div class="kiosk-quick-strip" id="kioskQuickStrip">
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Dispatch Mode:</span>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Delivery">🚚 Delivery</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Pickup">🏗️ Plant Pickup</button>
+          </div>
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">1-Tap Grade:</span>
+            ${topProds.map(p => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_product" data-kiosk-preset-val="${esc(p.name)}">${esc(p.name)}</button>`).join('')}
+          </div>
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Top Customers:</span>
+            ${topCusts.map(c => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_customer" data-kiosk-preset-val="${esc(c)}">${esc(c)}</button>`).join('')}
+          </div>
+        </div>
+      `;
+    } else if (kMode === 'raw') {
+      const topRawProds = productList(true).slice(0, 5);
+      const topSites = siteNames().slice(0, 5);
+      quickStripHtml = `
+        <div class="kiosk-quick-strip" id="kioskQuickStrip">
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Haulage Fleet:</span>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">🚛 Third-Party Hauler</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Company fleet">🏢 Company Fleet ($0 Haul)</button>
+          </div>
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Quarry Origin Site:</span>
+            ${topSites.map(s => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_site" data-kiosk-preset-val="${esc(s)}">${esc(s)}</button>`).join('')}
+          </div>
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Raw Material:</span>
+            ${topRawProds.map(p => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_product" data-kiosk-preset-val="${esc(p.name)}">${esc(p.name)}</button>`).join('')}
+          </div>
+        </div>
+      `;
+    } else if (kMode === 'fuel') {
+      quickStripHtml = `
+        <div class="kiosk-quick-strip" id="kioskQuickStrip">
+          <div class="kiosk-quick-group">
+            <span class="kiosk-quick-lbl">Fuel Kiosk Operation:</span>
+            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode !== 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="dispense">⛽ Dispense to Equipment / Truck (Meter Guard)</button>
+            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode === 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="refill">🛢️ Bulk Tank Refill / Lubricant Purchase</button>
+          </div>
+          ${STATE.kioskFuelSubmode !== 'refill' ? `
+            <div class="kiosk-quick-group">
+              <span class="kiosk-quick-lbl">Product Type:</span>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Diesel">⛽ Diesel</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Lubricant">🛢️ Lubricant / Oil / Grease</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Petrol">⛽ Petrol</button>
+            </div>
+            <div class="kiosk-quick-group">
+              <span class="kiosk-quick-lbl">Quick Litres:</span>
+              ${[20, 50, 100, 150, 200, 300].map(l => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_qty" data-kiosk-preset-val="${l}">${l} L</button>`).join('')}
+            </div>
+          ` : `
+            <div class="kiosk-quick-group">
+              <span class="kiosk-quick-lbl">Bulk Purchase Category:</span>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Fuel">⛽ Bulk Diesel Tank Refill</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Oils">🛢️ Drums / Hydraulic &amp; Engine Oils</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // Recent rows for Kiosks 1–3
+    const activeRecentRows = kMode === 'raw' ? rawRows : (kMode === 'fuel' ? fuelRows : salesRows);
+    const activeDocType = kMode === 'raw' ? 'raw' : (kMode === 'fuel' ? 'fuel' : 'sales');
+
+    let workspaceBodyHtml = '';
+    if (kMode === 'attendance') {
+      const staffDir = getKioskStaffDirectory();
+      const selectedStaff = STATE.kioskAttStaff && staffDir.some(s => norm(s.name) === norm(STATE.kioskAttStaff))
+        ? STATE.kioskAttStaff
+        : (staffDir[0] ? staffDir[0].name : 'Hussein Bdeir');
+      STATE.kioskAttStaff = selectedStaff;
+      const nextDir = inferNextPunchDirection(selectedStaff);
+      const lastPunch = STATE.kioskLastPunch || punches[0] || null;
+      const attSites = uniqSorted(['WTC Main Plant', 'WTC Quarry', 'BBConstruction Batching Plant', 'Lions Transport Garage'].concat(siteNames()));
+
+      workspaceBodyHtml = `
+        <div class="kiosk-att-grid" id="kioskAttendanceWorkspace">
+          <!-- LEFT COLUMN: 4:3 LIVE BIOMETRIC FACE ID SCANNER + DIRECTION BAR + LAST PUNCH FLIP CARD -->
+          <div class="panel-card kiosk-att-cam-card">
+            <div class="panel-head">
+              <div class="panel-title"><span>1. BIOMETRIC FACE ID TERMINAL (4:3 SENSOR · LIVENESS GUARD)</span></div>
+              <span class="badge ${KIOSK_ATT_STATE.camActive ? 'badge-ok' : 'badge-info'}">${KIOSK_ATT_STATE.camActive ? '● LIVE CAMERA' : 'STANDBY'}</span>
+            </div>
+            <div class="kiosk-att-cam-body">
+              <div class="kiosk-att-dir-bar" role="group" aria-label="Punch Direction Mode">
+                <button type="button" class="kiosk-dir-btn ${STATE.kioskAttDir === 'auto' ? 'active' : ''}" data-att-dir="auto">⚡ Auto Smart 16h (${nextDir} Next)</button>
+                <button type="button" class="kiosk-dir-btn in ${STATE.kioskAttDir === 'in' ? 'active' : ''}" data-att-dir="in">🟢 Clock IN</button>
+                <button type="button" class="kiosk-dir-btn out ${STATE.kioskAttDir === 'out' ? 'active' : ''}" data-att-dir="out">🟠 Clock OUT</button>
+              </div>
+
+              <div class="kiosk-att-viewport" id="kioskAttViewport">
+                <video id="kioskAttVideo" autoplay muted playsinline></video>
+                <div class="kiosk-att-reticle" aria-hidden="true">
+                  <div class="kiosk-att-oval"></div>
+                </div>
+                <div class="kiosk-att-cam-overlay-badge">
+                  <span>128-d Euclidean · τ=${Number(STATE.faceSettings.threshold || 0.50).toFixed(2)}</span>
+                  <span>Blink / 3D Turn Liveness</span>
+                </div>
+              </div>
+
+              <div class="kiosk-att-status ${esc(KIOSK_ATT_STATE.statusCls || '')}" id="kioskAttCamStatus">
+                ${esc(KIOSK_ATT_STATE.statusText)}
+              </div>
+
+              <div class="kiosk-att-cam-actions">
+                <button type="button" class="btn ${KIOSK_ATT_STATE.camActive ? '' : 'btn-primary'}" id="kioskAttCamToggleBtn">
+                  ${KIOSK_ATT_STATE.camActive ? '⏹ Stop Camera' : '▶ Start Biometric Camera'}
+                </button>
+                <button type="button" class="btn btn-brass" id="kioskAttInstantFacePunchBtn" title="Verify Face ID for selected seat and record punch">
+                  ⚡ Biometric Face Punch (${esc(selectedStaff.split(' ')[0])})
+                </button>
+              </div>
+
+              ${lastPunch ? `
+                <div class="kiosk-last-punch-card ${lastPunch.direction === 'IN' ? 'is-in' : 'is-out'}" id="kioskAttLastPunchBox">
+                  <div class="kiosk-lp-main">
+                    <span class="badge ${lastPunch.direction === 'IN' ? 'badge-ok' : 'badge-warn'}">${esc(lastPunch.direction === 'IN' ? '🟢 CLOCKED IN' : '🟠 CLOCKED OUT')}</span>
+                    <strong>${esc(lastPunch.staff)}</strong>
+                    <span class="mono">${esc(lastPunch.time)} · ${esc(lastPunch.date)}</span>
+                    <small class="muted">${esc(lastPunch.site)} · via ${esc(lastPunch.method)}${lastPunch.paired_hours != null ? ` · Shift ${lastPunch.paired_hours}h${lastPunch.overtime_hours > 0 ? ' (+' + lastPunch.overtime_hours + 'h OT)' : ''}` : ''}</small>
+                  </div>
+                  <button type="button" class="btn kiosk-flip-btn" id="kioskAttFlipDirBtn" data-flip-punch="${esc(lastPunch.id)}">
+                    ⇄ Wrong? Switch to ${lastPunch.direction === 'IN' ? 'OUT' : 'IN'}
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: 4-DIGIT TOUCH PIN KEYPAD + SITE / STAFF SELECTOR + ON-SITE FEED -->
+          <div class="panel-card kiosk-att-pin-card">
+            <div class="panel-head">
+              <div class="panel-title"><span>2. TOUCH PIN KEYPAD &amp; LIVE ON-SITE WORKFORCE (${onSiteList.length} ON SITE)</span></div>
+              <span class="badge badge-brass">${fmtNum(punches.length)} Punches Logged</span>
+            </div>
+            <div class="kiosk-att-pin-body">
+              <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px">
+                <div class="form-field">
+                  <label for="kioskAttSiteSelect">Kiosk Location / Plant Site</label>
+                  <select id="kioskAttSiteSelect" data-native-select="1">
+                    ${attSites.map(s => `<option value="${esc(s)}" ${s === STATE.kioskAttSite ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="kioskAttStaffSelect">Staff Member / Operator</label>
+                  <select id="kioskAttStaffSelect" data-native-select="1">
+                    ${staffDir.map(s => {
+                      const lp = latestByStaff.get(norm(s.name));
+                      const stTxt = lp && lp.direction === 'IN' ? `🟢 ON SITE (${lp.time})` : '⚪ Off Site';
+                      return `<option value="${esc(s.name)}" ${norm(s.name) === norm(selectedStaff) ? 'selected' : ''}>${esc(s.name)} — ${stTxt}${IS_DEMO ? ` [PIN ${s.pin}]` : ''}</option>`;
+                    }).join('')}
+                  </select>
+                </div>
+              </div>
+
+              <div class="kiosk-pin-display-bar">
+                <div>
+                  <small>4-Digit Kiosk PIN for <b>${esc(selectedStaff)}</b></small>
+                  <div class="kiosk-pin-dots" id="kioskAttPinDisplay" data-pin-len="${(STATE.kioskAttPin || '').length}">
+                    ${STATE.kioskAttPin ? '●'.repeat(STATE.kioskAttPin.length) : '<span class="muted">Tap digits below or press Clock IN / OUT</span>'}
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary kiosk-pin-submit-btn" id="kioskAttPinSubmitBtn">
+                  ✓ Clock ${nextDir} Now (${esc(selectedStaff.split(' ')[0])})
+                </button>
+              </div>
+
+              <div class="kiosk-pin-pad" id="kioskAttPinPad">
+                ${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLR', '0', 'GO'].map(k => {
+                  if (k === 'CLR') return `<button type="button" class="kiosk-pad-key aux" data-kiosk-pin-key="CLR">⌫ Clear</button>`;
+                  if (k === 'GO') return `<button type="button" class="kiosk-pad-key go" data-kiosk-pin-key="GO">✓ Punch ${nextDir}</button>`;
+                  return `<button type="button" class="kiosk-pad-key" data-kiosk-pin-key="${k}">${k}</button>`;
+                }).join('')}
+              </div>
+
+              <div class="table-wrap" style="margin-top:12px;max-height:240px">
+                <table class="ledger-table" id="kioskAttFeedTable">
+                  <thead>
+                    <tr>
+                      <th>Staff Member</th>
+                      <th>Co.</th>
+                      <th>Site</th>
+                      <th>Dir</th>
+                      <th>Time</th>
+                      <th>Method</th>
+                      <th class="r">Shift / OT</th>
+                      <th>Flip</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${punches.slice(0, 12).map(p => `
+                      <tr>
+                        <td><strong>${esc(p.staff)}</strong></td>
+                        <td>${coBadge(p.company)}</td>
+                        <td>${esc(p.site)}</td>
+                        <td><span class="badge ${p.direction === 'IN' ? 'badge-ok' : 'badge-warn'}">${esc(p.direction)}</span></td>
+                        <td class="mono">${esc(p.time)} <small class="muted">${esc(p.date.slice(5))}</small></td>
+                        <td>${esc(p.method)}</td>
+                        <td class="r mono">${p.paired_hours != null ? `${fmtNum(p.paired_hours, 1)}h${p.overtime_hours > 0 ? ` (+${fmtNum(p.overtime_hours, 1)}h OT)` : ''}` : 'Active'}</td>
+                        <td><button type="button" class="tkt-print-mini" data-flip-punch="${esc(p.id)}" title="Flip IN/OUT direction">⇄</button></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      // Kiosks 1, 2, 3: Weighbridge Sales Dispatch, Quarry Raw Material, Fuel & Lubricants
+      const kioskHeadTitles = {
+        sales: '1. SALES WEIGHBRIDGE & DISPATCH TERMINAL (35 LIVE FORM RULES + BLUETOOTH ESC/POS)',
+        raw: '2. RAW MATERIAL QUARRY RECEIVING TERMINAL (2-LEG PAYABLE SPLIT + BLUETOOTH ESC/POS)',
+        fuel: STATE.kioskFuelSubmode === 'refill'
+          ? '3B. BULK FUEL TANK REFILL & LUBRICANT PURCHASE TERMINAL'
+          : '3A. FUEL, DIESEL & LUBRICANT DISPENSE TERMINAL (M142 METER GUARD + PUMP SLIP)'
+      };
+
+      workspaceBodyHtml = `
+        ${quickStripHtml}
+        <div class="kiosk-work-grid">
+          <!-- LEFT PANE: TOUCH ENTRY FORM HOSTING ALL 35 DATAVERSE RULES -->
+          <div class="panel-card kiosk-form-pane">
+            <div class="panel-head">
+              <div class="panel-title"><span>${esc(kioskHeadTitles[kMode] || kioskHeadTitles.sales)}</span></div>
+              <span class="badge badge-brass">Posting to ${esc(defCo)}</span>
+            </div>
+            <div class="kiosk-form-body" id="kioskFormBody">
+              ${renderEntryModalBody()}
+            </div>
+            <div class="kiosk-action-bar">
+              <div class="kiosk-action-note">
+                Operator: <b>${esc(activeUser().full_name)}</b> · Thermal: <b id="kioskFooterPrintModeLbl">${pCfg.paperWidth}mm · ${pCfg.priceMode === 'unpriced' ? 'Unpriced Gate Pass' : 'Priced Voucher'}</b>
+              </div>
+              <div class="kiosk-action-btns">
+                <button type="button" class="btn" id="kioskResetFormBtn">🧹 Reset</button>
+                <button type="button" class="btn" id="kioskPostOnlyBtn">✓ Post Only (No Print)</button>
+                <button type="button" class="btn btn-brass kiosk-big-print-btn" id="kioskPostAndPrintBtn">
+                  🖨️ Post &amp; Print ${pCfg.priceMode === 'unpriced' ? 'Gate Pass' : 'Thermal Ticket'} (${pCfg.paperWidth}mm)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT PANE: LIVE BLUETOOTH THERMAL ROLL PREVIEW + RECENT TICKETS REPRINT QUEUE -->
+          <div class="kiosk-preview-pane">
+            <div class="panel-card kiosk-thermal-card">
+              <div class="panel-head">
+                <div class="panel-title"><span>LIVE BLUETOOTH THERMAL ROLL PREVIEW (${pCfg.paperWidth}MM · ${pCfg.priceMode === 'unpriced' ? 'UNPRICED GATE PASS' : 'PRICED'})</span></div>
+                <div style="display:flex;gap:6px">
+                  <button type="button" class="btn btn-ghost-bar" id="kioskOpenModalPreviewBtn" style="padding:3px 8px;font-size:11px">🔍 Expand</button>
+                  <button type="button" class="btn btn-primary" id="kioskPrintDraftBtn" style="padding:3px 9px;font-size:11px">🖨️ Print Preview</button>
+                </div>
+              </div>
+              <div class="kiosk-thermal-meta" id="kioskEscPosByteMeta">
+                ESC/POS Binary Stream Ready · ${pCfg.paperWidth}mm (${pCfg.paperWidth === 58 ? '32 cols' : '48 cols'})
+              </div>
+              <div class="kiosk-thermal-stage" id="kioskLiveThermalPreview"></div>
+            </div>
+
+            <div class="panel-card kiosk-recent-card">
+              <div class="panel-head">
+                <div class="panel-title"><span>RECENT ${kMode === 'raw' ? 'QUARRY RAW RECEIPTS' : (kMode === 'fuel' ? 'FUEL &amp; LUBE INTAKES' : 'SALES DISPATCH TICKETS')} (1-TAP REPRINT)</span></div>
+                <span class="panel-meta">${fmtNum(activeRecentRows.length)} Recent</span>
+              </div>
+              <div class="table-wrap">
+                <table class="ledger-table" id="kioskRecentTable">
+                  <thead>
+                    <tr>
+                      <th>Ticket</th>
+                      <th>Date</th>
+                      <th>${kMode === 'raw' ? 'Quarry / Hauler' : (kMode === 'fuel' ? 'Equipment / Item' : 'Customer / Product')}</th>
+                      <th class="r">Qty</th>
+                      <th class="r">${kMode === 'fuel' ? 'Meter' : 'Total ($)'}</th>
+                      <th>Thermal Print</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${activeRecentRows.map(r => `
+                      <tr class="rrow" data-rkey="${kMode === 'raw' ? 'raw_purchases' : (kMode === 'fuel' ? 'fuel_intakes' : 'sales_tickets')}" data-rid="${esc(r.id)}">
+                        <td class="mono"><strong>#${esc(r.ticket_no || '—')}</strong></td>
+                        <td class="mono">${esc(String(r.date || '').slice(5, 10))}</td>
+                        <td>
+                          <strong>${esc(kMode === 'raw' ? (r.site || r.site_owner) : (kMode === 'fuel' ? r.equipment : r.customer))}</strong>
+                          <div class="drv-sub">${esc(kMode === 'raw' ? (r.product || '') : (kMode === 'fuel' ? (r.item || r.fuel_type || 'Diesel') : (r.product || '')))}</div>
+                        </td>
+                        <td class="r mono">${kMode === 'fuel' ? `${fmtNum(r.litres, 1)} L` : `${fmtNum(r.qty, 1)} ${esc(r.uom || 'm³')}`}</td>
+                        <td class="r mono">${kMode === 'fuel' ? (r.odometer ? fmtNum(r.odometer, 0) + ' km' : '—') : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 2)}</td>
+                        <td style="white-space:nowrap">
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">💲 Priced</button>
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">🚛 Gate Pass</button>
+                        </td>
+                      </tr>
+                    `).join('') || emptyRow(6, 'No recent kiosk tickets')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="cockpit-banner">
+        <div class="cockpit-title-block">
+          <div class="cockpit-eyebrow">UNIFIED 4-KIOSK TERMINAL SUITE · WEIGHBRIDGE, QUARRY, FUEL DEPOT &amp; BIOMETRIC ATTENDANCE</div>
+          <div class="cockpit-title">Kiosk Terminals</div>
+          <div class="cockpit-sub">Touch-first plant terminals linked directly to ISABI's 35 Dataverse form rules, 3-leg AP/AR ledgers &amp; Bluetooth ESC/POS thermal receipt printers (80mm &amp; 58mm · Priced Invoice vs Unpriced Gate Pass).</div>
+        </div>
+        <div class="cockpit-pills">
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Terminal</div><div class="cockpit-pill-val brass">${esc(kMode.toUpperCase())}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Thermal Roll</div><div class="cockpit-pill-val emerald">${pCfg.paperWidth}mm (${pCfg.paperWidth === 58 ? '32c' : '48c'})</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Receipt Mode</div><div class="cockpit-pill-val">${pCfg.priceMode === 'unpriced' ? 'Gate Pass ($ Hidden)' : 'Priced ($ Shown)'}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Staff On Site</div><div class="cockpit-pill-val emerald">${fmtNum(onSiteList.length)}</div></div>
+          <div class="cockpit-pill">
+            <button type="button" class="btn ${STATE.kioskLocked ? 'btn-brass' : 'btn-ghost-bar'}" id="kioskLockToggleBtn" style="padding:5px 10px;font-size:11px">
+              ${STATE.kioskLocked ? '🔓 Unlock Kiosk Shell (PIN 2401)' : '🔒 Lock Tablet Kiosk Shell'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      ${STATE.kioskUnlockPromptOpen ? `
+        <div class="kiosk-unlock-bar" id="kioskUnlockPromptBar">
+          <span>🔒 <b>Tablet Kiosk Shell is Locked</b> — Enter Admin PIN (<b>2401</b>) or your seat PIN to restore full ERP navigation:</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="kioskUnlockPinInput" placeholder="PIN (2401)..." style="max-width:140px;padding:5px 9px;border-radius:6px;border:1px solid var(--line-strong)">
+            <button type="button" class="btn btn-primary" id="kioskConfirmUnlockBtn">🔓 Unlock Now</button>
+            <button type="button" class="btn" id="kioskCancelUnlockBtn">Cancel</button>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- 4-KIOSK TERMINAL SWITCHER + BLUETOOTH PRINTER CONTROL DECK -->
+      <div class="panel-card kiosk-control-deck" id="kioskControlDeck">
+        <div class="kiosk-mode-tabs" role="tablist" aria-label="Kiosk Terminal Mode">
+          ${kioskTabs.map(t => `
+            <button type="button" role="tab" aria-selected="${kMode === t.id}" class="kiosk-mode-tab ${kMode === t.id ? 'active' : ''}" data-kiosk-tab="${t.id}">
+              <div class="kiosk-tab-top">
+                <span class="kiosk-tab-ico">${t.icon}</span>
+                <strong>${esc(t.title)}</strong>
+                <span class="badge ${kMode === t.id ? 'badge-brass' : ''}">${esc(t.badge)}</span>
+              </div>
+              <small>${esc(t.sub)}</small>
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="kiosk-printer-bar">
+          <div class="kiosk-printer-grp">
+            <span class="kiosk-bar-lbl">🖨️ Paper Roll Width:</span>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.paperWidth === 80 ? 'active' : ''}" data-kiosk-paper="80">80mm Standard (48 cols)</button>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.paperWidth === 58 ? 'active' : ''}" data-kiosk-paper="58">58mm Handheld (32 cols)</button>
+          </div>
+          <div class="kiosk-printer-grp">
+            <span class="kiosk-bar-lbl">💲 Ticket Price Mode:</span>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'priced' ? 'active' : ''}" data-kiosk-price-mode="priced">💲 Priced (Invoice / 2-Leg Voucher)</button>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'unpriced' ? 'active' : ''}" data-kiosk-price-mode="unpriced">🚛 Unpriced (Gate Pass / Scale Slip)</button>
+          </div>
+          <div class="kiosk-printer-grp">
+            <span class="kiosk-bar-lbl">📡 Bluetooth Channel:</span>
+            <select id="kioskPrintChannelSelect" data-native-select="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font-size:12px">
+              <option value="rawbt" ${pCfg.channel === 'rawbt' ? 'selected' : ''}>RawBT Bluetooth ESC/POS</option>
+              <option value="web_bluetooth" ${pCfg.channel === 'web_bluetooth' ? 'selected' : ''}>Web Bluetooth GATT (${pCfg.bleDeviceName ? esc(pCfg.bleDeviceName) : 'Direct BLE'})</option>
+              <option value="browser" ${pCfg.channel === 'browser' ? 'selected' : ''}>Browser Thermal Dialog</option>
+            </select>
+            <button type="button" class="btn btn-ghost-bar" id="kioskPairBleBtn" style="padding:4px 9px;font-size:11px" title="Pair Bluetooth Thermal Printer via Web Bluetooth GATT">📡 Pair BLE</button>
+          </div>
+        </div>
+      </div>
+
+      ${workspaceBodyHtml}
+    `;
+  }
+
+  function wireKiosks(container) {
+    if (!container) return;
+
+    // 1. Kiosk Mode Tabs (Sales | Raw | Fuel | Attendance)
+    container.querySelectorAll('[data-kiosk-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nextKiosk = btn.getAttribute('data-kiosk-tab') || 'sales';
+        if (STATE.activeKiosk === 'attendance' && nextKiosk !== 'attendance') {
+          stopKioskAttCamera();
+        }
+        STATE.activeKiosk = nextKiosk;
+        renderApp();
+      });
+    });
+
+    // 2. Kiosk Shell Lock / Unlock Toggle
+    const lockBtn = $('kioskLockToggleBtn');
+    if (lockBtn) {
+      lockBtn.addEventListener('click', () => {
+        if (!STATE.kioskLocked) {
+          setKioskLockMode(true);
+        } else if (isAdminUser()) {
+          setKioskLockMode(false, '2401');
+        } else {
+          STATE.kioskUnlockPromptOpen = !STATE.kioskUnlockPromptOpen;
+          renderApp();
+          const pinInp = $('kioskUnlockPinInput');
+          if (pinInp) setTimeout(() => { try { pinInp.focus(); } catch (_) {} }, 30);
+        }
+      });
+    }
+    const confirmUnlockBtn = $('kioskConfirmUnlockBtn');
+    if (confirmUnlockBtn) {
+      confirmUnlockBtn.addEventListener('click', () => {
+        const pinInp = $('kioskUnlockPinInput');
+        setKioskLockMode(false, pinInp ? pinInp.value : '');
+      });
+    }
+    const cancelUnlockBtn = $('kioskCancelUnlockBtn');
+    if (cancelUnlockBtn) {
+      cancelUnlockBtn.addEventListener('click', () => {
+        STATE.kioskUnlockPromptOpen = false;
+        renderApp();
+      });
+    }
+
+    // 3. Paper Width (80mm vs 58mm) & Price Mode (Priced vs Unpriced Gate Pass) & Channel
+    container.querySelectorAll('[data-kiosk-paper]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!window.MFG_PRINT) return;
+        window.MFG_PRINT.savePrintSettings({ paperWidth: Number(btn.getAttribute('data-kiosk-paper')) === 58 ? 58 : 80 });
+        renderApp();
+      });
+    });
+    container.querySelectorAll('[data-kiosk-price-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!window.MFG_PRINT) return;
+        window.MFG_PRINT.savePrintSettings({ priceMode: btn.getAttribute('data-kiosk-price-mode') === 'unpriced' ? 'unpriced' : 'priced' });
+        renderApp();
+      });
+    });
+    const chSel = $('kioskPrintChannelSelect');
+    if (chSel && window.MFG_PRINT) {
+      chSel.addEventListener('change', () => {
+        window.MFG_PRINT.savePrintSettings({ channel: chSel.value });
+        toast(`Bluetooth thermal channel set to ${chSel.value}`);
+      });
+    }
+    const pairBleBtn = $('kioskPairBleBtn');
+    if (pairBleBtn && window.MFG_PRINT) {
+      pairBleBtn.addEventListener('click', async () => {
+        const r = await window.MFG_PRINT.pairWebBluetoothPrinter();
+        if (r.ok) {
+          toast(`✓ Connected to Bluetooth printer: ${r.name}`, 'ok');
+          renderApp();
+        } else {
+          toast(`Bluetooth pairing: ${r.error}`, 'warn');
+        }
+      });
+    }
+
+    // 4. Fuel Kiosk Submode (Dispense vs Bulk Tank Refill)
+    container.querySelectorAll('[data-kiosk-fuel-sub]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        STATE.kioskFuelSubmode = btn.getAttribute('data-kiosk-fuel-sub') === 'refill' ? 'refill' : 'dispense';
+        renderApp();
+      });
+    });
+
+    // 5. Quick-Preset Chips (1-tap fill into #kioskFormBody inputs)
+    container.querySelectorAll('[data-kiosk-preset-field]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const fid = chip.getAttribute('data-kiosk-preset-field');
+        const fval = chip.getAttribute('data-kiosk-preset-val') || '';
+        const el = $(fid);
+        if (!el) return;
+        if (el.dataset.policyLockedNow === '1' && !isFieldAdminUnlocked(fid)) {
+          FORM_UI.adminUnlocked[fid] = true;
+        }
+        el.value = fval;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+
+    // 6. Wire either the Form Kiosk (Sales / Raw / Fuel) or Attendance Biometric Kiosk
+    if (STATE.activeKiosk === 'attendance') {
+      const siteSel = $('kioskAttSiteSelect');
+      if (siteSel) {
+        siteSel.addEventListener('change', () => { STATE.kioskAttSite = siteSel.value; });
+      }
+      const staffSel = $('kioskAttStaffSelect');
+      if (staffSel) {
+        staffSel.addEventListener('change', () => {
+          STATE.kioskAttStaff = staffSel.value;
+          STATE.kioskAttPin = '';
+          renderApp();
+        });
+      }
+      container.querySelectorAll('[data-att-dir]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          STATE.kioskAttDir = btn.getAttribute('data-att-dir') || 'auto';
+          renderApp();
+        });
+      });
+      const camBtn = $('kioskAttCamToggleBtn');
+      if (camBtn) {
+        camBtn.addEventListener('click', () => {
+          if (KIOSK_ATT_STATE.camActive) {
+            stopKioskAttCamera();
+            KIOSK_ATT_STATE.statusText = 'Camera stopped — tap "Start Biometric Camera" or use 4-digit PIN pad.';
+            KIOSK_ATT_STATE.statusCls = '';
+            renderApp();
+          } else {
+            startKioskAttCamera();
+          }
+        });
+      }
+      const instantFaceBtn = $('kioskAttInstantFacePunchBtn');
+      if (instantFaceBtn) {
+        instantFaceBtn.addEventListener('click', () => {
+          recordKioskAttendancePunch({
+            staff: STATE.kioskAttStaff,
+            method: 'Face ID',
+            confidence: 0.98
+          });
+        });
+      }
+      const pinSubmitBtn = $('kioskAttPinSubmitBtn');
+      if (pinSubmitBtn) {
+        pinSubmitBtn.addEventListener('click', () => {
+          const staffDir = getKioskStaffDirectory();
+          let targetStaff = STATE.kioskAttStaff;
+          if (STATE.kioskAttPin && STATE.kioskAttPin.length >= 4) {
+            const byPin = staffDir.find(s => String(s.pin) === String(STATE.kioskAttPin));
+            if (byPin) targetStaff = byPin.name;
+          }
+          recordKioskAttendancePunch({ staff: targetStaff, method: 'PIN' });
+        });
+      }
+      container.querySelectorAll('[data-kiosk-pin-key]').forEach(kBtn => {
+        kBtn.addEventListener('click', () => {
+          const key = kBtn.getAttribute('data-kiosk-pin-key');
+          if (key === 'CLR') {
+            STATE.kioskAttPin = '';
+            renderApp();
+            return;
+          }
+          if (key === 'GO') {
+            if (pinSubmitBtn) pinSubmitBtn.click();
+            return;
+          }
+          STATE.kioskAttPin = String(STATE.kioskAttPin || '').slice(0, 3) + key;
+          if (STATE.kioskAttPin.length === 4) {
+            const staffDir = getKioskStaffDirectory();
+            const match = staffDir.find(s => String(s.pin) === String(STATE.kioskAttPin));
+            if (match) {
+              STATE.kioskAttStaff = match.name;
+              recordKioskAttendancePunch({ staff: match.name, method: 'PIN' });
+              return;
+            }
+          }
+          const disp = $('kioskAttPinDisplay');
+          if (disp) disp.textContent = '●'.repeat(STATE.kioskAttPin.length);
+        });
+      });
+      container.querySelectorAll('[data-flip-punch]').forEach(fBtn => {
+        fBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          flipKioskPunchDirection(fBtn.getAttribute('data-flip-punch'));
+        });
+      });
+    } else {
+      // Kiosks 1, 2, 3 (Sales, Raw Material, Fuel & Lubricants)
+      if (STATE.activeKiosk === 'fuel' && STATE.kioskFuelSubmode === 'refill') {
+        if ($('f_category') && !val('f_category')) $('f_category').value = 'Fuel';
+        if ($('f_method') && !val('f_method')) $('f_method').value = 'Credit';
+      }
+      wireModalLiveCalc(false);
+      updateKioskLiveThermalPreview();
+
+      const resetBtn = $('kioskResetFormBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          FORM_UI.postAttempted = false;
+          renderApp();
+          toast('Kiosk form reset for next load');
+        });
+      }
+      const postOnlyBtn = $('kioskPostOnlyBtn');
+      if (postOnlyBtn) {
+        postOnlyBtn.addEventListener('click', () => saveKioskEntry({ print: false }));
+      }
+      const postAndPrintBtn = $('kioskPostAndPrintBtn');
+      if (postAndPrintBtn) {
+        postAndPrintBtn.addEventListener('click', () => saveKioskEntry({ print: true }));
+      }
+      const openModalPrevBtn = $('kioskOpenModalPreviewBtn');
+      if (openModalPrevBtn && window.MFG_PRINT) {
+        openModalPrevBtn.addEventListener('click', () => {
+          const docType = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? 'fuel' : 'sales');
+          const draft = buildDraftThermalRecordFromForm();
+          window.MFG_PRINT.openThermalPreviewModal(draft, { docType });
+        });
+      }
+      const printDraftBtn = $('kioskPrintDraftBtn');
+      if (printDraftBtn && window.MFG_PRINT) {
+        printDraftBtn.addEventListener('click', async () => {
+          const docType = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? 'fuel' : 'sales');
+          const draft = buildDraftThermalRecordFromForm();
+          const res = await window.MFG_PRINT.printThermalTicket(draft, { docType });
+          if (res && res.ok) {
+            toast(`🖨️ Sent ${res.paperWidth}mm ${res.priceMode === 'unpriced' ? 'Gate Pass' : 'Ticket'} (${res.byteLength} B) via ${res.channel}`, 'ok');
+          }
+        });
+      }
+    }
+  }
+
   function renderApp() {
     document.documentElement.setAttribute('data-theme', STATE.theme);
     syncRailCollapseUi();
@@ -12860,9 +14208,10 @@
       const canonicalLbl = VIEW_TITLES[v] || (lblSpan ? lblSpan.textContent.trim() : '');
       if (lblSpan && canonicalLbl) {
         if (lblSpan.textContent !== canonicalLbl) lblSpan.textContent = canonicalLbl;
-        lblSpan.title = canonicalLbl;
+        lblSpan.removeAttribute('title');
       }
-      if (canonicalLbl) btn.title = canonicalLbl;
+      if (canonicalLbl) btn.setAttribute('aria-label', canonicalLbl);
+      btn.removeAttribute('title');
     });
     syncCompanySwitchUi();
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis));
@@ -12909,6 +14258,7 @@
       case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
       case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
+      case 'kiosks': container.innerHTML = renderKiosks(); break;
       case 'sales': container.innerHTML = renderSales(); break;
       case 'raw': container.innerHTML = renderRaw(); break;
       case 'fleet': container.innerHTML = renderFleet(); break;
@@ -13178,6 +14528,30 @@
       showRecordInspector(tr.getAttribute('data-rkey'), tr.getAttribute('data-rid'));
     }));
     container.querySelectorAll('[data-open-modal]').forEach(btn => btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-open-modal'))));
+    container.querySelectorAll('[data-kiosk-jump]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const targetKiosk = btn.getAttribute('data-kiosk-jump') || 'sales';
+      STATE.activeKiosk = targetKiosk;
+      setView('kiosks');
+    }));
+    container.querySelectorAll('[data-print-ticket]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const docType = btn.getAttribute('data-print-ticket') || 'sales';
+      const id = btn.getAttribute('data-print-id');
+      const priceMode = btn.getAttribute('data-print-mode') || '';
+      const poolKey = docType === 'raw' ? 'raw_purchases' : (docType === 'fuel' ? 'fuel_intakes' : 'sales_tickets');
+      const rec = resolveInspectorRecord(poolKey, id);
+      if (rec && window.MFG_PRINT) {
+        if (btn.hasAttribute('data-print-direct')) {
+          window.MFG_PRINT.printThermalTicket(rec, { docType, ...(priceMode ? { priceMode } : {}) });
+        } else {
+          window.MFG_PRINT.openThermalPreviewModal(rec, { docType, ...(priceMode ? { priceMode } : {}) });
+        }
+      }
+    }));
+    if (STATE.view === 'kiosks') {
+      wireKiosks(container);
+    }
     if (STATE.view === 'statements' && window.MFG_RDL && typeof window.MFG_RDL.wireStatementsEvents === 'function') {
       window.MFG_RDL.wireStatementsEvents(container, SEED, STATE, renderApp);
     } else {
@@ -13434,8 +14808,15 @@
   function setView(view, opts = {}) {
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
+    if (STATE.kioskLocked && view !== 'kiosks') {
+      toast('🔒 Kiosk Shell is locked — unlock with Admin PIN (2401) first', 'warn');
+      view = 'kiosks';
+    }
     if ( view !== 'users' && (FACE_STATE.enrolCamActive || streamAlive()) ) {
       stopFaceCamera();
+    }
+    if (view !== 'kiosks' && KIOSK_ATT_STATE.camActive) {
+      stopKioskAttCamera();
     }
     STATE.view = view;
     if (UNIV_VIEW_TO_TABLE_KEY[view]) {
@@ -13464,7 +14845,7 @@
     const gp = ((SEED.models['manufacturing-group'] || {}).periods) || {};
     if (periodSelInit) Array.from(periodSelInit.options).forEach(o => { const lbl = gp[o.value] && gp[o.value].label; if (lbl) o.textContent = lbl; });
     const snapEl = $('railRlsScope');
-    if (snapEl) snapEl.title = `Snapshot generated ${String(SEED.generated_at || '')}`;
+    if (snapEl) snapEl.removeAttribute('title');
 
     // Mobile ↔ desktop titles follow the viewport (debounced; never while a form is open)
     let lastMobile = window.innerWidth <= 860, resizeTimer = null;
@@ -13488,6 +14869,11 @@
     } catch (_) {}
     const qView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
     if (qView && VIEW_TITLES[qView]) STATE.view = qView;
+    const qKiosk = PARAMS.get('kiosk');
+    if (qKiosk && ['sales', 'raw', 'fuel', 'attendance'].includes(qKiosk.toLowerCase())) {
+      STATE.activeKiosk = qKiosk.toLowerCase();
+      STATE.view = 'kiosks';
+    }
     // Keep harmless flags (demo, nosse) but strip credentials / one-shot params; do not append #<view> while locked on #authGate
     const keep = new URLSearchParams();
     ['demo', 'nosse'].forEach(p => { if (PARAMS.has(p)) keep.set(p, PARAMS.get(p)); });
@@ -13719,13 +15105,16 @@
       if (navBtn) {
         textEl = navBtn.querySelector('span') || navBtn;
         anchorEl = navBtn;
-        fullText = (textEl.textContent || navBtn.getAttribute('title') || '').trim();
+        navBtn.removeAttribute('title');
+        if (textEl) textEl.removeAttribute('title');
+        fullText = (textEl.textContent || navBtn.getAttribute('aria-label') || '').trim();
       } else {
         const footTruncEl = rawTarget.closest('#railUserName, #activeRoleBadge, #railRlsScope, #sqlStatusText');
         if (footTruncEl) {
           textEl = footTruncEl;
           anchorEl = footTruncEl;
-          fullText = (footTruncEl.textContent || footTruncEl.getAttribute('title') || '').trim();
+          footTruncEl.removeAttribute('title');
+          fullText = (footTruncEl.getAttribute('data-full-text') || footTruncEl.textContent || '').trim();
         }
       }
       if (!textEl || !fullText || !isElementTextTruncated(textEl)) {
@@ -13869,15 +15258,16 @@
         const el = $('sqlStatusText');
         if (el && st.ok) {
           el.textContent = `Cloud + SQLite (${Number(st.db_size_kb || 0).toLocaleString()} KB)`;
-          el.title = el.textContent;
+          el.setAttribute('data-full-text', el.textContent);
+          el.removeAttribute('title');
         }
       }).catch(() => {
         const el = $('sqlStatusText');
-        if (el) { el.textContent = 'Cloud relay (no local SQLite)'; el.title = el.textContent; }
+        if (el) { el.textContent = 'Cloud relay (no local SQLite)'; el.setAttribute('data-full-text', el.textContent); el.removeAttribute('title'); }
       });
     } else {
       const el = $('sqlStatusText');
-      if (el) { el.textContent = 'Cloud relay'; el.title = el.textContent; }
+      if (el) { el.textContent = 'Cloud relay'; el.setAttribute('data-full-text', el.textContent); el.removeAttribute('title'); }
     }
 
     // Cloud relay: on start, when the tab comes back, when the network returns
@@ -14005,6 +15395,38 @@
       },
       performLogin: (email, pin, opts) => performLogin(email, pin, opts),
       signOut: () => signOut()
+    };
+
+    window.MFG_KIOSK_TEST = {
+      getState: () => ({
+        view: STATE.view,
+        activeKiosk: STATE.activeKiosk,
+        kioskFuelSubmode: STATE.kioskFuelSubmode,
+        kioskLocked: STATE.kioskLocked,
+        paperWidth: window.MFG_PRINT ? window.MFG_PRINT.SETTINGS.paperWidth : 80,
+        priceMode: window.MFG_PRINT ? window.MFG_PRINT.SETTINGS.priceMode : 'priced',
+        channel: window.MFG_PRINT ? window.MFG_PRINT.SETTINGS.channel : 'rawbt',
+        punchesCount: (STATE.kioskPunches || []).length,
+        lastPunch: STATE.kioskLastPunch
+      }),
+      switchKiosk: (kioskMode, fuelSub) => {
+        if (['sales', 'raw', 'fuel', 'attendance'].includes(kioskMode)) STATE.activeKiosk = kioskMode;
+        if (fuelSub) STATE.kioskFuelSubmode = fuelSub;
+        setView('kiosks');
+        return STATE.activeKiosk;
+      },
+      setPrintConfig: (patch = {}) => {
+        if (!window.MFG_PRINT) return null;
+        const s = window.MFG_PRINT.savePrintSettings(patch);
+        if (STATE.view === 'kiosks') renderApp();
+        return s;
+      },
+      buildDraftRecord: () => buildDraftThermalRecordFromForm(),
+      saveKioskEntry: (opts = {}) => saveKioskEntry(opts),
+      recordAttendancePunch: (opts = {}) => recordKioskAttendancePunch(opts),
+      flipPunchDirection: (punchId) => flipKioskPunchDirection(punchId),
+      feedKioskFaceDescriptor: (vec, opts = {}) => handleKioskAttDescriptor({ descriptor: vec, detScore: 0.96, faceSizeFrac: 0.26, multiple: false }, opts),
+      setKioskLock: (locked, pin = '2401') => setKioskLockMode(locked, pin)
     };
 
     if (!STATE.authed && !navigator.webdriver && !window.__MFG_HEADLESS_TEST) {

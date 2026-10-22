@@ -9,7 +9,7 @@
   <script id="pre">
     // Pre-paint theme + iOS standalone + SW-resume detection (no white flash or auth-gate flash on reload) — PWA.md §3.1 & §3.3
     try {
-      window.__MFG_SHELL_VER = '8.9';
+      window.__MFG_SHELL_VER = '9.2';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -36,7 +36,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=8.9">
+  <link rel="stylesheet" href="css/app.css?v=9.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -94,104 +94,108 @@
 
       <nav class="rail-nav" id="sidebarNav" aria-label="Manufacturing Modules">
         <div class="grp">Executive</div>
-        <button type="button" class="nav-item on" data-view="overview" title="Executive Overview">
-          <span title="Executive Overview">Executive Overview</span>
+        <button type="button" class="nav-item on" data-view="overview" aria-label="Executive Overview">
+          <span>Executive Overview</span>
           <em class="nav-pill brass">Live</em>
         </button>
-        <button type="button" class="nav-item" data-view="pbi" title="Power BI Studio">
-          <span title="Power BI Studio">Power BI Studio</span>
+        <button type="button" class="nav-item" data-view="pbi" aria-label="Power BI Studio">
+          <span>Power BI Studio</span>
           <em class="nav-pill brass" id="navCountPbi">20 Pages</em>
         </button>
-        <button type="button" class="nav-item" data-view="tables" title="Tables &amp; Registers">
-          <span title="Tables &amp; Registers">Tables &amp; Registers</span>
+        <button type="button" class="nav-item" data-view="tables" aria-label="Tables &amp; Registers">
+          <span>Tables &amp; Registers</span>
           <em class="nav-pill" id="navCountTables">34</em>
         </button>
-        <button type="button" class="nav-item" data-view="sentinels" title="AI Sentinels &amp; Audit">
-          <span title="AI Sentinels &amp; Audit">AI Sentinels &amp; Audit</span>
+        <button type="button" class="nav-item" data-view="sentinels" aria-label="AI Sentinels &amp; Audit">
+          <span>AI Sentinels &amp; Audit</span>
           <em class="nav-pill" id="navCountSentinels">—</em>
         </button>
 
         <div class="grp">Plant &amp; Dispatch</div>
-        <button type="button" class="nav-item" data-view="sales" title="Sales &amp; Deliveries">
-          <span title="Sales &amp; Deliveries">Sales &amp; Deliveries</span>
+        <button type="button" class="nav-item" data-view="sales" aria-label="Sales &amp; Deliveries">
+          <span>Sales &amp; Deliveries</span>
           <em class="nav-pill" id="navCountSales">25,884</em>
         </button>
-        <button type="button" class="nav-item" data-view="raw" title="Quarries &amp; Raw Intake">
-          <span title="Quarries &amp; Raw Intake">Quarries &amp; Raw Intake</span>
+        <button type="button" class="nav-item" data-view="raw" aria-label="Quarries &amp; Raw Intake">
+          <span>Quarries &amp; Raw Intake</span>
           <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
-        <button type="button" class="nav-item" data-view="fleet" title="Fleet &amp; Diesel Control">
-          <span title="Fleet &amp; Diesel Control">Fleet &amp; Diesel Control</span>
+        <button type="button" class="nav-item" data-view="fleet" aria-label="Fleet &amp; Diesel Control">
+          <span>Fleet &amp; Diesel Control</span>
           <em class="nav-pill" id="navCountFleet">1,637</em>
         </button>
-        <button type="button" class="nav-item" data-view="pricing" title="Pricing &amp; Commissions">
-          <span title="Pricing &amp; Commissions">Pricing &amp; Commissions</span>
+        <button type="button" class="nav-item" data-view="pricing" aria-label="Pricing &amp; Commissions">
+          <span>Pricing &amp; Commissions</span>
           <em class="nav-pill" id="navCountPricing">753</em>
+        </button>
+        <button type="button" class="nav-item" data-view="kiosks" aria-label="Kiosk Terminals">
+          <span>Kiosk Terminals</span>
+          <em class="nav-pill brass" id="navCountKiosks">4 Kiosks</em>
         </button>
 
         <div class="grp">Treasury &amp; Books</div>
-        <button type="button" class="nav-item" data-view="customers" title="Customers &amp; Receivables">
-          <span title="Customers &amp; Receivables">Customers &amp; Receivables</span>
+        <button type="button" class="nav-item" data-view="customers" aria-label="Customers &amp; Receivables">
+          <span>Customers &amp; Receivables</span>
           <em class="nav-pill" id="navCountAR">—</em>
         </button>
-        <button type="button" class="nav-item" data-view="suppliers" title="Suppliers &amp; Payables">
-          <span title="Suppliers &amp; Payables">Suppliers &amp; Payables</span>
+        <button type="button" class="nav-item" data-view="suppliers" aria-label="Suppliers &amp; Payables">
+          <span>Suppliers &amp; Payables</span>
           <em class="nav-pill" id="navCountAP">3 Legs</em>
         </button>
-        <button type="button" class="nav-item" data-view="expenses" title="Expenses &amp; Overhead">
-          <span title="Expenses &amp; Overhead">Expenses &amp; Overhead</span>
+        <button type="button" class="nav-item" data-view="expenses" aria-label="Expenses &amp; Overhead">
+          <span>Expenses &amp; Overhead</span>
           <em class="nav-pill" id="navCountExp">—</em>
         </button>
-        <button type="button" class="nav-item" data-view="payroll" title="Payroll &amp; Workforce">
-          <span title="Payroll &amp; Workforce">Payroll &amp; Workforce</span>
+        <button type="button" class="nav-item" data-view="payroll" aria-label="Payroll &amp; Workforce">
+          <span>Payroll &amp; Workforce</span>
           <em class="nav-pill" id="navCountPayroll">—</em>
         </button>
-        <button type="button" class="nav-item" data-view="ledger" title="General Ledger &amp; SOA">
-          <span title="General Ledger &amp; SOA">General Ledger &amp; SOA</span>
+        <button type="button" class="nav-item" data-view="ledger" aria-label="General Ledger &amp; SOA">
+          <span>General Ledger &amp; SOA</span>
           <em class="nav-pill good" id="navCountTB">TB —</em>
         </button>
 
         <div class="grp">Universal Registries</div>
-        <button type="button" class="nav-item" data-view="reg_equipment" title="Equipment &amp; Trucks">
-          <span title="Equipment &amp; Trucks">Equipment &amp; Trucks</span>
+        <button type="button" class="nav-item" data-view="reg_equipment" aria-label="Equipment &amp; Trucks">
+          <span>Equipment &amp; Trucks</span>
           <em class="nav-pill" id="navCountRegEquip">1,637</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_drivers" title="Drivers &amp; Operators">
-          <span title="Drivers &amp; Operators">Drivers &amp; Operators</span>
+        <button type="button" class="nav-item" data-view="reg_drivers" aria-label="Drivers &amp; Operators">
+          <span>Drivers &amp; Operators</span>
           <em class="nav-pill" id="navCountRegDrivers">354</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_sites" title="Quarries &amp; Sites">
-          <span title="Quarries &amp; Sites">Quarries &amp; Sites</span>
+        <button type="button" class="nav-item" data-view="reg_sites" aria-label="Quarries &amp; Sites">
+          <span>Quarries &amp; Sites</span>
           <em class="nav-pill" id="navCountRegSites">196</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_regions" title="Regions &amp; Zones">
-          <span title="Regions &amp; Zones">Regions &amp; Zones</span>
+        <button type="button" class="nav-item" data-view="reg_regions" aria-label="Regions &amp; Zones">
+          <span>Regions &amp; Zones</span>
           <em class="nav-pill" id="navCountRegRegions">12</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_products" title="Products &amp; Grades">
-          <span title="Products &amp; Grades">Products &amp; Grades</span>
+        <button type="button" class="nav-item" data-view="reg_products" aria-label="Products &amp; Grades">
+          <span>Products &amp; Grades</span>
           <em class="nav-pill" id="navCountRegProducts">46</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_customers" title="Customers Registry">
-          <span title="Customers Registry">Customers Registry</span>
+        <button type="button" class="nav-item" data-view="reg_customers" aria-label="Customers Registry">
+          <span>Customers Registry</span>
           <em class="nav-pill" id="navCountRegCustomers">275</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_suppliers" title="Suppliers &amp; Haulers">
-          <span title="Suppliers &amp; Haulers">Suppliers &amp; Haulers</span>
+        <button type="button" class="nav-item" data-view="reg_suppliers" aria-label="Suppliers &amp; Haulers">
+          <span>Suppliers &amp; Haulers</span>
           <em class="nav-pill" id="navCountRegSuppliers">198</em>
         </button>
-        <button type="button" class="nav-item" data-view="reg_categories" title="Expense Categories">
-          <span title="Expense Categories">Expense Categories</span>
+        <button type="button" class="nav-item" data-view="reg_categories" aria-label="Expense Categories">
+          <span>Expense Categories</span>
           <em class="nav-pill" id="navCountRegCategories">16</em>
         </button>
 
         <div class="grp">Governance &amp; Cloud</div>
-        <button type="button" class="nav-item" data-view="statements" title="Statements &amp; Reports">
-          <span title="Statements &amp; Reports">Statements &amp; Reports</span>
+        <button type="button" class="nav-item" data-view="statements" aria-label="Statements &amp; Reports">
+          <span>Statements &amp; Reports</span>
           <em class="nav-pill">A4</em>
         </button>
-        <button type="button" class="nav-item" data-view="users" title="Team Auth &amp; Users">
-          <span title="Team Auth &amp; Users">Team Auth &amp; Users</span>
+        <button type="button" class="nav-item" data-view="users" aria-label="Team Auth &amp; Users">
+          <span>Team Auth &amp; Users</span>
           <em class="nav-pill brass" id="navCountUsers">10 Seats</em>
         </button>
       </nav>
@@ -200,14 +204,14 @@
         <div class="me">
           <span class="av" id="railUserAvatar">HB</span>
           <div class="me-info">
-            <strong id="railUserName" title="Hussein Bdeir">Hussein Bdeir</strong>
-            <small id="activeRoleBadge" title="Full Access · 3 Entities">Full Access · 3 Entities</small>
+            <strong id="railUserName">Hussein Bdeir</strong>
+            <small id="activeRoleBadge">Full Access · 3 Entities</small>
           </div>
           <button type="button" class="rail-switch-btn" id="signOutBtn" title="Lock this session and switch team login">Lock</button>
         </div>
         <div class="rail-status-row">
-          <span class="engine-dot"><i></i><span id="sqlStatusText" title="Connecting…">Connecting…</span></span>
-          <span class="rls-tag" id="railRlsScope" title="WTC · BBC · Lions">WTC · BBC · Lions</span>
+          <span class="engine-dot"><i></i><span id="sqlStatusText">Connecting…</span></span>
+          <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
         </div>
       </div>
       <div class="rail-resizer" id="railResizer" role="separator" aria-orientation="vertical" aria-valuemin="176" aria-valuemax="420" aria-valuenow="248" tabindex="0" aria-label="Resize left navigation sidebar" title="Drag left or right to make sidebar wider or narrower · Double-click to reset">
@@ -598,14 +602,15 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=8.9"></script>
-  <script src="js/face.js?v=8.9"></script>
-  <script src="js/endpoints.js?v=8.9"></script>
-  <script src="js/seed_data.js?v=8.9"></script>
-  <script src="js/forms_engine.js?v=8.9"></script>
-  <script src="js/pbi_pages.js?v=8.9"></script>
-  <script src="js/rdl_reports.js?v=8.9"></script>
-  <script src="js/app.js?v=8.9"></script>
+  <script src="vendor/face-api.js?v=9.2"></script>
+  <script src="js/face.js?v=9.2"></script>
+  <script src="js/endpoints.js?v=9.2"></script>
+  <script src="js/seed_data.js?v=9.2"></script>
+  <script src="js/forms_engine.js?v=9.2"></script>
+  <script src="js/pbi_pages.js?v=9.2"></script>
+  <script src="js/rdl_reports.js?v=9.2"></script>
+  <script src="js/kiosk_print.js?v=9.2"></script>
+  <script src="js/app.js?v=9.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

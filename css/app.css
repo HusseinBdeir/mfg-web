@@ -580,22 +580,36 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   pointer-events: none;
   background: #0B1730;
   color: #F4F2EE;
-  border: 1px solid rgba(217, 165, 74, 0.55);
+  border: 1px solid rgba(217, 165, 74, 0.6);
   border-left: 3px solid #D9A54A;
-  border-radius: 6px;
-  padding: 5px 10px;
+  border-radius: 7px;
+  padding: 6px 12px;
   font-family: "Instrument Sans", sans-serif;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: 1.25;
   white-space: nowrap;
-  box-shadow: 0 8px 22px rgba(8, 17, 36, 0.32);
+  box-shadow: 0 10px 26px rgba(8, 17, 36, 0.36), 0 2px 6px rgba(8, 17, 36, 0.22);
+}
+
+.rail-hover-tooltip::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 5px solid #D9A54A;
 }
 
 :root[data-theme="dark"] .rail-hover-tooltip {
   background: #132342;
   color: #F4F2EE;
-  border-color: rgba(217, 165, 74, 0.7);
+  border-color: rgba(217, 165, 74, 0.75);
 }
 
 .nav-pill.brass {
@@ -10211,42 +10225,94 @@ table.ledger-table .rel-link .rel-arr {
 
 /* Compact company badge & stacked Truck / Driver cell */
 table.ledger-table .co-tbl-badge {
-  padding: 1.5px 5px;
-  font-size: 9.5px;
+  padding: 2px 6px;
+  font-size: 10.2px;
   letter-spacing: 0.02em;
 }
-.td-truck-drv {
-  line-height: 1.22;
+table.ledger-table th.th-truck-drv,
+table.ledger-table td.td-truck-drv {
+  width: 78px;
+  max-width: 86px;
+  white-space: normal;
+  line-height: 1.24;
 }
 .td-truck-drv .drv-sub {
-  font-size: 9.8px;
-  color: var(--muted);
+  font-size: 10.8px;
+  font-weight: 500;
+  color: var(--ink-2, var(--ink));
   margin-top: 1px;
-  line-height: 1.2;
+  line-height: 1.22;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+#salesPanel table.ledger-table td.mono {
+  white-space: normal;
+}
+#salesPanel table.ledger-table th:nth-child(1),
+#salesPanel table.ledger-table td:nth-child(1) {
+  width: 72px;
+}
+#salesPanel table.ledger-table th:nth-child(2),
+#salesPanel table.ledger-table td:nth-child(2) {
+  max-width: 78px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+#salesPanel table.ledger-table th:nth-child(3),
+#salesPanel table.ledger-table td:nth-child(3) {
+  width: 42px;
+}
+#salesPanel table.ledger-table th:nth-child(4),
+#salesPanel table.ledger-table td:nth-child(4) {
+  width: 52px;
+}
+#salesPanel table.ledger-table td:nth-child(5),
+#salesPanel table.ledger-table td:nth-child(6),
+#salesPanel table.ledger-table td:nth-child(7),
+#salesPanel table.ledger-table td:nth-child(8) {
+  overflow-wrap: anywhere;
+}
+#salesPanel table.ledger-table th:nth-child(7),
+#salesPanel table.ledger-table td:nth-child(7) {
+  max-width: 72px;
+  white-space: normal;
+}
+#salesPanel table.ledger-table th:nth-child(15),
+#salesPanel table.ledger-table td:nth-child(15) {
+  width: 54px;
+}
+#salesPanel table.ledger-table td:nth-child(15) .badge {
+  white-space: normal;
+}
+.mini-table-grid table.ledger-table th,
+.mini-table-grid table.ledger-table td {
+  padding: 5.5px 5.5px;
+  font-size: 11.4px;
 }
 
-/* Allow right-aligned table headers & colspan tfoot summary cells to wrap cleanly */
+/* Allow right-aligned table headers & colspan tfoot summary cells to wrap cleanly without stretching columns */
 table.ledger-table th.r,
 table.m-grid th.r {
   white-space: normal;
-  line-height: 1.15;
+  line-height: 1.18;
 }
 table.ledger-table tfoot tr td:first-child,
 table.ledger-table tfoot tr td[colspan],
 table.m-grid tfoot tr td:first-child,
 table.m-grid tfoot tr td[colspan] {
   white-space: normal;
-  line-height: 1.28;
+  line-height: 1.3;
+  max-width: 200px;
 }
 .tfoot-col-lbl {
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 0.02em;
-  line-height: 1.1;
+  line-height: 1.15;
   margin-bottom: 1px;
   white-space: normal;
 }
 .tfoot-sub-split {
-  font-size: 9.8px;
+  font-size: 10.5px;
   line-height: 1.25;
   white-space: normal;
 }
@@ -10277,182 +10343,200 @@ table.m-grid tfoot tr td[colspan] {
 .user-actions-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 2.5px;
+  gap: 3px;
 }
 table.ledger-table:has(#usersDirectoryTbody) th,
 table.ledger-table:has(#usersDirectoryTbody) td {
-  padding: 3.5px 2.5px !important;
-  font-size: 9.5px !important;
+  padding: 5px 4px !important;
+  font-size: 11px !important;
 }
 table.ledger-table:has(#usersDirectoryTbody) th {
-  font-size: 8px !important;
+  font-size: 9.5px !important;
 }
 table.ledger-table:has(#usersDirectoryTbody) .badge {
   white-space: normal;
-  padding: 1.5px 4px;
-  font-size: 8.8px;
+  padding: 2px 5px;
+  font-size: 9.8px;
 }
 table.ledger-table:has(#usersDirectoryTbody) td.mono {
   overflow-wrap: anywhere;
 }
 table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
-  padding: 2px 4.5px !important;
-  font-size: 9px !important;
+  padding: 2.5px 5.5px !important;
+  font-size: 10px !important;
 }
 
-/* Column-count adaptive table density so 10–20 column registers fit 1280px+ screens with 0px horizontal overflow */
+/* Crisp, readable typography across all column counts with 0px horizontal overflow */
 @media (min-width: 861px) {
   table.ledger-table {
     width: 100%;
+    font-size: 12.6px;
   }
+  table.ledger-table th {
+    padding: 8px 9px;
+    font-size: 10.6px;
+    letter-spacing: 0.03em;
+    line-height: 1.2;
+  }
+  table.ledger-table td {
+    padding: 7px 9px;
+    font-size: 12.6px;
+    line-height: 1.32;
+  }
+  table.ledger-table tfoot tr td {
+    padding: 8px 9px;
+    font-size: 12px;
+  }
+
+  /* 10–12 columns (Raw Intake 11-col, Price Agreements 12-col, Sales by Product 10-col, Equipment 10-col) */
   table.ledger-table:has(thead th:nth-child(10)) th,
   table.ledger-table:has(thead th:nth-child(10)) td {
-    padding: 5.5px 5px;
-    font-size: 10.5px;
+    padding: 6.5px 6px;
+    font-size: 12px;
   }
   table.ledger-table:has(thead th:nth-child(10)) th {
-    font-size: 8.8px;
-    letter-spacing: 0.015em;
-    line-height: 1.15;
+    font-size: 10.2px;
+    letter-spacing: 0.02em;
+    line-height: 1.18;
   }
   table.ledger-table:has(thead th:nth-child(10)) tfoot tr td {
-    padding: 6.5px 5px;
-    font-size: 10.4px;
+    padding: 7px 6px;
+    font-size: 11.6px;
   }
   table.ledger-table:has(thead th:nth-child(10)) th:first-child,
   table.ledger-table:has(thead th:nth-child(10)) td:first-child {
-    padding-left: 8px;
+    padding-left: 10px;
   }
   table.ledger-table:has(thead th:nth-child(10)) th:last-child,
   table.ledger-table:has(thead th:nth-child(10)) td:last-child {
-    padding-right: 8px;
+    padding-right: 10px;
   }
 
-  /* 13–15 columns (#salesPanel, #payStaffRegPanel, P04 Sales, P05 Pricing, P10 Fleet) */
+  /* 13–15 columns (#salesPanel 15-col, #payStaffRegPanel 15-col, P04 Sales, P05 Pricing, P10 Fleet) */
   table.ledger-table:has(thead th:nth-child(13)) th,
   table.ledger-table:has(thead th:nth-child(13)) td,
   #salesPanel table.ledger-table th,
   #salesPanel table.ledger-table td {
-    padding: 4px 2.6px;
-    font-size: 9.4px;
+    padding: 6px 4.5px;
+    font-size: 11.6px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th,
   #salesPanel table.ledger-table th {
-    font-size: 8px;
-    letter-spacing: 0.005em;
-    line-height: 1.1;
+    font-size: 10px;
+    letter-spacing: 0.015em;
+    line-height: 1.15;
   }
   table.ledger-table:has(thead th:nth-child(13)) tfoot tr td,
   #salesPanel table.ledger-table tfoot tr td {
-    padding: 5px 2.6px;
-    font-size: 9px;
+    padding: 6.5px 4.5px;
+    font-size: 11.2px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th:first-child,
   table.ledger-table:has(thead th:nth-child(13)) td:first-child,
   #salesPanel table.ledger-table th:first-child,
   #salesPanel table.ledger-table td:first-child {
-    padding-left: 6px;
+    padding-left: 8px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th:last-child,
   table.ledger-table:has(thead th:nth-child(13)) td:last-child,
   #salesPanel table.ledger-table th:last-child,
   #salesPanel table.ledger-table td:last-child {
-    padding-right: 6px;
+    padding-right: 8px;
   }
   table.ledger-table:has(thead th:nth-child(13)) th.sortable i {
-    font-size: 7.2px;
+    font-size: 8.5px;
     margin-left: 1px;
   }
   table.ledger-table:has(thead th:nth-child(13)) .badge {
-    padding: 1.5px 4px;
-    font-size: 8.5px;
+    padding: 2px 5px;
+    font-size: 10px;
   }
 
   /* 16–20 columns (P06 AR 17-col, P12 Payroll 17-col, Tables Hub 16–20 col tables) */
   table.ledger-table:has(thead th:nth-child(16)) th,
   table.ledger-table:has(thead th:nth-child(16)) td {
-    padding: 3.5px 2px;
-    font-size: 8.5px;
+    padding: 4.5px 2.5px;
+    font-size: 10.2px;
   }
   table.ledger-table:has(thead th:nth-child(16)) th {
-    font-size: 7.3px;
+    font-size: 8.8px;
     letter-spacing: 0;
-    line-height: 1.06;
+    line-height: 1.1;
   }
   table.ledger-table:has(thead th:nth-child(16)) tfoot tr td {
-    padding: 4px 2px;
-    font-size: 8.3px;
+    padding: 5px 2.5px;
+    font-size: 10px;
   }
   table.ledger-table:has(thead th:nth-child(16)) td:not(.r) {
     overflow-wrap: anywhere;
   }
   table.ledger-table:has(thead th:nth-child(16)) th:first-child,
   table.ledger-table:has(thead th:nth-child(16)) td:first-child {
-    padding-left: 5px;
+    padding-left: 6px;
   }
   table.ledger-table:has(thead th:nth-child(16)) th:last-child,
   table.ledger-table:has(thead th:nth-child(16)) td:last-child {
-    padding-right: 5px;
+    padding-right: 6px;
   }
   table.ledger-table:has(thead th:nth-child(16)) th.sortable i {
-    font-size: 6.8px;
+    font-size: 7.5px;
     margin-left: 1px;
   }
   table.ledger-table:has(thead th:nth-child(19)) th,
   table.ledger-table:has(thead th:nth-child(19)) td {
-    padding: 3px 1.5px;
-    font-size: 8px;
+    padding: 4px 2px;
+    font-size: 9.5px;
   }
   table.ledger-table:has(thead th:nth-child(19)) th {
-    font-size: 7px;
+    font-size: 8.2px;
   }
   table.ledger-table:has(thead th:nth-child(19)) tfoot tr td {
-    padding: 3.5px 1.5px;
-    font-size: 7.9px;
+    padding: 4.5px 2px;
+    font-size: 9.3px;
   }
 
-  /* Viewport-adaptive vertical table height + compact banner/recon so thead + rows + sticky tfoot fit on 1280×600 & 1366×768 laptops */
+  /* Viewport-adaptive vertical table height + readable banner/recon so thead + rows + sticky tfoot fit on 1280×600 & 1366×768 laptops */
   table.m-grid th,
   table.m-grid td {
-    padding: 5.5px 6px;
-    font-size: 10.8px;
+    padding: 6.5px 8px;
+    font-size: 12px;
   }
   table.m-grid th:first-child,
   table.m-grid td:first-child {
-    padding-left: 10px;
+    padding-left: 12px;
   }
   table.m-grid th:last-child,
   table.m-grid td:last-child {
-    padding-right: 10px;
+    padding-right: 12px;
   }
   .workspace {
     padding: 8px 16px 16px;
   }
   .cockpit-banner {
-    padding: 6px 12px;
-    margin-bottom: 6px;
-    gap: 4px 12px;
+    padding: 7px 14px;
+    margin-bottom: 7px;
+    gap: 5px 12px;
   }
   .cockpit-title-block {
     display: flex;
     align-items: baseline;
     flex-wrap: nowrap;
-    gap: 8px;
+    gap: 10px;
     min-width: 100%;
     overflow: hidden;
   }
   .cockpit-eyebrow {
-    font-size: 9px;
+    font-size: 9.5px;
     margin-bottom: 0;
     white-space: nowrap;
   }
   .cockpit-title {
-    font-size: 14.5px;
+    font-size: 15.5px;
     margin-bottom: 0;
     white-space: nowrap;
   }
   .cockpit-sub {
-    font-size: 10.2px;
+    font-size: 11px;
     margin-top: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -10462,75 +10546,78 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
   }
   .cockpit-pills {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 6px;
     width: 100%;
   }
   .cockpit-pill {
-    padding: 3px 7px;
+    padding: 4px 8px;
     min-width: 0;
   }
   .cockpit-pill-lbl {
-    font-size: 8px;
-    margin-bottom: 0;
+    font-size: 8.8px;
+    margin-bottom: 1px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .cockpit-pill-val {
-    font-size: 12.2px;
-    line-height: 1.15;
+    font-size: 13.2px;
+    line-height: 1.18;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .table-toolbar {
-    padding: 5px 10px;
-    gap: 6px;
+    padding: 6px 12px;
+    gap: 8px;
   }
   .table-toolbar .search-input {
-    min-width: 145px;
-    width: 168px;
-    padding: 3px 7px;
-    font-size: 10.5px;
+    min-width: 170px;
+    width: 210px;
+    padding: 4.5px 9px;
+    font-size: 11.8px;
   }
   .table-toolbar .chip-bar {
-    gap: 3px;
+    gap: 4px;
   }
   .table-toolbar .filter-chip {
-    padding: 2.5px 6px;
-    font-size: 10px;
+    padding: 3.5px 8px;
+    font-size: 11px;
   }
   .table-toolbar .btn {
-    padding: 3.5px 8px;
-    font-size: 10.5px;
+    padding: 4.5px 10px;
+    font-size: 11.2px;
     white-space: nowrap;
   }
   .sales-entity-recon {
-    padding: 4px 10px;
-    gap: 6px;
+    padding: 5px 12px;
+    gap: 8px;
   }
   .sales-entity-recon.single {
-    padding: 4px 10px;
+    padding: 5px 12px;
+  }
+  .sales-recon-single {
+    font-size: 11.6px;
   }
   .sales-recon-card {
-    padding: 3px 8px;
+    padding: 4px 10px;
   }
   .sales-recon-head {
-    margin-bottom: 1px;
-    font-size: 10px;
+    margin-bottom: 2px;
+    font-size: 11px;
   }
   .sales-recon-act {
-    font-size: 9.5px;
+    font-size: 10.2px;
   }
   .sales-recon-metrics {
-    gap: 3px;
+    gap: 4px;
   }
   .sales-recon-metrics small {
-    font-size: 7.8px;
+    font-size: 8.5px;
   }
   .sales-recon-metrics b {
-    font-size: 10.2px;
+    font-size: 11.4px;
   }
   .table-wrap {
     max-height: clamp(230px, calc(100dvh - 285px), 450px);
@@ -10558,13 +10645,13 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
     display: none;
   }
   .cockpit-pill {
-    padding: 2px 6px;
+    padding: 2.5px 6px;
   }
   .cockpit-pill-lbl {
-    font-size: 7.5px;
+    font-size: 8px;
   }
   .cockpit-pill-val {
-    font-size: 11.5px;
+    font-size: 12px;
   }
   .panel-head {
     padding: 6px 12px;
@@ -10578,17 +10665,17 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
     gap: 5px;
   }
   .sales-recon-card {
-    padding: 2px 7px;
+    padding: 2.5px 8px;
   }
   .sales-recon-head {
     margin-bottom: 0;
-    font-size: 9.5px;
+    font-size: 10.2px;
   }
   .sales-recon-metrics small {
-    font-size: 7.2px;
+    font-size: 8px;
   }
   .sales-recon-metrics b {
-    font-size: 9.6px;
+    font-size: 10.6px;
   }
   .table-wrap {
     max-height: clamp(220px, calc(100dvh - 282px), 318px);
