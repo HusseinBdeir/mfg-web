@@ -112,6 +112,8 @@ def ensure_auth_schema():
         cur.execute("ALTER TABLE users ADD COLUMN seat_updated_at TEXT DEFAULT ''")
     if "custom_perms" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN custom_perms TEXT DEFAULT '{}'")
+    if "auth_mode" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN auth_mode TEXT DEFAULT ''")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -334,8 +336,10 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 cur.execute("ALTER TABLE users ADD COLUMN seat_updated_at TEXT DEFAULT ''")
             if "custom_perms" not in ucols:
                 cur.execute("ALTER TABLE users ADD COLUMN custom_perms TEXT DEFAULT '{}'")
+            if "auth_mode" not in ucols:
+                cur.execute("ALTER TABLE users ADD COLUMN auth_mode TEXT DEFAULT ''")
             existing = cur.execute(
-                "SELECT id, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at, custom_perms FROM users WHERE id = ? OR lower(email) = lower(?)",
+                "SELECT id, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at, custom_perms, auth_mode FROM users WHERE id = ? OR lower(email) = lower(?)",
                 (uid, email_clean),
             ).fetchone()
             if existing:
@@ -357,10 +361,13 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 f_upd = ""
             if "custom_perms" in u and isinstance(u.get("custom_perms"), dict):
                 cp_json = json.dumps(u["custom_perms"], ensure_ascii=False)
+            elif "custom_perms" in u and isinstance(u.get("custom_perms"), str) and u["custom_perms"].strip():
+                cp_json = u["custom_perms"].strip()
             elif existing and existing["custom_perms"]:
                 cp_json = existing["custom_perms"]
             else:
                 cp_json = "{}"
+            auth_mode_val = str(u.get("auth_mode") if "auth_mode" in u else (existing["auth_mode"] if existing else "") or "")
             seat_upd = str(u.get("seat_updated_at") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             if existing:
                 cur.execute(
@@ -379,7 +386,8 @@ class MfgHandler(SimpleHTTPRequestHandler):
                         face_required = ?,
                         face_updated_at = ?,
                         seat_updated_at = ?,
-                        custom_perms = ?
+                        custom_perms = ?,
+                        auth_mode = ?
                     WHERE id = ?
                     """,
                     (
@@ -397,14 +405,15 @@ class MfgHandler(SimpleHTTPRequestHandler):
                         f_upd,
                         seat_upd,
                         cp_json,
+                        auth_mode_val,
                         uid,
                     ),
                 )
             else:
                 cur.execute(
                     """
-                    INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at, custom_perms)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at, custom_perms, auth_mode)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         uid,
@@ -423,6 +432,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
                         f_upd,
                         seat_upd,
                         cp_json,
+                        auth_mode_val,
                     ),
                 )
             conn.commit()

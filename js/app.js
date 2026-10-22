@@ -1373,19 +1373,19 @@
       { id: 'unlock_formula_totals', fields: ['f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Calculated Subtotal & Total Locks', rule: 'm56 / m135b', sub: 'Override computed Material Total, Transport Total or Total Ex-VAT USD' }
     ],
     dashboards: [
-      { id: 'dash_overview', pages: ['p01_overview', 'p02_companies'], count: 2, label: 'Executive & Multi-Company Overview', sub: 'P01 Executive Overview, P02 Multi-Company Comparison', badge: '2 PBI Pages' },
-      { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p19_cust_stmt', 'p20_recon'], count: 6, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'P04 Sales, P05 Price Matrix, P06 AR Aging, P18 Ticket Explorer, P19 Customer Stmt, P20 Recon', badge: '6 PBI Pages' },
-      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_raw', 'p09_stock', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'P07 Suppliers AP, P08 Raw Material, P09 Stock Movement, P10 Fleet & Diesel, P11 Drivers', badge: '5 PBI Pages' },
-      { id: 'dash_expenses_vat', pages: ['p03_exceptions', 'p13_vat', 'p14_changelog'], count: 3, label: 'Operating Expenses, Statutory VAT & Audit', sub: 'P03 Exceptions & Sentinels, P13 VAT 11% Ledger, P14 Audit ChangeLog', badge: '3 PBI Pages' },
+      { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Multi-Company & Sentinel Overview', sub: 'P01 Executive Overview, P02 Multi-Company Comparison, P03 Exceptions & Sentinels', badge: '3 PBI Pages' },
+      { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p20_recon'], count: 5, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'P04 Sales, P05 Price Matrix, P06 AR Aging & Statements, P18 Ticket Explorer, P20 Recon', badge: '5 PBI Pages' },
+      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'P07 Suppliers AP, P08 Stock Movement, P09 Fuel & Diesel, P10 Fleet Cost, P11 Drivers', badge: '5 PBI Pages' },
+      { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'P13 VAT 11% Ledger, P14 Cash Flow & Expenses, P19 Audit ChangeLog', badge: '3 PBI Pages' },
       { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'P12 Monthly Salaries, Daily Attendance, Site Allowances & Contracts', badge: '1 PBI Page' },
       { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'P15 Treasury & Partner Loans, P16 Audited P&L/TB, P17 JV Profit Split', badge: '3 PBI Pages' }
     ],
     statements: [
-      { id: 'stmt_digest_ops', codes: ['01', '08', '09', '11', '12', '14'], count: 6, label: 'Executive Digest & Operational Registers', sub: '#01 Exec Digest, #08 Sales Reg, #09 Quarry Reg, #11 Fleet & Diesel, #12 Expense Reg, #14 Price Matrix', badge: '6 Statements' },
-      { id: 'stmt_counterparty', codes: ['15', '16', '17', '22'], count: 4, label: 'Counterparty & Haulage Statements (SOA)', sub: '#15 Customer SOA, #16 Supplier 3-Leg SOA, #17 Hauler Statement, #22 Concrete Mix & Yield', badge: '4 Statements' },
-      { id: 'stmt_vouchers', codes: ['19', '20', '21'], count: 3, label: 'Printable Vouchers & Delivery Notes', sub: '#19 Customer Receipt Voucher, #20 Supplier Payment Voucher, #21 Weighbridge Delivery Note', badge: '3 Statements' },
-      { id: 'stmt_payroll', codes: ['10', '13'], count: 2, label: 'Payroll, Attendance & Payslips (Confidential)', sub: '#10 Monthly Payroll & Allowances Sheet, #13 Employee Payslip & Contract Summary', badge: '2 Statements' },
-      { id: 'stmt_financial_board', codes: ['02', '03', '04', '05', '06', '07', '18'], count: 7, label: 'Audited Financial, AR/AP Aging, VAT & JV Board Pack', sub: '#02 Income Stmt, #03 Balance Sheet, #04 Trial Balance, #05 AR Aging, #06 AP Aging, #07 VAT 11%, #18 Loans & JV', badge: '7 Statements' }
+      { id: 'stmt_digest_ops', codes: ['01', '08', '09', '11', '12'], count: 5, label: 'Executive Digest & Operational Registers', sub: '#01 Daily Operations, #08 Sales Register, #09 Expense Register, #11 Raw Material, #12 Fuel Log', badge: '5 Statements' },
+      { id: 'stmt_counterparty', codes: ['13', '14', '15', '16', '17'], count: 5, label: 'Counterparty Aging & Statements (SOA)', sub: '#13 Aged Receivables, #14 Customer Statement, #15 Supplier Balances, #16 Supplier Statement, #17 Driver Statement', badge: '5 Statements' },
+      { id: 'stmt_vouchers', codes: ['20', '21', '22'], count: 3, label: 'Printable Invoices, Tickets & Vouchers', sub: '#20 Sales Invoice, #21 Delivery Ticket, #22 Customer Receipt Voucher', badge: '3 Statements' },
+      { id: 'stmt_payroll', codes: ['10'], count: 1, label: 'Payroll & Workforce Register (Confidential)', sub: '#10 Monthly Payroll, Attendance & Allowances Register', badge: '1 Statement' },
+      { id: 'stmt_financial_board', codes: ['02', '03', '04', '05', '06', '07', '18', '19'], count: 8, label: 'Audited Financial, General Ledger, VAT & Recon Pack', sub: '#02 Balance Sheet, #03 Income Stmt, #04 Cash Flow, #05 Trial Balance, #06 Gen Journal, #07 Sub-Account, #18 VAT, #19 P&L Recon', badge: '8 Statements' }
     ]
   };
 
@@ -5113,13 +5113,17 @@
   }
 
   function getDraftSeatPreviewUser(editUser, curRole, curCompanies, curAccess) {
-    const accParts = String(curAccess || 'partial|partial').split('|');
-    const baseCustom = STATE.draftCustomPerms || (editUser ? parseUserCustomPerms(editUser.custom_perms) : {});
+    const resolvedUser = editUser !== undefined ? editUser : getEditingSeatUser();
+    const resolvedRole = curRole || STATE.draftRoleOverride || val('nu_role') || (resolvedUser ? resolvedUser.role : 'Entry') || 'Entry';
+    const resolvedCompanies = curCompanies || STATE.draftCompaniesOverride || val('nu_companies') || (resolvedUser ? resolvedUser.companies : 'WTC') || 'WTC';
+    const resolvedAccess = curAccess || STATE.draftAccessOverride || val('nu_access') || (resolvedUser ? seatAccessValue(resolvedUser) : 'partial|partial') || 'partial|partial';
+    const accParts = String(resolvedAccess).split('|');
+    const baseCustom = STATE.draftCustomPerms || (resolvedUser ? parseUserCustomPerms(resolvedUser.custom_perms) : {});
     return {
-      id: editUser ? editUser.id : '__new__',
-      full_name: editUser ? editUser.full_name : 'New Team Seat',
-      role: curRole || 'Entry',
-      companies: curCompanies || 'WTC',
+      id: resolvedUser ? resolvedUser.id : '__new__',
+      full_name: resolvedUser ? resolvedUser.full_name : 'New Team Seat',
+      role: resolvedRole,
+      companies: resolvedCompanies,
       pbi_access: accParts[0] || 'partial',
       statements_access: accParts[1] || 'partial',
       custom_perms: baseCustom
@@ -5244,6 +5248,7 @@
                 <button type="button" class="perm-mini-btn" data-perm-bulk="rights:all">All On</button>
                 <button type="button" class="perm-mini-btn" data-perm-bulk="rights:ops">Ops Entry</button>
                 <button type="button" class="perm-mini-btn" data-perm-bulk="rights:readonly">Read-Only</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="rights:off">Clear</button>
               </div>
             </div>
             <div class="perm-items-list">
@@ -5251,7 +5256,7 @@
                 const checked = !!perms.rights[item.id];
                 return `
                   <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
-                    <input type="checkbox" class="perm-cb" data-perm-cat="rights" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <input type="checkbox" class="perm-cb" data-perm-cat="rights" data-perm-id="${esc(item.id)}" data-perm-group="rights" data-perm-key="${esc(item.id)}" ${checked ? 'checked' : ''}>
                     <div class="perm-item-copy">
                       <div class="perm-item-title">
                         <b>${esc(item.label)}</b>
@@ -5275,7 +5280,7 @@
               <div class="perm-sec-quick">
                 <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:all">Unlock All 9</button>
                 <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:pricing">Pricing &amp; Qty</button>
-                <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:none">Require PIN</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:off">Require PIN</button>
               </div>
             </div>
             <div class="perm-items-list">
@@ -5283,7 +5288,7 @@
                 const checked = !!perms.unlocks[item.id];
                 return `
                   <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
-                    <input type="checkbox" class="perm-cb" data-perm-cat="unlocks" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <input type="checkbox" class="perm-cb" data-perm-cat="unlocks" data-perm-id="${esc(item.id)}" data-perm-group="unlocks" data-perm-key="${esc(item.id)}" ${checked ? 'checked' : ''}>
                     <div class="perm-item-copy">
                       <div class="perm-item-title">
                         <b>${esc(item.label)}</b>
@@ -5308,7 +5313,7 @@
               <div class="perm-sec-quick">
                 <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:full">All 20 Pages</button>
                 <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:ops">Ops Only (16)</button>
-                <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:none">None</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:off">None</button>
               </div>
             </div>
             <div class="perm-items-list">
@@ -5316,7 +5321,7 @@
                 const checked = !!perms.dashboards[item.id];
                 return `
                   <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
-                    <input type="checkbox" class="perm-cb" data-perm-cat="dashboards" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <input type="checkbox" class="perm-cb" data-perm-cat="dashboards" data-perm-id="${esc(item.id)}" data-perm-group="dashboards" data-perm-key="${esc(item.id)}" ${checked ? 'checked' : ''}>
                     <div class="perm-item-copy">
                       <div class="perm-item-title">
                         <b>${esc(item.label)}</b>
@@ -5341,7 +5346,7 @@
               <div class="perm-sec-quick">
                 <button type="button" class="perm-mini-btn" data-perm-bulk="statements:full">All 22 Stmts</button>
                 <button type="button" class="perm-mini-btn" data-perm-bulk="statements:ops">Ops Only (13)</button>
-                <button type="button" class="perm-mini-btn" data-perm-bulk="statements:none">None</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="statements:off">None</button>
               </div>
             </div>
             <div class="perm-items-list">
@@ -5349,7 +5354,7 @@
                 const checked = !!perms.statements[item.id];
                 return `
                   <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
-                    <input type="checkbox" class="perm-cb" data-perm-cat="statements" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <input type="checkbox" class="perm-cb" data-perm-cat="statements" data-perm-id="${esc(item.id)}" data-perm-group="statements" data-perm-key="${esc(item.id)}" ${checked ? 'checked' : ''}>
                     <div class="perm-item-copy">
                       <div class="perm-item-title">
                         <b>${esc(item.label)}</b>
@@ -5850,7 +5855,7 @@
   }
   function fld(label, inner, opts = {}) {
     const lockAttr = opts.lockField ? ` data-policy-lock="${esc(opts.lockField)}" data-lock-reason="${esc(opts.lockReason || 'Locked by business rule')}"` : '';
-    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
+    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
     return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
   }
   function inp(id, type, value, attrs = '') {
@@ -5935,7 +5940,7 @@
           ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Truck Capacity Quantity Lock (m125 / m128 / m229): Locked to Truck Capacity (m³) or 1 when Unit = Truck; auto-unlocks if truck has no capacity or Unit overrides Product UoM', hintId: 'hint_qty', hint: '' })}
           ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Unit of Measure Lock (m222 / m228): Locked to Price Agreement Unit or Product default UoM; unlock as Admin to override Unit', hintId: 'hint_uom', hint: 'Locked to Agreement / Product UoM (m228)' })}
           ${fld('Customer-declared Qty', inp('f_extqty', 'number', '', 'step="0.01" min="0" inputmode="decimal" placeholder="Customer ticket qty"'), { id: 'wrap_f_extqty', hidden: true, hint: 'Shown for customers with Declared Qty flag (m60)' })}
-          ${fld('Unit Price ($) * <span class="badge badge-brass" id="lbl_pricelock">—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Price Agreement Lock (m56 / m136): Locked on Pickup & Delivery to active Price Agreement or List Price; unlock with Admin privilege for spot pricing', hintId: 'hint_price', hint: '' })}
+          ${fld('Unit Price ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Price Agreement Lock (m56 / m136): Locked on Pickup & Delivery to active Price Agreement or List Price; unlock with Admin privilege for spot pricing', hintId: 'hint_price', hint: '' })}
           ${fld('<span id="lbl_mat_total">Material Total (USD) *</span>', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Formula Lock (m56 / m103): Computed as Quantity × Unit Price + Tier Adjustment − Discount', hintId: 'hint_mat_total', hint: 'Qty × Unit Price + Tier Adj − Discount' })}
           ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Transport Rate Lock (m51 / m56): Locked to Price Agreement transport rate on Delivery; hidden on Pickup', hintId: 'hint_trans', hint: '' })}
           ${fld('Transport Total (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Formula Lock (m51 / m56): Computed as Quantity × Transport Unit Price + Tier Transport Adjustment', hintId: 'hint_trans_total', hint: 'Qty × Transport Unit Price' })}
@@ -5994,7 +5999,7 @@
           ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount', hint: 'First in Amounts & unlocked by default (m81)' })}
           ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Truck Capacity Quantity Lock (m125 / m128): Locked to Truck Capacity (m³) when known; auto-unlocks if truck has no capacity', hintId: 'hint_qty', hint: '' })}
           ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Unit Lock (m222 / m228): Locked to Product / Agreement UoM; unlock as Admin to override' })}
-          ${fld('Material Unit Cost ($) * <span class="badge badge-brass" id="lbl_pricelock">—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Quarry Purchase Agreement Lock (m81 / m136): Locked to Purchase Price (Site) or List Price; unlock with Admin privilege to override', hintId: 'hint_price', hint: '' })}
+          ${fld('Material Unit Cost ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Quarry Purchase Agreement Lock (m81 / m136): Locked to Purchase Price (Site) or List Price; unlock with Admin privilege to override', hintId: 'hint_price', hint: '' })}
           ${fld('Material Cost (USD) *', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Formula Lock (m81): Computed as Quantity × Material Unit Cost − Discount' })}
           ${fld('Haulage Unit Cost ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Haulage Rate Lock (m81): Locked to Transport Price (Site) agreement on third-party loads; hidden on Company fleet', hintId: 'hint_trans', hint: '' })}
           ${fld('Haulage Cost (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Formula Lock (m81): Computed as Quantity × Haulage Unit Cost' })}
@@ -6180,7 +6185,7 @@
       el.dataset.policyLockedNow = '0';
       if (pill) {
         pill.className = 'pa-lock-pill unlocked';
-        pill.textContent = '🔓 ADMIN OVERRIDE · Re-lock';
+        pill.textContent = '🔓 ADMIN OVERRIDE';
         pill.title = 'Unlocked via Admin / Role Privilege — click to re-lock to policy rule';
       }
       return false; // not locked
@@ -6196,7 +6201,7 @@
       el.dataset.lockedValue = el.value;
       if (pill) {
         pill.className = 'pa-lock-pill locked';
-        pill.textContent = isAdmin ? '🔒 LOCKED · Admin Unlock' : (roleCanUnlock ? '🔒 LOCKED · Role Unlock' : '🔒 LOCKED · Policy');
+        pill.textContent = isAdmin ? '🔒 LOCKED · Unlock' : (roleCanUnlock ? '🔒 LOCKED · Role' : '🔒 LOCKED');
         pill.title = reason + ((isAdmin || roleCanUnlock) ? ' — Click to open Admin Privilege Unlock Process' : ' — Requires Admin PIN (2401)');
       }
       return true; // locked
@@ -6209,7 +6214,7 @@
       el.dataset.policyLockedNow = '0';
       if (pill) {
         pill.className = 'pa-lock-pill auto-open';
-        pill.textContent = '⚡ AUTO-OPEN (Rule)';
+        pill.textContent = '⚡ AUTO-OPEN';
         pill.title = reason;
       }
       return false;
@@ -8823,6 +8828,9 @@
     }
     if (preferExistingSeat && existing.auth_mode != null) out.auth_mode = existing.auth_mode;
     else if (incoming.auth_mode != null) out.auth_mode = incoming.auth_mode;
+    if (preferExistingSeat && existing.custom_perms != null) out.custom_perms = existing.custom_perms;
+    else if (incoming.custom_perms != null) out.custom_perms = incoming.custom_perms;
+    else if (existing.custom_perms != null) out.custom_perms = existing.custom_perms;
     return out;
   }
 
@@ -9958,9 +9966,164 @@
     syncFromCheckboxes();
   }
 
+  function refreshRoleAndAccessMatrixUi(root) {
+    const scope = root || $('seatEditorWrap') || document;
+    const roleEl = scope.querySelector('#nu_role');
+    const accEl = scope.querySelector('#nu_access');
+    const coEl = scope.querySelector('#nu_companies');
+    if (roleEl) STATE.draftRoleOverride = roleEl.value;
+    if (accEl) STATE.draftAccessOverride = accEl.value;
+    if (coEl) STATE.draftCompaniesOverride = coEl.value;
+
+    const previewUser = getDraftSeatPreviewUser();
+    const previewPerms = getEffectivePermissions(previewUser);
+    const previewMetrics = countPermissionMetrics(previewPerms, previewUser);
+
+    const roleStrip = scope.querySelector('#nuRolePostureStrip');
+    if (roleStrip) roleStrip.innerHTML = renderRolePostureStripHtml(previewUser);
+
+    const dashStrip = scope.querySelector('#nuDashPostureStrip');
+    if (dashStrip) dashStrip.innerHTML = renderDashPostureStripHtml(previewUser, STATE.draftAccessOverride);
+
+    const matrixWrap = scope.querySelector('#rolePermissionsMatrixWrap');
+    if (matrixWrap) {
+      matrixWrap.innerHTML = renderRolePermissionsMatrixHtml(previewUser, STATE.draftAccessOverride);
+      wireRolePermissionsMatrix(scope);
+    }
+
+    const checkRoleBtn = scope.querySelector('#checkRolePermsBtn');
+    if (checkRoleBtn) {
+      const isCustom = previewPerms.roleKey === 'Custom';
+      checkRoleBtn.classList.toggle('active', !!STATE.showRolePermMatrix);
+      checkRoleBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span>${STATE.showRolePermMatrix ? 'Hide Permissions' : (isCustom ? 'Configure Custom Permissions' : 'Check Permissions')}</span>
+      `;
+    }
+  }
+
+  function wireRolePermissionsMatrix(root) {
+    if (!root) return;
+    const roleEl = root.querySelector('#nu_role');
+    const accEl = root.querySelector('#nu_access');
+    const expandBtn = root.querySelector('#expandPermMatrixBtn');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => {
+        STATE.showRolePermMatrix = true;
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    }
+    const closeBtn = root.querySelector('#collapsePermMatrixBtn, #closePermMatrixBtn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        STATE.showRolePermMatrix = false;
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    }
+    root.querySelectorAll('[data-matrix-role]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetRole = btn.getAttribute('data-matrix-role') || 'Entry';
+        if (roleEl) {
+          roleEl.value = targetRole;
+          roleEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    });
+    const switchCustomBtn = root.querySelector('#switchToCustomRoleBtn, #quickSwitchCustomRoleBtn');
+    if (switchCustomBtn) {
+      switchCustomBtn.addEventListener('click', () => {
+        STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(getDraftSeatPreviewUser());
+        if (roleEl) roleEl.value = 'Custom';
+        if (accEl) accEl.value = 'custom|custom';
+        STATE.draftRoleOverride = 'Custom';
+        STATE.draftAccessOverride = 'custom|custom';
+        STATE.showRolePermMatrix = true;
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
+        toast('Switched to Custom Role — pick granular permissions, field unlocks, dashboards & statements');
+      });
+    }
+    root.querySelectorAll('[data-apply-preset-to-custom]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const presetKey = btn.getAttribute('data-apply-preset-to-custom') || 'Entry';
+        const pDef = ROLE_PRESETS[presetKey] || ROLE_PRESETS['Entry'];
+        const pAcc = (pDef.defaultAccess || 'partial|partial').split('|');
+        STATE.draftCustomPerms = {
+          rights: Object.assign({}, pDef.rights),
+          unlocks: Object.assign({}, pDef.unlocks),
+          dashboards: dashboardsFromAccessTier(pAcc[0]),
+          statements: statementsFromAccessTier(pAcc[1])
+        };
+        if (roleEl) roleEl.value = 'Custom';
+        if (accEl) accEl.value = 'custom|custom';
+        STATE.draftRoleOverride = 'Custom';
+        STATE.draftAccessOverride = 'custom|custom';
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
+        toast(`Cloned "${pDef.title || presetKey}" template into Custom Role`);
+      });
+    });
+    root.querySelectorAll('[data-perm-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        STATE.permMatrixTab = btn.getAttribute('data-perm-tab') || 'all';
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    });
+    root.querySelectorAll('[data-perm-bulk]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const [grp, mode] = String(btn.getAttribute('data-perm-bulk') || '').split(':');
+        if (!grp || !PERM_CATALOG[grp]) return;
+        if (!STATE.draftCustomPerms) {
+          STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(getDraftSeatPreviewUser());
+        }
+        if (roleEl) roleEl.value = 'Custom';
+        if (accEl) accEl.value = 'custom|custom';
+        STATE.draftRoleOverride = 'Custom';
+        STATE.draftAccessOverride = 'custom|custom';
+        if (!STATE.draftCustomPerms[grp]) STATE.draftCustomPerms[grp] = {};
+        const curSeat = getEditingSeatUser();
+        const isSelf = !!(curSeat && STATE.users[STATE.activeUserIdx] && String(curSeat.id) === String(STATE.users[STATE.activeUserIdx].id));
+        PERM_CATALOG[grp].forEach(it => {
+          const itemId = it.id || it.key;
+          if (grp === 'rights' && itemId === 'manage_users' && isSelf && (mode === 'off' || mode === 'none' || mode === 'readonly')) return;
+          let nextVal = false;
+          if (mode === 'all' || mode === 'on' || mode === 'full') nextVal = true;
+          else if (mode === 'off' || mode === 'none') nextVal = false;
+          else if (grp === 'rights' && mode === 'ops') nextVal = ['read_ops', 'enter_dispatch', 'enter_accounting', 'enter_master', 'void_data'].includes(itemId);
+          else if (grp === 'rights' && mode === 'readonly') nextVal = ['read_ops', 'read_fin'].includes(itemId);
+          else if (grp === 'unlocks' && mode === 'pricing') nextVal = ['unlock_unit_price', 'unlock_trans_price', 'unlock_qty_cap', 'unlock_uom'].includes(itemId);
+          else if (grp === 'dashboards' && mode === 'ops') nextVal = ['dash_overview', 'dash_commercial', 'dash_plant_fleet', 'dash_expenses_vat'].includes(itemId);
+          else if (grp === 'statements' && mode === 'ops') nextVal = ['stmt_digest_ops', 'stmt_counterparty', 'stmt_vouchers'].includes(itemId);
+          STATE.draftCustomPerms[grp][itemId] = nextVal;
+        });
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    });
+    root.querySelectorAll('[data-perm-cat][data-perm-id], [data-perm-group][data-perm-key]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const grp = cb.getAttribute('data-perm-cat') || cb.getAttribute('data-perm-group');
+        const key = cb.getAttribute('data-perm-id') || cb.getAttribute('data-perm-key');
+        if (!grp || !key) return;
+        if (!STATE.draftCustomPerms) {
+          STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(getDraftSeatPreviewUser());
+        }
+        if (roleEl && roleEl.value !== 'Custom') roleEl.value = 'Custom';
+        if (accEl && accEl.value !== 'custom|custom') accEl.value = 'custom|custom';
+        STATE.draftRoleOverride = 'Custom';
+        STATE.draftAccessOverride = 'custom|custom';
+        if (!STATE.draftCustomPerms[grp]) STATE.draftCustomPerms[grp] = {};
+        STATE.draftCustomPerms[grp][key] = !!cb.checked;
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    });
+  }
+
   function wireSeatEditorActions(root) {
     if (!root) return;
     wireCompanyMultiSelect(root);
+    wireRolePermissionsMatrix(root);
     const sel = root.querySelector('#nu_seat_select');
     if (sel) {
       sel.addEventListener('change', e => {
@@ -10024,6 +10187,13 @@
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         STATE.userFormDirty = false;
+        STATE.draftRoleOverride = null;
+        STATE.draftCompaniesOverride = null;
+        STATE.draftAccessOverride = null;
+        const cur = getEditingSeatUser();
+        STATE.draftCustomPerms = (cur && resolveCanonicalRoleKey(cur.role) === 'Custom')
+          ? cloneEffectivePermsToCustomDraft(cur)
+          : null;
         updateSeatEditorDom();
         toast('Reverted unsaved field changes');
       });
@@ -10032,6 +10202,87 @@
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
         saveSeatEditorForm();
+      });
+    }
+    const checkRoleBtn = root.querySelector('#checkRolePermsBtn');
+    if (checkRoleBtn) {
+      checkRoleBtn.addEventListener('click', () => {
+        STATE.showRolePermMatrix = !STATE.showRolePermMatrix;
+        refreshRoleAndAccessMatrixUi(root);
+        if (STATE.showRolePermMatrix) {
+          const mw = root.querySelector('#rolePermissionsMatrixWrap');
+          if (mw) mw.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+    const checkDashBtn = root.querySelector('#checkDashAccessBtn');
+    if (checkDashBtn) {
+      checkDashBtn.addEventListener('click', () => {
+        if (STATE.showRolePermMatrix && STATE.permMatrixTab === 'dashboards') {
+          STATE.showRolePermMatrix = false;
+        } else {
+          STATE.showRolePermMatrix = true;
+          STATE.permMatrixTab = 'dashboards';
+        }
+        refreshRoleAndAccessMatrixUi(root);
+        if (STATE.showRolePermMatrix) {
+          const mw = root.querySelector('#rolePermissionsMatrixWrap');
+          if (mw) mw.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+    const roleSelectEl = root.querySelector('#nu_role');
+    const accessSelectEl = root.querySelector('#nu_access');
+    if (roleSelectEl) {
+      roleSelectEl.addEventListener('change', () => {
+        const nextRole = roleSelectEl.value || 'Entry';
+        if (resolveCanonicalRoleKey(nextRole) === 'Custom') {
+          if (!STATE.draftCustomPerms) {
+            const prevRole = STATE.draftRoleOverride || (getEditingSeatUser() && getEditingSeatUser().role) || 'Entry';
+            const prevAcc = (accessSelectEl && accessSelectEl.value && accessSelectEl.value !== 'custom|custom')
+              ? accessSelectEl.value
+              : ((ROLE_PRESETS[resolveCanonicalRoleKey(prevRole)] && ROLE_PRESETS[resolveCanonicalRoleKey(prevRole)].defaultAccess) || 'partial|partial');
+            const [pPbi, pStmt] = prevAcc.split('|');
+            STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft({
+              role: resolveCanonicalRoleKey(prevRole) === 'Custom' ? 'Entry' : prevRole,
+              pbi_access: pPbi || 'partial',
+              statements_access: pStmt || 'partial',
+              custom_perms: getEditingSeatUser() ? getEditingSeatUser().custom_perms : '{}'
+            });
+          }
+          if (accessSelectEl) accessSelectEl.value = 'custom|custom';
+          STATE.showRolePermMatrix = true;
+        } else {
+          const preset = ROLE_PRESETS[resolveCanonicalRoleKey(nextRole)] || ROLE_PRESETS['Entry'];
+          if (accessSelectEl) accessSelectEl.value = preset.defaultAccess || 'partial|partial';
+          STATE.draftCustomPerms = null;
+        }
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
+      });
+    }
+    if (accessSelectEl) {
+      accessSelectEl.addEventListener('change', () => {
+        const nextAcc = accessSelectEl.value || 'partial|partial';
+        if (nextAcc === 'custom|custom') {
+          if (!STATE.draftCustomPerms) {
+            STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(getDraftSeatPreviewUser());
+          }
+          if (roleSelectEl && roleSelectEl.value !== 'Custom') roleSelectEl.value = 'Custom';
+          STATE.showRolePermMatrix = true;
+          STATE.permMatrixTab = 'dashboards';
+        } else if (roleSelectEl && resolveCanonicalRoleKey(roleSelectEl.value) === 'Custom') {
+          if (!STATE.draftCustomPerms) {
+            STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(getDraftSeatPreviewUser());
+          }
+          const [pbiT, stmtT] = nextAcc.split('|');
+          STATE.draftCustomPerms.dashboards = dashboardsFromAccessTier(pbiT || 'partial');
+          STATE.draftCustomPerms.statements = statementsFromAccessTier(stmtT || 'partial');
+          accessSelectEl.value = 'custom|custom';
+          toast('Applied dashboard & statement preset to Custom Role');
+        }
+        STATE.userFormDirty = true;
+        refreshRoleAndAccessMatrixUi(root);
       });
     }
     root.querySelectorAll('[data-enrol-user]').forEach(btn => {
@@ -10058,6 +10309,12 @@
       e.stopPropagation();
       const uidTarget = btn.getAttribute('data-edit-user');
       selectSeatForEdit(uidTarget, { scroll: true });
+    }));
+    root.querySelectorAll('[data-check-perms]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!isOwner()) return;
+      const uidTarget = btn.getAttribute('data-check-perms');
+      selectSeatForEdit(uidTarget, { scroll: true, openPerms: true, permTab: 'all' });
     }));
     root.querySelectorAll('tr[data-user-row]').forEach(row => row.addEventListener('click', e => {
       if (!isOwner()) return;
@@ -12277,6 +12534,29 @@
       },
       selectSeatForEdit: (targetId, opts) => selectSeatForEdit(targetId, opts),
       saveSeatEditorForm: () => saveSeatEditorForm(),
+      getEffectivePermissions: emailOrUser => {
+        const u = typeof emailOrUser === 'string'
+          ? STATE.users.find(x => norm(x.email) === norm(emailOrUser) || String(x.id) === String(emailOrUser))
+          : (emailOrUser || activeUser());
+        return getEffectivePermissions(u);
+      },
+      canUnlockField: (fieldId, email) => {
+        const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
+        return canUnlockField(fieldId, u);
+      },
+      canModifyData: email => {
+        const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
+        return canModifyData(u);
+      },
+      canAccessPbiPage: (pageId, email) => {
+        const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
+        return canAccessPbiPage(pageId, u);
+      },
+      canAccessRdlReport: (reportId, email) => {
+        const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
+        return canAccessRdlReport(reportId, u);
+      },
+      refreshRoleAndAccessMatrixUi: () => refreshRoleAndAccessMatrixUi($('seatEditorWrap')),
       captureSyntheticPose: (vec, detScore = 0.96, faceSizeFrac = 0.26) =>
         captureEnrolDescriptor({ descriptor: vec, detScore, faceSizeFrac, multiple: false }),
       saveEnrolment: () => saveFaceEnrolment(),

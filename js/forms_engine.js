@@ -30,48 +30,48 @@
       id: 'dispatch',
       label: '1. Dispatch & Settlements (6)',
       forms: [
-        { id: 'sales', label: 'Sales Ticket', badge: 'bhf_salesticket', crKey: 'sales_tickets', title: 'New Sales Ticket (Price Agreement · Tier 1/2 · Cascading Fleet · VAT · Overtime)' },
-        { id: 'raw', label: 'Raw Material Ticket', badge: 'bhf_rawpurchase', crKey: 'raw_purchases', title: 'New Raw Material Quarry Ticket (Site→Owner Auto-Fill · 2-Leg AP Split)' },
-        { id: 'receipt', label: 'Customer Settlement', badge: 'bhf_customerreceipt', crKey: 'receipts', title: 'New Customer Settlement (Dual-Currency USD+LBP · Live FIFO Open-Ticket Subgrid)' },
-        { id: 'settlement', label: 'Supplier Settlement', badge: 'bhf_supplierpayment', crKey: 'settlements', title: 'New Supplier Settlement (Dual-Currency USD+LBP · Live 3-Leg AP FIFO Subgrid)' },
-        { id: 'fuel', label: 'Fuel & Lubricant Intake', badge: 'bhf_fuelintake', crKey: 'fuel_intakes', title: 'New Diesel / Lubricant Intake (Fuel Type Cascade · Tank Stock Guard · M142 Meter)' },
-        { id: 'expense', label: 'Expense (Cash / Credit)', badge: 'bhf_expense', crKey: 'expenses', title: 'New Expense (Cash/Credit Scope · Strict Category→Subcategory · Dual-Currency)' }
+        { id: 'sales', label: 'Sales Ticket', badge: 'bhf_salesticket', crKey: 'sales_tickets', title: 'New Sales Ticket' },
+        { id: 'raw', label: 'Raw Material Ticket', badge: 'bhf_rawpurchase', crKey: 'raw_purchases', title: 'New Raw Material Ticket' },
+        { id: 'receipt', label: 'Customer Settlement', badge: 'bhf_customerreceipt', crKey: 'receipts', title: 'New Customer Settlement' },
+        { id: 'settlement', label: 'Supplier Settlement', badge: 'bhf_supplierpayment', crKey: 'settlements', title: 'New Supplier Settlement' },
+        { id: 'fuel', label: 'Fuel & Lubricant Intake', badge: 'bhf_fuelintake', crKey: 'fuel_intakes', title: 'New Fuel & Lubricant Intake' },
+        { id: 'expense', label: 'Expense (Cash / Credit)', badge: 'bhf_expense', crKey: 'expenses', title: 'New Expense' }
       ]
     },
     {
       id: 'pricing',
       label: '2. Sales & Pricing Setup (3)',
       forms: [
-        { id: 'pricerule', label: 'Price Agreement', badge: 'bhf_pricerule', crKey: 'price_rules', title: 'New Price Agreement (Rule-Type Cascade · Tier 1/2 Truck Sizes · Indifference Price)' },
-        { id: 'vatinvoice', label: 'VAT Invoice', badge: 'bhf_vatinvoice', crKey: 'vat_invoices', title: 'New Official VAT Invoice (11% Statutory Tax Header & Ticket Link)' },
-        { id: 'creditterm', label: 'Credit Terms', badge: 'bhf_creditterm', crKey: 'credit_terms', title: 'New Customer Credit Terms & Payment Window Agreement' }
+        { id: 'pricerule', label: 'Price Agreement', badge: 'bhf_pricerule', crKey: 'price_rules', title: 'New Price Agreement' },
+        { id: 'vatinvoice', label: 'VAT Invoice', badge: 'bhf_vatinvoice', crKey: 'vat_invoices', title: 'New VAT Invoice' },
+        { id: 'creditterm', label: 'Credit Terms', badge: 'bhf_creditterm', crKey: 'credit_terms', title: 'New Customer Credit Terms' }
       ]
     },
     {
       id: 'hq',
       label: '3. HQ Master Data (7)',
       forms: [
-        { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer Master Record (Payment Method Lock · VAT · Declared Qty · Ext Invoice)' },
-        { id: 'supplier', label: 'Supplier / Hauler', badge: 'bhf_supplier', crKey: 'suppliers', title: 'New Supplier / Quarry / Hauler Master Record (IVA · Truck Owner Flag)' },
-        { id: 'product', label: 'Product / Grade', badge: 'bhf_product', crKey: 'products', title: 'New Product / Aggregate Grade (UoM · Ton Factor · Ticket vs Fuel Flag)' },
-        { id: 'site', label: 'Site & Quarry GPS', badge: 'bhf_site', crKey: 'sites', title: 'New Site / Quarry / Destination (Region · Default Quarry Owner · JV Flag · GPS)' },
-        { id: 'equipment', label: 'Equipment (All / 3P)', badge: 'bhf_equipment', crKey: 'equipment', title: 'New Equipment / Third-Party Truck (Plate · Capacity m³ · Truck Owner · Default Driver)' },
-        { id: 'companyequipment', label: 'Company Fleet Unit', badge: 'bhf_companyequipment', crKey: 'company_equipment', title: 'New Company Fleet Unit (BU Ownership · Capacity m³ · Default Driver)' },
-        { id: 'driver', label: 'Driver', badge: 'bhf_driver', crKey: 'drivers', title: 'New Driver & Company Driver Assignment (Truck Owner · Phone)' }
+        { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer' },
+        { id: 'supplier', label: 'Supplier / Hauler', badge: 'bhf_supplier', crKey: 'suppliers', title: 'New Supplier / Hauler' },
+        { id: 'product', label: 'Product / Grade', badge: 'bhf_product', crKey: 'products', title: 'New Product / Aggregate Grade' },
+        { id: 'site', label: 'Site & Quarry GPS', badge: 'bhf_site', crKey: 'sites', title: 'New Site / Quarry' },
+        { id: 'equipment', label: 'Equipment (All / 3P)', badge: 'bhf_equipment', crKey: 'equipment', title: 'New Equipment / Third-Party Truck' },
+        { id: 'companyequipment', label: 'Company Fleet Unit', badge: 'bhf_companyequipment', crKey: 'company_equipment', title: 'New Company Fleet Unit' },
+        { id: 'driver', label: 'Driver', badge: 'bhf_driver', crKey: 'drivers', title: 'New Driver' }
       ]
     },
     {
       id: 'ops',
       label: '4. Payroll, Logistics & Treasury (8)',
       forms: [
-        { id: 'salary', label: 'Salary Payment', badge: 'bhf_salarypayment', crKey: 'salaries', title: 'New Salary Payment (Dual-Currency USD+LBP · Contract Match · Equipment Allocation)' },
-        { id: 'attendance', label: 'Attendance', badge: 'bhf_attendance', crKey: 'attendance', title: 'New Staff Daily Attendance & Shift Log' },
-        { id: 'freelance', label: 'Freelance Work', badge: 'bhf_freelancework', crKey: 'employments', title: 'New Freelance Work & Day-Rate Settlement' },
-        { id: 'employment', label: 'Employment Contract', badge: 'bhf_employment', crKey: 'employments', title: 'New Staff Employment Contract & Monthly Base Salary' },
-        { id: 'logistics', label: 'Site Allowance (Mon–Sun)', badge: 'bhf_logistics', crKey: 'logistics_allowances', title: 'New Weekly Site Allowance (Mon–Sun Checkboxes · Dual-Currency USD+LBP)' },
-        { id: 'triprate', label: 'Overtime Trip Rate', badge: 'bhf_triprate', crKey: 'overtime_rates', title: 'New Driver Overtime & Per-Trip Allowance Rate (bhf_triprate)' },
-        { id: 'treasury', label: 'Treasury / Loans / FX', badge: 'bhf_external', crKey: 'loans', title: 'New Treasury Entry (External Movement · Partner Loan · Loan Settlement · FX Conversion)' },
-        { id: 'jv', label: 'JV Partnership & Dist.', badge: 'bhf_jvdistribution', crKey: 'jv_distributions', title: 'New Joint-Venture Quarry Partnership or Profit Distribution' }
+        { id: 'salary', label: 'Salary Payment', badge: 'bhf_salarypayment', crKey: 'salaries', title: 'New Salary Payment' },
+        { id: 'attendance', label: 'Attendance', badge: 'bhf_attendance', crKey: 'attendance', title: 'New Staff Attendance' },
+        { id: 'freelance', label: 'Freelance Work', badge: 'bhf_freelancework', crKey: 'employments', title: 'New Freelance Work' },
+        { id: 'employment', label: 'Employment Contract', badge: 'bhf_employment', crKey: 'employments', title: 'New Employment Contract' },
+        { id: 'logistics', label: 'Site Allowance (Mon–Sun)', badge: 'bhf_logistics', crKey: 'logistics_allowances', title: 'New Weekly Site Allowance' },
+        { id: 'triprate', label: 'Overtime Trip Rate', badge: 'bhf_triprate', crKey: 'overtime_rates', title: 'New Overtime Trip Rate' },
+        { id: 'treasury', label: 'Treasury / Loans / FX', badge: 'bhf_external', crKey: 'loans', title: 'New Treasury Entry' },
+        { id: 'jv', label: 'JV Partnership & Dist.', badge: 'bhf_jvdistribution', crKey: 'jv_distributions', title: 'New Joint-Venture Entry' }
       ]
     }
   ];

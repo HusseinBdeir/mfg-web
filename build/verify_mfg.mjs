@@ -535,6 +535,56 @@ try {
     ? pass('entry desk · v7.0 Intuitive Ordering, Pickup Column Gating (Site/Trans hidden), Reporting Date Sync & Admin Unlock Process')
     : fail('entry desk v7.0 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
 
+  // 6d. Strict Multi-Column Control Box Alignment (locked + unlocked fields stay on 1-line labels with 0px vertical input offset across columns)
+  const colAlignmentProbe = await evaluate(`(() => {
+    const checkForms = ['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement', 'vatinvoice', 'salary', 'logistics', 'treasury'];
+    const groups = window.MFG_FORMS.FORM_GROUPS;
+    const misalignments = [];
+    let rowsChecked = 0;
+    for (const fid of checkForms) {
+      const g = groups.find(x => x.forms.some(y => y.id === fid));
+      if (g) document.querySelector('[data-pa-group="' + g.id + '"]').click();
+      const tab = document.querySelector('.modal-tab[data-form="' + fid + '"]');
+      if (!tab) continue;
+      tab.click();
+      const fields = Array.from(document.querySelectorAll('#modalBody .form-field:not(.check-field)')).filter(f => !f.hidden && f.offsetParent !== null);
+      const byRow = new Map();
+      for (const f of fields) {
+        const fr = f.getBoundingClientRect();
+        const key = Array.from(byRow.keys()).find(k => Math.abs(k - fr.top) <= 6) ?? Math.round(fr.top);
+        if (!byRow.has(key)) byRow.set(key, []);
+        const ctrl = f.querySelector('.pa-suggest-wrap, .pa-select-wrap, input:not([type="checkbox"]):not([type="radio"]), select');
+        const lbl = f.querySelector(':scope > label');
+        if (ctrl && lbl) {
+          const cr = ctrl.getBoundingClientRect();
+          const lr = lbl.getBoundingClientRect();
+          byRow.get(key).push({
+            id: f.id || (ctrl.querySelector('input,select') || ctrl).id || 'field',
+            ctrlTop: Math.round(cr.top),
+            ctrlH: Math.round(cr.height),
+            lblH: Math.round(lr.height)
+          });
+        }
+      }
+      for (const [, cols] of byRow.entries()) {
+        if (cols.length < 2) continue;
+        rowsChecked++;
+        const baseTop = cols[0].ctrlTop;
+        const baseH = cols[0].ctrlH;
+        for (const c of cols) {
+          if (Math.abs(c.ctrlTop - baseTop) > 1 || Math.abs(c.ctrlH - baseH) > 1 || c.lblH > 22) {
+            misalignments.push(fid + ':' + cols.map(x => x.id + '@' + x.ctrlTop + '(' + x.ctrlH + 'h,lbl=' + x.lblH + ')').join('|'));
+            break;
+          }
+        }
+      }
+    }
+    return { ok: misalignments.length === 0 && rowsChecked >= 15, rowsChecked, misalignments };
+  })()`);
+  colAlignmentProbe.ok
+    ? pass('entry desk · multi-column input & search-box top/height alignment (0px offset across locked & unlocked columns)', `${colAlignmentProbe.rowsChecked} multi-col rows verified`)
+    : fail('entry desk multi-column alignment', JSON.stringify(colAlignmentProbe));
+
   await evaluate(`document.getElementById('closeModalBtn').click()`); await sleep(150);
 
   // 7. Statements all 22
@@ -754,6 +804,8 @@ try {
       unlockedDirect,
       faceOnlyPinBlocked,
       pinOnlyFaceBlocked: pinOnlyFaceBlocked.status,
+      faceFirstStep: faceFirstStep.status,
+      pinSecondStep,
       bothFaceThenPinOk,
       unlockedPinOnly
     };
@@ -1038,6 +1090,142 @@ try {
   tenIndustryProbe && tenIndustryProbe.ok
     ? pass('10-industry × 150-company scale · fixed topbar box (0px width growth), 2-col industry→company popovers & 1-click industry toggle', `width=${tenIndustryProbe.wBefore}px→${tenIndustryProbe.wAfter}px · indTabs=${tenIndustryProbe.topbarIndTabs} · cos=${tenIndustryProbe.topbarCoBtns} · chipsH=${tenIndustryProbe.chipsH}px`)
     : fail('10-industry × 150-company scale', JSON.stringify(tenIndustryProbe));
+
+  // 7b-3. Roles, Check-Permissions Matrix, Custom Role Granular Checkboxes, Policy-Lock Field Unlocks & Linked Dashboards/Statements
+  const customRoleProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    // Click the role badge button in the Team Directory for u3 (Sabah Kassab) to open its permissions matrix
+    const dirRoleBtn = document.querySelector('[data-check-perms="u3"]');
+    if (dirRoleBtn) dirRoleBtn.click();
+    else T.selectSeatForEdit('u3', { openPerms: true });
+
+    const u3Orig = {
+      role: document.getElementById('nu_role').value,
+      comp: document.getElementById('nu_companies').value,
+      acc: document.getElementById('nu_access').value
+    };
+
+    const matrixOpenOnInspect = !!document.getElementById('rolePermissionsMatrixPanel');
+    const roleOpts = Array.from(document.getElementById('nu_role').options).map(o => o.value);
+    const hasDefaultAndCustomRoles = ['Entry', 'Supervisor', 'Supervisor + Entry', 'Full Access (Owner)', 'Sales', 'Custom'].every(r => roleOpts.includes(r));
+
+    // Verify role -> Executive Dashboards & Statements auto-linking on default roles
+    const roleEl = document.getElementById('nu_role');
+    const accEl = document.getElementById('nu_access');
+    roleEl.value = 'Full Access (Owner)';
+    roleEl.dispatchEvent(new Event('change', { bubbles: true }));
+    const ownerLinkedAcc = accEl.value;
+
+    roleEl.value = 'Sales';
+    roleEl.dispatchEvent(new Event('change', { bubbles: true }));
+    const salesLinkedAcc = accEl.value;
+
+    // Switch to Custom Role -> auto-links to custom|custom and unlocks granular checkboxes
+    roleEl.value = 'Custom';
+    roleEl.dispatchEvent(new Event('change', { bubbles: true }));
+    const customLinkedAcc = accEl.value;
+
+    // Configure Custom Role permissions:
+    // 1. Clear unlocks, dashboards, statements and set rights to read-only first, then pick specific ones
+    const clickBulk = val => {
+      const btn = document.querySelector('[data-perm-bulk="' + val + '"]');
+      if (btn) btn.click();
+    };
+    clickBulk('rights:readonly');
+    clickBulk('unlocks:off');
+    clickBulk('dashboards:off');
+    clickBulk('statements:off');
+
+    const setPerm = (cat, id, on) => {
+      const cb = document.querySelector('[data-perm-cat="' + cat + '"][data-perm-id="' + id + '"]');
+      if (cb && cb.checked !== on) {
+        cb.checked = on;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    };
+    // Rights: Read Ops (on), Read Fin (off), Enter Dispatch (on), Modify Existing Records (on), Void (off)
+    setPerm('rights', 'read_ops', true);
+    setPerm('rights', 'read_fin', false);
+    setPerm('rights', 'enter_dispatch', true);
+    setPerm('rights', 'modify_data', true);
+    setPerm('rights', 'void_data', false);
+    // Unlocks: Allow unlocking Unit Price (f_unitprice) and Quantity Cap (f_qty) WITHOUT Admin PIN
+    setPerm('unlocks', 'unlock_unit_price', true);
+    setPerm('unlocks', 'unlock_qty_cap', true);
+    // Dashboards: Overview (3 pages; 2 for single-company WTC) + Commercial (5) + Financial GL (3) = 10 PBI Pages for WTC
+    setPerm('dashboards', 'dash_overview', true);
+    setPerm('dashboards', 'dash_commercial', true);
+    setPerm('dashboards', 'dash_financial_gl', true);
+    // Statements: Daily Digest (5) + Financial Board Pack (8) = 13 Printable A4 Statements
+    setPerm('statements', 'stmt_digest_ops', true);
+    setPerm('statements', 'stmt_financial_board', true);
+
+    await T.saveSeatEditorForm();
+
+    // Sign in as u3 (Sabah Kassab) and verify Custom Role enforcement end-to-end
+    await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const customPbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
+    const hasGlPage = !!document.querySelector('.pbi-page-tab[data-pbi-page="p16_financial"]');
+
+    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    const customStmtCards = document.querySelectorAll('.stmt-card[data-stmt]').length;
+    const hasPlStmt = !!document.querySelector('.stmt-card[data-stmt="03"]');
+
+    // Open Entry Desk -> Sales form: verify f_unitprice can be unlocked by Custom Role without Admin PIN, while f_total_usd still requires Admin PIN
+    document.getElementById('newEntryBtn').click();
+    const canUnlockUnitPrice = T.canUnlockField('f_unitprice');
+    const canUnlockQty = T.canUnlockField('f_qty');
+    const canUnlockFormulaTotals = T.canUnlockField('f_total_usd');
+    const unitPriceInpBefore = document.getElementById('f_unitprice');
+    const lockedInitially = !!(unitPriceInpBefore && unitPriceInpBefore.readOnly);
+    const unitPriceLockPill = document.querySelector('[data-lock-pill="f_unitprice"]');
+    if (unitPriceLockPill) unitPriceLockPill.click();
+    const noPinInputRequired = !document.getElementById('paAdminPinInput');
+    const confirmUnlockBtn = document.getElementById('paConfirmFieldUnlockBtn');
+    if (confirmUnlockBtn) confirmUnlockBtn.click();
+    const unitPriceInpAfter = document.getElementById('f_unitprice');
+    const unlockedWithoutPin = !!(noPinInputRequired && unitPriceInpAfter && !unitPriceInpAfter.readOnly);
+    document.getElementById('closeModalBtn').click();
+
+    // Open Record Inspector on Sales -> verify Modify Record button is present while Void Record button is hidden
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    const firstRow = document.querySelector('#salesPanel tr.rrow[data-rid]');
+    if (firstRow) firstRow.click();
+    const hasModifyBtn = !!document.getElementById('inspModifyRecordBtn');
+    const hasVoidBtn = !!document.getElementById('inspectorVoidBtn');
+    const doneBtn = document.getElementById('inspectorDoneBtn');
+    if (doneBtn) doneBtn.click();
+
+    // Restore Owner session & restore u3 original seat
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    T.selectSeatForEdit('u3');
+    document.getElementById('nu_role').value = u3Orig.role;
+    document.getElementById('nu_role').dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('nu_companies').value = u3Orig.comp;
+    document.getElementById('nu_companies').dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('nu_access').value = u3Orig.acc;
+    await T.saveSeatEditorForm();
+    T.selectSeatForEdit('u1');
+    const overflowUsers = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    return {
+      ok: matrixOpenOnInspect && hasDefaultAndCustomRoles &&
+          ownerLinkedAcc === 'full|full' && salesLinkedAcc === 'partial|full' && customLinkedAcc === 'custom|custom' &&
+          customPbiTabs === 10 && hasGlPage && customStmtCards === 13 && hasPlStmt &&
+          canUnlockUnitPrice && canUnlockQty && !canUnlockFormulaTotals &&
+          lockedInitially && unlockedWithoutPin && hasModifyBtn && !hasVoidBtn && overflowUsers === 0,
+      matrixOpenOnInspect, hasDefaultAndCustomRoles, ownerLinkedAcc, salesLinkedAcc, customLinkedAcc,
+      customPbiTabs, hasGlPage, customStmtCards, hasPlStmt,
+      canUnlockUnitPrice, canUnlockQty, canUnlockFormulaTotals,
+      lockedInitially, unlockedWithoutPin, hasModifyBtn, hasVoidBtn, overflowUsers
+    };
+  })()`);
+  customRoleProbe && customRoleProbe.ok
+    ? pass('roles, permissions & linked dashboards · default + Custom roles, Check Permissions matrix, field-level lock overrides without PIN, Modify Data & custom PBI/RDL', `PBI=${customRoleProbe.customPbiTabs}/20 · RDL=${customRoleProbe.customStmtCards}/22 · unlockUnitPrice=${customRoleProbe.unlockedWithoutPin} · modify=${customRoleProbe.hasModifyBtn}`)
+    : fail('roles, permissions & linked dashboards', JSON.stringify(customRoleProbe));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);
