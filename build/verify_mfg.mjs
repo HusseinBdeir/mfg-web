@@ -1943,7 +1943,10 @@ try {
     const bbcCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
     document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
     const allCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
-    const consistentAcrossBUs = Boolean(wtcCountTxt && wtcCountTxt === bbcCountTxt && bbcCountTxt === allCountTxt && wtcTitle === 'Equipment & Trucks' && wtcBannerTitle === 'Equipment & Trucks');
+    const connLblTxt = document.querySelector('#univRegPanel .pa-hub-conns .pa-hub-lbl')?.textContent?.trim() || '';
+    const eyebrowTxt = document.querySelector('#workspace .cockpit-eyebrow')?.textContent?.trim() || '';
+    const connLabelClean = connLblTxt === 'Connected Tables:' && !/1:N|N:1/i.test(connLblTxt) && !/bhf_/i.test(eyebrowTxt);
+    const consistentAcrossBUs = Boolean(wtcCountTxt && wtcCountTxt === bbcCountTxt && bbcCountTxt === allCountTxt && wtcTitle === 'Equipment & Trucks' && wtcBannerTitle === 'Equipment & Trucks' && connLabelClean);
 
     // 5. Entry Desk Group 3 ("3. Universal Registries (6)") has only Universal Registries without Company (BU) * (#f_company), while companyequipment is in Group 4 (ops) with #f_company
     document.getElementById('newEntryBtn').click();

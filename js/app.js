@@ -211,18 +211,24 @@
   // App-entered record pools (localStorage + cloud relay) → server table + SEED list
   const CR_KEYS = [
     'sales_tickets', 'raw_purchases', 'receipts', 'fuel_intakes', 'expenses', 'settlements',
-    'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'suppliers', 'products', 'sites',
-    'equipment', 'company_equipment', 'drivers', 'salaries', 'attendance', 'employments',
-    'logistics_allowances', 'overtime_rates', 'external_movements', 'loans', 'loan_settlements',
+    'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'suppliers', 'products',
+    'product_types', 'uoms', 'sites', 'regions', 'equipment', 'company_equipment',
+    'drivers', 'company_drivers', 'expense_categories', 'expense_subcategories',
+    'salaries', 'attendance', 'employments', 'freelance_entries', 'logistics_allowances',
+    'overtime_rates', 'external_movements', 'loans', 'loan_settlements',
     'conversions', 'jv_partnerships', 'jv_distributions'
   ];
   const CR_TABLE = {
     sales_tickets: 'sales_tickets', raw_purchases: 'raw_purchases', receipts: 'customer_receipts',
     fuel_intakes: 'fuel_intakes', expenses: 'expenses', settlements: 'supplier_payments',
     price_rules: 'price_rules', vat_invoices: 'vat_invoices', credit_terms: 'credit_terms',
-    customers: 'customers', suppliers: 'suppliers', products: 'products', sites: 'sites',
-    equipment: 'equipment', company_equipment: 'company_equipment', drivers: 'drivers',
+    customers: 'customers', suppliers: 'suppliers', products: 'products',
+    product_types: 'product_types', uoms: 'uoms', sites: 'sites', regions: 'regions',
+    equipment: 'equipment', company_equipment: 'company_equipment',
+    drivers: 'drivers', company_drivers: 'company_drivers',
+    expense_categories: 'expense_categories', expense_subcategories: 'expense_subcategories',
     salaries: 'salaries', attendance: 'attendance', employments: 'employments',
+    freelance_entries: 'freelance_entries',
     logistics_allowances: 'logistics_allowances', overtime_rates: 'overtime_rates',
     external_movements: 'external_movements', loans: 'loans', loan_settlements: 'loan_settlements',
     conversions: 'conversions', jv_partnerships: 'jv_partnerships', jv_distributions: 'jv_distributions'
@@ -231,9 +237,13 @@
     sales_tickets: 'sales ticket', raw_purchases: 'raw receipt', receipts: 'customer receipt',
     fuel_intakes: 'fuel intake', expenses: 'expense', settlements: 'supplier settlement',
     price_rules: 'price agreement', vat_invoices: 'VAT invoice', credit_terms: 'credit terms',
-    customers: 'customer', suppliers: 'supplier', products: 'product', sites: 'site',
-    equipment: 'equipment', company_equipment: 'company fleet unit', drivers: 'driver',
+    customers: 'customer', suppliers: 'supplier', products: 'product',
+    product_types: 'product family', uoms: 'unit of measure', sites: 'site', regions: 'region',
+    equipment: 'equipment', company_equipment: 'company fleet unit',
+    drivers: 'driver', company_drivers: 'company driver',
+    expense_categories: 'expense category', expense_subcategories: 'expense subcategory',
     salaries: 'salary payment', attendance: 'attendance log', employments: 'contract / freelance',
+    freelance_entries: 'freelance entry',
     logistics_allowances: 'site allowance', overtime_rates: 'overtime rate',
     external_movements: 'external movement', loans: 'partner loan', loan_settlements: 'loan settlement',
     conversions: 'currency conversion', jv_partnerships: 'JV partnership', jv_distributions: 'JV distribution'
@@ -425,13 +435,20 @@
   function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
 
   let toastTimer = null;
-  function toast(msg, kind) {
+  function toast(msg, kind, opts) {
     const el = document.getElementById('toast');
     if (!el) return;
-    el.textContent = msg;
     el.className = 'toast' + (kind ? ' toast-' + kind : '');
     el.hidden = false;
     clearTimeout(toastTimer);
+    if (opts && typeof opts.onUndo === 'function') {
+      el.innerHTML = `<span>${esc(msg)}</span> <button type="button" class="toast-undo-btn" id="toastUndoBtn" style="margin-left:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.15);color:inherit;font-size:11px;font-weight:700;cursor:pointer">Undo ↩</button>`;
+      const uBtn = document.getElementById('toastUndoBtn');
+      if (uBtn) uBtn.addEventListener('click', () => { clearTimeout(toastTimer); el.hidden = true; opts.onUndo(); });
+      toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+      return;
+    }
+    el.textContent = msg;
     toastTimer = setTimeout(() => { el.hidden = true; }, kind === 'err' ? 5200 : 3000);
   }
 
@@ -1288,15 +1305,21 @@
   }
 
   function appCell(r, crKey) {
-    if (!isAppRecord(r)) return '';
+    if (!r || r.voided) return '';
+    const rid = r.id || r.name || r.ticket_no || r.invoice_no || r.staff || r.driver || r.equipment;
+    if (!isAppRecord(r)) {
+      return (canVoid() && rid)
+        ? `<button type="button" class="void-btn row-void-hover" data-void="${esc(crKey)}" data-void-id="${esc(rid)}" title="Void / Delete this record (click once to arm, click again to confirm)">✕</button>`
+        : '';
+    }
     const who = r.entered_by ? ' by ' + r.entered_by : '';
     const when = r.entered_at ? ' · ' + r.entered_at : '';
     return ` <span class="badge badge-app" title="Entered in this web app${esc(who + when)}">APP</span>` +
-      (canVoid() ? `<button type="button" class="void-btn" data-void="${esc(crKey)}" data-void-id="${esc(r.id)}" title="Void this app entry (keeps a tombstone so other devices drop it too)">✕</button>` : '');
+      (canVoid() ? `<button type="button" class="void-btn" data-void="${esc(crKey)}" data-void-id="${esc(rid)}" title="Void / Delete this app entry (keeps a tombstone so other devices drop it too)">✕</button>` : '');
   }
 
   function appPill(crKey, amountKey, label) {
-    const rows = filterRecords(STATE.customRecords[crKey], { ignoreSearch: true });
+    const rows = filterRecords(STATE.customRecords[crKey], { ignoreSearch: true }).filter(isAppRecord);
     if (!rows.length) return '';
     const sum = rows.reduce((a, r) => a + Number(r[amountKey] || 0), 0);
     return `<div class="cockpit-pill app-pill" title="Entered in this web app · not yet inside the SQL / book totals"><div class="cockpit-pill-lbl">App-entered (unposted)</div><div class="cockpit-pill-val amber">${fmtNum(rows.length)} ${esc(label)} · ${fmtUSD(sum, 0)}</div></div>`;
@@ -1304,9 +1327,11 @@
 
   function appEnteredSummary() {
     const out = [];
-    const spec = [['sales_tickets', 'total_ttc', 'sales tickets'], ['raw_purchases', 'total', 'raw receipts'], ['receipts', 'amount', 'customer receipts'], ['fuel_intakes', 'litres', 'fuel intakes'], ['expenses', 'amount', 'expenses'], ['settlements', 'amount', 'supplier settlements']];
+    const spec = [['sales_tickets', 'total_ttc', 'sales tickets'], ['raw_purchases', 'total', 'raw receipts'], ['receipts', 'amount', 'customer receipts'], ['fuel_intakes', 'litres', 'fuel intakes'], ['expenses', 'amount', 'supplier settlements']];
+    spec[4] = ['expenses', 'amount', 'expenses'];
+    spec[5] = ['settlements', 'amount', 'supplier settlements'];
     spec.forEach(([k, amt, label]) => {
-      const rows = filterRecords(STATE.customRecords[k], { ignoreSearch: true });
+      const rows = filterRecords(STATE.customRecords[k], { ignoreSearch: true }).filter(isAppRecord);
       if (!rows.length) return;
       const sum = rows.reduce((a, r) => a + Number(r[amt] || 0), 0);
       out.push({ key: k, n: rows.length, sum, label, unit: amt === 'litres' ? 'L' : '$' });
@@ -8900,18 +8925,78 @@
     }
   }
 
-  function voidRecord(crKey, id) {
-    const list = STATE.customRecords[crKey] || [];
-    const r = list.find(x => x.id === id);
-    if (!r) { toast('Only app-entered rows can be voided here — book rows are corrected in the workbook', 'err'); return; }
-    if (!canVoid()) { toast('Your seat cannot void entries', 'err'); return; }
-    r.voided = true;
-    r.voided_by = activeUser().full_name;
-    r.voided_at = nowStamp();
+  const SEED_VOIDED_ARCHIVE = {};
+
+  function restoreVoidedRecord(crKey, id) {
+    const q = String(id == null ? '' : id).trim();
+    const nq = norm(q);
+    const matchRow = x => x && (String(x.id) === q || (nq && (norm(x.name) === nq || norm(x.ticket_no) === nq || norm(x.invoice_no) === nq || norm(x.staff) === nq || norm(x.driver) === nq || norm(x.equipment) === nq)));
+    if (!Array.isArray(STATE.customRecords[crKey])) STATE.customRecords[crKey] = [];
+    const list = STATE.customRecords[crKey];
+    const rIdx = list.findIndex(matchRow);
+    const r = rIdx >= 0 ? list[rIdx] : null;
+    const archMap = SEED_VOIDED_ARCHIVE[crKey];
+    const archivedSeed = archMap && (archMap.get(q) || (r && archMap.get(String(r.id))));
+    if (archivedSeed && SEED.records && Array.isArray(SEED.records[crKey])) {
+      const cleanSeed = Object.assign({}, archivedSeed, { voided: false });
+      delete cleanSeed.voided_by;
+      delete cleanSeed.voided_at;
+      if (!SEED.records[crKey].some(x => x && String(x.id) === String(cleanSeed.id))) {
+        SEED.records[crKey].unshift(cleanSeed);
+      }
+      if (r && !isAppRecord(r)) list.splice(rIdx, 1);
+    }
+    if (r) {
+      r.voided = false;
+      delete r.voided_by;
+      delete r.voided_at;
+    }
     applyCustomRecordsToSeed();
     saveLocalAuthAndRecords();
     renderApp();
-    toast('Entry voided · ' + (r.name || id));
+    const label = (r && (r.name || r.ticket_no || r.invoice_no || r.staff || r.driver || r.equipment)) || (archivedSeed && (archivedSeed.name || archivedSeed.ticket_no)) || q;
+    toast('✓ Record restored · ' + label, 'ok');
+    if (r) postRecordToLocalApi(crKey, r);
+    syncWithCloud(true);
+  }
+
+  function voidRecord(crKey, id) {
+    if (!canVoid()) { toast('Your seat cannot void or delete records', 'err'); return; }
+    if (!Array.isArray(STATE.customRecords[crKey])) STATE.customRecords[crKey] = [];
+    const list = STATE.customRecords[crKey];
+    const q = String(id == null ? '' : id).trim();
+    const nq = norm(q);
+    const matchRow = x => x && (String(x.id) === q || (nq && (norm(x.name) === nq || norm(x.ticket_no) === nq || norm(x.invoice_no) === nq || norm(x.staff) === nq || norm(x.driver) === nq || norm(x.equipment) === nq)));
+    let r = list.find(matchRow);
+    const seedList = (SEED.records && SEED.records[crKey]) || [];
+    const seedRow = seedList.find(matchRow);
+    if (!r && !seedRow) { toast('Record not found', 'err'); return; }
+    const who = activeUser().full_name;
+    const when = nowStamp();
+    if (seedRow) {
+      if (!SEED_VOIDED_ARCHIVE[crKey]) SEED_VOIDED_ARCHIVE[crKey] = new Map();
+      const sid = String(seedRow.id || q);
+      if (!SEED_VOIDED_ARCHIVE[crKey].has(sid)) {
+        SEED_VOIDED_ARCHIVE[crKey].set(sid, Object.assign({}, seedRow, { voided: false }));
+      }
+      seedRow.voided = true;
+      seedRow.voided_by = who;
+      seedRow.voided_at = when;
+    }
+    if (r) {
+      r.voided = true;
+      r.voided_by = who;
+      r.voided_at = when;
+    } else if (seedRow) {
+      r = Object.assign({}, seedRow, { id: seedRow.id || q, voided: true, voided_by: who, voided_at: when });
+      list.unshift(r);
+    }
+    applyCustomRecordsToSeed();
+    saveLocalAuthAndRecords();
+    renderApp();
+    const label = (r && (r.name || r.ticket_no || r.invoice_no || r.staff || r.driver || r.equipment)) || q;
+    const targetId = (r && r.id) || q;
+    toast('Record voided · ' + label, 'ok', { onUndo: () => restoreVoidedRecord(crKey, targetId) });
     postRecordToLocalApi(crKey, r);
     syncWithCloud(true);
   }
@@ -9443,7 +9528,12 @@
       if (!rows) return;
       if (targetKey && !canAccessTable(targetKey)) return;
       const scoped = rows.filter(r => !r || (!r.voided && (!r.company || allowedCos.includes(r.company))));
-      subgrids.push({ id, title, shortLabel, relBadge, targetKey, rows: scoped, cols, sumCol });
+      const cleanBadge = String(relBadge || '')
+        .replace(/^\s*(?:1:N|N:1|N:N)\s*/i, '')
+        .replace(/\bbhf_[a-z0-9_]+\b/gi, '')
+        .replace(/\bM\d+\b\s*/gi, '')
+        .trim();
+      subgrids.push({ id, title, shortLabel, relBadge: cleanBadge || shortLabel, targetKey, rows: scoped, cols, sumCol });
     };
 
     if (key === 'sales_tickets') {
@@ -9453,122 +9543,122 @@
       const custVat = (rec.vat_invoices || []).filter(v => norm(v.customer) === norm(row.customer));
       const trkFuel = row.truck ? (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(row.truck)) : [];
 
-      addGrid('sg_rules', `Matching Price & Commission Agreements (${row.customer || row.product})`, 'Price Rules', 'N:1 Rule Lookup', 'price_rules', custRules, ['name', 'company', 'rule_type', 'customer', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_sib_sales', `Other Sales Tickets for ${row.customer || 'Customer'}`, 'Customer Tickets', '1:N Sibling Loads', 'sales_tickets', sibTickets, ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'total_ttc', 'method'], 'total_ttc');
-      addGrid('sg_rcpts', `Customer Receipts & FIFO Settlements (${row.customer})`, 'AR Receipts', '1:N FIFO Relief', 'receipts', custRcpts, ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
-      addGrid('sg_vat', `Customer VAT 11% Tax Invoices (${row.customer})`, 'VAT Invoices', '1:N Tax Billing', 'vat_invoices', custVat, ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
-      if (row.truck) addGrid('sg_trk_fuel', `Fuel & Meter Log for Truck ${row.truck}`, 'Truck Fuel Log', '1:N Fleet Telemetry', 'fuel_intakes', trkFuel, ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer'], 'litres');
+      addGrid('sg_rules', `Matching Price & Commission Agreements (${row.customer || row.product})`, 'Price Rules', 'Rule Lookup', 'price_rules', custRules, ['name', 'company', 'rule_type', 'customer', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_sib_sales', `Other Sales Tickets for ${row.customer || 'Customer'}`, 'Customer Tickets', 'Sibling Loads', 'sales_tickets', sibTickets, ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'total_ttc', 'method'], 'total_ttc');
+      addGrid('sg_rcpts', `Customer Receipts & FIFO Settlements (${row.customer})`, 'AR Receipts', 'FIFO Relief', 'receipts', custRcpts, ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
+      addGrid('sg_vat', `Customer VAT 11% Tax Invoices (${row.customer})`, 'VAT Invoices', 'Tax Billing', 'vat_invoices', custVat, ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
+      if (row.truck) addGrid('sg_trk_fuel', `Fuel & Meter Log for Truck ${row.truck}`, 'Truck Fuel Log', 'Fleet Telemetry', 'fuel_intakes', trkFuel, ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer'], 'litres');
     }
     else if (key === 'raw_purchases') {
       const rawRules = (rec.price_rules || []).filter(r => (row.site_owner && norm(r.supplier) === norm(row.site_owner)) || (row.truck_owner && norm(r.supplier) === norm(row.truck_owner)) || (row.site && norm(r.site) === norm(row.site)));
       const siteLoads = (rec.raw_purchases || []).filter(t => norm(t.site) === norm(row.site) && String(t.id) !== String(row.id));
       const suppSettle = (rec.settlements || []).filter(s => (row.site_owner && norm(s.supplier) === norm(row.site_owner)) || (row.truck_owner && norm(s.supplier) === norm(row.truck_owner)));
 
-      addGrid('sg_raw_rules', `Quarry & Hauler Price Agreements (${row.site || row.site_owner})`, 'Quarry Rules', 'N:1 Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_site_loads', `Other Raw Material Purchases from ${row.site || 'Quarry'}`, 'Quarry Loads', '1:N Sibling Loads', 'raw_purchases', siteLoads, ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
-      addGrid('sg_supp_settle', `Supplier Settlements for ${row.site_owner || row.truck_owner}`, 'AP Settlements', '1:N 3-Leg AP Relief', 'settlements', suppSettle, ['date', 'name', 'company', 'supplier', 'method', 'amount', 'discount', 'reference'], 'amount');
+      addGrid('sg_raw_rules', `Quarry & Hauler Price Agreements (${row.site || row.site_owner})`, 'Quarry Rules', 'Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_site_loads', `Other Raw Material Purchases from ${row.site || 'Quarry'}`, 'Quarry Loads', 'Sibling Loads', 'raw_purchases', siteLoads, ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
+      addGrid('sg_supp_settle', `Supplier Settlements for ${row.site_owner || row.truck_owner}`, 'AP Settlements', '3-Leg AP Relief', 'settlements', suppSettle, ['date', 'name', 'company', 'supplier', 'method', 'amount', 'discount', 'reference'], 'amount');
     }
     else if (key === 'customers') {
       const name = row.name || row.Customer;
-      addGrid('sg_c_sales', `Sales Tickets & Deliveries (${name})`, 'Sales Tickets', '1:Nbhf_salesticket', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.customer) === norm(name)), ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'vat', 'total_ttc', 'method'], 'total_ttc');
-      addGrid('sg_c_rcpts', `Customer Receipts — FIFO Applied (${name})`, 'AR Receipts', '1:N bhf_mfgcustomerreceipt', 'receipts', (rec.receipts || []).filter(r => norm(r.customer) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
-      addGrid('sg_c_rules', `Price & Commission Agreements (${name})`, 'Price Rules', '1:N bhf_pricerule', 'price_rules', (rec.price_rules || []).filter(r => norm(r.customer) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_c_cred', `Credit Terms & Limits (${name})`, 'Credit Terms', '1:N bhf_creditterm', 'credit_terms', (rec.credit_terms || []).filter(c => norm(c.customer) === norm(name)), ['name', 'company', 'credit_days', 'credit_limit', 'start_date', 'end_date', 'notes'], 'credit_limit');
-      addGrid('sg_c_vat', `VAT 11% Tax Invoices (${name})`, 'VAT Invoices', '1:N bhf_vatinvoice', 'vat_invoices', (rec.vat_invoices || []).filter(v => norm(v.customer) === norm(name)), ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
+      addGrid('sg_c_sales', `Sales Tickets & Deliveries (${name})`, 'Sales Tickets', 'Sales Tickets', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.customer) === norm(name)), ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'vat', 'total_ttc', 'method'], 'total_ttc');
+      addGrid('sg_c_rcpts', `Customer Receipts — FIFO Applied (${name})`, 'AR Receipts', 'AR Receipts', 'receipts', (rec.receipts || []).filter(r => norm(r.customer) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
+      addGrid('sg_c_rules', `Price & Commission Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.customer) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_c_cred', `Credit Terms & Limits (${name})`, 'Credit Terms', 'Credit Terms', 'credit_terms', (rec.credit_terms || []).filter(c => norm(c.customer) === norm(name)), ['name', 'company', 'credit_days', 'credit_limit', 'start_date', 'end_date', 'notes'], 'credit_limit');
+      addGrid('sg_c_vat', `VAT 11% Tax Invoices (${name})`, 'VAT Invoices', 'VAT Invoices', 'vat_invoices', (rec.vat_invoices || []).filter(v => norm(v.customer) === norm(name)), ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
     }
     else if (key === 'suppliers') {
       const name = row.name || row.Supplier;
-      addGrid('sg_s_mat', `Leg 1 · Quarry Material Purchases (${name})`, 'Quarry Loads', '1:N Site Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'product', 'truck', 'qty', 'unit_cost', 'cost', 'total'], 'cost');
-      addGrid('sg_s_haul', `Leg 2 · Haulage Loads (${name})`, 'Haulage Loads', '1:N Truck Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.truck_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'driver', 'qty', 'trans_cost', 'total'], 'trans_cost');
-      addGrid('sg_s_exp', `Leg 3 · General & Fleet Expenses (${name})`, 'Expenses', '1:N Expense Leg', 'expenses', (rec.expenses || []).filter(x => norm(x.supplier) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'equipment', 'method', 'amount', 'reference'], 'amount');
-      addGrid('sg_s_pay', `Supplier AP Settlements (${name})`, 'Settlements', '1:N bhf_mfgsupplierpayment', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference'], 'amount');
-      addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', '1:N bhf_pricerule', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_s_eq', `Registered Trucks & Equipment (${name})`, 'Trucks', '1:N bhf_equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.supplier) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'default_driver'], 'capacity');
-      addGrid('sg_s_drv', `Registered Drivers (${name})`, 'Drivers', '1:N bhf_driver', 'drivers', (rec.drivers || []).filter(d => norm(d.truck_owner) === norm(name)), ['name', 'truck', 'phone', 'truck_owner', 'notes'], null);
+      addGrid('sg_s_mat', `Leg 1 · Quarry Material Purchases (${name})`, 'Quarry Loads', 'Site Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'product', 'truck', 'qty', 'unit_cost', 'cost', 'total'], 'cost');
+      addGrid('sg_s_haul', `Leg 2 · Haulage Loads (${name})`, 'Haulage Loads', 'Truck Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.truck_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'driver', 'qty', 'trans_cost', 'total'], 'trans_cost');
+      addGrid('sg_s_exp', `Leg 3 · General & Fleet Expenses (${name})`, 'Expenses', 'Expense Leg', 'expenses', (rec.expenses || []).filter(x => norm(x.supplier) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'equipment', 'method', 'amount', 'reference'], 'amount');
+      addGrid('sg_s_pay', `Supplier AP Settlements (${name})`, 'Settlements', 'Settlements', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference'], 'amount');
+      addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_s_eq', `Registered Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.supplier) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'default_driver'], 'capacity');
+      addGrid('sg_s_drv', `Registered Drivers (${name})`, 'Drivers', 'Drivers', 'drivers', (rec.drivers || []).filter(d => norm(d.truck_owner) === norm(name)), ['name', 'truck', 'phone', 'truck_owner', 'notes'], null);
     }
     else if (key === 'products' || key === 'product_types' || key === 'uoms') {
       const name = row.name || row.Product;
       const matchField = key === 'product_types' ? 'type' : (key === 'uoms' ? 'uom' : 'product');
       if (key !== 'products') {
-        addGrid('sg_p_prods', `Products in ${name}`, 'Products', '1:N bhf_product', 'products', (rec.products || []).filter(p => norm(p[matchField]) === norm(name)), ['name', 'type', 'uom', 'ton_factor', 'ticket_product', 'fuel_item', 'revenue_account'], 'ton_factor');
+        addGrid('sg_p_prods', `Products in ${name}`, 'Products', 'Products', 'products', (rec.products || []).filter(p => norm(p[matchField]) === norm(name)), ['name', 'type', 'uom', 'ton_factor', 'ticket_product', 'fuel_item', 'revenue_account'], 'ton_factor');
       }
-      addGrid('sg_p_rules', `Price Agreements for ${name}`, 'Price Rules', '1:N bhf_pricerule', 'price_rules', (rec.price_rules || []).filter(r => norm(r.product) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_p_sales', `Sales Tickets (${name})`, 'Sales Tickets', '1:N bhf_salesticket', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'site', 'truck', 'qty', 'unit_price', 'total_ttc'], 'total_ttc');
-      addGrid('sg_p_raw', `Raw Material Purchases (${name})`, 'Raw Purchases', '1:N bhf_rawpurchase', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'qty', 'unit_cost', 'total'], 'total');
+      addGrid('sg_p_rules', `Price Agreements for ${name}`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.product) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_p_sales', `Sales Tickets (${name})`, 'Sales Tickets', 'Sales Tickets', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'site', 'truck', 'qty', 'unit_price', 'total_ttc'], 'total_ttc');
+      addGrid('sg_p_raw', `Raw Material Purchases (${name})`, 'Raw Purchases', 'Raw Purchases', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'qty', 'unit_cost', 'total'], 'total');
     }
     else if (key === 'sites' || key === 'regions') {
       const name = row.name || row.Site;
       if (key === 'regions') {
-        addGrid('sg_r_sites', `Sites & Quarries in Region ${name}`, 'Sites', '1:N bhf_site', 'sites', (rec.sites || []).filter(s => norm(s.region) === norm(name)), ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'], null);
-        addGrid('sg_r_ot', `Driver Trip & Overtime Rates (${name})`, 'Overtime Rates', '1:N bhf_mfgovertimerate', 'overtime_rates', (rec.overtime_rates || []).filter(o => norm(o.region) === norm(name)), ['name', 'company', 'region', 'amount', 'start_date', 'end_date'], 'amount');
+        addGrid('sg_r_sites', `Sites & Quarries in Region ${name}`, 'Sites', 'Sites', 'sites', (rec.sites || []).filter(s => norm(s.region) === norm(name)), ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'], null);
+        addGrid('sg_r_ot', `Driver Trip & Overtime Rates (${name})`, 'Overtime Rates', 'Overtime Rates', 'overtime_rates', (rec.overtime_rates || []).filter(o => norm(o.region) === norm(name)), ['name', 'company', 'region', 'amount', 'start_date', 'end_date'], 'amount');
       } else {
-        addGrid('sg_st_rules', `Price & Transport Agreements at ${name}`, 'Site Rules', '1:N bhf_pricerule', 'price_rules', (rec.price_rules || []).filter(r => norm(r.site) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-        addGrid('sg_st_sales', `Sales Deliveries to ${name}`, 'Sales Deliveries', '1:N bhf_salesticket', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'truck', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
-        addGrid('sg_st_raw', `Quarry Raw Material Loads from ${name}`, 'Quarry Loads', '1:N bhf_rawpurchase', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
-        addGrid('sg_st_jv', `JV Partnerships & Profit Split (${name})`, 'JV Partners', '1:N bhf_mfgjvpartnership', 'jv_partnerships', (rec.jv_partnerships || []).filter(j => norm(j.site) === norm(name)), ['name', 'company', 'partner', 'percentage', 'notes'], 'percentage');
-        addGrid('sg_st_log', `Site Logistics Allowances (${name})`, 'Site Allowances', '1:N bhf_mfglogistics', 'logistics_allowances', (rec.logistics_allowances || []).filter(l => norm(l.site) === norm(name)), ['name', 'company', 'staff', 'equipment', 'daily_usd', 'working_days', 'start_date', 'end_date'], 'daily_usd');
+        addGrid('sg_st_rules', `Price & Transport Agreements at ${name}`, 'Site Rules', 'Site Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.site) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+        addGrid('sg_st_sales', `Sales Deliveries to ${name}`, 'Sales Deliveries', 'Sales Deliveries', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'truck', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
+        addGrid('sg_st_raw', `Quarry Raw Material Loads from ${name}`, 'Quarry Loads', 'Quarry Loads', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
+        addGrid('sg_st_jv', `JV Partnerships & Profit Split (${name})`, 'JV Partners', 'JV Partners', 'jv_partnerships', (rec.jv_partnerships || []).filter(j => norm(j.site) === norm(name)), ['name', 'company', 'partner', 'percentage', 'notes'], 'percentage');
+        addGrid('sg_st_log', `Site Logistics Allowances (${name})`, 'Site Allowances', 'Site Allowances', 'logistics_allowances', (rec.logistics_allowances || []).filter(l => norm(l.site) === norm(name)), ['name', 'company', 'staff', 'equipment', 'daily_usd', 'working_days', 'start_date', 'end_date'], 'daily_usd');
       }
     }
     else if (key === 'equipment' || key === 'company_equipment') {
       const name = row.equipment || row.name || row.Equipment;
-      addGrid('sg_eq_co', `Company-Equipment Assignments (${name})`, 'BU Assignments', '1:N bhf_companyequipment', 'company_equipment', (rec.company_equipment || []).filter(ce => norm(ce.equipment) === norm(name)), ['company', 'equipment', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'start_date', 'end_date'], null);
-      addGrid('sg_eq_sales', `Sales Loads Hauled by ${name}`, 'Sales Loads', '1:N bhf_salesticket', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.truck) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'driver', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
-      addGrid('sg_eq_raw', `Raw Material Loads Hauled by ${name}`, 'Raw Loads', '1:N bhf_rawpurchase', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.truck) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'driver', 'product', 'qty', 'trans_cost', 'total'], 'total');
-      addGrid('sg_eq_fuel', `Fuel & Lubricant Intakes + Meter Log (${name})`, 'Fuel & Meters', '1:N bhf_fuelintake', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(name)), ['date', 'ticket_no', 'company', 'driver', 'item', 'litres', 'odometer', 'hours'], 'litres');
-      addGrid('sg_eq_exp', `Maintenance, Spare Parts & Fleet Expenses (${name})`, 'Fleet Expenses', '1:N bhf_mfgexpense', 'expenses', (rec.expenses || []).filter(x => norm(x.equipment) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'supplier', 'method', 'amount', 'reference'], 'amount');
+      addGrid('sg_eq_co', `Company-Equipment Assignments (${name})`, 'BU Assignments', 'BU Assignments', 'company_equipment', (rec.company_equipment || []).filter(ce => norm(ce.equipment) === norm(name)), ['company', 'equipment', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'start_date', 'end_date'], null);
+      addGrid('sg_eq_sales', `Sales Loads Hauled by ${name}`, 'Sales Loads', 'Sales Loads', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.truck) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'driver', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
+      addGrid('sg_eq_raw', `Raw Material Loads Hauled by ${name}`, 'Raw Loads', 'Raw Loads', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.truck) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'driver', 'product', 'qty', 'trans_cost', 'total'], 'total');
+      addGrid('sg_eq_fuel', `Fuel & Lubricant Intakes + Meter Log (${name})`, 'Fuel & Meters', 'Fuel & Meters', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(name)), ['date', 'ticket_no', 'company', 'driver', 'item', 'litres', 'odometer', 'hours'], 'litres');
+      addGrid('sg_eq_exp', `Maintenance, Spare Parts & Fleet Expenses (${name})`, 'Fleet Expenses', 'Fleet Expenses', 'expenses', (rec.expenses || []).filter(x => norm(x.equipment) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'supplier', 'method', 'amount', 'reference'], 'amount');
     }
     else if (key === 'drivers' || key === 'company_drivers') {
       const name = row.driver || row.name;
-      addGrid('sg_d_co', `Company-Driver Assignments (${name})`, 'BU Assignments', '1:N bhf_companydriver', 'company_drivers', (rec.company_drivers || []).filter(cd => norm(cd.driver) === norm(name)), ['company', 'driver', 'staff', 'start_date', 'end_date', 'notes'], null);
-      addGrid('sg_d_eq', `Assigned Trucks & Equipment (${name})`, 'Trucks', '1:N bhf_equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.default_driver) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier'], 'capacity');
-      addGrid('sg_d_sales', `Sales Deliveries Driven by ${name}`, 'Sales Trips', '1:N bhf_salesticket', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'truck', 'qty', 'total_ttc'], 'total_ttc');
-      addGrid('sg_d_raw', `Quarry Raw Loads Driven by ${name}`, 'Raw Trips', '1:N bhf_rawpurchase', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'truck', 'product', 'qty', 'total'], 'total');
-      addGrid('sg_d_fuel', `Fuel Intakes Signed by ${name}`, 'Fuel Log', '1:N bhf_fuelintake', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.driver) === norm(name)), ['date', 'ticket_no', 'company', 'equipment', 'item', 'litres', 'odometer'], 'litres');
+      addGrid('sg_d_co', `Company-Driver Assignments (${name})`, 'BU Assignments', 'BU Assignments', 'company_drivers', (rec.company_drivers || []).filter(cd => norm(cd.driver) === norm(name)), ['company', 'driver', 'staff', 'start_date', 'end_date', 'notes'], null);
+      addGrid('sg_d_eq', `Assigned Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.default_driver) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier'], 'capacity');
+      addGrid('sg_d_sales', `Sales Deliveries Driven by ${name}`, 'Sales Trips', 'Sales Trips', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'truck', 'qty', 'total_ttc'], 'total_ttc');
+      addGrid('sg_d_raw', `Quarry Raw Loads Driven by ${name}`, 'Raw Trips', 'Raw Trips', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'truck', 'product', 'qty', 'total'], 'total');
+      addGrid('sg_d_fuel', `Fuel Intakes Signed by ${name}`, 'Fuel Log', 'Fuel Log', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.driver) === norm(name)), ['date', 'ticket_no', 'company', 'equipment', 'item', 'litres', 'odometer'], 'litres');
     }
     else if (key === 'price_rules') {
       const mSales = (rec.sales_tickets || []).filter(t => (!row.customer || norm(t.customer) === norm(row.customer)) && (!row.product || norm(t.product) === norm(row.product)) && (!row.site || norm(t.site) === norm(row.site)));
       const mRaw = (rec.raw_purchases || []).filter(t => ((row.supplier && (norm(t.site_owner) === norm(row.supplier) || norm(t.truck_owner) === norm(row.supplier))) || (row.site && norm(t.site) === norm(row.site))) && (!row.product || norm(t.product) === norm(row.product)));
-      addGrid('sg_pr_sales', `Sales Tickets Governed by Rule (${row.name})`, 'Matched Sales', '1:N Rule Execution', 'sales_tickets', mSales, ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'qty', 'unit_price', 'trans_price', 'total_ttc'], 'total_ttc');
-      addGrid('sg_pr_raw', `Raw Material Tickets Governed by Rule (${row.name})`, 'Matched Raw', '1:N Rule Execution', 'raw_purchases', mRaw, ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'product', 'qty', 'unit_cost', 'total'], 'total');
+      addGrid('sg_pr_sales', `Sales Tickets Governed by Rule (${row.name})`, 'Matched Sales', 'Rule Execution', 'sales_tickets', mSales, ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'qty', 'unit_price', 'trans_price', 'total_ttc'], 'total_ttc');
+      addGrid('sg_pr_raw', `Raw Material Tickets Governed by Rule (${row.name})`, 'Matched Raw', 'Rule Execution', 'raw_purchases', mRaw, ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'product', 'qty', 'unit_cost', 'total'], 'total');
     }
     else if (['employments', 'salaries', 'attendance', 'logistics_allowances', 'freelance_entries'].includes(key)) {
       const staff = row.staff || row.name;
-      addGrid('sg_w_emp', `Employment & Freelance Contracts (${staff})`, 'Contracts', '1:N bhf_mfgemployment', 'employments', (rec.employments || []).filter(e => norm(e.staff || e.name) === norm(staff)), ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'start_date', 'end_date'], 'salary_usd');
-      addGrid('sg_w_sal', `Salary Payments (${staff})`, 'Salary Payments', '1:N bhf_mfgsalary', 'salaries', (rec.salaries || []).filter(s => norm(s.staff) === norm(staff)), ['date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], 'amount');
-      addGrid('sg_w_att', `Attendance & Overtime Log (${staff})`, 'Attendance', '1:N bhf_mfgattendance', 'attendance', (rec.attendance || []).filter(a => norm(a.staff) === norm(staff)), ['date', 'company', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], 'overtime_hours');
-      addGrid('sg_w_log', `Site Logistics Allowances (${staff})`, 'Site Allowances', '1:N bhf_mfglogistics', 'logistics_allowances', (rec.logistics_allowances || []).filter(l => norm(l.staff) === norm(staff)), ['name', 'company', 'site', 'equipment', 'daily_usd', 'working_days', 'start_date', 'end_date'], 'daily_usd');
-      addGrid('sg_w_fl', `Freelance Work Entries (${staff})`, 'Freelance', '1:N bhf_mfgfreelance', 'freelance_entries', (rec.freelance_entries || []).filter(f => norm(f.staff) === norm(staff)), ['date', 'company', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], 'total');
+      addGrid('sg_w_emp', `Employment & Freelance Contracts (${staff})`, 'Contracts', 'Contracts', 'employments', (rec.employments || []).filter(e => norm(e.staff || e.name) === norm(staff)), ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'start_date', 'end_date'], 'salary_usd');
+      addGrid('sg_w_sal', `Salary Payments (${staff})`, 'Salary Payments', 'Salary Payments', 'salaries', (rec.salaries || []).filter(s => norm(s.staff) === norm(staff)), ['date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], 'amount');
+      addGrid('sg_w_att', `Attendance & Overtime Log (${staff})`, 'Attendance', 'Attendance', 'attendance', (rec.attendance || []).filter(a => norm(a.staff) === norm(staff)), ['date', 'company', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], 'overtime_hours');
+      addGrid('sg_w_log', `Site Logistics Allowances (${staff})`, 'Site Allowances', 'Site Allowances', 'logistics_allowances', (rec.logistics_allowances || []).filter(l => norm(l.staff) === norm(staff)), ['name', 'company', 'site', 'equipment', 'daily_usd', 'working_days', 'start_date', 'end_date'], 'daily_usd');
+      addGrid('sg_w_fl', `Freelance Work Entries (${staff})`, 'Freelance', 'Freelance', 'freelance_entries', (rec.freelance_entries || []).filter(f => norm(f.staff) === norm(staff)), ['date', 'company', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], 'total');
     }
     else if (key === 'expense_categories' || key === 'expense_subcategories' || key === 'expenses') {
       const cat = row.category || row.name;
       if (key === 'expense_categories') {
-        addGrid('sg_ec_sub', `Subcategories under ${cat}`, 'Subcategories', '1:N bhf_expensesubcategory', 'expense_subcategories', (rec.expense_subcategories || []).filter(s => norm(s.category) === norm(cat)), ['name', 'category'], null);
+        addGrid('sg_ec_sub', `Subcategories under ${cat}`, 'Subcategories', 'Subcategories', 'expense_subcategories', (rec.expense_subcategories || []).filter(s => norm(s.category) === norm(cat)), ['name', 'category'], null);
       }
       const matchExps = (rec.expenses || []).filter(x => key === 'expense_subcategories' ? norm(x.subcategory) === norm(row.name) : norm(x.category) === norm(cat));
-      addGrid('sg_ec_exp', `Expense Vouchers (${row.subcategory || cat})`, 'Expense Vouchers', '1:N bhf_mfgexpense', 'expenses', matchExps, ['date', 'name', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'amount', 'reference'], 'amount');
+      addGrid('sg_ec_exp', `Expense Vouchers (${row.subcategory || cat})`, 'Expense Vouchers', 'Expense Vouchers', 'expenses', matchExps, ['date', 'name', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'amount', 'reference'], 'amount');
     }
     else if (key === 'receipts' || key === 'credit_terms' || key === 'vat_invoices') {
       const cust = row.customer;
-      addGrid('sg_ar_sales', `Customer Sales Tickets (${cust})`, 'Sales Tickets', '1:N FIFO Pool', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.customer) === norm(cust)), ['date', 'ticket_no', 'company', 'product', 'site', 'qty', 'unit_price', 'vat', 'total_ttc', 'method'], 'total_ttc');
-      addGrid('sg_ar_rcpt', `Customer Receipts (${cust})`, 'Receipts', '1:N AR Ledger', 'receipts', (rec.receipts || []).filter(r => norm(r.customer) === norm(cust)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
+      addGrid('sg_ar_sales', `Customer Sales Tickets (${cust})`, 'Sales Tickets', 'FIFO Pool', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.customer) === norm(cust)), ['date', 'ticket_no', 'company', 'product', 'site', 'qty', 'unit_price', 'vat', 'total_ttc', 'method'], 'total_ttc');
+      addGrid('sg_ar_rcpt', `Customer Receipts (${cust})`, 'Receipts', 'AR Ledger', 'receipts', (rec.receipts || []).filter(r => norm(r.customer) === norm(cust)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
     }
     else if (key === 'settlements') {
       const sup = row.supplier;
-      addGrid('sg_ap_raw', `Supplier Raw Material & Haulage Tickets (${sup})`, 'Raw & Haulage', '1:N AP Pool', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(sup) || norm(r.truck_owner) === norm(sup)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
-      addGrid('sg_ap_set', `All Settlements for ${sup}`, 'Settlements', '1:N AP Ledger', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(sup)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'reference'], 'amount');
+      addGrid('sg_ap_raw', `Supplier Raw Material & Haulage Tickets (${sup})`, 'Raw & Haulage', 'AP Pool', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(sup) || norm(r.truck_owner) === norm(sup)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck_owner', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
+      addGrid('sg_ap_set', `All Settlements for ${sup}`, 'Settlements', 'AP Ledger', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(sup)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'reference'], 'amount');
     }
     else if (key === 'fuel_intakes') {
       const eq = row.equipment;
-      addGrid('sg_fi_log', `All Fuel & Meter Readings for ${eq}`, 'Unit Fuel History', '1:N M142 Meter Series', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(eq)), ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer', 'hours'], 'litres');
-      addGrid('sg_fi_sales', `Sales Loads Hauled by ${eq}`, 'Unit Sales Loads', '1:N Fleet Activity', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.truck) === norm(eq)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'qty', 'total_ttc'], 'total_ttc');
+      addGrid('sg_fi_log', `All Fuel & Meter Readings for ${eq}`, 'Unit Fuel History', 'Meter Series', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(eq)), ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer', 'hours'], 'litres');
+      addGrid('sg_fi_sales', `Sales Loads Hauled by ${eq}`, 'Unit Sales Loads', 'Fleet Activity', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.truck) === norm(eq)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'qty', 'total_ttc'], 'total_ttc');
     }
     else {
       // Treasury, Loans, JV Partnerships & Distributions
       if (row.site) {
-        addGrid('sg_jv_dist', `JV Profit Distributions (${row.site})`, 'JV Distributions', '1:N bhf_mfgjvdistribution', 'jv_distributions', (rec.jv_distributions || []).filter(d => norm(d.site) === norm(row.site)), ['date', 'company', 'site', 'partner', 'basis', 'amount', 'total'], 'total');
+        addGrid('sg_jv_dist', `JV Profit Distributions (${row.site})`, 'JV Distributions', 'JV Distributions', 'jv_distributions', (rec.jv_distributions || []).filter(d => norm(d.site) === norm(row.site)), ['date', 'company', 'site', 'partner', 'basis', 'amount', 'total'], 'total');
       }
-      addGrid('sg_tr_loans', `Partner Loans & Advances`, 'Loans', '1:N bhf_mfgloan', 'loans', (rec.loans || []).slice(0, 25), ['name', 'company', 'principal', 'interest_rate', 'notes'], 'principal');
-      addGrid('sg_tr_set', `Loan Repayments & Drawdowns`, 'Loan Settlements', '1:N bhf_mfgloansettlement', 'loan_settlements', (rec.loan_settlements || []).slice(0, 25), ['date', 'company', 'type', 'method', 'usd_amount', 'notes'], 'usd_amount');
+      addGrid('sg_tr_loans', `Partner Loans & Advances`, 'Loans', 'Loans', 'loans', (rec.loans || []).slice(0, 25), ['name', 'company', 'principal', 'interest_rate', 'notes'], 'principal');
+      addGrid('sg_tr_set', `Loan Repayments & Drawdowns`, 'Loan Settlements', 'Loan Settlements', 'loan_settlements', (rec.loan_settlements || []).slice(0, 25), ['date', 'company', 'type', 'method', 'usd_amount', 'notes'], 'usd_amount');
     }
 
     return subgrids;
@@ -9593,7 +9683,7 @@
 
     // Guarantee at least 9 .inspector-cell elements across sections for headless verifier & dense Power Apps parity
     const synthExtras = [
-      ['entity_table', INSPECT_DVN[key] || key],
+      ['entity_table', INSPECT_LABELS[key] || key],
       ['record_origin', isAppRecord(row) ? 'ISABI Web App' : 'Dataverse Production'],
       ['snapshot_date', SEED_DATE],
       ['coa_status', 'Double-Entry Verified'],
@@ -9721,8 +9811,7 @@
     }
 
     const app = isAppRecord(row);
-    const dvn = INSPECT_DVN[key] || key;
-    $('inspectorEyebrow').textContent = `POWER APPS ENTITY FORM (${dvn}) · ${INSPECT_LABELS[key] || key} · ${app ? 'ENTERED IN WEB APP' : 'DATAVERSE SNAPSHOT ' + SEED_DATE}`;
+    $('inspectorEyebrow').textContent = `RECORD INSPECTOR · ${(INSPECT_LABELS[key] || key).toUpperCase()} · ${app ? 'ENTERED IN WEB APP' : 'CLOUD LEDGER ' + SEED_DATE}`;
     $('inspectorTitle').textContent = row.name || row.ticket_no || row.invoice_no || row.staff || String(idOrName);
 
     const banner = buildInspectorLiveBanner(key, row);
@@ -9745,6 +9834,7 @@
         </div>
         <div class="pa-cmd-actions">
           ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">✎ Modify Record</button>` : ''}
+          ${!row.voided && canVoid() ? `<button type="button" class="pa-cmd-btn pa-cmd-btn-danger" id="inspCmdVoidBtn" title="Void or delete this record (2-click confirmation)">🗑 Void / Delete</button>` : ''}
           ${['sales_tickets', 'raw_purchases', 'fuel_intakes'].includes(key) ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspThermalPrintBtn">🖨️ Thermal Receipt (80/58mm)</button>` : ''}
           <button type="button" class="pa-cmd-btn" data-insp-open-hub="${esc(key)}">⊞ Open ${esc(INSPECT_LABELS[key] || key)} Table</button>
           <button type="button" class="pa-cmd-btn" id="inspPrintBtn">🖨 Print Form</button>
@@ -9860,15 +9950,35 @@
       <div class="modal-foot">
         <span class="form-note">${app ? `Posted by <b>${esc(row.entered_by || '—')}</b> · ${esc(row.entered_at || '')}${row.voided ? ' · <b>VOIDED</b>' : ''}` : 'Click any blue lookup pill or related subgrid row to navigate across connected Dataverse records.'}</span>
         <div>
-          ${app && !row.voided && canVoid() ? `<button type="button" class="btn" id="inspectorVoidBtn">Void this entry</button>` : ''}
+          ${!row.voided && canVoid() ? `<button type="button" class="btn btn-danger-outline" id="inspectorVoidBtn">🗑 Void / Delete Record</button>` : ''}
           <button type="button" class="btn btn-brass" id="inspectorDoneBtn">Close</button>
         </div>
       </div>
     `;
 
     $('inspectorDoneBtn').addEventListener('click', closeRecordInspector);
-    const vb = $('inspectorVoidBtn');
-    if (vb) vb.addEventListener('click', () => { if (vb.dataset.armed === '1') { closeRecordInspector(); voidRecord(key, row.id); } else { vb.dataset.armed = '1'; vb.textContent = 'Confirm void?'; vb.classList.add('armed'); } });
+    const wireInspectorVoidBtn = (btn, defaultText) => {
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        if (btn.dataset.armed === '1') {
+          closeRecordInspector();
+          voidRecord(key, row.id || row.name || row.ticket_no || idOrName);
+        } else {
+          btn.dataset.armed = '1';
+          btn.textContent = '⚠️ Confirm Void / Delete?';
+          btn.classList.add('armed');
+          setTimeout(() => {
+            if (btn.isConnected) {
+              btn.dataset.armed = '';
+              btn.textContent = defaultText;
+              btn.classList.remove('armed');
+            }
+          }, 4500);
+        }
+      });
+    };
+    wireInspectorVoidBtn($('inspectorVoidBtn'), '🗑 Void / Delete Record');
+    wireInspectorVoidBtn($('inspCmdVoidBtn'), '🗑 Void / Delete');
 
     const backBtn = $('inspBackBtn');
     if (backBtn) backBtn.addEventListener('click', () => {
@@ -9944,11 +10054,15 @@
         });
         row.modified_by = activeUser().email;
         row.modified_at = new Date().toISOString();
-        if (STATE.customRecords[key]) {
-          const cIdx = STATE.customRecords[key].findIndex(x => String(x.id) === String(row.id));
-          if (cIdx >= 0) Object.assign(STATE.customRecords[key][cIdx], row);
-        }
+        if (!Array.isArray(STATE.customRecords[key])) STATE.customRecords[key] = [];
+        const cIdx = STATE.customRecords[key].findIndex(x => String(x.id) === String(row.id));
+        if (cIdx >= 0) Object.assign(STATE.customRecords[key][cIdx], row);
+        else STATE.customRecords[key].unshift(Object.assign({}, row));
+        applyCustomRecordsToSeed();
         saveLocalAuthAndRecords();
+        renderApp();
+        postRecordToLocalApi(key, row);
+        syncWithCloud(true);
         toast(changedCount ? `✓ Record modified (${changedCount} field${changedCount === 1 ? '' : 's'} updated)` : '✓ Record saved');
         showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
       });
@@ -10077,27 +10191,81 @@
 
   // Project the app entries onto the seed registers (voided rows drop out, new rows sort in by date, and fleet owner/driver links stay synchronized)
   function applyCustomRecordsToSeed() {
+    SEED._customRev = (SEED._customRev || 0) + 1;
     const masterByNameKeys = new Set(['suppliers', 'equipment', 'company_equipment', 'drivers', 'customers', 'products', 'sites']);
-    CR_KEYS.forEach(k => {
+    const allKeys = Array.from(new Set([...CR_KEYS, ...Object.keys(STATE.customRecords || {})]));
+    allKeys.forEach(k => {
       const list = SEED.records[k];
       if (!Array.isArray(list)) return;
-      const seen = new Set(list.map(x => x.id));
+      if (!Array.isArray(STATE.customRecords[k])) STATE.customRecords[k] = [];
+      const seen = new Set(list.map(x => String(x.id)));
       let touched = false;
       STATE.customRecords[k].forEach(r => {
+        if (!r) return;
+        const rid = String(r.id == null ? '' : r.id);
+        const rNameNorm = norm(r.name || r.ticket_no || r.invoice_no || r.staff || r.driver || r.equipment);
         if (r.voided) {
-          const i = list.findIndex(x => x.id === r.id);
-          if (i >= 0) { list.splice(i, 1); touched = true; }
+          const i = list.findIndex(x => x && (String(x.id) === rid || (rNameNorm && masterByNameKeys.has(k) && norm(x.name || x.equipment || x.driver) === rNameNorm)));
+          if (i >= 0) {
+            if (!SEED_VOIDED_ARCHIVE[k]) SEED_VOIDED_ARCHIVE[k] = new Map();
+            const sid = String(list[i].id || rid);
+            if (!SEED_VOIDED_ARCHIVE[k].has(sid)) {
+              SEED_VOIDED_ARCHIVE[k].set(sid, Object.assign({}, list[i], { voided: false }));
+            }
+            list[i].voided = true;
+            list.splice(i, 1);
+            touched = true;
+          }
           return;
         }
-        if (masterByNameKeys.has(k) && r.name) {
-          const existingByName = list.find(x => x.id !== r.id && norm(x.name || x.equipment || x.driver) === norm(r.name));
+        const existingById = rid ? list.find(x => x && String(x.id) === rid) : null;
+        if (existingById) {
+          Object.assign(existingById, r);
+          touched = true;
+        } else if (masterByNameKeys.has(k) && r.name) {
+          const existingByName = list.find(x => x && String(x.id) !== rid && norm(x.name || x.equipment || x.driver) === norm(r.name));
           if (existingByName) {
             Object.assign(existingByName, r, { id: existingByName.id || r.id });
           }
         }
-        if (!seen.has(r.id)) { list.push(r); seen.add(r.id); touched = true; }
+        if (rid && !seen.has(rid)) { list.push(r); seen.add(rid); touched = true; }
       });
-      if (touched) list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      if (touched && list.some(x => x && x.date)) list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    });
+
+    // Keep SEED.models summary arrays in sync when master records are voided or restored
+    if (!SEED._origModelMasters) {
+      SEED._origModelMasters = {};
+      Object.entries(SEED.models || {}).forEach(([mk, m]) => {
+        if (!m || typeof m !== 'object') return;
+        SEED._origModelMasters[mk] = {
+          equipment: Array.isArray(m.equipment) ? m.equipment.slice() : null,
+          customers: Array.isArray(m.customers) ? m.customers.slice() : null,
+          suppliers: Array.isArray(m.suppliers) ? m.suppliers.slice() : null,
+          products: Array.isArray(m.products) ? m.products.slice() : null,
+          sites: Array.isArray(m.sites) ? m.sites.slice() : null
+        };
+      });
+    }
+    const voidedMasterNames = {};
+    ['equipment', 'customers', 'suppliers', 'products', 'sites'].forEach(mk => {
+      const s = new Set();
+      (STATE.customRecords[mk] || []).forEach(r => {
+        if (r && r.voided) {
+          const nm = norm(r.name || r.equipment || r.Customer || r.Supplier || r.Product || r.Site);
+          if (nm) s.add(nm);
+        }
+      });
+      voidedMasterNames[mk] = s;
+    });
+    Object.entries(SEED.models || {}).forEach(([mk, m]) => {
+      const orig = SEED._origModelMasters[mk];
+      if (!m || !orig) return;
+      if (orig.equipment) m.equipment = voidedMasterNames.equipment.size ? orig.equipment.filter(x => !voidedMasterNames.equipment.has(norm(x.Equipment || x.name))) : orig.equipment.slice();
+      if (orig.customers) m.customers = voidedMasterNames.customers.size ? orig.customers.filter(x => !voidedMasterNames.customers.has(norm(x.Customer || x.name))) : orig.customers.slice();
+      if (orig.suppliers) m.suppliers = voidedMasterNames.suppliers.size ? orig.suppliers.filter(x => !voidedMasterNames.suppliers.has(norm(x.Supplier || x.name))) : orig.suppliers.slice();
+      if (orig.products) m.products = voidedMasterNames.products.size ? orig.products.filter(x => !voidedMasterNames.products.has(norm(x.Product || x.name))) : orig.products.slice();
+      if (orig.sites) m.sites = voidedMasterNames.sites.size ? orig.sites.filter(x => !voidedMasterNames.sites.has(norm(x.Site || x.name))) : orig.sites.slice();
     });
 
     // Cross-link Trucks (equipment / company_equipment) ↔ Drivers ↔ Truck Owners (suppliers)

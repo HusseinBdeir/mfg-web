@@ -3664,7 +3664,7 @@
           </div>
           ${relTablesMeta.length ? `
             <div class="pa-hub-conns">
-              <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
+              <span class="pa-hub-lbl">Connected Tables:</span>
               ${relTablesMeta.map(rt => {
                 const rtUniv = Boolean(rt.universal);
                 const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: rtUniv, ignoreRls: rtUniv }).length;
@@ -3779,7 +3779,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">UNIVERSAL MASTER REGISTRY · CONSISTENT ACROSS ALL BUSINESS UNITS (${esc(meta.dvn)})</div>
+          <div class="cockpit-eyebrow">UNIVERSAL MASTER REGISTRY · CONSISTENT ACROSS ALL BUSINESS UNITS</div>
           <div class="cockpit-title">${esc(bannerTitle)}</div>
           <div class="cockpit-sub">Shared across WTC, BBConstruction &amp; Lions Transport — never filtered or split by Business Unit. Click any row to open its 360° Record Inspector or click any blue lookup pill to drill into connected records.</div>
         </div>
@@ -3797,7 +3797,7 @@
         <div class="chip-bar">
           ${univPool.map(t => {
             const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true }).length;
-            return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-univ-reg-key="${esc(t.key)}" data-univ-nav-view="${esc(t.navView || '')}" title="${esc(t.label)} (${esc(t.dvn)})">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
+            return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-univ-reg-key="${esc(t.key)}" data-univ-nav-view="${esc(t.navView || '')}" title="${esc(t.label)}">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
           }).join('')}
         </div>
       </div>
@@ -3813,7 +3813,7 @@
           </div>
           ${relTablesMeta.length ? `
             <div class="pa-hub-conns">
-              <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
+              <span class="pa-hub-lbl">Connected Tables:</span>
               ${relTablesMeta.map(rt => {
                 const rtUniv = Boolean(rt.universal);
                 const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: rtUniv, ignoreRls: rtUniv }).length;
