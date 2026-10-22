@@ -427,6 +427,89 @@ try {
     ? pass('entry desk · Rev 10 custom suggestion popover (0 native <datalist> popups, 0 scrollbars)', `${ticketAndSuggestProbe.menuItems} items · picked ${ticketAndSuggestProbe.pickedTruck}`)
     : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
 
+  // 6c. Intuitive Ticket Entry v7.0: Ordering, Conditional Column Hiding, Reporting Date & Policy Lock + Admin Unlock Process
+  const intuitiveEntryProbe = await evaluate(`(() => {
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // (1) Check canonical ordering: Sale Type -> Transported By -> Ticket # -> Date -> Reporting Date -> Product -> Customer -> Site -> Truck -> Driver -> Method -> Qty -> Unit -> Unit Price -> Totals
+    const orderedIds = Array.from(document.querySelectorAll('#modalBody input[id], #modalBody select[id]')).map(e => e.id);
+    const idx = id => orderedIds.indexOf(id);
+    const orderingOk =
+      idx('f_company') < idx('f_saletype') &&
+      idx('f_saletype') < idx('f_transportby') &&
+      idx('f_transportby') < idx('f_ticketno') &&
+      idx('f_ticketno') < idx('f_date') &&
+      idx('f_date') < idx('f_repdate') &&
+      idx('f_repdate') < idx('f_product') &&
+      idx('f_product') < idx('f_customer') &&
+      idx('f_customer') < idx('f_site') &&
+      idx('f_site') < idx('f_truck') &&
+      idx('f_truck') < idx('f_driver') &&
+      idx('f_driver') < idx('f_method') &&
+      idx('f_method') < idx('f_qty') &&
+      idx('f_qty') < idx('f_uom') &&
+      idx('f_uom') < idx('f_unitprice') &&
+      idx('f_unitprice') < idx('f_mat_total');
+
+    // (2) Check conditional column visibility on Delivery vs Pickup
+    const delivSiteVisible = !document.getElementById('wrap_f_site').hidden;
+    const delivTransVisible = !document.getElementById('wrap_f_transunitprice').hidden;
+    const delivOwnerHiddenOnCoFleet = document.getElementById('wrap_f_truckowner').hidden;
+    set('f_saletype', 'Pickup');
+    const pickupSiteHidden = document.getElementById('wrap_f_site').hidden === true;
+    const pickupTransByHidden = document.getElementById('wrap_f_transportby').hidden === true;
+    const pickupOvertimeHidden = document.getElementById('wrap_f_overtime').hidden === true;
+    const pickupTransPriceHidden = document.getElementById('wrap_f_transunitprice').hidden === true;
+    const pickupTransTotHidden = document.getElementById('wrap_f_trans_total').hidden === true;
+    const pickupTruckOwnerVisible = document.getElementById('wrap_f_truckowner').hidden === false;
+    set('f_saletype', 'Delivery');
+
+    // (3) Check Reporting Date (f_repdate) auto-sync with Transaction Date (f_date)
+    set('f_date', '2026-06-12');
+    const repSynced = document.getElementById('f_repdate').value === '2026-06-12';
+
+    // (4) Check Policy-Locked state + Admin Privilege Unlock Process
+    const upEl = document.getElementById('f_unitprice');
+    const upWrap = document.getElementById('wrap_f_unitprice');
+    const upPill = document.querySelector('[data-lock-pill="f_unitprice"]');
+    const adminBar = document.getElementById('paAdminLockBar');
+    const startsLocked = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked') && /LOCKED/i.test(upPill.textContent) && adminBar && !adminBar.hidden;
+
+    // Click the lock pill on Unit Price to open the Admin Privilege Unlock Process
+    upPill.click();
+    const unlockBox = document.getElementById('paAdminUnlockBox');
+    const boxOpened = unlockBox && !unlockBox.hidden && /Admin Privilege Unlock Process/i.test(unlockBox.textContent);
+    const confirmBtn = document.getElementById('paConfirmFieldUnlockBtn');
+    if (confirmBtn) confirmBtn.click();
+    const unlockedNow = upEl.readOnly === false && upWrap.classList.contains('is-admin-unlocked') && /ADMIN OVERRIDE/i.test(upPill.textContent);
+    set('f_unitprice', '19.75');
+    const manualPriceKept = document.getElementById('f_unitprice').value === '19.75';
+
+    // Click pill again to re-lock
+    upPill.click();
+    const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
+
+    return {
+      orderingOk,
+      delivSiteVisible, delivTransVisible, delivOwnerHiddenOnCoFleet,
+      pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
+      repSynced,
+      startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow
+    };
+  })()`);
+  intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
+  intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
+  intuitiveEntryProbe.repSynced && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
+    ? pass('entry desk · v7.0 Intuitive Ordering, Pickup Column Gating (Site/Trans hidden), Reporting Date Sync & Admin Unlock Process')
+    : fail('entry desk v7.0 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
+
   await evaluate(`document.getElementById('closeModalBtn').click()`); await sleep(150);
 
   // 7. Statements all 22
