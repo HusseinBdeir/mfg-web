@@ -11502,13 +11502,8 @@
       arr.forEach(r => {
         if (!r) { removedAny = true; return; }
         const rid = String(r.id == null ? '' : r.id);
-        if (r.voided) {
-          cleaned.push(r);
-          return;
-        }
         const mk = universalMainNormKey(k, r);
-        if (!mk) { removedAny = true; return; }
-        const existingId = seenMainToId.get(mk);
+        const existingId = mk ? seenMainToId.get(mk) : null;
         if (existingId && existingId !== rid) {
           removedAny = true;
           const origSeed = canonById.get(existingId);
@@ -11521,6 +11516,11 @@
           }
           return;
         }
+        if (r.voided) {
+          cleaned.push(r);
+          return;
+        }
+        if (!mk) { removedAny = true; return; }
         seenMainToId.set(mk, rid);
         cleaned.push(r);
       });
@@ -11572,7 +11572,10 @@
         const rid = String(r.id == null ? '' : r.id);
         const rNameNorm = norm(r.name || r.ticket_no || r.invoice_no || r.staff || r.driver || r.equipment);
         if (r.voided) {
-          const i = list.findIndex(x => x && (String(x.id) === rid || (rNameNorm && masterByNameKeys.has(k) && norm(x.name || x.equipment || x.driver) === rNameNorm)));
+          let i = rid ? list.findIndex(x => x && String(x.id) === rid) : -1;
+          if (i < 0 && !rid && rNameNorm && masterByNameKeys.has(k)) {
+            i = list.findIndex(x => x && norm(x.name || x.equipment || x.driver) === rNameNorm);
+          }
           if (i >= 0) {
             if (!SEED_VOIDED_ARCHIVE[k]) SEED_VOIDED_ARCHIVE[k] = new Map();
             const sid = String(list[i].id || rid);
