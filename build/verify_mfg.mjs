@@ -1934,11 +1934,11 @@ try {
       btn.click();
       const railLabel = (btn.querySelector('span')?.textContent || '').trim();
       const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
-      const heroTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
+      const noTopBloat = !document.querySelector('#workspace .cockpit-banner') && !document.getElementById('univRegTabBar') && !document.getElementById('fleetCounterpartyGuide') && document.querySelector('#workspace > :first-child')?.id === 'univRegPanel';
       const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-view="' + v + '"] span');
       const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
-      return railLabel && railLabel === topbarTitle && railLabel === heroTitle && railLabel === subnavLabel && railLabel === docTitlePrefix;
+      return railLabel && railLabel === topbarTitle && noTopBloat && railLabel === subnavLabel && railLabel === docTitlePrefix;
     });
 
     // 2. Fleet & Diesel Control (#fleet) no longer mixes Universal Equipment & Driver Registry onto a BU page
@@ -1953,21 +1953,19 @@ try {
     const catalogGroupedCleanly = univGroupTables.length === 11 && expectedUniv.every(k => univGroupTables.includes(k)) &&
       !univGroupTables.includes('company_equipment') && !univGroupTables.includes('company_drivers');
 
-    // 4. Universal Registries stay 100% consistent across BU switches (WTC vs BBConstruction vs All Group)
+    // 4. Universal Registries stay 100% consistent across BU switches (WTC vs BBConstruction vs All Group) with table panel directly at top
     document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
-    const tabButtonsCount = document.querySelectorAll('#univRegTabBar [data-univ-reg-key]').length;
+    const noRedundantBoxes = !document.querySelector('#workspace .cockpit-banner') && !document.getElementById('univRegTabBar') && !document.getElementById('fleetCounterpartyGuide');
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
-    const wtcCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    const wtcCountTxt = document.querySelector('#univRegPanel [data-tbl-view="all"]')?.textContent || '';
     const wtcTitle = document.getElementById('topbarTitle')?.textContent?.trim();
-    const wtcBannerTitle = document.querySelector('#workspace .cockpit-title')?.textContent?.trim();
     document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
-    const bbcCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    const bbcCountTxt = document.querySelector('#univRegPanel [data-tbl-view="all"]')?.textContent || '';
     document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
-    const allCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    const allCountTxt = document.querySelector('#univRegPanel [data-tbl-view="all"]')?.textContent || '';
     const connLblTxt = document.querySelector('#univRegPanel .pa-hub-conns .pa-hub-lbl')?.textContent?.trim() || '';
-    const eyebrowTxt = document.querySelector('#workspace .cockpit-eyebrow')?.textContent?.trim() || '';
-    const connLabelClean = connLblTxt === 'Connected Tables:' && !/1:N|N:1/i.test(connLblTxt) && !/bhf_/i.test(eyebrowTxt);
-    const consistentAcrossBUs = Boolean(wtcCountTxt && wtcCountTxt === bbcCountTxt && bbcCountTxt === allCountTxt && wtcTitle === 'Equipment & Trucks' && wtcBannerTitle === 'Equipment & Trucks' && connLabelClean);
+    const connLabelClean = connLblTxt === 'Connected Tables:' && !/1:N|N:1/i.test(connLblTxt);
+    const consistentAcrossBUs = Boolean(noRedundantBoxes && wtcCountTxt && wtcCountTxt === bbcCountTxt && bbcCountTxt === allCountTxt && wtcTitle === 'Equipment & Trucks' && connLabelClean);
 
     // 5. Entry Desk Group 3 ("3. Universal Registries (6)") has only Universal Registries without Company (BU) * (#f_company), while companyequipment is in Group 4 (ops) with #f_company
     document.getElementById('newEntryBtn').click();
@@ -2031,7 +2029,7 @@ try {
       fleetHasOldUnivPanel,
       fleetHasBuAssignPanel,
       catalogGroupedCleanly,
-      tabButtonsCount,
+      noRedundantBoxes,
       consistentAcrossBUs,
       hqSeparatedCleanly,
       hqHasNoCompanyField,
@@ -2042,9 +2040,9 @@ try {
     };
   })()`);
   univProbe.hasUnivSection && univProbe.allSidebarTabsExist && !univProbe.fleetHasOldUnivPanel && univProbe.fleetHasBuAssignPanel &&
-  univProbe.catalogGroupedCleanly && univProbe.tabButtonsCount === 11 && univProbe.consistentAcrossBUs &&
+  univProbe.catalogGroupedCleanly && univProbe.noRedundantBoxes && univProbe.consistentAcrossBUs &&
   univProbe.hqSeparatedCleanly && univProbe.hqHasNoCompanyField && univProbe.coEquipHasCompanyField && univProbe.univDupGuardOk
-    ? pass('universal registries · dedicated sidebar section (8 tabs) + 11-tab studio + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field + duplicate main-column guard')
+    ? pass('universal registries · dedicated sidebar section (8 tabs) + table directly at top (no redundant banner/tab/guide boxes) + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field + duplicate main-column guard')
     : fail('universal registries separation', JSON.stringify(univProbe));
 
   // 7e. Unified 4-Kiosk Suite (Sales · Raw Material · Fuel & Lubricants · Attendance Biometric) + Bluetooth ESC/POS Printer (80mm/58mm · Priced/Unpriced)
@@ -2479,10 +2477,10 @@ try {
     const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
     const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,640');
 
-    // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, 3-card Fleet/Counterparty Guide Strip, clean header hover, wide search box & custom pill popover
+    // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, no redundant header/guide boxes, clean header hover, wide search box & custom pill popover
     document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
     await wait(60);
-    const guideCards = document.querySelectorAll('#fleetCounterpartyGuide .pa-reg-guide-card');
+    const noGuideOrBanner = !document.getElementById('fleetCounterpartyGuide') && !document.getElementById('univRegTabBar') && !document.querySelector('#workspace .cockpit-banner');
     const supViews = document.querySelectorAll('#univRegPanel [data-tbl-view]');
     const supHeaders = Array.from(document.querySelectorAll('#univRegPanel thead th')).map(th => th.textContent.replace(/⧩/g, '').trim());
     const supSearchEl = document.querySelector('#univRegPanel .table-toolbar .search-input');
@@ -2491,9 +2489,15 @@ try {
     const methodTh = document.querySelector('#univRegPanel th[data-sort-key="method"]');
     const methodFilterBtn = methodTh ? methodTh.querySelector('.th-filter-btn') : null;
     const methodTools = methodTh ? methodTh.querySelector('.tbl-th-tools') : null;
+    const thLbls = Array.from(document.querySelectorAll('#univRegPanel thead tr th .th-lbl'));
+    const thTops = thLbls.map(el => el.getBoundingClientRect().top);
+    const thMaxTopDelta = thTops.length ? (Math.max(...thTops) - Math.min(...thTops)) : 99;
+    const thAllSingleLine = thLbls.length >= 10 && thLbls.every(el => el.getClientRects().length === 1);
     const headerNoJamOk = Boolean(
-      methodFilterBtn && getComputedStyle(methodFilterBtn).position === 'relative' &&
-      methodTools && getComputedStyle(methodTools).opacity === '0'
+      methodFilterBtn && getComputedStyle(methodFilterBtn).position === 'absolute' &&
+      (window.innerWidth < 768 || getComputedStyle(methodFilterBtn).opacity === '0') &&
+      methodTools && getComputedStyle(methodTools).opacity === '0' &&
+      thAllSingleLine && thMaxTopDelta <= 1.5
     );
     const trucksPillBtn = document.querySelector('#univRegPanel .cf-pill-trigger[data-th-filter-key="trucks_list"]');
     if (trucksPillBtn) trucksPillBtn.click();
@@ -2506,7 +2510,7 @@ try {
       Boolean(document.getElementById('cfPopWidenBtn'));
     const closePopBtn = document.getElementById('cfPopCloseBtn');
     if (closePopBtn) closePopBtn.click();
-    const supLogicalOk = guideCards.length === 3 && supViews.length === 6 &&
+    const supLogicalOk = noGuideOrBanner && supViews.length === 6 &&
       supHeaders.some(h => /Role/i.test(h)) &&
       supHeaders.some(h => /Owned Trucks/i.test(h)) &&
       supHeaders.some(h => /Linked Drivers/i.test(h)) &&

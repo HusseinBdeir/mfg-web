@@ -2791,9 +2791,9 @@ table.ledger-table tr.total td {
 table.m-grid th, table.m-grid td { padding: 7.5px 9px; font-size: 11.6px; }
 table.m-grid th:first-child, table.m-grid td:first-child { padding-left: 14px; }
 table.m-grid th:last-child, table.m-grid td:last-child { padding-right: 14px; }
-table.m-grid th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+table.m-grid th { white-space: normal; line-height: 1.25; vertical-align: middle; }
 table.m-grid td:first-child { white-space: normal; line-height: 1.35; }
-table.ledger-table th { padding: 8px 8.5px; font-size: 9.8px; letter-spacing: 0.035em; white-space: normal; line-height: 1.25; vertical-align: bottom; position: sticky; top: 0; z-index: 2; }
+table.ledger-table th { padding: 8px 8.5px; font-size: 9.8px; letter-spacing: 0.035em; white-space: normal; line-height: 1.25; vertical-align: middle; position: sticky; top: 0; z-index: 2; }
 table.ledger-table td { padding: 7px 8.5px; font-size: 11.5px; white-space: normal; line-height: 1.35; overflow-wrap: normal; word-break: normal; }
 table.ledger-table th:first-child, table.ledger-table td:first-child { padding-left: 12px; }
 table.ledger-table th:last-child, table.ledger-table td:last-child { padding-right: 12px; }
@@ -2835,7 +2835,8 @@ body.modal-open { overflow: hidden; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--ink); }
 th.sortable.on { color: var(--brass); }
-th.sortable i { font-style: normal; font-size: 9px; margin-left: 4px; color: var(--brass); }
+th.sortable i { font-style: normal; font-size: 9px; margin-left: 3px; color: var(--brass); }
+th.sortable i:empty { display: none; margin: 0; }
 .badge-app { background: var(--teal-tint); color: var(--teal); border: 1px solid rgba(30, 158, 138, .4); margin-left: 5px; }
 .void-btn { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 4px; font-size: 10px; padding: 0 5px; margin-left: 3px; line-height: 16px; vertical-align: middle; cursor: pointer; }
 .void-btn:hover, .void-btn.armed { border-color: var(--crit); color: var(--crit); background: var(--crit-bg); }
@@ -10312,6 +10313,11 @@ table.ledger-table th.r,
 table.m-grid th.r {
   white-space: normal;
   line-height: 1.18;
+  vertical-align: middle;
+}
+#univRegPanel table.ledger-table thead th {
+  white-space: nowrap;
+  vertical-align: middle;
 }
 table.ledger-table tbody td.r,
 table.ledger-table tfoot tr td.r,
@@ -12030,7 +12036,7 @@ thead th:focus-within > .tbl-th-tools {
 }
 .cf-pill-key {
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink);
   white-space: nowrap;
 }
 .cf-pill-trigger.is-active .cf-pill-key {
@@ -12038,7 +12044,7 @@ thead th:focus-within > .tbl-th-tools {
 }
 .cf-pill-val {
   font-weight: 700;
-  color: var(--ink);
+  color: var(--brass);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12111,37 +12117,48 @@ thead th:focus-within > .tbl-th-tools {
   background: var(--crit-bg);
 }
 
-/* Column Header Filter Trigger — inline next to label, never covers text */
+/* Column Header Filter Trigger — out-of-flow floating overlay badge (0px inline width, hidden until hover or active filter) */
 th.sortable {
   position: relative;
 }
+th.sortable .th-lbl {
+  display: inline;
+  vertical-align: middle;
+}
 .th-filter-btn {
-  position: relative;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
-  margin-left: 3px;
-  vertical-align: middle;
-  border-radius: 3px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--muted);
-  opacity: 0.35;
-  pointer-events: auto;
-  cursor: pointer;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-th.sortable:hover .th-filter-btn {
-  opacity: 0.95;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  border-radius: 4px;
   background: var(--surface);
-  border-color: var(--line-strong);
-  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  box-shadow: 0 2px 6px rgba(11, 23, 48, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  z-index: 5;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+th.sortable:hover .th-filter-btn,
+th.sortable:focus-within .th-filter-btn {
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--surface);
+  border-color: var(--brass);
+  color: var(--brass);
 }
 .th-filter-btn:hover,
 .th-filter-btn.active {
   opacity: 1;
+  pointer-events: auto;
   background: var(--brass) !important;
   border-color: var(--brass) !important;
   color: #fff !important;
@@ -12149,6 +12166,7 @@ th.sortable:hover .th-filter-btn {
 th.sortable.th-filtered,
 th.sortable.col-filtered {
   box-shadow: inset 0 -2px 0 var(--brass);
+  background: color-mix(in srgb, var(--brass) 8%, var(--surface-2));
 }
 
 /* Column Header & Pill Filter Popover */

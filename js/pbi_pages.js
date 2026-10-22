@@ -3959,60 +3959,15 @@
     return `<span class="badge ${cls}">${esc(r)}</span>`;
   }
 
-  function renderFleetCounterpartyGuideStrip(activeKey) {
-    if (!['suppliers', 'equipment', 'drivers'].includes(activeKey)) return '';
-    const cards = [
-      {
-        key: 'suppliers',
-        navView: 'reg_suppliers',
-        icon: '🏢',
-        step: '1 · AP Counterparties (Who Gets Paid)',
-        title: 'Suppliers & Haulers',
-        desc: 'Register Truck Owners (paid for haulage), Quarries (paid for raw material), and Expense / Parts Vendors.'
-      },
-      {
-        key: 'equipment',
-        navView: 'reg_equipment',
-        icon: '🚛',
-        step: '2 · Physical Vehicles & Plates',
-        title: 'Equipment & Trucks',
-        desc: 'Register dump truck plates, m³ box capacities & yellow machinery, linked to their Truck Owner & Default Driver.'
-      },
-      {
-        key: 'drivers',
-        navView: 'reg_drivers',
-        icon: '👤',
-        step: '3 · People Behind the Wheel',
-        title: 'Drivers & Operators',
-        desc: 'Register company & third-party drivers, linked to their Default Truck Plate and Truck Owner (Hauler).'
-      }
-    ];
-    return `
-      <div class="pa-registry-guide-strip" id="fleetCounterpartyGuide">
-        ${cards.map(c => `
-          <button type="button" class="pa-reg-guide-card ${c.key === activeKey ? 'is-active' : ''}" data-univ-reg-key="${esc(c.key)}" data-univ-nav-view="${esc(c.navView)}">
-            <div class="pa-reg-guide-top">
-              <span class="pa-reg-guide-step">${esc(c.icon)} ${esc(c.step)}</span>
-              <span class="pa-reg-guide-badge">${c.key === activeKey ? 'Viewing Now' : 'Open Registry →'}</span>
-            </div>
-            <div class="pa-reg-guide-title">${esc(c.title)}</div>
-            <div class="pa-reg-guide-desc">${esc(c.desc)}</div>
-          </button>
-        `).join('')}
-      </div>
-    `;
-  }
-
   // ==================== DEDICATED UNIVERSAL REGISTRIES WORKSPACE RENDERER ====================
   function renderUniversalRegistriesView(ctx) {
-    const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle } = ctx;
+    const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm } = ctx;
     const univPool = TABLE_CATALOG.filter(t => t.universal);
     const activeKey = STATE.activeUnivRegKey || 'equipment';
     const meta = univPool.find(t => t.key === activeKey) || univPool[0];
     STATE.activeUnivRegKey = meta.key;
     const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
-    const totalAllBu = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true });
     const baseFiltered = filterRecords(rawList, { cols: meta.cols, tableKey: meta.key, ignorePeriod: true, ignoreCompany: true, ignoreRls: true });
     const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
@@ -4022,36 +3977,8 @@
     const rows = sortRows(filtered, 'ureg_' + meta.key, defSort, 'asc');
     const shown = rows.slice(0, shownCount('ureg_' + meta.key));
     const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
-    const bannerTitle = pageTitle || meta.label;
 
     return `
-      <div class="cockpit-banner">
-        <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">UNIVERSAL MASTER REGISTRY · CONSISTENT ACROSS ALL BUSINESS UNITS</div>
-          <div class="cockpit-title">${esc(bannerTitle)}</div>
-          <div class="cockpit-sub">Shared across WTC, BBConstruction &amp; Lions Transport — never filtered or split by Business Unit. Click any row to open its 360° Record Inspector or click any blue lookup pill to drill into connected records.</div>
-        </div>
-        <div class="cockpit-pills">
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Registry</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Scope</div><div class="cockpit-pill-val emerald">All BUs (Universal)</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Registry</div><div class="cockpit-pill-val emerald">${fmtNum(totalAllBu.length)}</div></div>
-        </div>
-      </div>
-
-      <!-- Dedicated 11-Tab Universal Registries Bar (All BUs) -->
-      <div class="panel-card" id="univRegTabBar" style="margin-bottom:12px;padding:10px 12px">
-        <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Universal Registries · Consistent Across All Business Units (${univPool.length} Master Tables)</div>
-        <div class="chip-bar">
-          ${univPool.map(t => {
-            const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true }).length;
-            return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-univ-reg-key="${esc(t.key)}" data-univ-nav-view="${esc(t.navView || '')}" title="${esc(t.label)}">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
-          }).join('')}
-        </div>
-      </div>
-
-      ${renderFleetCounterpartyGuideStrip(meta.key)}
-
       <div class="panel-card" id="univRegPanel">
         <div class="pa-hub-rel-strip">
           <div class="pa-hub-views">

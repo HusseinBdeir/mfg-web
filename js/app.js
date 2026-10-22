@@ -1713,7 +1713,7 @@
     const on = s.key === key;
     const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
     const hasFilter = Boolean(cf[key] && String(cf[key]).trim());
-    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered th-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click header to sort by ${esc(label)} · Click filter icon for column filter &amp; width">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter or resize ${esc(label)} column">${TH_FUNNEL_SVG}</span></th>`;
+    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered th-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click header to sort by ${esc(label)} · Hover &amp; click filter icon for column filter &amp; width"><span class="th-lbl">${label}</span><i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter or resize ${esc(label)} column">${TH_FUNNEL_SVG}</span></th>`;
   }
 
   function getColLabel(colKey) {
@@ -1891,8 +1891,8 @@
             return `
               <div class="cf-item${curVal ? ' is-active active' : ''}">
                 <button type="button" class="cf-pill-trigger${curVal ? ' is-active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(def.key)}" data-th-filter-label="${esc(def.label)}" aria-label="Filter by ${esc(def.label)}">
-                  <span class="cf-pill-key">${esc(def.label)}</span>
-                  <span class="cf-pill-val">${esc(humanVal)}</span>
+                  <span class="cf-pill-key">${esc(def.label)}${curVal ? ':' : ''}</span>
+                  ${curVal ? `<span class="cf-pill-val">${esc(humanVal)}</span>` : ''}
                   <span class="cf-pill-caret" aria-hidden="true">▾</span>
                 </button>
                 <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}" hidden aria-hidden="true" tabindex="-1">
