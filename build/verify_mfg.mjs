@@ -1857,8 +1857,9 @@ try {
       const railLabel = (btn.querySelector('span')?.textContent || '').trim();
       const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
       const heroTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
-      const subnavLabel = (document.querySelector('#mobileSubnav .subnav-pill[data-view="' + v + '"]')?.textContent || '').trim();
-      const docTitlePrefix = (document.title || '').split(' — ')[0].trim();
+      const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-view="' + v + '"] span');
+      const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
+      const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
       return railLabel && railLabel === topbarTitle && railLabel === heroTitle && railLabel === subnavLabel && railLabel === docTitlePrefix;
     });
 
