@@ -183,11 +183,12 @@ try {
       // Narrow sidebar to minimum width (176px) so items truncate with ...
       for (let i = 0; i < 4; i++) narrowBtn.click();
       const navItems = Array.from(document.querySelectorAll('#sidebarNav button.nav-item'));
-      const allHaveTitles = navItems.every(b => {
+      const footerItems = Array.from(document.querySelectorAll('#railUserName, #activeRoleBadge, #railRlsScope, #sqlStatusText'));
+      const noDuplicateNativeTitles = navItems.every(b => {
         const sp = b.querySelector('span');
         const txt = sp ? sp.textContent.trim() : '';
-        return txt && b.getAttribute('title') === txt && sp.getAttribute('title') === txt;
-      });
+        return txt && b.getAttribute('aria-label') === txt && !b.hasAttribute('title') && (!sp || !sp.hasAttribute('title'));
+      }) && footerItems.every(el => !el.hasAttribute('title'));
       const truncatedBtn = navItems.find(b => {
         const sp = b.querySelector('span');
         return sp && sp.scrollWidth > sp.clientWidth;
@@ -208,8 +209,8 @@ try {
       // Reset sidebar width back to default
       resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       return {
-        ok: allHaveTitles && !!truncatedBtn && hoverShown && hoverText === expectedText && tipRightOfRail && hiddenOnLeave,
-        allHaveTitles,
+        ok: noDuplicateNativeTitles && !!truncatedBtn && hoverShown && hoverText === expectedText && tipRightOfRail && hiddenOnLeave,
+        noDuplicateNativeTitles,
         hasTruncated: !!truncatedBtn,
         hoverShown,
         hoverText,
@@ -219,7 +220,7 @@ try {
       };
     })()`);
     railHoverProbe.ok
-      ? pass('left sidebar hover tooltip · truncated (...) items show full name on hover (#railHoverTooltip + title)', `"${railHoverProbe.hoverText}"`)
+      ? pass('left sidebar hover tooltip · single styled tooltip on truncated (...) items (0 duplicate native browser tooltips)', `"${railHoverProbe.hoverText}"`)
       : fail('left sidebar hover tooltip', JSON.stringify(railHoverProbe));
   }
 

@@ -647,7 +647,7 @@ def fetch_dataverse_records():
 
     equip_raw = safe_get_fmt(
         "bhf_equipment",
-        "$filter=statecode eq 0&$select=bhf_equipmentid,bhf_name,bhf_plateno,bhf_category,bhf_model,bhf_color,bhf_capacity,bhf_notes,_bhf_supplier_value",
+        "$filter=statecode eq 0&$select=bhf_equipmentid,bhf_name,bhf_plateno,bhf_category,bhf_model,bhf_color,bhf_capacity,bhf_notes,_bhf_supplier_value,_bhf_driver_value",
         by_logical=True,
     )
     equipment = []
@@ -675,7 +675,7 @@ def fetch_dataverse_records():
             "supplier_id": e.get("_bhf_supplier_value") or "",
             "supplier": sup_name,
             "customer": ce.get("customer") or "",
-            "default_driver": ce.get("default_driver") or "",
+            "default_driver": fmt_val(e, "_bhf_driver_value", "") or ce.get("default_driver") or "",
             "notes": e.get("bhf_notes") or "",
         })
     print(f"  Equipment: {len(equipment)} · Company Equipment rows: {len(company_equipment)}", flush=True)
