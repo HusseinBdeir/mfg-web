@@ -126,8 +126,8 @@
       confirmFrames: 3,
       liveness: false,
       enforce2FA: true,
-      sound: true
-    }, lsGet('isabi_mfg_face_settings_v1', null) || {})
+      sound: false
+    }, lsGet('isabi_mfg_face_settings_v1', null) || {}, { sound: false })
   };
 
   const FACE_POSES = [
@@ -6449,18 +6449,30 @@
     if (!videoEl) return false;
     try {
       if (!streamAlive() && window.Face && typeof window.Face.consumeEarlyStream === 'function') {
-        const early = window.Face.consumeEarlyStream();
+        const early = await window.Face.consumeEarlyStream();
         if (early && early.getVideoTracks && early.getVideoTracks().some(t => t.readyState === 'live')) {
           FACE_STATE.stream = early;
+          if (window.Face.trackStream) window.Face.trackStream(early);
         }
       }
       if (!streamAlive()) {
         if (FACE_STATE.stream) { try { FACE_STATE.stream.getTracks().forEach(t => t.stop()); } catch (_) {} }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
-        FACE_STATE.stream = await navigator.mediaDevices.getUserMedia({
+        const s = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false
         });
+        if (window.Face && window.Face.trackStream) window.Face.trackStream(s);
+        FACE_STATE.stream = s;
+      }
+      const gate = $('authGate');
+      if (videoEl.id === 'authFaceVideo' && (STATE.authed || FACE_STATE.authCamStoppedByUser || (gate && gate.hidden))) {
+        stopFaceCamera();
+        return false;
+      }
+      if (videoEl.id === 'enrolFaceVideo' && STATE.view !== 'users') {
+        stopFaceCamera();
+        return false;
       }
       if (videoEl.srcObject !== FACE_STATE.stream) videoEl.srcObject = FACE_STATE.stream;
       await videoEl.play().catch(() => {});
@@ -6481,9 +6493,18 @@
       try { FACE_STATE.stream.getTracks().forEach(t => t.stop()); } catch (_) {}
       FACE_STATE.stream = null;
     }
+    if (window.Face && typeof window.Face.stopAllStreams === 'function') {
+      try { window.Face.stopAllStreams(); } catch (_) {}
+    }
     ['authFaceVideo', 'enrolFaceVideo'].forEach(id => {
       const v = $(id);
-      if (v) v.srcObject = null;
+      if (v) {
+        if (v.srcObject && typeof v.srcObject.getTracks === 'function') {
+          try { v.srcObject.getTracks().forEach(t => t.stop()); } catch (_) {}
+        }
+        try { v.pause(); } catch (_) {}
+        v.srcObject = null;
+      }
     });
     ['authFaceOverlay', 'enrolFaceOverlay'].forEach(id => {
       const cv = $(id);
@@ -6491,6 +6512,8 @@
         try { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); } catch (_) {}
       }
     });
+    const offEl = $('authCamOffOverlay');
+    if (offEl) offEl.hidden = false;
   }
 
   function setAuthHint(text, cls) {
@@ -6509,15 +6532,16 @@
     const enrolled = STATE.users.filter(userHasFaceId);
     const statsEl = $('authFaceStats');
     const camBtn = $('authCamToggleBtn');
-    const sndBtn = $('authSoundBtn');
-    const sndLbl = $('authSoundLbl');
+    const offEl = $('authCamOffOverlay');
     const dotEl = $('authFacePulse') || $('authFaceDot');
     const bannerEl = $('authFaceTargetBanner');
     const targetNameEl = $('authFaceTargetText') || $('authFaceTargetName');
 
-    if (sndLbl) sndLbl.textContent = STATE.faceSettings.sound ? '🔊' : '🔇';
-    else if (sndBtn) sndBtn.textContent = STATE.faceSettings.sound ? '🔊 Sound' : '🔇 Muted';
-    if (camBtn) camBtn.textContent = FACE_STATE.camActive ? '📷 Camera On' : '📷 Scan Face ID';
+    if (camBtn) {
+      camBtn.textContent = FACE_STATE.camActive ? 'Turn Off Camera' : 'Turn On Camera';
+      camBtn.classList.toggle('cam-live', !!FACE_STATE.camActive);
+    }
+    if (offEl) offEl.hidden = !!FACE_STATE.camActive;
     if (dotEl) dotEl.className = 'auth-face-pulse' + (FACE_STATE.camActive ? ' live' : '');
 
     if (bannerEl) {
@@ -6687,7 +6711,10 @@
   }
 
   async function authFaceTick() {
-    if (STATE.authed || !FACE_STATE.camActive) return;
+    if (STATE.authed || !FACE_STATE.camActive) {
+      if (STATE.authed && !FACE_STATE.enrolCamActive) stopFaceCamera();
+      return;
+    }
     const videoEl = $('authFaceVideo');
     const overlayEl = $('authFaceOverlay');
     if (!videoEl || Date.now() < FACE_STATE.cooldownUntil) {
@@ -6716,6 +6743,11 @@
   }
 
   async function startAuthFaceScanner(forceStart = false) {
+    if (STATE.authed || (!forceStart && FACE_STATE.authCamStoppedByUser)) {
+      stopFaceCamera();
+      updateAuthFaceUi();
+      return false;
+    }
     updateAuthFaceUi();
     if ((navigator.webdriver || window.__MFG_HEADLESS_TEST) && !forceStart) {
       setAuthHint('Biometric Face ID Scanner ready · Look at the camera or sign in with Email + PIN below', '');
@@ -6726,10 +6758,15 @@
     setAuthHint('Starting camera & loading 128-d neural models…', '');
     const modelPromise = ensureFaceModelsLoaded().catch(() => false);
     const camOk = await startFaceCamera(videoEl);
+    if (STATE.authed || (!forceStart && FACE_STATE.authCamStoppedByUser)) {
+      stopFaceCamera();
+      updateAuthFaceUi();
+      return false;
+    }
     FACE_STATE.camActive = camOk;
     updateAuthFaceUi();
     if (!camOk) {
-      setAuthHint('Camera off or permission declined — click "Enable Camera" above or sign in with Email + PIN.', 'warn');
+      setAuthHint('Camera off or permission declined — click "Turn On Camera" above or sign in with Email + PIN.', 'warn');
       return false;
     }
     const enrolled = usableFaces();
@@ -7362,7 +7399,9 @@
   function closeAuthGate() {
     STATE.authed = true;
     FACE_STATE.pending2faUser = null;
+    FACE_STATE.enrolCamActive = false;
     stopAuthFaceScanner();
+    stopFaceCamera();
     window.__mfgAuthedEmail = activeUser().email;
     const gate = $('authGate');
     if (gate) gate.hidden = true;
@@ -8208,7 +8247,7 @@
   function setView(view, opts = {}) {
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
-    if (STATE.view === 'users' && view !== 'users' && FACE_STATE.enrolCamActive) {
+    if ( view !== 'users' && (FACE_STATE.enrolCamActive || streamAlive()) ) {
       stopFaceCamera();
     }
     STATE.view = view;
@@ -8316,23 +8355,14 @@
 
     const authCamBtn = $('authCamToggleBtn');
     if (authCamBtn) authCamBtn.addEventListener('click', () => {
-      if (FACE_STATE.camActive) {
+      if (FACE_STATE.camActive || streamAlive()) {
         FACE_STATE.authCamStoppedByUser = true;
         stopAuthFaceScanner();
-        setAuthHint('Camera paused — click "Enable Camera" above or sign in with Email + PIN.', '');
+        stopFaceCamera();
+        setAuthHint('Camera turned off — click "Turn On Camera" above or sign in with Email + PIN.', '');
       } else {
         FACE_STATE.authCamStoppedByUser = false;
         startAuthFaceScanner(true);
-      }
-    });
-    const authSndBtn = $('authSoundBtn');
-    if (authSndBtn) authSndBtn.addEventListener('click', () => {
-      STATE.faceSettings.sound = !STATE.faceSettings.sound;
-      saveLocalAuthAndRecords();
-      updateAuthFaceUi();
-      if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
-        window.Face.Sound.unlock();
-        window.Face.Sound.playSuccess();
       }
     });
     const cancel2faBtn = $('authCancel2faBtn');

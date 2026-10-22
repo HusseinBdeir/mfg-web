@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=6.5">
+  <link rel="stylesheet" href="css/app.css?v=6.6">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -415,11 +415,8 @@
               <span id="authFaceStats">Face ID &amp; PIN Ready</span>
             </div>
             <div class="auth-face-actions">
-              <button type="button" class="auth-hud-btn" id="authSoundBtn" title="Toggle biometric verification chime" aria-label="Toggle sound">
-                <span id="authSoundLbl">🔊</span>
-              </button>
-              <button type="button" class="auth-hud-btn" id="authCamToggleBtn" title="Start or pause camera scanner">
-                Scan Face ID
+              <button type="button" class="auth-hud-btn" id="authCamToggleBtn" title="Turn camera on or off">
+                Turn Off Camera
               </button>
             </div>
           </div>
@@ -429,30 +426,39 @@
             <button type="button" class="auth-target-cancel" id="authCancel2faBtn">Switch Seat</button>
           </div>
 
-          <div class="auth-cam-viewport" id="authCamViewport">
-            <video id="authFaceVideo" autoplay muted playsinline></video>
-            <canvas id="authFaceOverlay"></canvas>
-            <div class="auth-cam-vignette"></div>
-
-            <!-- Verified Confirmation Overlay Card (Attendance PWA style) -->
-            <div class="auth-face-card" id="authFaceCard" hidden>
-              <div class="auth-face-card-av">
-                <img id="authFaceCardImg" src="icon.svg" alt="">
-                <span class="auth-face-card-check">✓</span>
-              </div>
-              <div class="auth-face-card-body">
-                <div class="auth-face-card-top">
-                  <span class="auth-face-card-badge" id="authFaceCardBadge">FACE ID VERIFIED</span>
-                  <span class="auth-face-card-meta" id="authFaceCardMeta"></span>
-                </div>
-                <div class="auth-face-card-name" id="authFaceCardName"></div>
-                <div class="auth-face-card-sub" id="authFaceCardSub"></div>
+          <div class="auth-face-body">
+            <div class="auth-cam-viewport" id="authCamViewport">
+              <video id="authFaceVideo" autoplay muted playsinline></video>
+              <canvas id="authFaceOverlay"></canvas>
+              <div class="auth-cam-vignette"></div>
+              <div class="auth-cam-off" id="authCamOffOverlay" hidden>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                <span>Camera Off</span>
               </div>
             </div>
 
-            <div class="auth-hint-wrap">
-              <div id="authFaceHint" class="auth-face-hint">Loading Face ID biometric models…</div>
-              <div id="authStreakBar" class="auth-streak-bar"><div id="authStreakFill" class="auth-streak-fill"></div></div>
+            <div class="auth-face-side">
+              <!-- Verified Confirmation Overlay Card (Attendance PWA style) -->
+              <div class="auth-face-card" id="authFaceCard" hidden>
+                <div class="auth-face-card-av">
+                  <img id="authFaceCardImg" src="icon.svg" alt="">
+                  <span class="auth-face-card-check">✓</span>
+                </div>
+                <div class="auth-face-card-body">
+                  <div class="auth-face-card-top">
+                    <span class="auth-face-card-badge" id="authFaceCardBadge">FACE ID VERIFIED</span>
+                    <span class="auth-face-card-meta" id="authFaceCardMeta"></span>
+                  </div>
+                  <div class="auth-face-card-name" id="authFaceCardName"></div>
+                  <div class="auth-face-card-sub" id="authFaceCardSub"></div>
+                </div>
+              </div>
+
+              <div class="auth-hint-wrap">
+                <div id="authFaceHint" class="auth-face-hint">Loading Face ID biometric models…</div>
+                <div id="authStreakBar" class="auth-streak-bar"><div id="authStreakFill" class="auth-streak-fill"></div></div>
+                <small class="auth-cam-note">Full 4:3 frame · Camera turns off automatically on sign-in</small>
+              </div>
             </div>
           </div>
         </div>
@@ -504,14 +510,14 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=6.5"></script>
-  <script src="js/face.js?v=6.5"></script>
-  <script src="js/endpoints.js?v=6.5"></script>
-  <script src="js/seed_data.js?v=6.5"></script>
-  <script src="js/forms_engine.js?v=6.5"></script>
-  <script src="js/pbi_pages.js?v=6.5"></script>
-  <script src="js/rdl_reports.js?v=6.5"></script>
-  <script src="js/app.js?v=6.5"></script>
+  <script src="vendor/face-api.js?v=6.6"></script>
+  <script src="js/face.js?v=6.6"></script>
+  <script src="js/endpoints.js?v=6.6"></script>
+  <script src="js/seed_data.js?v=6.6"></script>
+  <script src="js/forms_engine.js?v=6.6"></script>
+  <script src="js/pbi_pages.js?v=6.6"></script>
+  <script src="js/rdl_reports.js?v=6.6"></script>
+  <script src="js/app.js?v=6.6"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

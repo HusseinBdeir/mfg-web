@@ -509,6 +509,11 @@ try {
     const cardRect = document.querySelector('.auth-card').getBoundingClientRect();
     const cardTopOk = cardRect.top >= 0;
     const cardFitsDesktop = window.innerHeight < 520 || (cardRect.top >= 0 && cardRect.bottom <= window.innerHeight);
+    const vpRect = document.getElementById('authCamViewport').getBoundingClientRect();
+    const hintRect = document.querySelector('#authFaceStage .auth-hint-wrap').getBoundingClientRect();
+    const camAspect4x3 = vpRect.height >= 100 && Math.abs((vpRect.width / vpRect.height) - (4 / 3)) < 0.08;
+    const hintNoOverlap = hintRect.left >= vpRect.right - 2 || hintRect.top >= vpRect.bottom - 2;
+    const noSoundBtn = !document.getElementById('authSoundBtn') && window.Face && window.Face.Sound && window.Face.Sound.enabled === false;
 
     // 1. Entering PIN for an enrolled seat triggers Step-Up 2FA instead of unlocking immediately
     const pinStep = await T.performLogin('husseinbdeir@bhfirms.com', '1111');
@@ -538,6 +543,7 @@ try {
     T.signOut();
     const pinOnlyLogin = await T.performLogin('', '1111');
     const unlockedPinOnly = pinOnlyLogin === true && document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
+    const camStoppedOnEnter = !document.getElementById('authFaceVideo').srcObject && !T.state().camActive;
 
     return {
       gateOverflow,
@@ -545,6 +551,11 @@ try {
       cardTopOk,
       cardFitsDesktop,
       cardHeight: Math.round(cardRect.height),
+      camAspect4x3,
+      camSize: Math.round(vpRect.width) + 'x' + Math.round(vpRect.height),
+      hintNoOverlap,
+      noSoundBtn,
+      camStoppedOnEnter,
       pinStep,
       bannerVisible,
       stillLockedAfterPin,
@@ -563,6 +574,9 @@ try {
   authFaceFlow.stageVisible && authFaceFlow.gateOverflow === 0 && authFaceFlow.cardTopOk && (MOBILE || authFaceFlow.cardFitsDesktop)
     && scaledFit.topOk && scaledFit.fitsAll ? pass('authGate · Face ID scanner stage visible, 0px overflow & 0px top/bottom cutoff (1366×768 & 1024×514)', `1366x768=${authFaceFlow.cardHeight}px · 1024x514=${scaledFit.h}px`)
     : fail('authGate Face ID stage', JSON.stringify(authFaceFlow));
+  authFaceFlow.camAspect4x3 && authFaceFlow.hintNoOverlap && authFaceFlow.noSoundBtn && authFaceFlow.camStoppedOnEnter
+    ? pass('authGate camera · 4:3 uncropped viewport, 0px banner overlap, no voice toggle & camera stops on sign-in', authFaceFlow.camSize)
+    : fail('authGate camera geometry & lifecycle', JSON.stringify(authFaceFlow));
   authFaceFlow.pinStep === '2fa_pending' && authFaceFlow.bannerVisible && authFaceFlow.stillLockedAfterPin && authFaceFlow.wrongPerson === '2fa-mismatch'
     ? pass('authGate 2FA · enrolled seat requires Face ID after PIN & rejects wrong face')
     : fail('authGate 2FA enforcement', JSON.stringify(authFaceFlow));

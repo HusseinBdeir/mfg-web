@@ -56,6 +56,39 @@ const Face = (() => {
 
   let earlyStreamObj = null;
   let earlyStreamPromise = null;
+  let earlyCancelled = false;
+  const trackedStreams = new Set();
+
+  function trackStream(s) {
+    if (s) trackedStreams.add(s);
+    return s;
+  }
+
+  function stopStreamTracks(s) {
+    if (!s || typeof s.getTracks !== "function") return;
+    try { s.getTracks().forEach(t => t.stop()); } catch (_) {}
+  }
+
+  function stopAllStreams() {
+    earlyCancelled = true;
+    if (earlyStreamObj) {
+      stopStreamTracks(earlyStreamObj);
+      earlyStreamObj = null;
+    }
+    earlyStreamPromise = null;
+    trackedStreams.forEach(s => stopStreamTracks(s));
+    trackedStreams.clear();
+    if (typeof document !== "undefined") {
+      ["authFaceVideo", "enrolFaceVideo"].forEach(id => {
+        const v = document.getElementById(id);
+        if (v) {
+          if (v.srcObject) stopStreamTracks(v.srcObject);
+          try { v.pause(); } catch (_) {}
+          v.srcObject = null;
+        }
+      });
+    }
+  }
 
   function prewarm() {
     if (typeof window === "undefined" || navigator.webdriver || window.__MFG_HEADLESS_TEST) return;
@@ -66,27 +99,32 @@ const Face = (() => {
     const videoEl = document.getElementById("authFaceVideo");
     if (!gate || gate.hidden || !videoEl || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     if (!earlyStreamPromise) {
+      earlyCancelled = false;
       earlyStreamPromise = navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false
       }).then(s => {
-        earlyStreamObj = s;
+        trackStream(s);
         const gNow = document.getElementById("authGate");
         const vNow = document.getElementById("authFaceVideo");
-        if (gNow && !gNow.hidden && vNow) {
+        if (!earlyCancelled && gNow && !gNow.hidden && vNow) {
+          earlyStreamObj = s;
           if (vNow.srcObject !== s) vNow.srcObject = s;
           vNow.play().catch(() => {});
           const dot = document.getElementById("authFacePulse");
           if (dot) dot.className = "auth-face-pulse live";
           const btn = document.getElementById("authCamToggleBtn");
-          if (btn) btn.textContent = "📷 Camera On";
+          if (btn) btn.textContent = "Turn Off Camera";
+          const offEl = document.getElementById("authCamOffOverlay");
+          if (offEl) offEl.hidden = true;
           const hint = document.getElementById("authFaceHint");
           if (hint && /Loading Face ID/i.test(hint.textContent || "")) {
             hint.textContent = "Camera active — scanning Face ID…";
             hint.className = "auth-face-hint ok";
           }
         } else {
-          try { s.getTracks().forEach(t => t.stop()); } catch (_) {}
+          stopStreamTracks(s);
+          trackedStreams.delete(s);
           earlyStreamObj = null;
         }
         return earlyStreamObj;
@@ -95,10 +133,12 @@ const Face = (() => {
   }
 
   async function consumeEarlyStream() {
+    earlyCancelled = false;
     if (earlyStreamObj && earlyStreamObj.getVideoTracks && earlyStreamObj.getVideoTracks().some(t => t.readyState === "live")) {
       const s = earlyStreamObj;
       earlyStreamObj = null;
       earlyStreamPromise = null;
+      trackStream(s);
       return s;
     }
     if (earlyStreamPromise) {
@@ -106,7 +146,11 @@ const Face = (() => {
       earlyStreamPromise = null;
       const s = await p;
       earlyStreamObj = null;
-      if (s && s.getVideoTracks && s.getVideoTracks().some(t => t.readyState === "live")) return s;
+      if (!earlyCancelled && s && s.getVideoTracks && s.getVideoTracks().some(t => t.readyState === "live")) {
+        trackStream(s);
+        return s;
+      }
+      if (s) stopStreamTracks(s);
     }
     return null;
   }
@@ -487,10 +531,10 @@ const Face = (() => {
     g.restore();
   }
 
-  // Synthesized Web Audio feedback (zero external files, muted under navigator.webdriver — PWA.md §4.4)
+  // Synthesized Web Audio feedback (disabled by default — camera-only Face ID)
   const Sound = (() => {
     let ctx = null;
-    let enabled = true;
+    let enabled = false;
     function getCtx() {
       if (navigator.webdriver || !enabled) return null;
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -536,6 +580,8 @@ const Face = (() => {
     load,
     prewarm,
     consumeEarlyStream,
+    trackStream,
+    stopAllStreams,
     isReady: () => ready,
     getBackend: () => backend,
     detectOne,
