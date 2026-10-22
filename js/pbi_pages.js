@@ -1037,8 +1037,11 @@
     const minDate = ctx.MIN_DATE || '2024-01-01';
     const maxDate = ctx.MAX_DATE || '2030-12-31';
     const activeRange = ctx.periodRange ? ctx.periodRange(STATE.period) : null;
-    const activePageId = STATE.pbiPage || 'p01_overview';
-    const activePage = PBI_PAGES.find(p => p.id === activePageId) || PBI_PAGES[0];
+    const visiblePages = typeof ctx.canAccessPbiPage === 'function' ? PBI_PAGES.filter(p => ctx.canAccessPbiPage(p.id)) : PBI_PAGES;
+    const pagePool = visiblePages.length ? visiblePages : PBI_PAGES;
+    const activePage = pagePool.find(p => p.id === (STATE.pbiPage || 'p01_overview')) || pagePool[0];
+    const activePageId = activePage.id;
+    STATE.pbiPage = activePageId;
 
     const sl = STATE.pbiSlicer || {};
     const rec = SEED.records || {};
@@ -1308,7 +1311,7 @@
       <div class="pbi-studio-hdr">
         <div class="pbi-studio-top">
           <div>
-            <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · m18c_report.py PARITY+ · 20 PAGES · ${esc(COMPANY_LABELS[STATE.company])}</div>
+            <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · m18c_report.py PARITY+ · ${pagePool.length} PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
             <h2 class="pbi-studio-title">Page ${esc(activePage.num)} · ${esc(activePage.title)}</h2>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1319,8 +1322,8 @@
         </div>
 
         <!-- 20-Page Navigation Pill Strip -->
-        <div class="pbi-page-strip" role="tablist" aria-label="20 Power BI Report Pages">
-          ${PBI_PAGES.map(p => `
+        <div class="pbi-page-strip" role="tablist" aria-label="Power BI Report Pages">
+          ${pagePool.map(p => `
             <button type="button" class="pbi-page-tab ${p.id === activePageId ? 'active' : ''}" data-pbi-page="${esc(p.id)}" role="tab" aria-selected="${p.id === activePageId}">
               <span class="pbi-page-num">${esc(p.num)}</span>
               <span>${esc(p.label)}</span>
@@ -1516,15 +1519,24 @@
     // PAGE 02: COMPANIES (Side-by-side WTC · BBConstruction · Lions Transport)
     // =========================================================================
     else if (activePageId === 'p02_companies') {
-      const w = ((SEED.models.wtc || {}).periods || {})[STATE.period] || ((SEED.models.wtc || {}).periods || {}).all || {};
-      const b = ((SEED.models.bbconstruction || {}).periods || {})[STATE.period] || ((SEED.models.bbconstruction || {}).periods || {}).all || {};
-      const l = ((SEED.models.lionstransport || {}).periods || {})[STATE.period] || ((SEED.models.lionstransport || {}).periods || {}).all || {};
-      const g = ((SEED.models['manufacturing-group'] || {}).periods || {})[STATE.period] || ((SEED.models['manufacturing-group'] || {}).periods || {}).all || {};
-      const wM = ((SEED.models.wtc || {}).monthly || []).slice(-12);
-      const bM = ((SEED.models.bbconstruction || {}).monthly || []).slice(-12);
-      const compMonths = wM.map(wm => {
+      const allowedNames = typeof ctx.allowedCompanyNames === 'function' ? ctx.allowedCompanyNames() : ['WTC', 'BBConstruction', 'Lions Transport'];
+      const hasWtc = allowedNames.includes('WTC');
+      const hasBbc = allowedNames.includes('BBConstruction');
+      const hasLt = allowedNames.includes('Lions Transport');
+      const wRaw = ((SEED.models.wtc || {}).periods || {})[STATE.period] || ((SEED.models.wtc || {}).periods || {}).all || {};
+      const bRaw = ((SEED.models.bbconstruction || {}).periods || {})[STATE.period] || ((SEED.models.bbconstruction || {}).periods || {}).all || {};
+      const lRaw = ((SEED.models.lionstransport || {}).periods || {})[STATE.period] || ((SEED.models.lionstransport || {}).periods || {}).all || {};
+      const gRaw = ((SEED.models['manufacturing-group'] || {}).periods || {})[STATE.period] || ((SEED.models['manufacturing-group'] || {}).periods || {}).all || {};
+      const w = hasWtc ? wRaw : {};
+      const b = hasBbc ? bRaw : {};
+      const l = hasLt ? lRaw : {};
+      const g = (hasWtc && hasBbc) ? gRaw : (hasWtc ? w : (hasBbc ? b : l));
+      const wM = hasWtc ? ((SEED.models.wtc || {}).monthly || []).slice(-12) : [];
+      const bM = hasBbc ? ((SEED.models.bbconstruction || {}).monthly || []).slice(-12) : [];
+      const baseMonths = wM.length ? wM : bM;
+      const compMonths = baseMonths.map(wm => {
         const bm = bM.find(x => x['Year Month'] === wm['Year Month']) || {};
-        return { 'Year Month': wm['Year Month'], wtc_sales: wm.sales_ttc || 0, bbc_sales: bm.sales_ttc || 0, wtc_profit: wm.operating_profit || 0, bbc_profit: bm.operating_profit || 0 };
+        return { 'Year Month': wm['Year Month'], wtc_sales: hasWtc ? (wm.sales_ttc || 0) : 0, bbc_sales: hasBbc ? (bm.sales_ttc || 0) : 0, wtc_profit: hasWtc ? (wm.operating_profit || 0) : 0, bbc_profit: hasBbc ? (bm.operating_profit || 0) : 0 };
       });
       const compRows = [
         ['Sales incl. VAT (TTC)', fmtUSD(w.sales_ttc, 2), fmtUSD(b.sales_ttc, 2), '—', fmtUSD(g.sales_ttc, 2)],
@@ -3565,10 +3577,14 @@
   // ==================== 34-TABLE POWER APPS DATA HUB RENDERER ====================
   function renderTablesHub(ctx) {
     const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm } = ctx;
+    const catalog = typeof ctx.canAccessTable === 'function' ? TABLE_CATALOG.filter(t => ctx.canAccessTable(t.key)) : TABLE_CATALOG;
+    const tablePool = catalog.length ? catalog : TABLE_CATALOG;
     const activeKey = STATE.activeTableKey || 'price_rules';
-    const meta = TABLE_CATALOG.find(t => t.key === activeKey) || TABLE_CATALOG[0];
+    const meta = tablePool.find(t => t.key === activeKey) || tablePool[0];
+    STATE.activeTableKey = meta.key;
     const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
+    const rlsScopedRaw = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true });
     const baseFiltered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key) });
     const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
@@ -3579,13 +3595,13 @@
     const rows = sortRows(filtered, 'tbl_' + meta.key, defSort, dateCol ? 'desc' : 'asc');
     const shown = rows.slice(0, shownCount('tbl_' + meta.key));
 
-    const groups = Array.from(new Set(TABLE_CATALOG.map(t => t.group)));
-    const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
+    const groups = Array.from(new Set(tablePool.map(t => t.group)));
+    const relTablesMeta = (meta.relTables || []).map(rk => tablePool.find(t => t.key === rk)).filter(Boolean);
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">POWER APPS SITEMAP PARITY (m14_sitemap.py) · ALL 34 DATAVERSE TABLES &amp; REGISTERS</div>
+          <div class="cockpit-eyebrow">POWER APPS SITEMAP PARITY (m14_sitemap.py) · ${tablePool.length} DATAVERSE TABLES &amp; REGISTERS</div>
           <div class="cockpit-title">${esc(meta.label)} <span class="mono" style="font-size:13px;color:var(--brass)">(${esc(meta.dvn)})</span></div>
           <div class="cockpit-sub">Browse, search, sort, switch Power Apps System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
         </div>
@@ -3593,7 +3609,7 @@
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Table</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Connected Tables</div><div class="cockpit-pill-val">${fmtNum(relTablesMeta.length)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Snapshot</div><div class="cockpit-pill-val emerald">${fmtNum(rawList.length)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Scope</div><div class="cockpit-pill-val emerald">${fmtNum(rlsScopedRaw.length)}</div></div>
         </div>
       </div>
 
@@ -3603,8 +3619,8 @@
           <div style="margin-bottom:8px">
             <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px">${esc(g)}</div>
             <div class="chip-bar">
-              ${TABLE_CATALOG.filter(t => t.group === g).map(t => {
-                const cnt = ((SEED.records && SEED.records[t.key]) || []).length;
+              ${tablePool.filter(t => t.group === g).map(t => {
+                const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true }).length;
                 return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-table-key="${esc(t.key)}">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
               }).join('')}
             </div>
@@ -3626,7 +3642,7 @@
             <div class="pa-hub-conns">
               <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
               ${relTablesMeta.map(rt => {
-                const rCnt = ((SEED.records && SEED.records[rt.key]) || []).length;
+                const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true }).length;
                 return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)} (${esc(rt.dvn)})">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
               }).join('')}
             </div>

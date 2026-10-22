@@ -157,7 +157,8 @@
     return 'ALL';
   }
 
-  function coMatch(rowCo, normCo) {
+  function coMatch(rowCo, normCo, allowedCos) {
+    if (allowedCos && allowedCos.length && rowCo && !allowedCos.includes(String(rowCo))) return false;
     if (!normCo || normCo === 'ALL') return true;
     return String(rowCo || '') === String(normCo);
   }
@@ -286,17 +287,19 @@
     const co = normalizeStateCo(STATE.company);
     const basis = STATE.basis || STATE.dateBasis || 'tx';
     const recs = (SEED && SEED.records) || {};
-    const sig = `${co}|${basis}|${(recs.sales_tickets || []).length}|${(recs.expenses || []).length}|${(recs.receipts || []).length}`;
+    const allowedCos = Array.isArray(STATE.allowedCompanyNames) && STATE.allowedCompanyNames.length ? STATE.allowedCompanyNames : null;
+    const allowedSig = allowedCos ? allowedCos.join(',') : 'ALL';
+    const sig = `${co}|${allowedSig}|${basis}|${(recs.sales_tickets || []).length}|${(recs.expenses || []).length}|${(recs.receipts || []).length}`;
 
     if (_cachedCoKey !== sig || !_cachedCtxData) {
-      const rawSales = (recs.sales_tickets || recs.sales || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawExp = (recs.expenses || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawPay = (recs.salaries || recs.payroll || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawRm = (recs.raw_purchases || recs.rm || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawFuel = (recs.fuel_intakes || recs.fuel || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawReceipts = (recs.receipts || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawSettlements = (recs.settlements || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
-      const rawVatInvs = (recs.vat_invoices || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co));
+      const rawSales = (recs.sales_tickets || recs.sales || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawExp = (recs.expenses || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawPay = (recs.salaries || recs.payroll || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawRm = (recs.raw_purchases || recs.rm || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawFuel = (recs.fuel_intakes || recs.fuel || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawReceipts = (recs.receipts || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawSettlements = (recs.settlements || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
+      const rawVatInvs = (recs.vat_invoices || []).filter(r => r && !r.voided && coMatch(r.company || r.co, co, allowedCos));
 
       // Map official VAT invoices by customer+date window so sales tickets inherit vat_inv when matching
       const vatInvByCust = new Map();
@@ -308,10 +311,11 @@
       });
 
       const salesAll = rawSales.map(r => {
-        const sign = r.return ? -1 : 1;
+        const m = String(r.method || '').trim();
+        const sign = (m === 'C Return' || m === 'CR Return' || m === 'Cash Return' || m === 'Credit Return' || r.return) ? -1 : ((m === 'Free' || m === 'Remove' || m === 'Config' || m === 'VATConfig') ? 0 : 1);
         const totTtc = sign * Number(r.total_ttc !== undefined ? r.total_ttc : (r.total_usd !== undefined ? r.total_usd : (r.total || 0)));
         const vat = sign * Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
-        const isCash = String(r.method || '').toLowerCase() === 'cash';
+        const isCash = m === 'Cash' || m === 'C Return' || m === 'Cash Return';
         const paid = r.paid_usd !== undefined ? sign * Number(r.paid_usd) : (isCash ? totTtc : 0);
         let vatInv = String(r.vat_invoice || r.vat_inv || '');
         if (!vatInv && vat > 0 && vatInvByCust.has(r.customer)) {
@@ -339,13 +343,15 @@
           paid_usd: paid,
           balance_usd: totTtc - paid,
           pay_method: r.method || 'Credit',
-          is_return: Boolean(r.return)
+          is_return: sign <= 0
         };
       });
 
       // Separate customer receipt ledger entries for SOA, Aging, Cash Flow & Journal (never mixed into salesAll ticket register)
       const receiptLedgerAll = [];
       rawReceipts.forEach(rc => {
+        const m = String(rc.method || '').trim();
+        if (m === 'JV Adjusted' || m === 'Remove' || m === 'Adjusted' || m === 'Free' || m === 'Config') return;
         const amt = Number(rc.usd_amount !== undefined ? rc.usd_amount : (rc.amount || 0)) + Number(rc.discount || 0);
         if (Math.abs(amt) < 0.005) return;
         receiptLedgerAll.push({
@@ -374,11 +380,12 @@
       const arLedgerAll = [...salesAll, ...receiptLedgerAll];
 
       const expAll = rawExp.map(r => {
-        const m = String(r.method || 'Cash').trim().toLowerCase();
-        const sign = (m === 'c return' || m === 'cr return' || r.return) ? -1 : 1;
+        const m = String(r.method || 'Cash').trim();
+        const ml = m.toLowerCase();
+        const sign = (ml === 'c return' || ml === 'cr return' || r.return) ? -1 : ((m === 'Config' || m === 'VATConfig' || m === 'Free' || m === 'Remove' || m === 'Adjusted' || m === 'JV Adjusted') ? 0 : 1);
         const amt = sign * Number(r.usd_amount !== undefined ? r.usd_amount : (r.amount !== undefined ? r.amount : (r.total_usd || 0)));
         const vat = sign * Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
-        const isCash = m === 'cash' || m === 'c return';
+        const isCash = ml === 'cash' || ml === 'c return';
         const paid = isCash ? amt : 0;
         return {
           id: r.id,
@@ -447,12 +454,13 @@
       const settlementLedgerAll = [];
       const vatPaidAll = [];
       rawSettlements.forEach(s => {
-        const m = String(s.method || '').trim().toLowerCase();
+        const m = String(s.method || '').trim();
+        if (m === 'JV Adjusted' || m === 'Remove' || m === 'Adjusted' || m === 'Free' || m === 'Config') return;
         const usd = Number(s.usd_amount !== undefined ? s.usd_amount : (s.amount || 0));
         const diff = Number(s.diff !== undefined ? s.diff : (s.discount || 0));
         const amt = usd + diff;
-        if (m === 'vat paid') {
-          if (Math.abs(usd) >= 0.005) {
+        if (m === 'VAT' || m === 'VATConfig' || m === 'VAT Dis' || m === 'Cash VAT Dis' || m.toLowerCase() === 'vat paid') {
+          if (Math.abs(amt) >= 0.005) {
             vatPaidAll.push({
               id: s.id,
               date: s.date,
@@ -460,8 +468,8 @@
               co: s.company || co,
               voucher: s.name || s.id,
               supplier: s.supplier || 'Supplier',
-              vat_usd: usd,
-              total_usd: usd
+              vat_usd: amt,
+              total_usd: amt
             });
           }
         }
@@ -612,6 +620,7 @@
       _cachedCoKey = sig;
       _cachedCtxData = {
         salesAll, expAll, payAll, rmAll, fuelAll, prodAll: [],
+        receiptLedgerAll, arLedgerAll, settlementLedgerAll, apRmLedgerAll, vatPaidAll,
         customers, products, sites, suppliers, categories, staff, equipTypes, equipments, drivers,
         invoiceList, invMap, ticketCandidates, ticketById, receiptCandidates, receiptById
       };
@@ -682,7 +691,7 @@
       if (!d) return;
       const tot = Number(r.total_usd || 0);
       const vat = Number(r.vat_usd || 0);
-      const net = Math.max(0, tot - vat);
+      const net = tot - vat;
       const paid = Number(r.paid_usd || 0);
       const ref = r.vat_inv ? `VAT-${r.vat_inv}` : String(r.invoice_no || r.ticket_no || 'SL');
       const cust = r.customer || 'Walk-in Customer';
@@ -692,12 +701,27 @@
         pushJe(d, ref, 'Sales', '411', cust, desc, tot, 0);
         pushJe(d, ref, 'Sales', revAcct, cust, desc, 0, net);
         if (vat > 0) pushJe(d, ref, 'Sales VAT', '442', 'VAT Collectible (11%)', `Output VAT on ${ref}`, 0, vat);
+      } else if (tot < 0) {
+        pushJe(d, ref, 'Sales Return', revAcct, cust, desc, Math.abs(net), 0);
+        if (vat < 0) pushJe(d, ref, 'Sales Return VAT', '442', 'VAT Collectible (11%)', `Return VAT on ${ref}`, Math.abs(vat), 0);
+        pushJe(d, ref, 'Sales Return', '411', cust, desc, 0, Math.abs(tot));
       }
       if (paid > 0) {
         const cashAcct = r.pay_method === 'Bank' || r.pay_method === 'Cheque' ? '512' : '531';
         pushJe(d, `RC-${ref}`, 'Collection', cashAcct, cust, `Receipt against ${ref}`, paid, 0);
         pushJe(d, `RC-${ref}`, 'Collection', '411', cust, `Receipt against ${ref}`, 0, paid);
       }
+    });
+
+    (ctx.receiptLedgerAll || []).forEach(r => {
+      const d = rowDate(r, basis);
+      const paid = Number(r.paid_usd || 0);
+      if (!d || paid <= 0) return;
+      const cust = r.customer || 'Customer';
+      const ref = String(r.invoice_no || r.ticket_no || 'RCPT');
+      const cashAcct = r.pay_method === 'Bank' || r.pay_method === 'Cheque' ? '512' : '531';
+      pushJe(d, ref, 'Collection', cashAcct, cust, `Customer receipt (${r.pay_method || 'Cash'})`, paid, 0);
+      pushJe(d, ref, 'Collection', '411', cust, `Customer receipt (${r.pay_method || 'Cash'})`, 0, paid);
     });
 
     ctx.rmAll.forEach(r => {
@@ -717,6 +741,16 @@
         pushJe(d, `PV-${ref}`, 'Supplier Payment', '401', sup, `Payment on ${ref}`, paid, 0);
         pushJe(d, `PV-${ref}`, 'Supplier Payment', '531', sup, `Payment on ${ref}`, 0, paid);
       }
+    });
+
+    (ctx.settlementLedgerAll || []).forEach(r => {
+      const d = rowDate(r, basis);
+      const paid = Number(r.paid_usd || 0);
+      if (!d || paid <= 0) return;
+      const sup = r.supplier || 'Supplier';
+      const ref = String(r.voucher || r.name || 'SETL');
+      pushJe(d, ref, 'Supplier Payment', '401', sup, r.material || 'Supplier Settlement', paid, 0);
+      pushJe(d, ref, 'Supplier Payment', '531', sup, r.material || 'Supplier Settlement', 0, paid);
     });
 
     ctx.fuelAll.forEach(r => {
@@ -741,20 +775,28 @@
       if (!d) return;
       const tot = Number(r.total_usd || 0);
       const vat = Number(r.vat_usd || 0);
-      const net = Math.max(0, tot - vat);
+      const net = tot - vat;
       const paid = Number(r.paid_usd || 0);
-      if (tot <= 0) return;
+      if (Math.abs(tot) < 0.005) return;
       const sup = r.supplier || r.category || 'General Vendor';
       const ref = String(r.voucher_no || r.invoice_no || r.name || 'EXP');
       const cat = String(r.category || '');
       const expAcct = /maint|spare|repair|tire|oil/i.test(cat) ? '615' : (/raw|cement|sand|agg|fuel|diesel/i.test(cat) ? '601' : '622');
       const desc = `${cat} — ${r.description || sup}`;
-      pushJe(d, ref, 'Expense', expAcct, sup, desc, net, 0);
-      if (vat > 0) pushJe(d, ref, 'Input VAT', '442', 'VAT Deductible (11%)', `Input VAT on ${ref}`, vat, 0);
-      pushJe(d, ref, 'Expense', '401', sup, desc, 0, tot);
+      if (tot > 0) {
+        pushJe(d, ref, 'Expense', expAcct, sup, desc, net, 0);
+        if (vat > 0) pushJe(d, ref, 'Input VAT', '442', 'VAT Deductible (11%)', `Input VAT on ${ref}`, vat, 0);
+        pushJe(d, ref, 'Expense', '401', sup, desc, 0, tot);
+      } else {
+        pushJe(d, ref, 'Expense Return', '401', sup, desc, Math.abs(tot), 0);
+        pushJe(d, ref, 'Expense Return', expAcct, sup, desc, 0, Math.abs(net));
+      }
       if (paid > 0) {
         pushJe(d, `PV-${ref}`, 'Expense Payment', '401', sup, `Settlement ${ref}`, paid, 0);
         pushJe(d, `PV-${ref}`, 'Expense Payment', '531', sup, `Settlement ${ref}`, 0, paid);
+      } else if (paid < 0) {
+        pushJe(d, `PV-${ref}`, 'Expense Refund', '531', sup, `Refund ${ref}`, Math.abs(paid), 0);
+        pushJe(d, `PV-${ref}`, 'Expense Refund', '401', sup, `Refund ${ref}`, 0, Math.abs(paid));
       }
     });
 
@@ -1052,13 +1094,14 @@
   function render01DailyOps(meta, ctx) {
     const p = ctx.rdl.params;
     const sales = ctx.salesAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
+    const rcpts = (ctx.receiptLedgerAll || []).filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const exps = ctx.expAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const rms = ctx.rmAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const fuels = ctx.fuelAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
 
     const totM3 = sales.reduce((s, r) => s + Number(r.qty || 0), 0);
     const totRev = sales.reduce((s, r) => s + Number(r.total_usd || 0), 0);
-    const totPaid = sales.reduce((s, r) => s + Number(r.paid_usd || 0), 0);
+    const totPaid = sales.reduce((s, r) => s + Number(r.paid_usd || 0), 0) + rcpts.reduce((s, r) => s + Number(r.paid_usd || 0), 0);
     const totExp = exps.reduce((s, r) => s + Number(r.total_usd || 0), 0) + rms.reduce((s, r) => s + Number(r.total_usd || 0), 0);
     const totLiters = fuels.reduce((s, r) => s + Number(r.liters || 0), 0);
 
@@ -1067,7 +1110,7 @@
     sales.forEach(r => {
       const k = r.product || 'Ready-Mix Concrete';
       const g = byProd.get(k) || { product: k, loads: 0, m3: 0, rev: 0, paid: 0, bal: 0 };
-      g.loads += 1;
+      if (!r.is_return) g.loads += 1;
       g.m3 += Number(r.qty || 0);
       g.rev += Number(r.total_usd || 0);
       g.paid += Number(r.paid_usd || 0);
@@ -1081,9 +1124,15 @@
     sales.forEach(r => {
       const d = rowDate(r, ctx.basis);
       const g = byDay.get(d) || { date: d, loads: 0, m3: 0, sales: 0, collected: 0, exp: 0, rm: 0, fuelL: 0 };
-      g.loads += 1;
+      if (!r.is_return) g.loads += 1;
       g.m3 += Number(r.qty || 0);
       g.sales += Number(r.total_usd || 0);
+      g.collected += Number(r.paid_usd || 0);
+      byDay.set(d, g);
+    });
+    rcpts.forEach(r => {
+      const d = rowDate(r, ctx.basis);
+      const g = byDay.get(d) || { date: d, loads: 0, m3: 0, sales: 0, collected: 0, exp: 0, rm: 0, fuelL: 0 };
       g.collected += Number(r.paid_usd || 0);
       byDay.set(d, g);
     });
@@ -1382,9 +1431,9 @@
   function render04CashFlow(meta, ctx) {
     const p = ctx.rdl.params;
     const pMode = p.period || 'Month';
-    const sales = ctx.salesAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
+    const sales = (ctx.arLedgerAll || ctx.salesAll).filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const exps = ctx.expAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
-    const rms = ctx.rmAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
+    const rms = (ctx.apRmLedgerAll || ctx.rmAll).filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const fuels = ctx.fuelAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
     const pays = ctx.payAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
 
@@ -1674,7 +1723,7 @@
     }).sort((a, b) => rowDate(b, ctx.basis).localeCompare(rowDate(a, ctx.basis)));
 
     const totQty = rows.reduce((s, r) => s + Number(r.qty || 0), 0);
-    const totSub = rows.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
+    const totSub = rows.reduce((s, r) => s + (Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
     const totVat = rows.reduce((s, r) => s + Number(r.vat_usd || 0), 0);
     const totGross = rows.reduce((s, r) => s + Number(r.total_usd || 0), 0);
     const totPaid = rows.reduce((s, r) => s + Number(r.paid_usd || 0), 0);
@@ -1701,7 +1750,7 @@
         </thead>
         <tbody>
           ${viewRows.map(r => {
-            const net = Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0));
+            const net = Number(r.total_usd || 0) - Number(r.vat_usd || 0);
             return `
               <tr>
                 <td class="mono">${esc(rowDate(r, ctx.basis))}</td>
@@ -1712,10 +1761,10 @@
                 <td>${esc(r.product || '—')}</td>
                 <td class="num">${fmtNum(r.qty, 1)}</td>
                 <td class="num">${fmtUsd(r.unit_price, 2)}</td>
-                <td class="num">${fmtUsd(net, 2)}</td>
-                <td class="num">${fmtUsd(r.vat_usd, 2)}</td>
-                <td class="num bold">${fmtUsd(r.total_usd, 2)}</td>
-                <td class="num">${fmtUsd(r.paid_usd, 2)}</td>
+                <td class="num">${fmtUsdSigned(net, 2)}</td>
+                <td class="num">${fmtUsdSigned(r.vat_usd, 2)}</td>
+                <td class="num bold">${fmtUsdSigned(r.total_usd, 2)}</td>
+                <td class="num">${fmtUsdSigned(r.paid_usd, 2)}</td>
               </tr>
             `;
           }).join('')}
@@ -1745,7 +1794,7 @@
       return true;
     }).sort((a, b) => rowDate(b, ctx.basis).localeCompare(rowDate(a, ctx.basis)));
 
-    const totNet = rows.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
+    const totNet = rows.reduce((s, r) => s + (Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
     const totVat = rows.reduce((s, r) => s + Number(r.vat_usd || 0), 0);
     const totGross = rows.reduce((s, r) => s + Number(r.total_usd || 0), 0);
     const totPaid = rows.reduce((s, r) => s + Number(r.paid_usd || 0), 0);
@@ -1770,7 +1819,7 @@
         </thead>
         <tbody>
           ${viewRows.map(r => {
-            const net = Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0));
+            const net = Number(r.total_usd || 0) - Number(r.vat_usd || 0);
             return `
               <tr>
                 <td class="mono">${esc(rowDate(r, ctx.basis))}</td>
@@ -1778,11 +1827,11 @@
                 <td>${esc(r.category || '—')}</td>
                 <td class="bold">${esc(r.supplier || '—')}</td>
                 <td>${esc(r.description || '—')}</td>
-                <td class="num">${fmtUsd(net, 2)}</td>
-                <td class="num">${fmtUsd(r.vat_usd, 2)}</td>
-                <td class="num bold">${fmtUsd(r.total_usd, 2)}</td>
-                <td class="num">${fmtUsd(r.paid_usd, 2)}</td>
-                <td class="num">${fmtUsd(r.balance_usd, 2)}</td>
+                <td class="num">${fmtUsdSigned(net, 2)}</td>
+                <td class="num">${fmtUsdSigned(r.vat_usd, 2)}</td>
+                <td class="num bold">${fmtUsdSigned(r.total_usd, 2)}</td>
+                <td class="num">${fmtUsdSigned(r.paid_usd, 2)}</td>
+                <td class="num">${fmtUsdSigned(r.balance_usd, 2)}</td>
               </tr>
             `;
           }).join('')}
@@ -1988,7 +2037,7 @@
     const asofMs = new Date(asof + 'T00:00:00Z').getTime() || Date.now();
 
     const byCust = new Map();
-    ctx.salesAll.forEach(r => {
+    (ctx.arLedgerAll || ctx.salesAll).forEach(r => {
       const d = rowDate(r, ctx.basis);
       if (!d || d > asof) return;
       const c = r.customer || 'Walk-in Customer';
@@ -2071,7 +2120,7 @@
   function render14CustomerStatement(meta, ctx) {
     const p = ctx.rdl.params;
     const custName = (p.customer && p.customer !== 'ALL') ? p.customer : (ctx.customers[0] || 'Sabeh Beton S.R.L');
-    const allCustRows = ctx.salesAll
+    const allCustRows = (ctx.arLedgerAll || ctx.salesAll)
       .filter(r => r.customer === custName)
       .sort((a, b) => rowDate(a, ctx.basis).localeCompare(rowDate(b, ctx.basis)));
 
@@ -2092,7 +2141,7 @@
     const totCr = periodRows.reduce((s, r) => s + Number(r.paid_usd || 0), 0);
     const totM3 = periodRows.reduce((s, r) => s + Number(r.qty || 0), 0);
     const closingBal = runBal + totDr - totCr;
-    const siteList = [...new Set(allCustRows.map(r => r.site).filter(Boolean))].slice(0, 3).join(' · ');
+    const siteList = [...new Set(allCustRows.filter(r => !r.is_receipt_row).map(r => r.site).filter(Boolean))].slice(0, 3).join(' · ');
 
     return `
       ${sheetHeaderHtml(meta, ctx.co, `Customer Statement of Account (SOA) · Period ${p.from} to ${p.to}`)}
@@ -2101,7 +2150,7 @@
         ${metaRowsHtml([
           ['Statement Period', `${p.from} .. ${p.to}`],
           ['Account Code', '411 — Customers AR'],
-          ['Dispatched Volume', `${fmtNum(totM3, 1)} m³ (${periodRows.length} loads)`],
+          ['Dispatched Volume', `${fmtNum(totM3, 1)} m³ (${periodRows.filter(r => !r.is_receipt_row && !r.is_return).length} loads)`],
           ['Closing Balance', fmtUsdSigned(closingBal, 2)]
         ])}
       </div>
@@ -2143,8 +2192,8 @@
                 <td>${esc(r.product || '—')}</td>
                 <td class="num">${fmtNum(r.qty, 1)}</td>
                 <td class="num">${fmtUsd(r.unit_price, 2)}</td>
-                <td class="num">${fmtUsd(dr, 2)}</td>
-                <td class="num">${cr > 0 ? fmtUsd(cr, 2) : '—'}</td>
+                <td class="num">${fmtUsdSigned(dr, 2)}</td>
+                <td class="num">${cr !== 0 ? fmtUsdSigned(cr, 2) : '—'}</td>
                 <td class="num bold">${fmtUsdSigned(runBal, 2)}</td>
               </tr>
             `;
@@ -2185,12 +2234,12 @@
       bySup.set(s, g);
     };
 
-    ctx.rmAll.forEach(r => addSup(r.supplier, rowDate(r, ctx.basis), 'rm', Number(r.total_usd || 0), Number(r.paid_usd || 0)));
+    (ctx.apRmLedgerAll || ctx.rmAll).forEach(r => addSup(r.supplier, rowDate(r, ctx.basis), 'rm', Number(r.total_usd || 0), Number(r.paid_usd || 0)));
     ctx.expAll.forEach(r => addSup(r.supplier, rowDate(r, ctx.basis), 'exp', Number(r.total_usd || 0), Number(r.paid_usd || 0)));
     ctx.fuelAll.forEach(r => addSup(r.supplier || r.station, rowDate(r, ctx.basis), 'fuel', Number(r.total_usd || 0), Number(r.paid_usd || 0)));
 
     const rows = [...bySup.values()]
-      .filter(g => g.billed > 0)
+      .filter(g => g.billed > 0 || Math.abs(g.billed - g.paid) > 1)
       .sort((a, b) => (b.billed - b.paid) - (a.billed - a.paid))
       .slice(0, 120);
 
@@ -2249,8 +2298,8 @@
     const p = ctx.rdl.params;
     const supName = (p.supplier && p.supplier !== 'ALL') ? p.supplier : (ctx.suppliers[0] || 'Holcim Liban S.A.L');
     const tx = [];
-    ctx.rmAll.filter(r => r.supplier === supName).forEach(r => {
-      tx.push({ date: rowDate(r, ctx.basis), ref: r.voucher || r.name || 'RM', type: 'Raw Material', desc: `${r.material || 'Material'} (${fmtNum(r.qty, 2)} ${r.unit || 't'})`, cr: Number(r.total_usd || 0), dr: Number(r.paid_usd || 0) });
+    (ctx.apRmLedgerAll || ctx.rmAll).filter(r => r.supplier === supName).forEach(r => {
+      tx.push({ date: rowDate(r, ctx.basis), ref: r.voucher || r.name || 'RM', type: r.is_settlement_row ? 'Settlement' : 'Raw Material', desc: r.is_settlement_row ? (r.material || 'Supplier Settlement') : `${r.material || 'Material'} (${fmtNum(r.qty, 2)} ${r.unit || 't'})`, cr: Number(r.total_usd || 0), dr: Number(r.paid_usd || 0) });
     });
     ctx.expAll.filter(r => r.supplier === supName).forEach(r => {
       tx.push({ date: rowDate(r, ctx.basis), ref: r.voucher_no || r.invoice_no || 'EXP', type: r.category || 'Expense', desc: r.description || r.category || 'Vendor Invoice', cr: Number(r.total_usd || 0), dr: Number(r.paid_usd || 0) });
@@ -2313,8 +2362,8 @@
                 <td class="mono">${esc(t.ref)}</td>
                 <td>${esc(t.type)}</td>
                 <td>${esc(t.desc)}</td>
-                <td class="num">${t.dr > 0 ? fmtUsd(t.dr, 2) : '—'}</td>
-                <td class="num">${fmtUsd(t.cr, 2)}</td>
+                <td class="num">${t.dr !== 0 ? fmtUsdSigned(t.dr, 2) : '—'}</td>
+                <td class="num">${fmtUsdSigned(t.cr, 2)}</td>
                 <td class="num bold">${fmtUsdSigned(runBal, 2)}</td>
               </tr>
             `;
@@ -2345,7 +2394,7 @@
       const drv = r.driver || 'Plant Fleet Driver';
       if (drvFilter && drvFilter !== 'ALL' && drv !== drvFilter) return;
       const g = byDrv.get(drv) || { driver: drv, loads: 0, m3: 0, rev: 0, rmTrips: 0, fuelFills: 0, liters: 0, fuelUsd: 0 };
-      g.loads += 1;
+      if (!r.is_return) g.loads += 1;
       g.m3 += Number(r.qty || 0);
       g.rev += Number(r.total_usd || 0);
       byDrv.set(drv, g);
@@ -2431,18 +2480,17 @@
   function render18VatReturn(meta, ctx) {
     const p = ctx.rdl.params;
     const sales = ctx.salesAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
-    const exps = ctx.expAll.filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
+    const vatPaidRows = (ctx.vatPaidAll || []).filter(r => inWindow(rowDate(r, ctx.basis), p.from, p.to));
 
-    const vatableSales = sales.filter(r => Number(r.vat_usd || 0) > 0 || r.vat_inv);
-    const exemptSales = sales.filter(r => !(Number(r.vat_usd || 0) > 0 || r.vat_inv));
+    const vatableSales = sales.filter(r => Math.abs(Number(r.vat_usd || 0)) > 0 || r.vat_inv);
+    const exemptSales = sales.filter(r => !(Math.abs(Number(r.vat_usd || 0)) > 0 || r.vat_inv));
 
-    const outTaxable = vatableSales.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
+    const outTaxable = vatableSales.reduce((s, r) => s + (Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
     const outVat = vatableSales.reduce((s, r) => s + Number(r.vat_usd || 0), 0);
     const exemptBase = exemptSales.reduce((s, r) => s + Number(r.total_usd || 0), 0);
 
-    const vatableExps = exps.filter(r => Number(r.vat_usd || 0) > 0);
-    const inTaxable = vatableExps.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
-    const inVat = vatableExps.reduce((s, r) => s + Number(r.vat_usd || 0), 0);
+    const inVat = vatPaidRows.reduce((s, r) => s + Number(r.vat_usd || 0), 0);
+    const inTaxable = inVat > 0 ? (inVat / 0.11) : 0;
     const netVat = outVat - inVat;
 
     return `
@@ -2479,7 +2527,7 @@
           <tr>
             <td class="mono bold">Box B1</td>
             <td>Deductible Input VAT on Purchases & OPEX (الضريبة القابلة للحسم)</td>
-            <td class="num">${fmtNum(vatableExps.length, 0)}</td>
+            <td class="num">${fmtNum(vatPaidRows.length, 0)}</td>
             <td class="num">${fmtUsd(inTaxable, 2)}</td>
             <td class="num bold">(${fmtUsd(inVat, 2)})</td>
             <td class="num">${fmtUsd(inTaxable + inVat, 2)}</td>
@@ -2550,10 +2598,10 @@
     const exps = ctx.expAll.filter(r => matchYm(rowDate(r, ctx.basis)));
     const pays = ctx.payAll.filter(r => matchYm(rowDate(r, ctx.basis)));
 
-    const subSales = sales.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
+    const subSales = sales.reduce((s, r) => s + (Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
     const subRm = rms.reduce((s, r) => s + Number(r.total_usd || 0), 0);
     const subFuel = fuels.reduce((s, r) => s + Number(r.total_usd || 0), 0);
-    const subExp = exps.reduce((s, r) => s + Math.max(0, Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
+    const subExp = exps.reduce((s, r) => s + (Number(r.total_usd || 0) - Number(r.vat_usd || 0)), 0);
     const subPay = pays.reduce((s, r) => s + Number(r.net_usd || r.paid_usd || 0), 0);
 
     const reconRows = [
@@ -2860,13 +2908,23 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1500);
   }
 
+  function getVisibleRdlCatalog(STATE) {
+    const filtered = STATE && typeof STATE.canAccessRdlReport === 'function'
+      ? RDL_CATALOG.filter(r => STATE.canAccessRdlReport(r))
+      : RDL_CATALOG;
+    return filtered.length ? filtered : RDL_CATALOG;
+  }
+
   function renderStatementsView(SEED, STATE) {
     const ctx = buildRdlContext(SEED, STATE);
+    const catalog = getVisibleRdlCatalog(STATE);
     const activeId = String(STATE.activeStatement || '01').padStart(2, '0');
-    const meta = RDL_CATALOG.find(x => x.id === activeId) || RDL_CATALOG[0];
+    const meta = catalog.find(x => x.id === activeId) || catalog[0];
+    STATE.activeStatement = meta.id;
     const L = CO_LEGAL[ctx.co] || CO_LEGAL.WTC;
     const q = (ctx.rdl.search || '').trim().toLowerCase();
-    const cat = ctx.rdl.cat || 'All';
+    const visibleCats = RDL_CATEGORIES.filter(c => c === 'All' || catalog.some(r => r.cat === c));
+    const cat = visibleCats.includes(ctx.rdl.cat) ? ctx.rdl.cat : 'All';
 
     return `
       <div class="rdl-suite-wrap">
@@ -2874,17 +2932,17 @@
           <span class="rdl-suite-pill">PAGINATED SUITE</span>
           <h1 class="rdl-suite-title">${esc(L.short)} — Financial &amp; Operational Reports</h1>
           <div class="rdl-cats" role="tablist" aria-label="Report categories">
-            ${RDL_CATEGORIES.map(c => `
+            ${visibleCats.map(c => `
               <button type="button" class="rdl-cat-btn ${cat === c ? 'active' : ''}" data-rdl-cat="${esc(c)}">
-                ${c === 'All' ? `All (${RDL_CATALOG.length})` : esc(c)}
+                ${c === 'All' ? `All (${catalog.length})` : esc(c)}
               </button>
             `).join('')}
           </div>
-          <input type="search" class="rdl-search-input" id="rdlSearchInput" placeholder="Filter 22 reports..." value="${esc(ctx.rdl.search || '')}" aria-label="Filter 22 reports" />
+          <input type="search" class="rdl-search-input" id="rdlSearchInput" placeholder="Filter ${catalog.length} reports..." value="${esc(ctx.rdl.search || '')}" aria-label="Filter ${catalog.length} reports" />
         </div>
 
-        <div class="rdl-tab-bar no-print" role="tablist" aria-label="22 Paginated Reports">
-          ${RDL_CATALOG.map(r => {
+        <div class="rdl-tab-bar no-print" role="tablist" aria-label="${catalog.length} Paginated Reports">
+          ${catalog.map(r => {
             const matchCat = (cat === 'All' || r.cat === cat);
             const matchQ = !q || r.title.toLowerCase().includes(q) || r.cat.toLowerCase().includes(q) || r.ar.includes(q) || r.id.includes(q);
             const hiddenClass = (matchCat && matchQ) ? '' : 'rdl-tab-filtered';
@@ -2906,7 +2964,7 @@
             <div class="rdl-tb-left">
               <div class="rdl-tb-nav-group">
                 <button type="button" class="rdl-tb-btn rdl-tb-icon-btn" id="rdlPrevBtn" title="Previous report">◁</button>
-                <span class="rdl-tb-page">Report <b>${esc(meta.id)}</b> of 22</span>
+                <span class="rdl-tb-page">Report <b>${esc(meta.id)}</b> of ${catalog.length}</span>
                 <button type="button" class="rdl-tb-btn rdl-tb-icon-btn" id="rdlNextBtn" title="Next report">▷</button>
               </div>
               <span class="rdl-tb-divider"></span>
@@ -2942,8 +3000,10 @@
 
     const refreshSheetAndParams = () => {
       const updatedCtx = buildRdlContext(SEED, STATE);
+      const catalog = getVisibleRdlCatalog(STATE);
       const activeId = String(STATE.activeStatement || '01').padStart(2, '0');
-      const meta = RDL_CATALOG.find(x => x.id === activeId) || RDL_CATALOG[0];
+      const meta = catalog.find(x => x.id === activeId) || catalog[0];
+      STATE.activeStatement = meta.id;
       const paramCont = root.querySelector('#rdlParamContainer');
       if (paramCont) paramCont.innerHTML = renderParamBarHtml(meta, updatedCtx);
       const sheet = root.querySelector('#printableSheet');
@@ -2980,14 +3040,15 @@
     // 22 report tab buttons
     root.querySelectorAll('.stmt-card[data-stmt]').forEach(btn => {
       btn.addEventListener('click', () => {
+        const catalog = getVisibleRdlCatalog(STATE);
         STATE.activeStatement = btn.dataset.stmt;
         root.querySelectorAll('.stmt-card[data-stmt]').forEach(b => b.classList.toggle('active', b === btn));
         const activeId = String(STATE.activeStatement || '01').padStart(2, '0');
-        const meta = RDL_CATALOG.find(x => x.id === activeId) || RDL_CATALOG[0];
+        const meta = catalog.find(x => x.id === activeId) || catalog[0];
         const crumb = root.querySelector('.rdl-menu-crumb');
         if (crumb) crumb.innerHTML = `${esc(meta.cat)} ▸ <b>RDL-${esc(meta.id)} ${esc(meta.title)}</b> <span class="rdl-crumb-ar" dir="rtl">(${esc(meta.ar)})</span>`;
         const pg = root.querySelector('.rdl-tb-page');
-        if (pg) pg.innerHTML = `Report <b>${esc(meta.id)}</b> of 22`;
+        if (pg) pg.innerHTML = `Report <b>${esc(meta.id)}</b> of ${catalog.length}`;
         refreshSheetAndParams();
       });
     });
@@ -2997,17 +3058,19 @@
     const nextBtn = root.querySelector('#rdlNextBtn');
     if (prevBtn) {
       prevBtn.addEventListener('click', () => {
-        const idx = RDL_CATALOG.findIndex(x => x.id === String(STATE.activeStatement || '01').padStart(2, '0'));
-        const nextIdx = (idx - 1 + RDL_CATALOG.length) % RDL_CATALOG.length;
-        STATE.activeStatement = RDL_CATALOG[nextIdx].id;
+        const catalog = getVisibleRdlCatalog(STATE);
+        const idx = Math.max(0, catalog.findIndex(x => x.id === String(STATE.activeStatement || '01').padStart(2, '0')));
+        const nextIdx = (idx - 1 + catalog.length) % catalog.length;
+        STATE.activeStatement = catalog[nextIdx].id;
         rerenderFn();
       });
     }
     if (nextBtn) {
       nextBtn.addEventListener('click', () => {
-        const idx = RDL_CATALOG.findIndex(x => x.id === String(STATE.activeStatement || '01').padStart(2, '0'));
-        const nextIdx = (idx + 1) % RDL_CATALOG.length;
-        STATE.activeStatement = RDL_CATALOG[nextIdx].id;
+        const catalog = getVisibleRdlCatalog(STATE);
+        const idx = Math.max(0, catalog.findIndex(x => x.id === String(STATE.activeStatement || '01').padStart(2, '0')));
+        const nextIdx = (idx + 1) % catalog.length;
+        STATE.activeStatement = catalog[nextIdx].id;
         rerenderFn();
       });
     }
