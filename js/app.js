@@ -13810,30 +13810,28 @@
                   <thead>
                     <tr>
                       <th>Ticket</th>
-                      <th>Date</th>
-                      <th>${kMode === 'raw' ? 'Quarry / Hauler' : (kMode === 'fuel' ? 'Equipment / Item' : 'Customer / Product')}</th>
+                      <th>${kMode === 'raw' ? 'Quarry / Material' : (kMode === 'fuel' ? 'Unit / Fuel' : 'Customer / Grade')}</th>
                       <th class="r">Qty</th>
                       <th class="r">${kMode === 'fuel' ? 'Meter' : 'Total ($)'}</th>
-                      <th>Thermal Print</th>
+                      <th>Reprint</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${activeRecentRows.map(r => `
                       <tr class="rrow" data-rkey="${kMode === 'raw' ? 'raw_purchases' : (kMode === 'fuel' ? 'fuel_intakes' : 'sales_tickets')}" data-rid="${esc(r.id)}">
-                        <td class="mono"><strong>#${esc(r.ticket_no || '—')}</strong></td>
-                        <td class="mono">${esc(String(r.date || '').slice(5, 10))}</td>
-                        <td>
+                        <td class="mono"><strong>#${esc(r.ticket_no || '—')}</strong><div class="drv-sub">${esc(String(r.date || '').slice(5, 10))}</div></td>
+                        <td class="kiosk-rec-name-cell">
                           <strong>${esc(kMode === 'raw' ? (r.site || r.site_owner) : (kMode === 'fuel' ? r.equipment : r.customer))}</strong>
                           <div class="drv-sub">${esc(kMode === 'raw' ? (r.product || '') : (kMode === 'fuel' ? (r.item || r.fuel_type || 'Diesel') : (r.product || '')))}</div>
                         </td>
-                        <td class="r mono">${kMode === 'fuel' ? `${fmtNum(r.litres, 1)} L` : `${fmtNum(r.qty, 1)} ${esc(r.uom || 'm³')}`}</td>
-                        <td class="r mono">${kMode === 'fuel' ? (r.odometer ? fmtNum(r.odometer, 0) + ' km' : '—') : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 2)}</td>
-                        <td style="white-space:nowrap">
-                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">💲 Priced</button>
-                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">🚛 Gate Pass</button>
+                        <td class="r mono">${kMode === 'fuel' ? `${fmtNum(r.litres, 0)} L` : `${fmtNum(r.qty, 1)} ${esc(r.uom || 'm³')}`}</td>
+                        <td class="r mono">${kMode === 'fuel' ? (r.odometer ? fmtNum(r.odometer, 0) : '—') : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 0)}</td>
+                        <td class="kiosk-rec-print-cell">
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">💲</button>
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">🚛</button>
                         </td>
                       </tr>
-                    `).join('') || emptyRow(6, 'No recent kiosk tickets')}
+                    `).join('') || emptyRow(5, 'No recent kiosk tickets')}
                   </tbody>
                 </table>
               </div>

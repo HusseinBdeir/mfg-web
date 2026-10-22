@@ -122,7 +122,7 @@ try {
   };
 
   // 2. Every view + 1-to-1 Page Title Consistency (Left Sidebar == Topbar == Page Hero Heading == Browser Tab)
-  const views = ['overview', 'pbi', 'tables', 'sentinels', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
+  const views = ['overview', 'pbi', 'tables', 'sentinels', 'kiosks', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
   const titleMismatches = [];
   for (const v of views) {
     await evaluate(`(() => { const b = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]'); b.click(); return 1; })()`);
@@ -170,7 +170,7 @@ try {
     }
   }
   titleMismatches.length === 0
-    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 15 views)')
+    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 16 views)')
     : fail('page titles consistency', titleMismatches.join(' | '));
 
   // 2a-2. Left sidebar truncated (...) hover tooltip (#railHoverTooltip + title attributes)
@@ -1929,6 +1929,118 @@ try {
   univProbe.hqSeparatedCleanly && univProbe.hqHasNoCompanyField && univProbe.coEquipHasCompanyField
     ? pass('universal registries · dedicated sidebar section (8 tabs) + 11-tab studio + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field')
     : fail('universal registries separation', JSON.stringify(univProbe));
+
+  // 7e. Unified 4-Kiosk Suite (Sales · Raw Material · Fuel & Lubricants · Attendance Biometric) + Bluetooth ESC/POS Printer (80mm/58mm · Priced/Unpriced)
+  const kioskSuiteProbe = await evaluate(`(async () => {
+    const K = window.MFG_KIOSK_TEST;
+    const P = window.MFG_PRINT;
+    if (!K || !P) return { ok: false, err: 'missing MFG_KIOSK_TEST or MFG_PRINT' };
+
+    // 1. Open Kiosk 1: Sales Dispatch Kiosk
+    K.switchKiosk('sales');
+    K.setPrintConfig({ paperWidth: 80, priceMode: 'priced', channel: 'rawbt' });
+    const salesTabsCount = document.querySelectorAll('#kioskControlDeck [data-kiosk-tab]').length;
+    const salesLiveRoll80Priced = document.querySelector('#kioskLiveThermalPreview .thermal-paper-roll');
+    const sales80PricedHasWidth = !!(salesLiveRoll80Priced && salesLiveRoll80Priced.classList.contains('paper-80mm'));
+    const salesDraft = K.buildDraftRecord();
+    const salesBytes80Priced = P.buildEscPosBytes('sales', salesDraft, { paperWidth: '80mm', priceMode: 'priced' });
+    const salesHtml80Priced = P.renderThermalTicketHtml('sales', Object.assign({}, salesDraft, { qty: 24, unit_price: 12, price: 288, total: 288, total_ttc: 288 }), { paperWidth: '80mm', priceMode: 'priced' });
+
+    // Toggle to 58mm + Unpriced Gate Pass (Preference 1 & Preference 2)
+    K.setPrintConfig({ paperWidth: 58, priceMode: 'unpriced' });
+    const salesLiveRoll58Unpriced = document.querySelector('#kioskLiveThermalPreview .thermal-paper-roll');
+    const sales58UnpricedClass = !!(salesLiveRoll58Unpriced && salesLiveRoll58Unpriced.classList.contains('paper-58mm'));
+    const salesBytes58Unpriced = P.buildEscPosBytes('sales', Object.assign({}, salesDraft, { qty: 24, unit_price: 12, price: 288, total: 288, total_ttc: 288 }), { paperWidth: '58mm', priceMode: 'unpriced' });
+    const salesHtml58Unpriced = P.renderThermalTicketHtml('sales', Object.assign({}, salesDraft, { qty: 24, unit_price: 12, price: 288, total: 288, total_ttc: 288 }), { paperWidth: '58mm', priceMode: 'unpriced' });
+    const salesUnpricedHidesDollars = !/\\$288\\.00/.test(salesHtml58Unpriced) && /GATE PASS/i.test(salesHtml58Unpriced);
+    const salesPricedShowsDollars = /\\$288\\.00/.test(salesHtml80Priced);
+    const salesOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    // 2. Open Kiosk 2: Raw Material Quarry Receiving Kiosk (Bluetooth Thermal Linked!)
+    K.switchKiosk('raw');
+    K.setPrintConfig({ paperWidth: 80, priceMode: 'priced' });
+    const rawDraft = Object.assign({}, K.buildDraftRecord(), { qty: 30, unit_cost: 6, cost: 180, trans_unit_cost: 4, trans_cost: 120, total: 300 });
+    const rawBytes80Priced = P.buildEscPosBytes('raw', rawDraft, { paperWidth: '80mm', priceMode: 'priced' });
+    const rawHtml80Priced = P.renderThermalTicketHtml('raw', rawDraft, { paperWidth: '80mm', priceMode: 'priced' });
+    const rawPricedShows2Legs = /Leg 1/i.test(rawHtml80Priced) && /Leg 2/i.test(rawHtml80Priced) && /\\$300\\.00/.test(rawHtml80Priced);
+
+    K.setPrintConfig({ paperWidth: 58, priceMode: 'unpriced' });
+    const rawBytes58Unpriced = P.buildEscPosBytes('raw', rawDraft, { paperWidth: '58mm', priceMode: 'unpriced' });
+    const rawHtml58Unpriced = P.renderThermalTicketHtml('raw', rawDraft, { paperWidth: '58mm', priceMode: 'unpriced' });
+    const rawUnpricedHidesDollars = !/\\$300\\.00/.test(rawHtml58Unpriced) && /SCALE QTY/i.test(rawHtml58Unpriced);
+    const rawPrintRes = P.printThermalTicket('raw', rawDraft, { paperWidth: '80mm', priceMode: 'priced', openModal: true });
+    const modalOpenAfterPrint = !document.getElementById('thermalPrintModal').hidden;
+    P.closeThermalModal();
+    const rawOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    // 3. Open Kiosk 3: Fuel & Lubricants Kiosk (Dispense + Bulk Tank Refill)
+    K.switchKiosk('fuel', 'dispense');
+    const fuelDispenseHasMeter = !!document.getElementById('f_meter');
+    const fuelDraft = Object.assign({}, K.buildDraftRecord(), { litres: 125, odometer: 148200, meter_delta: 380 });
+    const fuelBytes80 = P.buildEscPosBytes('fuel', fuelDraft, { paperWidth: '80mm', priceMode: 'priced' });
+    const fuelHtml80 = P.renderThermalTicketHtml('fuel', fuelDraft, { paperWidth: '80mm', priceMode: 'priced' });
+    const fuelSlipOk = /125\\.0 L/.test(fuelHtml80) && fuelBytes80.length > 200;
+    K.switchKiosk('fuel', 'refill');
+    const fuelRefillHasCategory = !!document.getElementById('f_category');
+    const fuelOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    // 4. Open Kiosk 4: Attendance Biometric Kiosk (4:3 Camera + 4-Digit PIN + 2-Min Debounce + Direction Flip)
+    K.switchKiosk('attendance');
+    const attViewport = document.getElementById('kioskAttViewport');
+    const attHasPinPad = document.querySelectorAll('#kioskAttPinPad [data-kiosk-pin-key]').length === 12;
+    const punchRes1 = K.recordAttendancePunch({ staff: 'Sabah Kassab', method: 'PIN', bypassDebounce: true });
+    // Immediate second punch within 120s should be debounced
+    const punchResDebounce = K.recordAttendancePunch({ staff: 'Sabah Kassab', method: 'PIN' });
+    // Instant flip direction button
+    const dirBeforeFlip = punchRes1.punch ? punchRes1.punch.direction : '';
+    const flipRes = K.flipPunchDirection(punchRes1.punch ? punchRes1.punch.id : '');
+    const dirAfterFlip = flipRes.punch ? flipRes.punch.direction : '';
+    const attOverflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    // 5. Locked Tablet Kiosk Shell Mode (PIN 2401)
+    K.setKioskLock(true);
+    const lockedBodyClass = document.body.classList.contains('kiosk-locked');
+    const wrongPinUnlock = K.setKioskLock(false, '0000');
+    const rightPinUnlock = K.setKioskLock(false, '2401');
+    const unlockedBodyClass = !document.body.classList.contains('kiosk-locked');
+
+    // Reset to Sales Kiosk 80mm Priced & return to Overview
+    K.setPrintConfig({ paperWidth: 80, priceMode: 'priced' });
+    K.switchKiosk('sales');
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+
+    return {
+      ok: salesTabsCount === 4 && sales80PricedHasWidth && sales58UnpricedClass &&
+          salesBytes80Priced.length > 300 && salesBytes58Unpriced.length > 250 &&
+          salesPricedShowsDollars && salesUnpricedHidesDollars &&
+          rawBytes80Priced.length > 300 && rawBytes58Unpriced.length > 250 &&
+          rawPricedShows2Legs && rawUnpricedHidesDollars && rawPrintRes.ok && modalOpenAfterPrint &&
+          fuelDispenseHasMeter && fuelSlipOk && fuelRefillHasCategory &&
+          !!attViewport && attHasPinPad && punchRes1.ok &&
+          !punchResDebounce.ok && punchResDebounce.reason === 'debounced' &&
+          flipRes.ok && dirBeforeFlip !== dirAfterFlip &&
+          lockedBodyClass && !wrongPinUnlock && rightPinUnlock && unlockedBodyClass &&
+          salesOverflow === 0 && rawOverflow === 0 && fuelOverflow === 0 && attOverflow === 0,
+      salesTabsCount,
+      salesBytes80: salesBytes80Priced.length,
+      salesBytes58: salesBytes58Unpriced.length,
+      rawBytes80: rawBytes80Priced.length,
+      rawBytes58: rawBytes58Unpriced.length,
+      fuelBytes80: fuelBytes80.length,
+      salesPricedShowsDollars,
+      salesUnpricedHidesDollars,
+      rawPricedShows2Legs,
+      rawUnpricedHidesDollars,
+      debounced: punchResDebounce.reason,
+      flipped: dirBeforeFlip + '->' + dirAfterFlip,
+      lockedBodyClass,
+      unlockedBodyClass,
+      overflows: { salesOverflow, rawOverflow, fuelOverflow, attOverflow }
+    };
+  })()`);
+  kioskSuiteProbe && kioskSuiteProbe.ok
+    ? pass('4-kiosk suite & bluetooth thermal printer · Sales/Raw/Fuel/Attendance + 80mm/58mm ESC/POS + Priced vs Unpriced Gate Pass + 2m debounce & flip + Kiosk Lock', `sales=${kioskSuiteProbe.salesBytes80}B/80mm & ${kioskSuiteProbe.salesBytes58}B/58mm · raw=${kioskSuiteProbe.rawBytes80}B/80mm & ${kioskSuiteProbe.rawBytes58}B/58mm · att=${kioskSuiteProbe.flipped}`)
+    : fail('4-kiosk suite & bluetooth thermal printer', JSON.stringify(kioskSuiteProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
