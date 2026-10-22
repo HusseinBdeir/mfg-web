@@ -1662,12 +1662,41 @@ try {
     // Test grain buttons (Year, Month, Week, Day) & custom From-To range
     document.querySelector('[data-pbi-grain="year"]').click();
     const yearOpts = document.getElementById('pbiPeriodSelect').options.length;
+    const yearOptgroups = document.getElementById('pbiPeriodSelect').querySelectorAll('optgroup').length;
+    const topYearOptgroups = (document.getElementById('periodSelect') || document.createElement('select')).querySelectorAll('optgroup').length;
     document.querySelector('[data-pbi-grain="month"]').click();
     const monthOpts = document.getElementById('pbiPeriodSelect').options.length;
     document.querySelector('[data-pbi-grain="week"]').click();
     const weekOpts = document.getElementById('pbiPeriodSelect').options.length;
     document.querySelector('[data-pbi-grain="day"]').click();
     const dayOpts = document.getElementById('pbiPeriodSelect').options.length;
+
+    // Verify dynamic real-time presets rollover (Oct 2026 -> Nov 2026 -> Jan 2027) & no static FY year rows in presets
+    const dtApi = window.MFG_DATE_TEST;
+    const catOct = dtApi ? dtApi.catalogFor('2026-10-22') : null;
+    const catNov = dtApi ? dtApi.catalogFor('2026-11-15') : null;
+    const catJan = dtApi ? dtApi.catalogFor('2027-01-10') : null;
+    const findPre = (cat, v) => (cat && cat.all ? cat.all.find(o => o.value === v) : null);
+    const hasYearRowsInPresets = Boolean(catOct && catOct.all.some(o => /^fy202[0-9]$/i.test(o.value) || /Full Year/i.test(o.label)));
+    const octMtd = findPre(catOct, 'mtd');
+    const octPrev1 = findPre(catOct, 'prev_m1');
+    const novMtd = findPre(catNov, 'mtd');
+    const novPrev1 = findPre(catNov, 'prev_m1');
+    const novPrev2 = findPre(catNov, 'prev_m2');
+    const janMtd = findPre(catJan, 'mtd');
+    const janPrev1 = findPre(catJan, 'prev_m1');
+    const janQtd = findPre(catJan, 'qtd');
+    const janLastQ = findPre(catJan, 'last_q');
+    const janYtd = findPre(catJan, 'ytd');
+    const dynamicRolloverOk = Boolean(
+      yearOptgroups === 0 && topYearOptgroups === 0 && !hasYearRowsInPresets &&
+      octMtd && octMtd.label === 'October 2026 (MTD)' && octPrev1 && octPrev1.label === 'September 2026' &&
+      novMtd && novMtd.label === 'November 2026 (MTD)' && novMtd.from === '2026-11-01' && novMtd.to === '2026-11-30' &&
+      novPrev1 && novPrev1.label === 'October 2026' && novPrev1.from === '2026-10-01' && novPrev1.to === '2026-10-31' &&
+      novPrev2 && novPrev2.label === 'September 2026' &&
+      janMtd && janMtd.label === 'January 2027 (MTD)' && janPrev1 && janPrev1.label === 'December 2026' &&
+      janQtd && /Q1 2027/.test(janQtd.label) && janLastQ && /Q4 2026/.test(janLastQ.label) && janYtd && /2027 YTD/.test(janYtd.label)
+    );
 
     // Test custom date range 2024-06-01 .. 2024-06-30
     const df = document.getElementById('pbiDateFrom');
@@ -1688,6 +1717,7 @@ try {
       salesCnt, rawCnt, minSalesDate,
       maxBodyRows, pagers, wrapMaxH, page2Text,
       yearOpts, monthOpts, weekOpts, dayOpts,
+      dynamicRolloverOk, novPrev1Label: novPrev1 ? novPrev1.label : '', novMtdLabel: novMtd ? novMtd.label : '',
       rangeMeta, resetFrom, resetTo, maxAttr, overflowP06
     };
   })()`);
@@ -1697,8 +1727,8 @@ try {
   pbiHistoryProbe.maxBodyRows <= 15 && pbiHistoryProbe.pagers >= 3 && /Page 2/.test(pbiHistoryProbe.page2Text) && pbiHistoryProbe.wrapMaxH !== 'none'
     ? pass('pbiTable · compact 15-row pages, bounded scroll & interactive pager', `${pbiHistoryProbe.pagers} pagers, maxRows=${pbiHistoryProbe.maxBodyRows}, maxH=${pbiHistoryProbe.wrapMaxH}`)
     : fail('pbiTable pagination', JSON.stringify(pbiHistoryProbe));
-  pbiHistoryProbe.yearOpts >= 7 && pbiHistoryProbe.monthOpts >= 84 && pbiHistoryProbe.weekOpts >= 360 && pbiHistoryProbe.dayOpts >= 700 && /2024-06-01/.test(pbiHistoryProbe.rangeMeta) && pbiHistoryProbe.resetFrom === '2024-01-01' && pbiHistoryProbe.resetTo === '2030-12-31' && pbiHistoryProbe.maxAttr === '2030-12-31' && pbiHistoryProbe.overflowP06 === 0
-    ? pass('date slicer · 2024–2030 Year/Month/Week/Day grains + From–To date range (0px overflow)', `Y=${pbiHistoryProbe.yearOpts}, M=${pbiHistoryProbe.monthOpts}, W=${pbiHistoryProbe.weekOpts}, D=${pbiHistoryProbe.dayOpts}, range=${pbiHistoryProbe.resetFrom}..${pbiHistoryProbe.resetTo}`)
+  pbiHistoryProbe.yearOpts === 7 && pbiHistoryProbe.monthOpts >= 84 && pbiHistoryProbe.weekOpts >= 360 && pbiHistoryProbe.dayOpts >= 700 && pbiHistoryProbe.dynamicRolloverOk && /2024-06-01/.test(pbiHistoryProbe.rangeMeta) && pbiHistoryProbe.resetFrom === '2024-01-01' && pbiHistoryProbe.resetTo === '2030-12-31' && pbiHistoryProbe.maxAttr === '2030-12-31' && pbiHistoryProbe.overflowP06 === 0
+    ? pass('date slicer · dynamic real-time presets (no Quick Presets header / no FY year rows; Nov rolls to Oct) + 2024–2030 grains', `Y=${pbiHistoryProbe.yearOpts}, M=${pbiHistoryProbe.monthOpts}, Nov=[${pbiHistoryProbe.novMtdLabel}, ${pbiHistoryProbe.novPrev1Label}]`)
     : fail('date slicer grains/range', JSON.stringify(pbiHistoryProbe));
 
   // 7d. Sticky tfoot Totals, Unjammed P04 Tables & Collapsible Left Rail (Manufacturing Command)
@@ -2064,6 +2094,106 @@ try {
   kioskSuiteProbe && kioskSuiteProbe.ok
     ? pass('4-kiosk suite & bluetooth thermal printer · Sales/Raw/Fuel/Attendance + 80mm/58mm ESC/POS + Priced vs Unpriced Gate Pass + 2m debounce & flip + Kiosk Lock', `sales=${kioskSuiteProbe.salesBytes80}B/80mm & ${kioskSuiteProbe.salesBytes58}B/58mm · raw=${kioskSuiteProbe.rawBytes80}B/80mm & ${kioskSuiteProbe.rawBytes58}B/58mm · att=${kioskSuiteProbe.flipped}`)
     : fail('4-kiosk suite & bluetooth thermal printer', JSON.stringify(kioskSuiteProbe));
+
+  // 7f. Search-box & combobox first-click stability (no 120ms blur-timer closeAll race across sequential fields + DOM node preservation on #tableSearchInput)
+  const searchFocusStability = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    await wait(80);
+
+    // 1. Verify #tableSearchInput keeps exact DOM node reference & activeElement focus across debounced typing re-renders
+    const searchBefore = document.getElementById('tableSearchInput');
+    searchBefore.focus();
+    searchBefore.value = 'Sabeh';
+    searchBefore.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(220);
+    const searchAfter = document.getElementById('tableSearchInput');
+    const sameSearchDomNode = (searchBefore === searchAfter) && (document.activeElement === searchAfter);
+    searchAfter.value = '';
+    searchAfter.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(200);
+
+    // 2. Open Sales Ticket modal, switch Sale Type to Delivery (as in user screenshot) and perform Product -> Customer -> Destination Site
+    const openBtn = document.querySelector('[data-open-modal="sales"]');
+    if (openBtn) openBtn.click();
+    await wait(90);
+
+    const fSaleType = document.getElementById('f_saletype');
+    if (fSaleType) {
+      fSaleType.value = 'Delivery';
+      fSaleType.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const fProd = document.getElementById('f_product');
+    const fCust = document.getElementById('f_customer');
+    const fSite = document.getElementById('f_site');
+    const prodMenu = fProd.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
+    const custMenu = fCust.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
+    const siteMenu = fSite.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
+
+    // Click Product and pick first item while keeping focus on fProd (as mousedown preventDefault does)
+    fProd.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fProd.focus();
+    fProd.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const prodOpenedFirstClick = !prodMenu.hidden;
+    const prodItem0 = prodMenu.querySelector('.pa-suggest-item');
+    if (prodItem0) prodItem0.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+
+    // Immediately click Customer (simulating user clicking next search box while fProd blurs and starts 120ms timer)
+    fCust.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fCust.focus();
+    fCust.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const custOpenedImmediately = !custMenu.hidden;
+    await wait(180); // Wait past the 120ms blur timer of fProd!
+    const custStayedOpenAfter180ms = !custMenu.hidden && document.activeElement === fCust;
+
+    // Pick a customer from Customer menu
+    const custItem0 = custMenu.querySelector('.pa-suggest-item');
+    if (custItem0) custItem0.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+
+    // Immediately click Destination Site (exact reproduction of user's screenshot!)
+    fSite.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fSite.focus();
+    fSite.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const siteOpenedImmediately = !siteMenu.hidden;
+    await wait(180); // Wait past the 120ms blur timer of fCust!
+    const siteStayedOpenAfter180ms = !siteMenu.hidden && document.activeElement === fSite;
+
+    document.getElementById('closeModalBtn').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+
+    return {
+      ok: sameSearchDomNode && prodOpenedFirstClick && custOpenedImmediately && custStayedOpenAfter180ms && siteOpenedImmediately && siteStayedOpenAfter180ms,
+      sameSearchDomNode,
+      prodOpenedFirstClick,
+      custOpenedImmediately,
+      custStayedOpenAfter180ms,
+      siteOpenedImmediately,
+      siteStayedOpenAfter180ms
+    };
+  })()`);
+  searchFocusStability && searchFocusStability.ok
+    ? pass('search-box & combobox first-click stability · Product→Customer→Site sequential click stays open past 120ms blur timer + #tableSearchInput DOM node preserved', JSON.stringify(searchFocusStability))
+    : fail('search-box & combobox first-click stability', JSON.stringify(searchFocusStability));
+
+  // 7g. Command Center 2-word subtitle & Public Showcase navigation links (#railShowcaseLink in sidebar + #authShowcaseLink in auth gate)
+  const showcaseBrandProbe = await evaluate(`(() => {
+    const brandSub = (document.querySelector('.brand-sub') || {}).textContent?.trim() || '';
+    const railLink = document.getElementById('railShowcaseLink');
+    const authLink = document.getElementById('authShowcaseLink');
+    const railHref = railLink ? (railLink.getAttribute('href') || '') : '';
+    const authHref = authLink ? (authLink.getAttribute('href') || '') : '';
+    return {
+      ok: brandSub === 'Command Center' && !!railLink && !!authLink && (railHref === '../' || railHref === '/showcase/') && railHref === authHref && /ISABI Command Center/.test(document.title),
+      brandSub,
+      railHref,
+      authHref,
+      docTitle: document.title
+    };
+  })()`);
+  showcaseBrandProbe && showcaseBrandProbe.ok
+    ? pass('Command Center branding & Public Showcase navigation · .brand-sub="Command Center" + #railShowcaseLink & #authShowcaseLink', `${showcaseBrandProbe.brandSub} · href=${showcaseBrandProbe.railHref}`)
+    : fail('Command Center branding & Public Showcase navigation', JSON.stringify(showcaseBrandProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

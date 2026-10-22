@@ -1369,7 +1369,6 @@
               <select id="pbiPeriodSelect" class="pbi-period-select" aria-label="Power BI Period Value">
                 ${STATE.period === 'custom' ? `<option value="custom" selected>Range: ${esc(curFrom)} → ${esc(curTo)}</option>` : ''}
                 ${activeGrainOpts.map(o => `<option value="${esc(o.value)}" ${STATE.period === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-                ${STATE.dateGrain !== 'all' && grainCat.all ? `<optgroup label="Quick Presets">${grainCat.all.map(o => `<option value="${esc(o.value)}" ${STATE.period === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</optgroup>` : ''}
               </select>
             </div>
             <div class="pbi-date-right">

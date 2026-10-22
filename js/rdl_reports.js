@@ -3118,20 +3118,33 @@
     function wireParamControls() {
       const liveCtx = buildRdlContext(SEED, STATE);
 
+      const closeSingleCombo = (w) => {
+        if (!w) return;
+        w.classList.remove('open');
+        const m = w.querySelector('.rdl-combo-menu');
+        if (m) m.hidden = true;
+        const inp = w.querySelector('.rdl-combo-input');
+        if (inp && inp.dataset.typing === '1') {
+          inp.dataset.typing = '';
+          inp.value = inp.dataset.displayLabel || '';
+          if (inp.dataset.origPlaceholder) inp.placeholder = inp.dataset.origPlaceholder;
+        }
+      };
+
       const closeAllCombos = (exceptWrap) => {
         root.querySelectorAll('.rdl-combo[data-combo-wrap]').forEach(w => {
           if (w === exceptWrap) return;
-          w.classList.remove('open');
-          const m = w.querySelector('.rdl-combo-menu');
-          if (m) m.hidden = true;
-          const inp = w.querySelector('.rdl-combo-input');
-          if (inp && inp.dataset.typing === '1') {
-            inp.dataset.typing = '';
-            inp.value = inp.dataset.displayLabel || '';
-            if (inp.dataset.origPlaceholder) inp.placeholder = inp.dataset.origPlaceholder;
-          }
+          closeSingleCombo(w);
         });
       };
+
+      if (document.body && !document.body.dataset.rdlComboOutsideWired) {
+        document.body.dataset.rdlComboOutsideWired = '1';
+        document.addEventListener('mousedown', ev => {
+          if (ev.target && ev.target.closest('.rdl-combo')) return;
+          document.querySelectorAll('.rdl-combo.open[data-combo-wrap]').forEach(w => closeSingleCombo(w));
+        });
+      }
 
       // Date inputs
       root.querySelectorAll('input.rdl-date-input[data-rdl-param]').forEach(inp => {
@@ -3155,9 +3168,15 @@
 
         let currentMatches = [];
         let activeIdx = -1;
+        let blurTimer = null;
+
+        menu.addEventListener('mousedown', ev => {
+          ev.preventDefault();
+        });
 
         const chooseOption = (opt) => {
           if (!opt) return;
+          clearTimeout(blurTimer);
           inp.dataset.typing = '';
           inp.dataset.rawValue = String(opt.value);
           inp.dataset.displayLabel = opt.label;
@@ -3249,7 +3268,9 @@
           });
         };
 
-        const enterSearchMode = () => {
+        const enterSearchMode = (forceRender = false) => {
+          clearTimeout(blurTimer);
+          if (inp.dataset.typing === '1' && !menu.hidden && !forceRender) return;
           if (inp.dataset.typing !== '1') {
             inp.dataset.origPlaceholder = inp.placeholder;
             inp.placeholder = `Search ${cfg.label.toLowerCase()} by name, # or date… (${inp.dataset.displayLabel || ''})`;
@@ -3259,9 +3280,18 @@
           renderMenu(Boolean(inp.value.trim()));
         };
 
-        inp.addEventListener('focus', enterSearchMode);
-        inp.addEventListener('click', enterSearchMode);
+        inp.addEventListener('focus', () => enterSearchMode(false));
+        inp.addEventListener('mousedown', () => {
+          clearTimeout(blurTimer);
+          if (document.activeElement === inp && menu.hidden) {
+            enterSearchMode(true);
+          }
+        });
+        inp.addEventListener('click', () => {
+          if (menu.hidden) enterSearchMode(true);
+        });
         inp.addEventListener('input', () => {
+          clearTimeout(blurTimer);
           inp.dataset.typing = '1';
           renderMenu(true);
         });
@@ -3278,8 +3308,9 @@
         });
 
         inp.addEventListener('blur', () => {
-          setTimeout(() => {
-            if (document.activeElement !== inp) closeAllCombos(null);
+          clearTimeout(blurTimer);
+          blurTimer = setTimeout(() => {
+            if (document.activeElement !== inp) closeSingleCombo(wrap);
           }, 150);
         });
 

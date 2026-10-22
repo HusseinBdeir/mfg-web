@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ISABI Systems | Enterprise Operations Command &amp; Ledger</title>
-  <meta name="description" content="ISABI Systems — Enterprise Operations Command Center &amp; Double-Entry Ledger across 10 Industries (Manufacturing, Hospitality, Trading, Real Estate, Insurance &amp; Holding).">
+  <title>ISABI Systems | Command Center &amp; Double-Entry Ledger</title>
+  <meta name="description" content="ISABI Systems — Command Center &amp; Double-Entry Ledger across 10 Industries (Manufacturing, Hospitality, Trading, Real Estate, Insurance &amp; Holding).">
   <meta name="theme-color" content="#F4F2EE">
   <script id="pre">
     // Pre-paint theme + iOS standalone + SW-resume detection (no white flash or auth-gate flash on reload) — PWA.md §3.1 & §3.3
@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '9.6';
+      window.__MFG_SHELL_VER = '9.9';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -31,7 +31,7 @@
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ISABI Command">
+  <meta name="apple-mobile-web-app-title" content="Command Center">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -39,14 +39,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=9.6">
+  <link rel="stylesheet" href="css/app.css?v=9.9">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
     <!-- ==================== LEFT INK RAIL (REV 10 "LEDGER") ==================== -->
     <aside class="rail" id="sidebar">
       <div class="brand">
-        <a href="#overview" class="brand-lockup" id="brandHomeLink" aria-label="ISABI Systems Manufacturing Command">
+        <a href="#overview" class="brand-lockup" id="brandHomeLink" aria-label="ISABI Systems Command Center">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="brand-badge" role="img" aria-label="ISABI Systems Badge">
             <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.35)" stroke-width="3"/>
             <g transform="translate(39.52,77.62) scale(0.74)">
@@ -83,7 +83,7 @@
                 <path transform="translate(222.83,0)" d="M510.6 1.2Q503.89 1.2 497.92 0.09Q491.96 -1.01 487.43 -3.57Q482.9 -6.12 480.34 -10.29Q477.77 -14.45 477.77 -20.57Q477.77 -20.98 477.8 -21.44Q477.82 -21.89 477.87 -22.14H491.88Q491.84 -21.85 491.79 -21.3Q491.74 -20.75 491.74 -20.2Q491.74 -17 494.02 -14.84Q496.3 -12.68 500.58 -11.6Q504.85 -10.52 510.61 -10.52Q513.72 -10.52 516.46 -10.85Q519.2 -11.18 521.46 -11.81Q523.72 -12.44 525.38 -13.41Q206.43 -14.39 527.92 -15.72Q528.8 -17.04 528.8 -18.68Q528.8 -21.44 526.74 -23.17Q524.68 -24.9 521.17 -26.06Q517.66 -27.22 513.26 -28.1Q508.86 -28.98 504.19 -29.96Q499.51 -30.94 495.11 -32.44Q490.71 -33.94 487.2 -36.19Q483.7 -38.44 481.63 -41.93Q479.57 -45.43 479.57 -50.42Q479.57 -55.22 481.74 -58.86Q483.91 -62.51 488.02 -64.96Q492.13 -67.4 497.87 -68.63Q503.62 -69.85 510.76 -69.85Q517.75 -69.85 523.35 -68.58Q528.94 -67.31 532.88 -64.79Q536.82 -62.26 538.9 -58.56Q540.97 -54.86 540.97 -50V-48.6H527.16V-49.75Q527.16 -52.31 525.1 -54.17Q523.04 -56.02 519.43 -57.08Q515.82 -58.13 511.14 -58.13Q505.35 -58.13 501.52 -57.25Q497.7 -56.38 495.81 -54.78Q493.92 -53.18 493.92 -51.02Q493.92 -48.61 495.98 -47.06Q498.04 -45.5 501.55 -44.47Q505.06 -43.44 509.46 -42.58Q513.86 -41.72 518.53 -40.69Q523.21 -39.66 527.61 -38.21Q532.01 -36.76 535.52 -34.46Q539.02 -32.16 541.09 -28.74Q543.15 -25.32 543.15 -20.44Q543.15 -12.59 538.99 -7.82Q534.84 -3.05 527.49 -0.92Q520.15 1.2 510.6 1.2Z"/>
               </g>
             </svg>
-            <small class="brand-sub">Enterprise Command</small>
+            <small class="brand-sub">Command Center</small>
           </div>
         </a>
         <div class="rail-head-actions">
@@ -201,6 +201,10 @@
           <span>Team Auth &amp; Users</span>
           <em class="nav-pill brass" id="navCountUsers">10 Seats</em>
         </button>
+        <a href="../" class="rail-showcase-link" id="railShowcaseLink" aria-label="Public Showcase">
+          <span>← Public Showcase</span>
+          <em class="nav-pill brass">Web</em>
+        </a>
       </nav>
 
       <div class="rail-footer">
@@ -305,16 +309,23 @@
               <button type="button" class="grain-btn" data-grain="day" title="Filter by Specific Day">Day</button>
             </div>
 
-            <!-- Period Slicer -->
+            <!-- Period Slicer (dynamically populated from real-time clock on load) -->
             <select id="periodSelect" class="pill-select" aria-label="Reporting Period">
               <option value="all">All-Time (2024–2030)</option>
-              <option value="ytd">FY 2026 (YTD)</option>
-              <option value="mtd">October 2026 (MTD)</option>
-              <option value="sep2026">September 2026</option>
-              <option value="aug2026">August 2026</option>
-              <option value="q3_2026">Q3 2026 (Jul–Sep)</option>
-              <option value="fy2025">FY 2025 (Full Year)</option>
-              <option value="fy2024">FY 2024 (Full Year)</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="wtd">This Week</option>
+              <option value="last_week">Last Week</option>
+              <option value="last_7d">Last 7 Days</option>
+              <option value="mtd">This Month (MTD)</option>
+              <option value="prev_m1">Last Month</option>
+              <option value="prev_m2">2 Months Ago</option>
+              <option value="last_30d">Last 30 Days</option>
+              <option value="qtd">This Quarter (QTD)</option>
+              <option value="last_q">Last Quarter</option>
+              <option value="last_90d">Last 90 Days</option>
+              <option value="ytd">Year to Date (YTD)</option>
+              <option value="last_12m">Last 12 Months</option>
             </select>
 
             <!-- Custom Date Range Slicer (Power BI "Period (between)" From – To) -->
@@ -480,7 +491,7 @@
           </svg>
           <div>
             <div class="auth-brand-title">ISABI SYSTEMS</div>
-            <div class="auth-brand-sub">Enterprise Operations · Biometric Face ID &amp; Cloud Auth</div>
+            <div class="auth-brand-sub">Command Center · Biometric Face ID &amp; Cloud Auth</div>
           </div>
         </div>
 
@@ -571,7 +582,7 @@
           <div id="authErrorBox" class="auth-error" hidden></div>
           <div class="auth-submit-row">
             <button type="submit" class="btn btn-brass auth-submit-btn" id="authSubmitBtn">
-              Sign In to ISABI Command
+              Sign In to Command Center
             </button>
             <button type="button" class="btn auth-enrol-btn" id="authEnrolJumpBtn" title="Sign in with your PIN and immediately launch 3-pose Face ID Auto-Enrolment">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></svg>
@@ -581,7 +592,7 @@
         </form>
 
         <div class="auth-footer-note">
-          <span>0 Dataverse Seats · 0 PPU Seats · <a href="../" id="authShowcaseLink" style="color:inherit;text-decoration:underline;font-weight:600" title="Return to ISABI Public Showcase &amp; Industry Blueprints">← ISABI Showcase</a></span>
+          <span>0 Dataverse Seats · 0 PPU Seats · <a href="../" id="authShowcaseLink" style="color:inherit;text-decoration:underline;font-weight:600" title="Return to ISABI Public Showcase &amp; Industry Blueprints">← Public Showcase</a></span>
           <span id="authCloudStatusBadge" class="auth-cloud-ok">● Connecting to cloud relay…</span>
         </div>
       </div>
@@ -605,15 +616,15 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=9.6"></script>
-  <script src="js/face.js?v=9.6"></script>
-  <script src="js/endpoints.js?v=9.6"></script>
-  <script src="js/seed_data.js?v=9.6"></script>
-  <script src="js/forms_engine.js?v=9.6"></script>
-  <script src="js/pbi_pages.js?v=9.6"></script>
-  <script src="js/rdl_reports.js?v=9.6"></script>
-  <script src="js/kiosk_print.js?v=9.6"></script>
-  <script src="js/app.js?v=9.6"></script>
+  <script src="vendor/face-api.js?v=9.9"></script>
+  <script src="js/face.js?v=9.9"></script>
+  <script src="js/endpoints.js?v=9.9"></script>
+  <script src="js/seed_data.js?v=9.9"></script>
+  <script src="js/forms_engine.js?v=9.9"></script>
+  <script src="js/pbi_pages.js?v=9.9"></script>
+  <script src="js/rdl_reports.js?v=9.9"></script>
+  <script src="js/kiosk_print.js?v=9.9"></script>
+  <script src="js/app.js?v=9.9"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

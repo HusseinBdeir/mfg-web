@@ -1,6 +1,6 @@
 {
-  "name": "ISABI Systems — Enterprise Operations Command",
-  "short_name": "ISABI Command",
+  "name": "ISABI Systems — Command Center",
+  "short_name": "Command Center",
   "description": "Multi-Industry Enterprise ERP, Fleet, Lebanese CoA Ledger & 20-Page Power BI Command Center",
   "start_url": "./",
   "scope": "./",

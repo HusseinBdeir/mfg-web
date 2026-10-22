@@ -488,7 +488,8 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   .app-shell.rail-narrow .rail-nav {
     padding: 6px 6px 10px;
   }
-  .app-shell.rail-narrow .rail-nav button.nav-item {
+  .app-shell.rail-narrow .rail-nav button.nav-item,
+  .app-shell.rail-narrow .rail-nav a.rail-showcase-link {
     padding: 6.5px 6px;
     font-size: 11.8px;
     gap: 4px;
@@ -520,7 +521,8 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   padding-top: 4px;
 }
 
-.rail-nav button.nav-item {
+.rail-nav button.nav-item,
+.rail-nav a.rail-showcase-link {
   width: 100%;
   text-align: left;
   background: transparent;
@@ -538,17 +540,21 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   gap: 5px;
   white-space: nowrap;
   min-width: 0;
+  text-decoration: none;
+  cursor: pointer;
   transition: background 0.14s, color 0.14s, border-color 0.14s;
 }
 
-.rail-nav button.nav-item > span {
+.rail-nav button.nav-item > span,
+.rail-nav a.rail-showcase-link > span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rail-nav button.nav-item:hover {
+.rail-nav button.nav-item:hover,
+.rail-nav a.rail-showcase-link:hover {
   background: var(--brass-tint);
   color: var(--ink);
 }

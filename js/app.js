@@ -74,6 +74,13 @@
 
   const IS_AUTOMATED_TEST = Boolean((typeof window !== 'undefined' && window.__MFG_HEADLESS_TEST) || (typeof navigator !== 'undefined' && navigator.webdriver));
   const SAVED_FILTER = (!IS_AUTOMATED_TEST ? lsGet('isabi_mfg_filter_state_v1', null) : null) || {};
+  const LEGACY_PERIOD_MAP = { fy2025: 'year:2025', fy2024: 'year:2024', sep2026: 'prev_m1', aug2026: 'prev_m2', q3_2026: 'last_q' };
+  const initPeriod = LEGACY_PERIOD_MAP[SAVED_FILTER.period] || SAVED_FILTER.period || 'all';
+  const initGrain = String(initPeriod).startsWith('year:') ? 'year'
+    : String(initPeriod).startsWith('month:') ? 'month'
+    : String(initPeriod).startsWith('week:') ? 'week'
+    : String(initPeriod).startsWith('day:') ? 'day'
+    : (initPeriod === 'custom' ? (SAVED_FILTER.dateGrain || 'all') : 'all');
 
   const STATE = {
     view: 'overview',
@@ -81,8 +88,8 @@
     companySwitchIndFilter: 'all',
     enterpriseScalePreview: false,
     enterprisePreviewCompanies: [],
-    period: SAVED_FILTER.period || 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025' | 'fy2024' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
-    dateGrain: SAVED_FILTER.dateGrain || 'all',            // 'all' | 'year' | 'month' | 'week' | 'day'
+    period: initPeriod,                                    // 'all' | 'today' | 'yesterday' | 'wtd' | 'last_week' | 'last_7d' | 'mtd' | 'prev_m1' | 'prev_m2' | 'last_30d' | 'qtd' | 'last_q' | 'last_90d' | 'ytd' | 'last_12m' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
+    dateGrain: initGrain,                                  // 'all' | 'year' | 'month' | 'week' | 'day'
     dateFrom: SAVED_FILTER.dateFrom || '',
     dateTo: SAVED_FILTER.dateTo || '',
     basis: (SAVED_FILTER.basis === 'tx' || SAVED_FILTER.basis === 'rep') ? SAVED_FILTER.basis : 'rep',                   // 'rep' | 'tx'
@@ -480,73 +487,147 @@
     return `${DOW_SHORT[dtObj.getDay()]} ${String(d).padStart(2, '0')} ${MONTH_SHORT[m - 1]} ${y}`;
   }
 
+  function daxKeyForWindow(fromISO, toISO) {
+    const key = `${fromISO}..${toISO}`;
+    const MAP = {
+      '2026-01-01..2026-12-31': 'ytd',
+      '2026-10-01..2026-10-31': 'mtd',
+      '2026-09-01..2026-09-30': 'sep2026',
+      '2026-08-01..2026-08-31': 'aug2026',
+      '2026-07-01..2026-09-30': 'q3_2026',
+      '2025-01-01..2025-12-31': 'fy2025',
+      '2024-01-01..2024-12-31': 'fy2024'
+    };
+    return MAP[key] || null;
+  }
+
   let _grainCatalogCache = null;
-  function getDateGrainCatalog() {
-    if (_grainCatalogCache) return _grainCatalogCache;
-    const gp = ((SEED.models['manufacturing-group'] || {}).periods) || {};
+  let _grainCatalogCacheDate = '';
+
+  function getDateGrainCatalog(overrideDateISO) {
+    const refISO = (overrideDateISO && /^\d{4}-\d{2}-\d{2}$/.test(String(overrideDateISO))) ? String(overrideDateISO) : todayISO();
+    if (!overrideDateISO && _grainCatalogCache && _grainCatalogCacheDate === refISO) return _grainCatalogCache;
+
+    const pad2 = n => String(n).padStart(2, '0');
+    const toISO = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const shiftDays = (d, delta) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta);
+    const shiftMonths = (y, m1, delta) => {
+      const dt = new Date(y, m1 - 1 + delta, 1);
+      return { y: dt.getFullYear(), m: dt.getMonth() + 1 };
+    };
+    const monthWindow = (y, m1) => {
+      const ym = `${y}-${pad2(m1)}`;
+      const ld = pad2(lastDayOfMonth(y, m1));
+      const from = `${ym}-01`;
+      const to = `${ym}-${ld}`;
+      return { ym, from, to, label: `${MONTH_LONG[m1 - 1]} ${y}`, shortLabel: `${MONTH_SHORT[m1 - 1]} ${y}`, daxKey: daxKeyForWindow(from, to) };
+    };
+
+    const [ry, rm, rd] = refISO.split('-').map(Number);
+    const refDt = new Date(ry, rm - 1, rd);
+    const yestDt = shiftDays(refDt, -1);
+    const yestISO = toISO(yestDt);
+    const dow = (refDt.getDay() + 6) % 7; // Monday = 0 .. Sunday = 6
+    const thisMonDt = shiftDays(refDt, -dow);
+    const thisSunDt = shiftDays(thisMonDt, 6);
+    const lastMonDt = shiftDays(thisMonDt, -7);
+    const lastSunDt = shiftDays(thisMonDt, -1);
+    const last7FromISO = toISO(shiftDays(refDt, -6));
+    const last30FromISO = toISO(shiftDays(refDt, -29));
+    const last90FromISO = toISO(shiftDays(refDt, -89));
+    const last12mStart = shiftMonths(ry, rm, -11);
+    const last12mFromISO = `${last12mStart.y}-${pad2(last12mStart.m)}-01`;
+
+    const curMWin = monthWindow(ry, rm);
+    const prev1 = shiftMonths(ry, rm, -1);
+    const prev1Win = monthWindow(prev1.y, prev1.m);
+    const prev2 = shiftMonths(ry, rm, -2);
+    const prev2Win = monthWindow(prev2.y, prev2.m);
+
+    const curQ = Math.floor((rm - 1) / 3) + 1;
+    const qStartM = (curQ - 1) * 3 + 1;
+    const qEndM = qStartM + 2;
+    const qtdFrom = `${ry}-${pad2(qStartM)}-01`;
+    const qtdTo = `${ry}-${pad2(qEndM)}-${pad2(lastDayOfMonth(ry, qEndM))}`;
+    const prevQ = curQ === 1 ? 4 : curQ - 1;
+    const prevQY = curQ === 1 ? ry - 1 : ry;
+    const pqStartM = (prevQ - 1) * 3 + 1;
+    const pqEndM = pqStartM + 2;
+    const lastQFrom = `${prevQY}-${pad2(pqStartM)}-01`;
+    const lastQTo = `${prevQY}-${pad2(pqEndM)}-${pad2(lastDayOfMonth(prevQY, pqEndM))}`;
+
+    const ytdFrom = `${ry}-01-01`;
+    const ytdTo = `${ry}-12-31`;
+
+    // Time-relative quick presets (automatically shift with real-time clock; no redundant full-year rows or "Quick Presets" header)
     const presets = [
       { value: 'all', label: 'All-Time (2024–2030)', from: MIN_DATE, to: MAX_DATE, daxKey: 'all' },
-      { value: 'ytd', label: (gp.ytd && gp.ytd.label) || 'FY 2026 (YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
-      { value: 'mtd', label: (gp.mtd && gp.mtd.label) || 'October 2026 (MTD)', from: '2026-10-01', to: '2026-10-31', daxKey: 'mtd' },
-      { value: 'sep2026', label: (gp.sep2026 && gp.sep2026.label) || 'September 2026', from: '2026-09-01', to: '2026-09-30', daxKey: 'sep2026' },
-      { value: 'aug2026', label: (gp.aug2026 && gp.aug2026.label) || 'August 2026', from: '2026-08-01', to: '2026-08-31', daxKey: 'aug2026' },
-      { value: 'q3_2026', label: (gp.q3_2026 && gp.q3_2026.label) || 'Q3 2026 (Jul–Sep)', from: '2026-07-01', to: '2026-09-30', daxKey: 'q3_2026' },
-      { value: 'fy2025', label: (gp.fy2025 && gp.fy2025.label) || 'FY 2025 (Full Year)', from: '2025-01-01', to: '2025-12-31', daxKey: 'fy2025' },
-      { value: 'fy2024', label: (gp.fy2024 && gp.fy2024.label) || 'FY 2024 (Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' }
+      { value: 'today', label: `Today (${rd} ${MONTH_SHORT[rm - 1]} ${ry})`, from: refISO, to: refISO, daxKey: null },
+      { value: 'yesterday', label: `Yesterday (${yestDt.getDate()} ${MONTH_SHORT[yestDt.getMonth()]} ${yestDt.getFullYear()})`, from: yestISO, to: yestISO, daxKey: null },
+      { value: 'wtd', label: `This Week (${fmtWeekLabel(toISO(thisMonDt), toISO(thisSunDt))})`, from: toISO(thisMonDt), to: toISO(thisSunDt), daxKey: null },
+      { value: 'last_week', label: `Last Week (${fmtWeekLabel(toISO(lastMonDt), toISO(lastSunDt))})`, from: toISO(lastMonDt), to: toISO(lastSunDt), daxKey: null },
+      { value: 'last_7d', label: 'Last 7 Days', from: last7FromISO, to: refISO, daxKey: null },
+      { value: 'mtd', label: `${curMWin.label} (MTD)`, from: curMWin.from, to: curMWin.to, daxKey: curMWin.daxKey },
+      { value: 'prev_m1', label: prev1Win.label, from: prev1Win.from, to: prev1Win.to, daxKey: prev1Win.daxKey },
+      { value: 'prev_m2', label: prev2Win.label, from: prev2Win.from, to: prev2Win.to, daxKey: prev2Win.daxKey },
+      { value: 'last_30d', label: 'Last 30 Days', from: last30FromISO, to: refISO, daxKey: null },
+      { value: 'qtd', label: `Q${curQ} ${ry} (${MONTH_SHORT[qStartM - 1]}–${MONTH_SHORT[qEndM - 1]} QTD)`, from: qtdFrom, to: qtdTo, daxKey: daxKeyForWindow(qtdFrom, qtdTo) },
+      { value: 'last_q', label: `Q${prevQ} ${prevQY} (${MONTH_SHORT[pqStartM - 1]}–${MONTH_SHORT[pqEndM - 1]})`, from: lastQFrom, to: lastQTo, daxKey: daxKeyForWindow(lastQFrom, lastQTo) },
+      { value: 'last_90d', label: 'Last 90 Days', from: last90FromISO, to: refISO, daxKey: null },
+      { value: 'ytd', label: `Year to Date (${ry} YTD)`, from: ytdFrom, to: ytdTo, daxKey: daxKeyForWindow(ytdFrom, ytdTo) },
+      { value: 'last_12m', label: 'Last 12 Months', from: last12mFromISO, to: curMWin.to, daxKey: null }
     ];
 
-    const years = [
-      { value: 'year:2024', label: '2024 (FY 2024 Full Year)', from: '2024-01-01', to: '2024-12-31', daxKey: 'fy2024' },
-      { value: 'year:2025', label: '2025 (FY 2025 Full Year)', from: '2025-01-01', to: '2025-12-31', daxKey: 'fy2025' },
-      { value: 'year:2026', label: '2026 (FY 2026 YTD)', from: '2026-01-01', to: '2026-12-31', daxKey: 'ytd' },
-      { value: 'year:2027', label: '2027 (FY 2027)', from: '2027-01-01', to: '2027-12-31', daxKey: null },
-      { value: 'year:2028', label: '2028 (FY 2028)', from: '2028-01-01', to: '2028-12-31', daxKey: null },
-      { value: 'year:2029', label: '2029 (FY 2029)', from: '2029-01-01', to: '2029-12-31', daxKey: null },
-      { value: 'year:2030', label: '2030 (FY 2030)', from: '2030-01-01', to: '2030-12-31', daxKey: null }
-    ];
+    // Calendar Years: active/completed years newest-first (e.g. 2026, 2025, 2024), then upcoming years through 2030
+    const years = [];
+    const maxActiveY = Math.min(2030, Math.max(2024, ry));
+    for (let y = maxActiveY; y >= 2024; y--) {
+      const f = `${y}-01-01`;
+      const t = `${y}-12-31`;
+      const suffix = y === ry ? `FY ${y} YTD` : `FY ${y} Full Year`;
+      years.push({ value: `year:${y}`, label: `${y} (${suffix})`, from: f, to: t, daxKey: daxKeyForWindow(f, t) });
+    }
+    for (let y = maxActiveY + 1; y <= 2030; y++) {
+      const f = `${y}-01-01`;
+      const t = `${y}-12-31`;
+      years.push({ value: `year:${y}`, label: `${y} (FY ${y})`, from: f, to: t, daxKey: daxKeyForWindow(f, t) });
+    }
 
     const months = [];
-    const maxY = Number(SEED_DATE.slice(0, 4)) || 2026;
-    const maxM = Number(SEED_DATE.slice(5, 7)) || 10;
-    const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
+    const maxY = maxActiveY;
+    const maxM = rm || 10;
     for (let y = maxY; y >= 2024; y--) {
       const mStart = y === maxY ? maxM : 12;
       for (let m = mStart; m >= 1; m--) {
-        const ym = `${y}-${String(m).padStart(2, '0')}`;
-        const ld = String(lastDayOfMonth(y, m)).padStart(2, '0');
+        const mw = monthWindow(y, m);
         months.push({
-          value: `month:${ym}`,
-          label: `${MONTH_SHORT[m - 1]} ${y}`,
-          from: `${ym}-01`,
-          to: `${ym}-${ld}`,
-          daxKey: daxMap[ym] || null
+          value: `month:${mw.ym}`,
+          label: mw.shortLabel,
+          from: mw.from,
+          to: mw.to,
+          daxKey: mw.daxKey
         });
       }
     }
     for (let y = maxY; y <= 2030; y++) {
       const mStart = y === maxY ? maxM + 1 : 1;
       for (let m = mStart; m <= 12; m++) {
-        const ym = `${y}-${String(m).padStart(2, '0')}`;
-        const ld = String(lastDayOfMonth(y, m)).padStart(2, '0');
+        const mw = monthWindow(y, m);
         months.push({
-          value: `month:${ym}`,
-          label: `${MONTH_SHORT[m - 1]} ${y}`,
-          from: `${ym}-01`,
-          to: `${ym}-${ld}`,
-          daxKey: null
+          value: `month:${mw.ym}`,
+          label: mw.shortLabel,
+          from: mw.from,
+          to: mw.to,
+          daxKey: mw.daxKey
         });
       }
     }
 
-    // Build Monday–Sunday weeks across 2024-01-01 .. 2030-12-31 (active weeks newest-first, then upcoming through 2030)
+    // Build Monday–Sunday weeks across 2024-01-01 .. 2030-12-31 (active weeks newest-first from real-time clock, then upcoming through 2030)
     const weeks = [];
-    const [sy, sm, sd] = SEED_DATE.split('-').map(Number);
-    const curDt = new Date(sy, sm - 1, sd);
-    const dow = (curDt.getDay() + 6) % 7; // Monday = 0 .. Sunday = 6
-    const monDt = new Date(curDt.getFullYear(), curDt.getMonth(), curDt.getDate() - dow);
+    const monDt = thisMonDt;
     const minDt = new Date(2024, 0, 1);
     const maxDt = new Date(2030, 11, 31);
-    const toISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     for (let wMon = new Date(monDt); wMon >= minDt; wMon.setDate(wMon.getDate() - 7)) {
       const wSun = new Date(wMon.getFullYear(), wMon.getMonth(), wMon.getDate() + 6);
       const fISO = toISO(wMon);
@@ -571,8 +652,8 @@
       });
     }
 
-    // Build active transaction days newest-first across 2024-01-01 .. 2030-12-31
-    const daySet = new Set([SEED_DATE]);
+    // Build active transaction days newest-first across 2024-01-01 .. 2030-12-31 (always including real-time today & yesterday)
+    const daySet = new Set([refISO, yestISO, SEED_DATE]);
     ['sales_tickets', 'raw_purchases', 'expenses', 'receipts', 'settlements', 'fuel_intakes', 'salaries'].forEach(tk => {
       (SEED.records[tk] || []).forEach(r => {
         if (r && r.date && r.date >= MIN_DATE && r.date <= MAX_DATE) daySet.add(String(r.date).slice(0, 10));
@@ -585,8 +666,12 @@
       to: iso
     }));
 
-    _grainCatalogCache = { all: presets, year: years, month: months, week: weeks, day: days };
-    return _grainCatalogCache;
+    const built = { all: presets, year: years, month: months, week: weeks, day: days };
+    if (!overrideDateISO) {
+      _grainCatalogCache = built;
+      _grainCatalogCacheDate = refISO;
+    }
+    return built;
   }
 
   function getDateGrainOptions(grain) {
@@ -595,43 +680,40 @@
   }
 
   // Reporting period → ISO date window applied to the record registers & KPIs (null = All-Time)
-  function periodRange(p) {
-    const pVal = p !== undefined ? p : STATE.period;
+  function periodRange(p, overrideDateISO) {
+    const rawVal = p !== undefined ? p : STATE.period;
+    const pVal = LEGACY_PERIOD_MAP[rawVal] || rawVal;
     if (!pVal || pVal === 'all') {
       if (STATE.dateFrom || STATE.dateTo) {
         const f = STATE.dateFrom || MIN_DATE;
         const t = STATE.dateTo || MAX_DATE;
-        return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
+        return { from: f, to: t, label: `${f} → ${t}`, isCustom: true, daxKey: daxKeyForWindow(f, t) };
       }
       return null;
     }
     if (pVal === 'custom') {
       const f = STATE.dateFrom || MIN_DATE;
       const t = STATE.dateTo || MAX_DATE;
-      return { from: f, to: t, label: `${f} → ${t}`, isCustom: true };
+      return { from: f, to: t, label: `${f} → ${t}`, isCustom: true, daxKey: daxKeyForWindow(f, t) };
     }
-    const y = SEED_DATE.slice(0, 4);
-    const ym = SEED_DATE.slice(0, 7);
-    switch (pVal) {
-      case 'ytd': return { from: y + '-01-01', to: y + '-12-31', label: 'FY 2026 (YTD)', daxKey: 'ytd' };
-      case 'mtd': return { from: ym + '-01', to: ym + '-31', label: 'October 2026 (MTD)', daxKey: 'mtd' };
-      case 'sep2026': return { from: '2026-09-01', to: '2026-09-30', label: 'September 2026', daxKey: 'sep2026' };
-      case 'aug2026': return { from: '2026-08-01', to: '2026-08-31', label: 'August 2026', daxKey: 'aug2026' };
-      case 'q3_2026': return { from: '2026-07-01', to: '2026-09-30', label: 'Q3 2026 (Jul–Sep)', daxKey: 'q3_2026' };
-      case 'fy2025': return { from: '2025-01-01', to: '2025-12-31', label: 'FY 2025 (Full Year)', daxKey: 'fy2025' };
-      case 'fy2024': return { from: '2024-01-01', to: '2024-12-31', label: 'FY 2024 (Full Year)', daxKey: 'fy2024' };
+    const cat = getDateGrainCatalog(overrideDateISO);
+    const presetHit = (cat.all || []).find(o => o.value === pVal);
+    if (presetHit && presetHit.value !== 'all') {
+      return { from: presetHit.from, to: presetHit.to, label: presetHit.label, daxKey: presetHit.daxKey || daxKeyForWindow(presetHit.from, presetHit.to) };
     }
     if (String(pVal).startsWith('year:')) {
       const yr = String(pVal).slice(5, 9);
-      const daxMap = { '2026': 'ytd', '2025': 'fy2025', '2024': 'fy2024' };
-      return { from: `${yr}-01-01`, to: `${yr}-12-31`, label: `FY ${yr}`, daxKey: daxMap[yr] || null };
+      const f = `${yr}-01-01`;
+      const t = `${yr}-12-31`;
+      return { from: f, to: t, label: `FY ${yr}`, daxKey: daxKeyForWindow(f, t) };
     }
     if (String(pVal).startsWith('month:')) {
       const ymStr = String(pVal).slice(6, 13);
       const [yr, mo] = ymStr.split('-').map(Number);
       const ld = String(lastDayOfMonth(yr || 2026, mo || 1)).padStart(2, '0');
-      const daxMap = { '2026-10': 'mtd', '2026-09': 'sep2026', '2026-08': 'aug2026' };
-      return { from: `${ymStr}-01`, to: `${ymStr}-${ld}`, label: `${MONTH_LONG[(mo || 1) - 1]} ${yr}`, daxKey: daxMap[ymStr] || null };
+      const f = `${ymStr}-01`;
+      const t = `${ymStr}-${ld}`;
+      return { from: f, to: t, label: `${MONTH_LONG[(mo || 1) - 1]} ${yr}`, daxKey: daxKeyForWindow(f, t) };
     }
     if (String(pVal).startsWith('week:')) {
       const parts = String(pVal).slice(5).split('..');
@@ -907,9 +989,15 @@
   }
 
   // A single calendar month on the transaction basis: overlay the exact DAX monthly figures on the headline totals.
-  function applyMonthlyDax(k, m) {
-    if (!String(STATE.period).startsWith('month:')) return k;
-    const ymStr = String(STATE.period).slice(6, 13);
+  function applyMonthlyDax(k, m, range) {
+    let ymStr = '';
+    if (String(STATE.period).startsWith('month:')) {
+      ymStr = String(STATE.period).slice(6, 13);
+    } else if (range && range.from && range.to && range.from.slice(0, 7) === range.to.slice(0, 7) && range.from.slice(8, 10) === '01') {
+      const [ry, rm] = range.from.slice(0, 7).split('-').map(Number);
+      if (Number(range.to.slice(8, 10)) === lastDayOfMonth(ry || 2026, rm || 1)) ymStr = range.from.slice(0, 7);
+    }
+    if (!ymStr) return k;
     const [yr, mo] = ymStr.split('-').map(Number);
     const ymLabel = `${MONTH_SHORT[(mo || 1) - 1]} ${yr}`;
     const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
@@ -950,7 +1038,7 @@
     const range = periodRange(STATE.period);
     let anchor = null;
     if (!range) anchor = periods.all ? Object.assign({}, periods.all, { label: 'All-Time (2024–2030)' }) : null;
-    else if (range.daxKey && periods[range.daxKey]) anchor = periods[range.daxKey];
+    else if (range.daxKey && periods[range.daxKey]) anchor = Object.assign({}, periods[range.daxKey], { label: range.label || periods[range.daxKey].label });
     if ((STATE.basis === 'tx' || (!range && !(STATE.customRecords.sales_tickets || []).length)) && anchor) return Object.assign({}, anchor, { sales_rep_date: anchor.sales_ttc, raw_rep_date: anchor.raw_cost, exp_rep_date: anchor.expenses, op_profit_rep_date: anchor.operating_profit, basis: STATE.basis });
     const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : MAX_DATE;
@@ -958,7 +1046,7 @@
     if (!coOverride && _kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
 
     const txRaw = computeLocalKPI(m, range, 'tx', coKey);
-    const txFinal = anchor || applyMonthlyDax(Object.assign({}, txRaw), m);
+    const txFinal = anchor || applyMonthlyDax(Object.assign({}, txRaw), m, range);
     const computed = STATE.basis === 'rep' ? bridgeKpiToBasis(txFinal, txRaw, computeLocalKPI(m, range, 'rep', coKey)) : txFinal;
 
     if (!coOverride) {
@@ -1009,7 +1097,7 @@
           if (opts.grain === 'all') {
             STATE.period = 'all';
           } else if (opts.grain === 'year') {
-            const curYr = 'year:' + SEED_DATE.slice(0, 4);
+            const curYr = 'year:' + todayISO().slice(0, 4);
             STATE.period = grainOpts.some(o => o.value === curYr) ? curYr : (grainOpts[0] ? grainOpts[0].value : 'year:2026');
           } else if (grainOpts.length) {
             STATE.period = grainOpts[0].value;
@@ -1019,14 +1107,16 @@
         }
       }
       if (opts.period !== undefined) {
-        STATE.period = opts.period;
-        if (opts.period !== 'custom') {
+        const mappedPeriod = LEGACY_PERIOD_MAP[opts.period] || opts.period;
+        STATE.period = mappedPeriod;
+        if (mappedPeriod !== 'custom') {
           STATE.dateFrom = '';
           STATE.dateTo = '';
-          if (String(opts.period).startsWith('year:')) STATE.dateGrain = 'year';
-          else if (String(opts.period).startsWith('month:')) STATE.dateGrain = 'month';
-          else if (String(opts.period).startsWith('week:')) STATE.dateGrain = 'week';
-          else if (String(opts.period).startsWith('day:')) STATE.dateGrain = 'day';
+          if (String(mappedPeriod).startsWith('year:')) STATE.dateGrain = 'year';
+          else if (String(mappedPeriod).startsWith('month:')) STATE.dateGrain = 'month';
+          else if (String(mappedPeriod).startsWith('week:')) STATE.dateGrain = 'week';
+          else if (String(mappedPeriod).startsWith('day:')) STATE.dateGrain = 'day';
+          else STATE.dateGrain = 'all';
         }
       }
       if (opts.from !== undefined || opts.to !== undefined) {
@@ -1063,12 +1153,10 @@
         html += `<option value="custom">Range: ${esc(f)} → ${esc(t)}</option>`;
       }
       html += activeOpts.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
-      if (STATE.dateGrain !== 'all') {
-        html += `<optgroup label="Quick Presets">${cat.all.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</optgroup>`;
-      }
-      if (periodSel.dataset.sig !== STATE.dateGrain + '|' + (STATE.period === 'custom' ? (STATE.dateFrom + '..' + STATE.dateTo) : '')) {
+      const sig = STATE.dateGrain + '|' + todayISO() + '|' + (STATE.period === 'custom' ? (STATE.dateFrom + '..' + STATE.dateTo) : '');
+      if (periodSel.dataset.sig !== sig) {
         periodSel.innerHTML = html;
-        periodSel.dataset.sig = STATE.dateGrain + '|' + (STATE.period === 'custom' ? (STATE.dateFrom + '..' + STATE.dateTo) : '');
+        periodSel.dataset.sig = sig;
       }
       periodSel.value = STATE.period;
     }
@@ -1082,6 +1170,13 @@
     const isFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
     if (barEl) barEl.classList.toggle('custom-active', STATE.period === 'custom' || isFiltered);
     if (rstEl) rstEl.hidden = !isFiltered;
+  }
+
+  if (typeof window !== 'undefined') {
+    window.MFG_DATE_TEST = {
+      catalogFor: (iso) => getDateGrainCatalog(iso),
+      rangeFor: (p, iso) => periodRange(p, iso)
+    };
   }
 
   function modelHasLedger(key) {
@@ -7841,6 +7936,18 @@
       let activeIdx = -1;
       let currentMatches = [];
       let choosing = false;
+      let blurTimer = null;
+
+      const closeOwnMenu = () => {
+        clearTimeout(blurTimer);
+        menu.hidden = true;
+        menu.innerHTML = '';
+        wrap.classList.remove('open');
+      };
+
+      menu.addEventListener('mousedown', ev => {
+        if (!ev.target || !ev.target.closest('input')) ev.preventDefault();
+      });
 
       const getOptions = () => {
         const dlEl = document.getElementById(listId) || body.querySelector('#' + listId);
@@ -7854,7 +7961,7 @@
         choosing = true;
         try {
           el.value = valStr;
-          closeAll(null);
+          closeOwnMenu();
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
         } finally {
@@ -7864,7 +7971,7 @@
 
       const renderMenu = (showAllOnEmpty = false, ignoreExactCurrent = false) => {
         if (el.disabled || el.readOnly || (el.dataset.policyLockedNow === '1' && !isFieldAdminUnlocked(el.id))) {
-          closeAll(null);
+          closeOwnMenu();
           return;
         }
         const all = getOptions();
@@ -7874,7 +7981,7 @@
         let filtered;
         let highlightQuery = q;
         if (!ql || (ignoreExactCurrent && exactHit)) {
-          if (!ql && !showAllOnEmpty) { closeAll(null); return; }
+          if (!ql && !showAllOnEmpty) { closeOwnMenu(); return; }
           filtered = all;
           highlightQuery = '';
         } else {
@@ -7889,7 +7996,7 @@
           filtered = starts.concat(contains);
         }
         if (!filtered.length || (!ignoreExactCurrent && filtered.length === 1 && filtered[0].value === q)) {
-          closeAll(null);
+          closeOwnMenu();
           return;
         }
         const MAX_SHOW = 7;
@@ -7918,6 +8025,7 @@
         menu.querySelectorAll('.pa-suggest-item').forEach(row => {
           row.addEventListener('mousedown', ev => {
             ev.preventDefault();
+            ev.stopPropagation();
             const idx = Number(row.getAttribute('data-suggest-idx'));
             if (currentMatches[idx] != null) choose(currentMatches[idx].value);
           });
@@ -7929,26 +8037,50 @@
       };
 
       el.addEventListener('input', () => {
+        clearTimeout(blurTimer);
         if (choosing) return;
         renderMenu(true, false);
       });
-      el.addEventListener('click', () => renderMenu(true, true));
+      el.addEventListener('focus', () => {
+        clearTimeout(blurTimer);
+        if (choosing || window.__mfgSuppressAutoFocusMenu) return;
+        renderMenu(true, true);
+      });
+      el.addEventListener('mousedown', () => {
+        clearTimeout(blurTimer);
+        if (document.activeElement === el && menu.hidden) {
+          renderMenu(true, true);
+        }
+      });
+      el.addEventListener('click', () => {
+        clearTimeout(blurTimer);
+        if (menu.hidden) {
+          renderMenu(true, true);
+        }
+      });
       caret.addEventListener('mousedown', ev => {
         ev.preventDefault();
+        ev.stopPropagation();
+        clearTimeout(blurTimer);
         if (el.dataset.policyLockedNow === '1' && !isFieldAdminUnlocked(el.id)) {
           openAdminUnlockPrompt(el.id);
           return;
         }
         if (!menu.hidden) {
-          closeAll(null);
+          closeOwnMenu();
         } else {
-          try { el.focus({ preventScroll: true }); } catch (_) {}
-          renderMenu(true, true);
+          if (document.activeElement !== el) {
+            try { el.focus({ preventScroll: true }); } catch (_) {}
+          }
+          if (menu.hidden) renderMenu(true, true);
         }
       });
       el.addEventListener('blur', () => {
-        setTimeout(() => {
-          if (document.activeElement !== el) closeAll(null);
+        clearTimeout(blurTimer);
+        blurTimer = setTimeout(() => {
+          if (document.activeElement !== el && !wrap.contains(document.activeElement)) {
+            closeOwnMenu();
+          }
         }, 120);
       });
       el.addEventListener('keydown', ev => {
@@ -8001,6 +8133,9 @@
       menu.className = 'pa-suggest-menu pa-select-menu';
       menu.setAttribute('role', 'listbox');
       menu.hidden = true;
+      menu.addEventListener('mousedown', ev => {
+        if (!ev.target || !ev.target.closest('input')) ev.preventDefault();
+      });
       wrap.appendChild(menu);
 
       let activeIdx = 0;
@@ -8117,6 +8252,7 @@
               closeAll(null);
             }
           });
+          try { filterInput.focus({ preventScroll: true }); } catch (_) {}
           setTimeout(() => { try { filterInput.focus({ preventScroll: true }); } catch (_) {} }, 15);
         }
       };
@@ -8170,7 +8306,6 @@
     const body = activeFormHost();
     if (!body) return;
     clearTimeout(modalFocusTimer);
-    wireModalSuggestions(body);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false;
     FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false; FORM_UI.showRepDate = false;
     FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; FORM_UI.postAttempted = false;
@@ -8302,10 +8437,12 @@
       el.addEventListener('change', handler);
     });
     recalcForm();
+    wireModalSuggestions(body);
     if (autoFocus && window.matchMedia('(min-width: 861px)').matches) {
       const first = body.querySelector('#f_ticketno, #f_customer, #f_supplier, #f_staff, #f_name, #f_counterparty, #f_truck, #f_category');
       if (first) {
         modalFocusTimer = setTimeout(() => {
+          if (body.contains(document.activeElement) && document.activeElement !== document.body) return;
           const modal = $('entryModal');
           const card = modal && modal.querySelector('.modal-card');
           if (card) {
@@ -8313,7 +8450,10 @@
             const fr = first.getBoundingClientRect();
             if (fr.bottom > cr.bottom - 16) return;
           }
-          try { first.focus({ preventScroll: true }); } catch (_) {}
+          window.__mfgSuppressAutoFocusMenu = true;
+          try { first.focus({ preventScroll: true }); } catch (_) {} finally {
+            window.__mfgSuppressAutoFocusMenu = false;
+          }
           if (card) card.scrollTop = 0;
           if (body) body.scrollTop = 0;
         }, 60);
@@ -10085,18 +10225,82 @@
     };
   }
 
+  let lastPointerDownAt = 0;
+
   function uiBusy() {
+    if (Date.now() - lastPointerDownAt < 400) return true;
     const m = $('entryModal');
     if (m && !m.hidden) return true;
     const ins = $('recordInspector');
     if (ins && !ins.hidden) return true;
-    if ((STATE.view === 'users' && STATE.userFormDirty) || FACE_STATE.enrolCamActive) return true;
+    if ((STATE.view === 'users' && STATE.userFormDirty) || FACE_STATE.enrolCamActive || KIOSK_ATT_STATE.camActive) return true;
+    if (document.querySelector('.pa-suggest-wrap.open, .rdl-combo.open, #companySwitch.open, #nuCompanySelector.open')) return true;
     const a = document.activeElement;
     return !!(a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName) && a.id !== 'aiInput');
   }
   function safeRender() {
     if (uiBusy()) { STATE.renderPending = true; return; }
     renderApp();
+  }
+
+  function setContainerHtmlPreservingActiveInput(container, newHtml) {
+    const active = document.activeElement;
+    const preserveId = (active && container.contains(active) && (active.id === 'tableSearchInput' || active.id === 'pbiSlicerSearch'))
+      ? active.id
+      : '';
+    if (!preserveId) {
+      container.innerHTML = newHtml;
+      return;
+    }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = newHtml;
+    const incoming = tpl.content.querySelector('#' + preserveId);
+    if (!incoming) {
+      container.innerHTML = newHtml;
+      return;
+    }
+    const liveChain = [];
+    let cur = active;
+    while (cur && cur !== container) {
+      liveChain.unshift(cur);
+      cur = cur.parentNode;
+    }
+    const newChain = [];
+    let nCur = incoming;
+    while (nCur && nCur !== tpl.content) {
+      newChain.unshift(nCur);
+      nCur = nCur.parentNode;
+    }
+    if (!liveChain.length || liveChain.length !== newChain.length || liveChain.some((el, idx) => el.tagName !== newChain[idx].tagName)) {
+      container.innerHTML = newHtml;
+      return;
+    }
+    for (let i = 0; i < liveChain.length; i++) {
+      const liveParent = i === 0 ? container : liveChain[i - 1];
+      const newParent = i === 0 ? tpl.content : newChain[i - 1];
+      const liveNode = liveChain[i];
+      const newNode = newChain[i];
+      if (liveNode !== active) {
+        Array.from(liveNode.attributes).forEach(attr => {
+          if (!newNode.hasAttribute(attr.name)) liveNode.removeAttribute(attr.name);
+        });
+        Array.from(newNode.attributes).forEach(attr => {
+          if (liveNode.getAttribute(attr.name) !== attr.value) liveNode.setAttribute(attr.name, attr.value);
+        });
+      }
+      while (liveParent.firstChild && liveParent.firstChild !== liveNode) {
+        liveParent.removeChild(liveParent.firstChild);
+      }
+      while (newParent.firstChild && newParent.firstChild !== newNode) {
+        liveParent.insertBefore(newParent.firstChild, liveNode);
+      }
+      while (liveNode.nextSibling) {
+        liveParent.removeChild(liveNode.nextSibling);
+      }
+      while (newNode.nextSibling) {
+        liveParent.appendChild(newNode.nextSibling);
+      }
+    }
   }
 
   let syncInFlight = null;
@@ -14139,6 +14343,7 @@
   }
 
   function renderApp() {
+    STATE.renderPending = false;
     document.documentElement.setAttribute('data-theme', STATE.theme);
     syncRailCollapseUi();
     const themeBtn = $('themeToggleBtn');
@@ -14178,7 +14383,7 @@
       titEl.textContent = canonicalViewTitle;
       titEl.title = canonicalViewTitle;
     }
-    document.title = `${canonicalViewTitle} · ISABI Command`;
+    document.title = `${canonicalViewTitle} · ISABI Command Center`;
 
     const aiScope = $('aiDrawerScope');
     if (aiScope) aiScope.textContent = `${String(coFullLbl).split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
@@ -14236,24 +14441,25 @@
     const container = $('workspace');
     if (!container) return;
 
+    let wsHtml = '';
     switch (STATE.view) {
-      case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
-      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
-      case 'sentinels': container.innerHTML = renderSentinels(); break;
-      case 'kiosks': container.innerHTML = renderKiosks(); break;
-      case 'sales': container.innerHTML = renderSales(); break;
-      case 'raw': container.innerHTML = renderRaw(); break;
-      case 'fleet': container.innerHTML = renderFleet(); break;
-      case 'pricing': container.innerHTML = renderPricing(); break;
+      case 'overview': wsHtml = renderOverview(); break;
+      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
+      case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
+      case 'sentinels': wsHtml = renderSentinels(); break;
+      case 'kiosks': wsHtml = renderKiosks(); break;
+      case 'sales': wsHtml = renderSales(); break;
+      case 'raw': wsHtml = renderRaw(); break;
+      case 'fleet': wsHtml = renderFleet(); break;
+      case 'pricing': wsHtml = renderPricing(); break;
       case 'customers':
-      case 'ar': container.innerHTML = renderAR(); break;
+      case 'ar': wsHtml = renderAR(); break;
       case 'suppliers':
-      case 'ap': container.innerHTML = renderAP(); break;
-      case 'expenses': container.innerHTML = renderExpenses(); break;
-      case 'payroll': container.innerHTML = renderPayroll(); break;
+      case 'ap': wsHtml = renderAP(); break;
+      case 'expenses': wsHtml = renderExpenses(); break;
+      case 'payroll': wsHtml = renderPayroll(); break;
       case 'ledger':
-      case 'gl': container.innerHTML = renderGL(); break;
+      case 'gl': wsHtml = renderGL(); break;
       case 'reg_equipment':
       case 'reg_drivers':
       case 'reg_sites':
@@ -14262,12 +14468,13 @@
       case 'reg_customers':
       case 'reg_suppliers':
       case 'reg_categories':
-        container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
+        wsHtml = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
         break;
-      case 'statements': container.innerHTML = renderStatements(); break;
-      case 'users': container.innerHTML = renderUsers(); break;
-      default: container.innerHTML = renderOverview();
+      case 'statements': wsHtml = renderStatements(); break;
+      case 'users': wsHtml = renderUsers(); break;
+      default: wsHtml = renderOverview();
     }
+    setContainerHtmlPreservingActiveInput(container, wsHtml);
     wireWorkspace(container, user);
   }
 
@@ -14385,15 +14592,20 @@
       });
     });
     const pbiSearch = $('pbiSlicerSearch');
-    if (pbiSearch) {
+    if (pbiSearch && pbiSearch.dataset.searchInputWired !== '1') {
+      pbiSearch.dataset.searchInputWired = '1';
       pbiSearch.addEventListener('input', e => {
         STATE.pbiSlicer.search = e.target.value;
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
-          const pos = e.target.selectionStart;
+          const wasFocused = document.activeElement === pbiSearch;
+          const pos = pbiSearch.selectionStart;
           renderApp();
           const next = $('pbiSlicerSearch');
-          if (next) { next.focus(); try { next.setSelectionRange(pos, pos); } catch (_) {} }
+          if (wasFocused && next && document.activeElement !== next) {
+            next.focus({ preventScroll: true });
+            try { next.setSelectionRange(pos, pos); } catch (_) {}
+          }
         }, 160);
       });
     }
@@ -14455,19 +14667,23 @@
 
     // Search: debounce, re-render, keep the caret (never re-render while a sync tick lands mid-typing)
     const searchEl = $('tableSearchInput');
-    if (searchEl) {
+    if (searchEl && searchEl.dataset.searchInputWired !== '1') {
+      searchEl.dataset.searchInputWired = '1';
       searchEl.addEventListener('input', e => {
         STATE.search = e.target.value;
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
-          const pos = e.target.selectionStart;
+          const wasFocused = document.activeElement === searchEl;
+          const pos = searchEl.selectionStart;
           STATE.shown = {};
           renderApp();
           const next = $('tableSearchInput');
-          if (next) { next.focus(); try { next.setSelectionRange(pos, pos); } catch (_) { /* type=search on some browsers */ } }
+          if (wasFocused && next && document.activeElement !== next) {
+            next.focus({ preventScroll: true });
+            try { next.setSelectionRange(pos, pos); } catch (_) { /* type=search on some browsers */ }
+          }
         }, 160);
       });
-      searchEl.addEventListener('blur', () => { if (STATE.renderPending) { STATE.renderPending = false; renderApp(); } });
     }
 
     container.querySelectorAll('[data-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.chipFilter = btn.getAttribute('data-chip'); STATE.shown = {}; renderApp(); }));
@@ -14829,6 +15045,11 @@
     if (periodSelInit) Array.from(periodSelInit.options).forEach(o => { const lbl = gp[o.value] && gp[o.value].label; if (lbl) o.textContent = lbl; });
     const snapEl = $('railRlsScope');
     if (snapEl) snapEl.removeAttribute('title');
+    const showcaseHref = (IS_LOCAL && !location.pathname.includes('/app/')) ? '/showcase/' : '../';
+    ['authShowcaseLink', 'railShowcaseLink'].forEach(id => {
+      const el = $(id);
+      if (el) el.setAttribute('href', showcaseHref);
+    });
 
     // Mobile ↔ desktop titles follow the viewport (debounced; never while a form is open)
     let lastMobile = window.innerWidth <= 860, resizeTimer = null;
@@ -15447,6 +15668,20 @@
       feedKioskFaceDescriptor: (vec, opts = {}) => handleKioskAttDescriptor({ descriptor: vec, detScore: 0.96, faceSizeFrac: 0.26, multiple: false }, opts),
       setKioskLock: (locked, pin = '2401') => setKioskLockMode(locked, pin)
     };
+
+    document.addEventListener('mousedown', () => { lastPointerDownAt = Date.now(); }, true);
+    document.addEventListener('touchstart', () => { lastPointerDownAt = Date.now(); }, { capture: true, passive: true });
+    let pendingFlushTimer = null;
+    document.addEventListener('focusout', () => {
+      if (!STATE.renderPending) return;
+      clearTimeout(pendingFlushTimer);
+      pendingFlushTimer = setTimeout(() => {
+        if (STATE.renderPending && !uiBusy()) {
+          STATE.renderPending = false;
+          renderApp();
+        }
+      }, 160);
+    });
 
     if (!STATE.authed && !navigator.webdriver && !window.__MFG_HEADLESS_TEST) {
       setTimeout(() => { if (!STATE.authed) renderApp(); }, 180);
