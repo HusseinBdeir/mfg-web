@@ -5925,7 +5925,7 @@
           <div class="pa-subgrid-title">
             <span>⊞ ${esc(sg.title)}</span>
             <span class="pa-subgrid-rel">${esc(sg.relBadge)} · ${fmtNum(rows.length)} rows</span>
-            ${hasSum ? `<span class="pa-subgrid-rel" style="background:rgba(92,224,139,.18);color:#5CE08B;border-color:rgba(92,224,139,.4)">Σ ${isMoneySum ? fmtUSD(sumVal, 2) : fmtNum(sumVal, 1)}</span>` : ''}
+            ${hasSum ? `<span class="pa-subgrid-rel" style="background:var(--good-bg);color:var(--good);border-color:color-mix(in srgb, var(--good) 40%, transparent)">Σ ${isMoneySum ? fmtUSD(sumVal, 2) : fmtNum(sumVal, 1)}</span>` : ''}
           </div>
           <div class="pa-subgrid-tools">
             ${rows.length > 3 ? `<input type="search" class="pa-subgrid-search" data-sg-filter="${esc(sg.id)}" placeholder="Filter ${esc(sg.shortLabel)}...">` : ''}

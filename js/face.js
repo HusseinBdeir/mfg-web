@@ -456,7 +456,7 @@ const Face = (() => {
     else if (kind === 1) kind = "left";
     else if (kind === 2) kind = "right";
     else if (kind === 3) kind = "done";
-    const W = "#f8fafc", B = "#D9A54A";
+    const W = "currentColor", B = "#D9A54A";
     const cam = `<rect x="40" y="2" width="20" height="12" rx="3" fill="${B}"/><circle cx="50" cy="8" r="3.4" fill="#0f172a"/>`;
     const sight = `<path d="M50 16 V40" fill="none" stroke="${B}" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round"/>`;
     const earL = `<path d="M24.5 57 q-8 7 0 14" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;

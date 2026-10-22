@@ -6691,10 +6691,16 @@ table.ledger-table tfoot tr td:last-child {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+:root[data-theme="dark"] .rdl-suite-hdr {
   background: #0F172A;
   color: #F8FAFC;
-  border-bottom: 1px solid #1E293B;
-  flex-wrap: wrap;
+  border-bottom-color: #1E293B;
 }
 
 .rdl-suite-pill {
@@ -6704,9 +6710,16 @@ table.ledger-table tfoot tr td:last-child {
   text-transform: uppercase;
   padding: 3px 8px;
   border-radius: 4px;
+  background: var(--brass-tint);
+  color: var(--brass);
+  border: 1px solid var(--brass-border);
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .rdl-suite-pill {
   background: #92400E;
   color: #FEF3C7;
-  flex-shrink: 0;
+  border-color: transparent;
 }
 
 .rdl-suite-title {
@@ -6714,7 +6727,7 @@ table.ledger-table tfoot tr td:last-child {
   font-size: 14px;
   font-weight: 700;
   margin: 0;
-  color: #F8FAFC;
+  color: var(--ink);
   margin-right: 6px;
 }
 
@@ -6727,9 +6740,9 @@ table.ledger-table tfoot tr td:last-child {
 
 .rdl-cat-btn {
   appearance: none;
-  border: 1px solid #334155;
-  background: #1E293B;
-  color: #CBD5E1;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
@@ -6739,31 +6752,49 @@ table.ledger-table tfoot tr td:last-child {
   white-space: nowrap;
 }
 
+:root[data-theme="dark"] .rdl-cat-btn {
+  border-color: #334155;
+  background: #1E293B;
+  color: #CBD5E1;
+}
+
 .rdl-cat-btn:hover {
+  background: var(--brass-tint);
+  color: var(--ink);
+  border-color: var(--brass-border);
+}
+
+:root[data-theme="dark"] .rdl-cat-btn:hover {
   background: #334155;
   color: #FFFFFF;
 }
 
 .rdl-cat-btn.active {
-  background: #D9A54A;
-  border-color: #D9A54A;
+  background: var(--brass);
+  border-color: var(--brass);
   color: #0F172A;
   font-weight: 700;
 }
 
 .rdl-search-input {
   margin-left: auto;
-  background: #1E293B;
-  border: 1px solid #334155;
-  color: #F8FAFC;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
   border-radius: 6px;
   padding: 5px 10px;
   font-size: 12px;
   min-width: 185px;
 }
 
+:root[data-theme="dark"] .rdl-search-input {
+  background: #1E293B;
+  border-color: #334155;
+  color: #F8FAFC;
+}
+
 .rdl-search-input::placeholder {
-  color: #94A3B8;
+  color: var(--muted);
 }
 
 /* 22-Tab Strip matching bhf_reports_wtc.htm */
@@ -6772,10 +6803,15 @@ table.ledger-table tfoot tr td:last-child {
   align-items: stretch;
   gap: 4px;
   padding: 6px 14px 0;
-  background: #1E293B;
-  border-bottom: 2px solid #0F172A;
+  background: var(--surface-2);
+  border-bottom: 2px solid var(--line-strong);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+:root[data-theme="dark"] .rdl-tab-bar {
+  background: #1E293B;
+  border-bottom-color: #0F172A;
 }
 
 .rdl-tab.stmt-card {
@@ -6786,11 +6822,11 @@ table.ledger-table tfoot tr td:last-child {
   justify-content: center;
   gap: 1px;
   padding: 6px 11px 7px;
-  background: #0F172A;
-  border: 1px solid #334155;
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-bottom: none;
   border-radius: 6px 6px 0 0;
-  color: #CBD5E1;
+  color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -6799,17 +6835,34 @@ table.ledger-table tfoot tr td:last-child {
   transition: background 0.12s, color 0.12s;
 }
 
+:root[data-theme="dark"] .rdl-tab.stmt-card {
+  background: #0F172A;
+  border-color: #334155;
+  color: #CBD5E1;
+}
+
 .rdl-tab.stmt-card:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .rdl-tab.stmt-card:hover {
   background: #334155;
   color: #FFFFFF;
 }
 
 .rdl-tab.stmt-card.active {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-strong);
+  border-top: 3px solid var(--brass);
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .rdl-tab.stmt-card.active {
   background: #FFFFFF;
   color: #0F172A;
   border-color: #CBD5E1;
-  border-top: 3px solid #D9A54A;
-  font-weight: 700;
 }
 
 .rdl-tab.stmt-card.rdl-tab-filtered {
@@ -6821,11 +6874,15 @@ table.ledger-table tfoot tr td:last-child {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #94A3B8;
+  color: var(--muted);
   line-height: 1.1;
 }
 
 .rdl-tab.stmt-card.active .rdl-tcat {
+  color: var(--brass);
+}
+
+:root[data-theme="dark"] .rdl-tab.stmt-card.active .rdl-tcat {
   color: #B45309;
 }
 
@@ -6835,7 +6892,7 @@ table.ledger-table tfoot tr td:last-child {
   flex-direction: column;
   min-width: 0;
   max-width: 100%;
-  background: #E2E8F0;
+  background: var(--bg);
   position: relative;
 }
 
@@ -6921,10 +6978,16 @@ table.ledger-table tfoot tr td:last-child {
 }
 
 .rdl-tb-btn.active {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #0B1730;
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .rdl-tb-btn.active {
   background: #0B1730;
   border-color: rgba(217, 165, 74, 0.55);
   color: #D9A54A;
-  font-weight: 700;
 }
 
 .rdl-tb-page {
@@ -7200,20 +7263,25 @@ table.ledger-table tfoot tr td:last-child {
 
 .rdl-combo-status {
   padding: 6.5px 11px;
-  background: #0B1730;
-  color: rgba(244, 242, 238, 0.82);
+  background: var(--surface-2);
+  color: var(--muted);
   font-size: 10.6px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  border-bottom: 1px solid rgba(217, 165, 74, 0.28);
+  border-bottom: 1px solid var(--brass-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
+:root[data-theme="dark"] .rdl-combo-status {
+  background: #0B1730;
+  color: rgba(244, 242, 238, 0.82);
+}
+
 .rdl-combo-status b {
-  color: #D9A54A;
+  color: var(--brass);
   font-variant-numeric: tabular-nums;
 }
 
@@ -7266,10 +7334,17 @@ table.ledger-table tfoot tr td:last-child {
   font-weight: 700;
   padding: 1.5px 6px;
   border-radius: 4px;
-  background: #0B1730;
-  color: #D9A54A;
+  background: var(--brass-tint);
+  color: var(--brass);
+  border: 1px solid var(--brass-border);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .rdl-opt-code {
+  background: #0B1730;
+  color: #D9A54A;
+  border-color: transparent;
 }
 
 .rdl-opt-main {
@@ -7373,9 +7448,14 @@ table.ledger-table tfoot tr td:last-child {
 }
 
 .rdl-seg-btn.active {
+  background: var(--brass);
+  color: #0B1730;
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .rdl-seg-btn.active {
   background: #0B1730;
   color: #D9A54A;
-  font-weight: 700;
 }
 
 .rdl-param-actions {
@@ -7389,9 +7469,9 @@ table.ledger-table tfoot tr td:last-child {
   appearance: none;
   height: 35px;
   padding: 0 15px;
-  background: #0B1730;
-  color: #F4F2EE;
-  border: 1px solid rgba(217, 165, 74, 0.55);
+  background: var(--brass);
+  color: #0B1730;
+  border: 1px solid var(--brass);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 700;
@@ -7399,7 +7479,19 @@ table.ledger-table tfoot tr td:last-child {
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
+:root[data-theme="dark"] .rdl-view-btn {
+  background: #0B1730;
+  color: #F4F2EE;
+  border-color: rgba(217, 165, 74, 0.55);
+}
+
 .rdl-view-btn:hover {
+  background: var(--brass-strong);
+  border-color: var(--brass-strong);
+  color: #FFFFFF;
+}
+
+:root[data-theme="dark"] .rdl-view-btn:hover {
   background: #13254B;
   border-color: #D9A54A;
   color: #D9A54A;
@@ -7441,9 +7533,15 @@ table.ledger-table tfoot tr td:last-child {
   text-transform: uppercase;
   padding: 3px 8px;
   border-radius: 4px;
+  background: var(--brass-tint);
+  color: var(--brass);
+  border: 1px solid var(--brass-border);
+}
+
+:root[data-theme="dark"] .rdl-param-scope-badge {
   background: #0B1730;
   color: #D9A54A;
-  border: 1px solid rgba(217, 165, 74, 0.4);
+  border-color: rgba(217, 165, 74, 0.4);
 }
 
 .rdl-param-search-tip {
@@ -7454,9 +7552,13 @@ table.ledger-table tfoot tr td:last-child {
 /* Paginated Canvas & White Paper Sheet */
 .rdl-canvas {
   padding: 18px 20px 28px;
-  background: #CBD5E1;
+  background: var(--bg);
   overflow-x: auto;
   min-width: 0;
+}
+
+:root[data-theme="dark"] .rdl-canvas {
+  background: #081124;
 }
 
 .rdl-sheet {
@@ -7814,3 +7916,256 @@ table.rdl-meta-box td.rdl-meta-val.bold {
     max-width: 100% !important;
   }
 }
+
+/* ============================================================================
+   v6.8 — Intuitive Data Entry: Section Ordering, Dynamic Column Gating,
+   Reporting Date & Policy-Locked Fields with Admin Privilege Unlock Process
+   ============================================================================ */
+.pa-form-sec-hdr {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  margin-top: 4px;
+  background: linear-gradient(90deg, rgba(184, 136, 59, 0.12) 0%, rgba(184, 136, 59, 0.02) 100%);
+  border-left: 3px solid var(--brass);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0 5px 5px 0;
+  font-family: "Archivo", sans-serif;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.pa-form-sec-hdr:first-child {
+  margin-top: 0;
+}
+.pa-form-sec-hdr small {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* Policy Lock & Admin Privilege Bar (#paAdminLockBar) */
+.pa-admin-lock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 7px;
+  border: 1px solid var(--brass-border);
+  background: var(--surface-2);
+  font-size: 11.5px;
+}
+.pa-admin-lock-bar.has-overrides {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: rgba(22, 163, 74, 0.07);
+}
+.pa-admin-lock-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pa-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: "Archivo", sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--brass-tint);
+  color: var(--brass);
+  border: 1px solid var(--brass-border);
+}
+.pa-admin-badge.override {
+  background: rgba(22, 163, 74, 0.14);
+  color: var(--good);
+  border-color: rgba(22, 163, 74, 0.4);
+}
+.pa-admin-lock-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pa-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--brass);
+  background: var(--brass-tint);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease;
+}
+.pa-admin-btn:hover {
+  background: var(--brass);
+  color: #0B1730;
+}
+.pa-admin-btn.secondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+}
+.pa-admin-btn.secondary:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* Admin Privilege Unlock Process Box (#paAdminUnlockBox) */
+.pa-admin-unlock-box {
+  margin-bottom: 12px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--brass);
+  background: linear-gradient(180deg, var(--brass-tint) 0%, var(--surface) 100%);
+  box-shadow: var(--shadow-sm);
+}
+.pa-admin-unlock-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.pa-admin-unlock-hdr strong {
+  font-family: "Archivo", sans-serif;
+  font-size: 12.5px;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pa-admin-unlock-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 9px;
+  line-height: 1.4;
+}
+.pa-admin-unlock-desc b {
+  color: var(--ink);
+}
+.pa-admin-unlock-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pa-admin-unlock-controls input {
+  padding: 5px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  min-width: 190px;
+}
+
+/* Field-Level Lock Pills & Input States */
+.form-field > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pa-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "Archivo", sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s ease;
+}
+.pa-lock-pill.locked {
+  background: rgba(180, 83, 9, 0.12);
+  color: #B45309;
+  border-color: rgba(180, 83, 9, 0.35);
+}
+:root[data-theme="dark"] .pa-lock-pill.locked {
+  background: rgba(245, 158, 11, 0.16);
+  color: #FBBF24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+.pa-lock-pill.locked:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+.pa-lock-pill.unlocked {
+  background: rgba(22, 163, 74, 0.14);
+  color: var(--good);
+  border-color: rgba(22, 163, 74, 0.42);
+}
+.pa-lock-pill.unlocked:hover {
+  background: rgba(200, 51, 59, 0.14);
+  color: var(--crit);
+  border-color: rgba(200, 51, 59, 0.4);
+}
+.pa-lock-pill.auto-open {
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: var(--line-strong);
+  cursor: default;
+}
+
+.form-field.is-policy-locked input,
+.form-field.is-policy-locked select {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--surface-2),
+    var(--surface-2) 7px,
+    rgba(184, 136, 59, 0.05) 7px,
+    rgba(184, 136, 59, 0.05) 14px
+  ) !important;
+  border-style: dashed !important;
+  border-color: rgba(180, 83, 9, 0.45) !important;
+  color: var(--muted) !important;
+  cursor: not-allowed;
+}
+:root[data-theme="dark"] .form-field.is-policy-locked input,
+:root[data-theme="dark"] .form-field.is-policy-locked select {
+  border-color: rgba(245, 158, 11, 0.42) !important;
+}
+.form-field.is-policy-locked .pa-suggest-caret {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.form-field.is-admin-unlocked input,
+.form-field.is-admin-unlocked select {
+  border-color: rgba(22, 163, 74, 0.65) !important;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.12);
+}
+

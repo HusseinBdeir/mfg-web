@@ -780,6 +780,69 @@ try {
       : fail('desktop sidebar resize & toggle', JSON.stringify(railToggleProbe));
   }
 
+  // 7b. Light vs. Dark mode full-surface visual parity (zero dark navy holdovers in Light mode)
+  const themeParity = await evaluate(`(() => {
+    const lum = bg => {
+      const m = String(bg || '').match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+      if (!m) return 128;
+      return 0.2126 * Number(m[1]) + 0.7152 * Number(m[2]) + 0.0722 * Number(m[3]);
+    };
+    const btn = document.getElementById('${MOBILE ? 'mobileThemeBtn' : 'themeToggleBtn'}');
+    if (document.documentElement.getAttribute('data-theme') !== 'light' && btn) btn.click();
+
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const pbiLight = {
+      rail: lum(getComputedStyle(document.getElementById('sidebar')).backgroundColor),
+      pbiHdr: lum(getComputedStyle(document.querySelector('.pbi-studio-hdr')).backgroundColor),
+      pbiTab: lum(getComputedStyle(document.querySelector('.pbi-page-tab:not(.active)')).backgroundColor),
+      pbiDateBar: lum(getComputedStyle(document.querySelector('.pbi-date-slicer-row')).backgroundColor),
+      pbiSlicerSelect: lum(getComputedStyle(document.querySelector('.pbi-slicer-item select')).backgroundColor),
+      aiDrawer: lum(getComputedStyle(document.getElementById('aiDrawer')).backgroundColor),
+      authCard: lum(getComputedStyle(document.querySelector('.auth-card')).backgroundColor)
+    };
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    const salesLight = {
+      cockpitBanner: lum(getComputedStyle(document.querySelector('.cockpit-banner')).backgroundColor)
+    };
+    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    const rdlLight = {
+      rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
+      rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
+    };
+
+    if (btn) btn.click(); // switch to Dark mode
+    const rdlDark = {
+      rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
+      rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
+    };
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    const salesDark = {
+      cockpitBanner: lum(getComputedStyle(document.querySelector('.cockpit-banner')).backgroundColor)
+    };
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const pbiDark = {
+      rail: lum(getComputedStyle(document.getElementById('sidebar')).backgroundColor),
+      pbiHdr: lum(getComputedStyle(document.querySelector('.pbi-studio-hdr')).backgroundColor),
+      pbiTab: lum(getComputedStyle(document.querySelector('.pbi-page-tab:not(.active)')).backgroundColor),
+      pbiDateBar: lum(getComputedStyle(document.querySelector('.pbi-date-slicer-row')).backgroundColor),
+      pbiSlicerSelect: lum(getComputedStyle(document.querySelector('.pbi-slicer-item select')).backgroundColor),
+      aiDrawer: lum(getComputedStyle(document.getElementById('aiDrawer')).backgroundColor),
+      authCard: lum(getComputedStyle(document.querySelector('.auth-card')).backgroundColor)
+    };
+
+    if (btn) btn.click(); // restore Light mode
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+
+    const lightVals = { ...pbiLight, ...salesLight, ...rdlLight };
+    const darkVals = { ...pbiDark, ...salesDark, ...rdlDark };
+    const allLightOk = Object.values(lightVals).every(v => v > 220);
+    const allDarkOk = Object.values(darkVals).every(v => v < 50);
+    return { allLightOk, allDarkOk, lightVals, darkVals };
+  })()`);
+  themeParity && themeParity.allLightOk && themeParity.allDarkOk
+    ? pass('theme parity · Light mode vs Dark mode across rail, PBI studio, slicers, module banners, RDL suite, AI drawer & auth card', `light minLum=${Math.round(Math.min(...Object.values(themeParity.lightVals)))} (>220) · dark maxLum=${Math.round(Math.max(...Object.values(themeParity.darkVals)))} (<50)`)
+    : fail('theme parity · Light vs Dark', JSON.stringify(themeParity));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

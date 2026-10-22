@@ -559,7 +559,7 @@
 
     const lineSvg = (lineSpec && pts.length > 1)
       ? `<polyline fill="none" stroke="${lineSpec.color || '#D9A54A'}" stroke-width="2.4" points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"/>` +
-        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.4" fill="${lineSpec.color || '#D9A54A'}" stroke="#0B1730" stroke-width="1"><title>${esc(p.lbl)} · ${esc(lineSpec.label)}: ${esc(lineSpec.isPct ? (p.v * 100).toFixed(1) + '%' : (lineSpec.isMoney !== false ? fmtUSD(p.v, 2) : fmtNum(p.v, 0)))}</title></circle>`).join('')
+        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.4" fill="${lineSpec.color || '#D9A54A'}" stroke="var(--surface)" stroke-width="1"><title>${esc(p.lbl)} · ${esc(lineSpec.label)}: ${esc(lineSpec.isPct ? (p.v * 100).toFixed(1) + '%' : (lineSpec.isMoney !== false ? fmtUSD(p.v, 2) : fmtNum(p.v, 0)))}</title></circle>`).join('')
       : '';
 
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${grid}${cols}${lineSvg}</svg>`;
@@ -588,7 +588,7 @@
     const grid = ticks.map(v => {
       const y = (padT + ((maxPos - v) / span) * plotH).toFixed(1);
       const isZero = Math.abs(v) < 0.001;
-      return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZero ? 'rgba(11,23,48,0.45)' : 'rgba(128,138,158,0.18)'}" stroke-width="${isZero ? '1.3' : '1'}" ${isZero ? '' : 'stroke-dasharray="3 3"'}/>
+      return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZero ? 'var(--line-strong)' : 'rgba(128,138,158,0.18)'}" stroke-width="${isZero ? '1.3' : '1'}" ${isZero ? '' : 'stroke-dasharray="3 3"'}/>
               <text x="${padL - 6}" y="${Number(y) + 3}" text-anchor="end" font-size="9.5" font-weight="${isZero ? '700' : '400'}" fill="var(--muted)">${isMoney ? fmtUSDk(v) : fmtNum(v, 0)}</text>`;
     }).join('');
 
@@ -1354,7 +1354,7 @@
             <div class="pbi-date-right">
               <span class="pbi-date-lbl">Period (Between)</span>
               <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
-              <span style="color:rgba(244,242,238,0.6);font-weight:700">–</span>
+              <span style="color:var(--muted);font-weight:700">–</span>
               <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
               <button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px" ${isDateFiltered ? '' : 'hidden'}>✕ All-Time</button>
             </div>
