@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS sites (
 
 CREATE TABLE IF NOT EXISTS equipment (
     id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    plate_no TEXT,
+    name TEXT NOT NULL UNIQUE,
+    plate_no TEXT UNIQUE,
     type TEXT NOT NULL,
     ownership TEXT NOT NULL,
     capacity NUMERIC(10,2) DEFAULT 0,
