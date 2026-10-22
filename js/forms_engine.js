@@ -217,27 +217,10 @@
     return { tier: t, qty: resolvedQty, adj, transAdj };
   }
 
-  // ==================== TRUCK QUICK-VIEW STRIP ====================
-  function renderTruckQuickView(truckObj, isCompanyFleet) {
-    if (!truckObj) {
-      return '';
-    }
-    const cap = Number(truckObj.capacity || 0);
-    return `
-      <div class="pa-quickview" id="paTruckQuickView">
-        <div class="pa-qv-hdr">
-          <span class="pa-qv-tag">TRUCK DETAILS</span>
-          <b>${esc(truckObj.name)}</b>
-        </div>
-        <div class="pa-qv-cells">
-          <div><small>Plate No</small><b>${esc(truckObj.plate_no || truckObj.name)}</b></div>
-          <div><small>Category / Type</small><b>${esc(truckObj.type || 'Truck')}</b></div>
-          <div><small>Capacity (m³)</small><b class="${cap > 0 ? 'brass-text' : 'warn-text'}">${cap > 0 ? cap + ' m³' : 'Unset'}</b></div>
-          <div><small>Owner / Fleet</small><b>${esc(isCompanyFleet ? (truckObj.company || 'Company Fleet') : (truckObj.supplier || '3rd-Party Hauler'))}</b></div>
-          <div><small>Default Driver</small><b>${esc(truckObj.default_driver || '—')}</b></div>
-        </div>
-      </div>
-    `;
+  // ==================== TRUCK QUICK-VIEW STRIP (RETIRED) ====================
+  function renderTruckQuickView() {
+    // Removed (2026-10-22): Truck / Equipment, Truck Owner, Driver, and Quantity/Capacity already display on the form columns.
+    return '';
   }
 
   // ==================== OPEN-TICKET & 3-LEG AP FIFO SUBGRID PREVIEWS ====================
@@ -526,7 +509,7 @@
           <div><small>Net HT</small><b id="calc_mat">$0.00</b></div>
           <div><small>11% VAT</small><b id="calc_vat">$0.00</b></div>
           <div><small>Total TTC</small><b id="calc_total">$0.00</b></div>
-          <div><small>Posting</small><b>Dr 4111 · Cr 4427</b></div>
+          <div><small>Tax Rate</small><b>11% Statutory VAT</b></div>
         </div>
       `;
     }
@@ -549,7 +532,7 @@
         <div class="form-grid-3">
           ${companyField}
           ${fld('Customer Name *', inp('f_customer', 'text', '', 'placeholder="Full legal / trade name"'))}
-          ${fld('Default Payment Method *', sel('f_method', [['Credit', 'Credit (4111 AR)'], ['Cash', 'Cash (5300 Till)']], 'Credit'))}
+          ${fld('Default Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'))}
           ${fld('VAT Registered (11%)', sel('f_vatreg', [['No', 'No'], ['Yes', 'Yes — 11% VAT Applies']], 'No'))}
           ${fld('MOF Tax Number', inp('f_mof', 'text', '', 'placeholder="Ministry of Finance #"'), { id: 'wrap_cust_mof', hidden: true })}
           ${fld('Phone / Contact', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
@@ -564,13 +547,40 @@
     if (fType === 'supplier') {
       return `
         <div class="form-grid-3">
+          ${secHdr('1. Supplier / Truck Owner Identity')}
           ${companyField}
-          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'placeholder="Quarry, hauler, or vendor name"'))}
+          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Quarry, hauler, or truck owner name"') + dl('dl_suppliers', supNames))}
           ${fld('Category', sel('f_category', [['Quarry / Raw Material', 'Quarry / Raw Material'], ['Hauler / Truck Owner', 'Hauler / Truck Owner'], ['Fuel & Lubricants', 'Fuel & Lubricants'], ['Spare Parts & Garage', 'Spare Parts & Garage'], ['General Vendor', 'General Vendor']], 'Hauler / Truck Owner'))}
           ${fld('Phone / Contact', inp('f_phone', 'text', ''))}
           ${fld('MOF Tax Number', inp('f_mof', 'text', ''))}
-          <div class="form-field check-field"><input type="checkbox" id="f_istruckowner" checked><label for="f_istruckowner">Is Truck Owner</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_istruckowner" checked><label for="f_istruckowner">Is Truck Owner (Hauler)</label></div>
           <div class="form-field check-field"><input type="checkbox" id="f_iva"><label for="f_iva">IVA / VAT Registered (11% Input VAT)</label></div>
+          <div class="form-field span-3" id="wrap_sup_drivers">
+            ${secHdr('2. Truck Owner Drivers (Add & Manage Drivers for this Hauler)')}
+            <div class="pa-owner-drivers-panel">
+              <div class="pa-owner-drivers-add">
+                <div class="form-field">
+                  <label for="f_sup_drv_name"><span class="pa-fld-lbl">Driver Full Name</span></label>
+                  <input type="text" id="f_sup_drv_name" list="dl_drivers" placeholder="Enter driver name to link or add..." autocomplete="off">
+                  ${dl('dl_drivers', driverNames)}
+                </div>
+                <div class="form-field">
+                  <label for="f_sup_drv_phone"><span class="pa-fld-lbl">Driver Phone (Optional)</span></label>
+                  <input type="text" id="f_sup_drv_phone" placeholder="+961 ..." autocomplete="off">
+                </div>
+                <div class="form-field">
+                  <label for="f_sup_drv_truck"><span class="pa-fld-lbl">Default Truck Plate (Optional)</span></label>
+                  <input type="text" id="f_sup_drv_truck" list="dl_equip" placeholder="Assign default truck..." autocomplete="off">
+                  ${dl('dl_equip', equipNames)}
+                </div>
+                <div class="form-field pa-owner-drivers-btn-wrap">
+                  <label><span class="pa-fld-lbl">&nbsp;</span></label>
+                  <button type="button" class="btn btn-brass" id="btnAddSupDriver">+ Add Driver to Owner</button>
+                </div>
+              </div>
+              <div id="supOwnerDriversList" class="pa-owner-drivers-list"></div>
+            </div>
+          </div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -612,15 +622,17 @@
       const isCo = fType === 'companyequipment';
       return `
         <div class="form-grid-3">
+          ${secHdr('1. Truck / Equipment Identity & Capacity')}
           ${companyField}
-          ${fld('Unit Code / Plate Identifier *', inp('f_truck', 'text', '', 'placeholder="e.g. B-123456 or SHACMAN-04"'))}
+          ${fld('Unit Code / Plate Identifier *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="e.g. B-123456 or SHACMAN-04"') + dl('dl_equip', equipNames))}
           ${fld('License Plate No.', inp('f_plateno', 'text', '', 'placeholder="Plate number"'))}
           ${fld('Equipment Category *', sel('f_category', [['Truck', 'Dump Truck / Tipper'], ['Mixer', 'Transit Mixer'], ['Loader', 'Wheel Loader'], ['Excavator', 'Excavator'], ['Bulldozer', 'Bulldozer'], ['Generator', 'Generator / Crusher'], ['Service Vehicle', 'Pickup / Service Vehicle']], 'Truck'))}
           ${fld('Capacity (m³) *', inp('f_capacity', 'number', '18', 'step="0.5" min="0"'), { id: 'wrap_eq_capacity' })}
-          ${fld('Ownership *', sel('f_ownership', isCo ? [['Owned', 'Company Owned Fleet'], ['Rented', 'Long-Term Rented']] : [['Subcontractor', 'Third-Party Hauler / Subcontractor'], ['Owned', 'Company Owned Fleet'], ['Customer', 'Customer Truck']], isCo ? 'Owned' : 'Subcontractor'))}
-          ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers" placeholder="Select or type truck owner..."') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo })}
-          ${fld('Default Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames))}
           ${fld('Model / Make', inp('f_model', 'text', '', 'placeholder="Mercedes / Volvo / Shacman / CAT"'))}
+          ${secHdr('2. Truck Owner & Default Driver Assignment')}
+          ${fld('Ownership *', sel('f_ownership', isCo ? [['Owned', 'Company Owned Fleet'], ['Rented', 'Long-Term Rented']] : [['Subcontractor', 'Third-Party Hauler / Subcontractor'], ['Owned', 'Company Owned Fleet'], ['Customer', 'Customer Truck']], isCo ? 'Owned' : 'Subcontractor'))}
+          ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers" placeholder="Select or type truck owner..."') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo, hintId: 'hint_eq_supplier', hint: '' })}
+          ${fld('Default Driver (Auto-chosen first on tickets)', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select default driver from owner\'s drivers..."') + dl('dl_drivers', driverNames), { id: 'wrap_eq_driver', hintId: 'hint_eq_driver', hint: 'Auto-selected first when this truck is chosen on a Delivery or Raw Material ticket; can be changed on the ticket if another driver substitutes.' })}
         </div>
       `;
     }
@@ -649,7 +661,7 @@
           ${fld('Payroll Month *', inp('f_paymonth', 'month', today.slice(0, 7)))}
           ${fld('Staff / Driver Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff member..."') + dl('dl_staff', staffNames))}
           ${fld('Allocated Equipment (if Driver)', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipNames))}
-          ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Bank', 'Bank Transfer']], 'Cash'))}
+          ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash'], ['Bank', 'Bank Transfer']], 'Cash'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0" placeholder="0.00"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0" placeholder="0"'))}
           ${fld('Total USD Value (90k FX) *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}
@@ -737,7 +749,7 @@
             ['conversion', 'Currency Conversion USD ↔ LBP']
           ], 'loan'))}
           ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'list="dl_counterparties" placeholder="Select or type partner, bank, or entity..."') + dl('dl_counterparties', counterpartyNames))}
-          ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed (Dr 5300 Till)'], ['Outflow', 'Cash Outflow / Repaid (Cr 5300 Till)']], 'Inflow'))}
+          ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed'], ['Outflow', 'Cash Outflow / Repaid']], 'Inflow'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
           ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}

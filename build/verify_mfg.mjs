@@ -553,7 +553,9 @@ try {
     const saleTypeDefaultIsPickup = stSelect && stSelect.value === 'Pickup';
     const saleTypeOptVals = stSelect ? Array.from(stSelect.options).map(o => o.value).join(',') : '';
     const saleTypeOptLabels = stSelect ? Array.from(stSelect.options).map(o => o.textContent.trim()).join('|') : '';
-    const saleTypeOrderOk = saleTypeDefaultIsPickup && saleTypeOptVals === 'Pickup,Delivery,Unregistered' && saleTypeOptLabels === 'Pick-up (Material Only)|Delivery (Material + Transport)|Unregistered (Spot Cash)';
+    const methSelect = document.getElementById('f_method');
+    const methOptLabels = methSelect ? Array.from(methSelect.options).map(o => o.textContent.trim()).join('|') : '';
+    const saleTypeOrderOk = saleTypeDefaultIsPickup && saleTypeOptVals === 'Pickup,Delivery,Unregistered' && saleTypeOptLabels === 'Pick-up (Material Only)|Delivery (Material + Transport)|Unregistered (Spot Cash)' && methOptLabels === 'Credit|Cash';
     const pickupSiteHidden = document.getElementById('wrap_f_site').hidden === true;
     const pickupTransByHidden = document.getElementById('wrap_f_transportby').hidden === true;
     const pickupOvertimeHidden = document.getElementById('wrap_f_overtime').hidden === true;

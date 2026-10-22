@@ -1876,19 +1876,42 @@
     const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o).map(r => r.truck);
     return uniqSorted(fromEq.concat(fromSup, fromRaw, fromSales));
   }
-  function driversForOwner(ownerName, company, isCompanyFleet) {
+  function driversForOwner(ownerName, company, isCompanyFleet, activeTruckRow) {
+    let list = [];
     if (isCompanyFleet) {
       const coDrv = (SEED.records.company_drivers || []).filter(d => !company || !d.company || d.company === company).map(d => d.driver || d.name);
-      return uniqSorted(coDrv.length ? coDrv : driverNames());
+      const customCoDrv = (SEED.records.drivers || []).filter(d => d.is_company_driver && (!company || !d.company || d.company === company)).map(d => d.name || d.driver);
+      const eqDrv = (SEED.records.company_equipment || []).filter(e => (!company || !e.company || e.company === company) && (/^own/i.test(e.ownership || '') || !e.supplier)).map(e => e.default_driver).filter(Boolean);
+      const ownEqDrv = (SEED.records.equipment || []).filter(e => /^own/i.test(e.ownership || '') || (company && norm(e.supplier) === norm(company))).map(e => e.default_driver).filter(Boolean);
+      const defDrv = (activeTruckRow && activeTruckRow.default_driver) ? [activeTruckRow.default_driver] : [];
+      list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv));
+    } else {
+      const o = norm(ownerName);
+      if (!o) {
+        if (activeTruckRow && activeTruckRow.default_driver) return [activeTruckRow.default_driver];
+        return [];
+      }
+      const fromDrv = (SEED.records.drivers || []).filter(d => norm(d.truck_owner) === o).map(d => d.name || d.driver);
+      const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
+      const fromSup = (sup && Array.isArray(sup.drivers)) ? sup.drivers : [];
+      const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
+      const fromCoEq = (SEED.records.company_equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
+      const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o && r.driver).map(r => r.driver);
+      const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o && r.driver).map(r => r.driver);
+      // Owner-operators whose driver record matches the Truck Owner's own name
+      const selfDrv = (SEED.records.drivers || []).filter(d => norm(d.name || d.driver) === o && (!d.truck_owner || norm(d.truck_owner) === o)).map(d => d.name || d.driver);
+      const defDrv = (activeTruckRow && activeTruckRow.default_driver && (!activeTruckRow.supplier || norm(activeTruckRow.supplier) === o))
+        ? [activeTruckRow.default_driver]
+        : [];
+      list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromRaw, fromSales, selfDrv, defDrv));
     }
-    const o = norm(ownerName);
-    if (!o) return [];
-    const fromDrv = (SEED.records.drivers || []).filter(d => norm(d.truck_owner) === o).map(d => d.name);
-    const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
-    const fromSup = (sup && Array.isArray(sup.drivers)) ? sup.drivers : [];
-    const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o).map(r => r.driver);
-    const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o).map(r => r.driver);
-    return uniqSorted(fromDrv.concat(fromSup, fromRaw, fromSales));
+    // Always place the selected Truck's Default Driver first in the filtered list so it is chosen first
+    if (activeTruckRow && activeTruckRow.default_driver) {
+      const defNorm = norm(activeTruckRow.default_driver);
+      const defMatch = list.find(d => norm(d) === defNorm) || activeTruckRow.default_driver;
+      list = [defMatch].concat(list.filter(d => norm(d) !== defNorm));
+    }
+    return list;
   }
   function siteInfo(name) {
     const n = norm(name);
@@ -2003,12 +2026,15 @@
     if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
-  function driverOptionHtml(v) {
+  function driverOptionHtml(v, activeTruckRow, activeOwner) {
     const info = driverInfo(v);
-    if (!info) return `<option value="${esc(v)}">`;
     const parts = [];
-    if (info.truck_owner) parts.push(info.truck_owner);
-    if (info.truck) parts.push(`Truck ${info.truck}`);
+    const isDef = !!(activeTruckRow && activeTruckRow.default_driver && norm(activeTruckRow.default_driver) === norm(v));
+    if (isDef) parts.push(`★ Default Driver (${activeTruckRow.name})`);
+    const ownerLbl = (info && info.truck_owner) || activeOwner || '';
+    if (ownerLbl) parts.push(ownerLbl);
+    if (info && info.truck && (!activeTruckRow || norm(info.truck) !== norm(activeTruckRow.name))) parts.push(`Truck ${info.truck}`);
+    if (info && info.phone) parts.push(info.phone);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
   function creditTermsForCustomer(name) {
@@ -5961,7 +5987,6 @@
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
     const adminHeaderHtml = `<div id="paAdminLockBar"></div><div id="paAdminUnlockBox" hidden></div>`;
-    const truckQvHtml = window.MFG_FORMS ? `<div class="span-3" id="paTruckQvWrap" hidden>${window.MFG_FORMS.renderTruckQuickView(null, true)}</div>` : '';
     const uoms = uniqSorted(((SEED.records && SEED.records.uoms) || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
 
     if (window.MFG_FORMS && !['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(fType)) {
@@ -5996,9 +6021,8 @@
           ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
           ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck / Equipment; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
-          ${truckQvHtml}
-          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (Posts to 4111 AR)'], ['Cash', 'Cash (Posts to 5300 Till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hidden: true, hintId: 'hint_driver', hint: '' })}
+          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
 
           ${secHdr('2. Quantities & Amounts')}
           ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Locked to Truck Capacity (m³) or 1 when Unit = Truck; auto-unlocks if truck has no capacity', hintId: 'hint_qty', hint: '' })}
@@ -6053,7 +6077,6 @@
           ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck Plate..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck Plate; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
-          ${truckQvHtml}
 
           ${secHdr('2. Quantities & Costs')}
           ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount' })}
@@ -6064,7 +6087,7 @@
           ${fld('Haulage Unit Cost ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Locked to Transport Price (Site) agreement on third-party loads', hintId: 'hint_trans', hint: '' })}
           ${fld('Haulage Cost (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Computed as Quantity × Haulage Unit Cost' })}
           ${fld('Total Payable (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Computed as Material Cost + Haulage Cost' })}
-          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (owed to payees)'], ['Cash', 'Cash (paid from till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to Credit (2-leg AP split) by default' })}
+          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to Credit (2-leg AP split) by default' })}
 
           ${secHdr('3. References & Notes')}
           ${fld('Supplier Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Quarry / hauler invoice #"'), { id: 'wrap_f_extinvoice' })}
@@ -6089,7 +6112,7 @@
           ${dateField}
           ${repDateField}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { hintId: 'hint_customer', hint: '' })}
-          ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment (Dr 5300 Till / 5121 Bank)'], ['Barter', 'Barter (goods / services)'], ['VAT', 'VAT 11% receipt'], ['Rent', 'Rent offset'], ['VATRent', 'VAT on rent']], 'Payment'))}
+          ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment'], ['Barter', 'Barter'], ['VAT', 'VAT 11% receipt'], ['Rent', 'Rent offset'], ['VATRent', 'VAT on rent']], 'Payment'))}
           ${fld('Amount Received ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { hintId: 'hint_amount', hint: '' })}
           ${fld('Settlement Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { hintId: 'hint_disc', hint: 'Written off against the oldest ticket' })}
           ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Cheque / transfer / receipt no."'))}
@@ -6144,7 +6167,7 @@
           ${companyField}
           ${dateField}
           ${repDateField}
-          ${fld('Payment Method (Scope) *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Credit', 'Credit (Cr 4011 Supplier AP)']], 'Cash'), { id: 'wrap_f_method' })}
+          ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash'], ['Credit', 'Credit']], 'Cash'), { id: 'wrap_f_method' })}
           ${fld('Category *', inp('f_category', 'text', '', 'list="dl_categories" placeholder="Select or type category..."') + dlMeta('dl_categories', cats.map(c => [c.category, c.subs && c.subs.length ? `${c.subs.length} subcats` : ''])), { id: 'wrap_f_category' })}
           ${fld('Subcategory', inp('f_subcategory', 'text', '', 'list="dl_subcats" placeholder="Pick Category first..." readonly') + dl('dl_subcats', uniqSorted(cats.flatMap(c => c.subs))), { id: 'wrap_f_subcategory', lockField: 'f_subcategory', lockReason: 'Locked until Category is selected', hintId: 'hint_subcat', hint: '' })}
           ${fld('Supplier / Vendor', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_supplier', hintId: 'hint_supplier', hint: 'Required for Credit' })}
@@ -6156,7 +6179,7 @@
         </div>
         <div class="live-calc">
           <div><small>Amount</small><b id="calc_total">$0.00</b></div>
-          <div><small>Posts to</small><b id="calc_post">Cash till 5300</b></div>
+          <div><small>Method</small><b id="calc_post">Cash</b></div>
           <div><small>Open AP to supplier</small><b id="calc_before">—</b></div>
           <div><small>GL class</small><b id="calc_gl">6x · Operating</b></div>
         </div>
@@ -6171,7 +6194,7 @@
         ${dateField}
         ${repDateField}
         ${fld('Supplier / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames()), { hintId: 'hint_supplier', hint: '' })}
-        ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment (Cr 5300 Till / 5121 Bank)'], ['Barter', 'Barter'], ['VAT', 'VAT 11% only'], ['IVA', 'IVA invoice (net + VAT)']], 'Payment'))}
+        ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment'], ['Barter', 'Barter'], ['VAT', 'VAT 11% only'], ['IVA', 'IVA invoice (net + VAT)']], 'Payment'))}
         ${fld('Amount Paid ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { hintId: 'hint_amount', hint: '' })}
         ${fld('Difference / Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'))}
         ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Cheque / transfer no."'))}
@@ -6737,12 +6760,6 @@
       : '', '');
 
     const ownTruck = isOwnUnit(truckRow, company);
-    const qvWrap = $('paTruckQvWrap');
-    if (qvWrap && window.MFG_FORMS) {
-      const showQv = !!(truckRow && !isUnreg);
-      qvWrap.hidden = !showQv;
-      qvWrap.innerHTML = showQv ? window.MFG_FORMS.renderTruckQuickView(truckRow, isCoFleet) : '';
-    }
 
     // 5. Price Agreement & List Price Lock
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
@@ -6934,12 +6951,6 @@
 
     // 3. Cascading Truck Plate -> Truck Owner + Driver + Capacity
     const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false);
-
-    const qvWrap = $('paTruckQvWrap');
-    if (qvWrap && window.MFG_FORMS) {
-      qvWrap.hidden = !truckRow;
-      qvWrap.innerHTML = truckRow ? window.MFG_FORMS.renderTruckQuickView(truckRow, isCoFleet) : '';
-    }
 
     const warnings = [];
 
@@ -7153,7 +7164,7 @@
     }
     setHint('hint_subcat', subLocked ? 'Pick a Category first' : (catNow ? `Scoped to ${catNow}` : 'Admin override active'), '');
     setText('calc_total', fmtUSD(amount, 2));
-    setText('calc_post', method === 'Cash' ? 'Cash till 5300' : 'Supplier credit 4011');
+    setText('calc_post', method === 'Cash' ? 'Cash' : 'Credit');
     const ap = openApBalance(supplier);
     setText('calc_before', ap == null ? '—' : fmtUSD(ap, 2));
     setHint('hint_supplier', method === 'Credit' && !supplier ? 'Required for Credit' : '', method === 'Credit' && !supplier ? 'crit' : '');
@@ -8515,7 +8526,7 @@
       const ci = customerInfo(custName) || {};
       const ct = creditTermsForCustomer(custName);
       cards.push({
-        tag: 'QUICK VIEW · CUSTOMER (qv_customer)',
+        tag: 'QUICK VIEW · CUSTOMER',
         targetKey: 'customers',
         targetVal: custName,
         title: custName,
@@ -8531,7 +8542,7 @@
       if (!supName || supName === 'Company fleet') return;
       const si = supplierInfo(supName) || {};
       cards.push({
-        tag: `QUICK VIEW · ${roleLbl || 'SUPPLIER'} (qv_supplier)`,
+        tag: `QUICK VIEW · ${roleLbl || 'SUPPLIER'}`,
         targetKey: 'suppliers',
         targetVal: supName,
         title: supName,
@@ -8548,7 +8559,7 @@
       const eq = equipInfo(trkName) || {};
       const lm = lastMeter(row.company, trkName, row.date);
       cards.push({
-        tag: 'QUICK VIEW · TRUCK & FLEET (qv_truck m99)',
+        tag: 'QUICK VIEW · TRUCK & FLEET',
         targetKey: 'equipment',
         targetVal: trkName,
         title: `${trkName}${eq.plate_no && eq.plate_no !== trkName ? ' · ' + eq.plate_no : ''}`,
@@ -8564,7 +8575,7 @@
       if (!siteName) return;
       const si = siteInfo(siteName) || {};
       cards.push({
-        tag: 'QUICK VIEW · SITE & QUARRY (qv_site)',
+        tag: 'QUICK VIEW · SITE & QUARRY',
         targetKey: 'sites',
         targetVal: siteName,
         title: siteName,
@@ -8581,7 +8592,7 @@
       const pi = productInfo(prodName) || {};
       const lp = listPrice(prodName);
       cards.push({
-        tag: 'QUICK VIEW · PRODUCT GRADE (qv_product)',
+        tag: 'QUICK VIEW · PRODUCT GRADE',
         targetKey: 'products',
         targetVal: prodName,
         title: prodName,
