@@ -631,8 +631,8 @@
           ${companyField}
           ${fld('Driver Full Name *', inp('f_driver', 'text', '', 'placeholder="Driver name"'))}
           <div class="form-field check-field"><input type="checkbox" id="f_iscompanydriver"><label for="f_iscompanydriver">Company Fleet Driver (on BU payroll)</label></div>
-          ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type hauler (leave blank if Company Driver)..."') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
           ${fld('Default Truck Plate', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipNames))}
+          ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Auto-filled from Truck Plate (or select hauler)..."') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
           ${fld('Phone Number', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>

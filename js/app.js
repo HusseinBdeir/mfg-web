@@ -1362,7 +1362,7 @@
     rights: [
       { id: 'read_ops', label: 'Read Operational Data & Registers', sub: '23 Operational Tables · Sales, Quarry, Fleet, AR/AP & Expenses', badge: 'READ OPS' },
       { id: 'read_fin', label: 'Read Confidential Financial, Payroll, GL & Sentinels', sub: '11 Financial/HR Tables · Salaries, Contracts, Loans, JV & Trial Balance', badge: 'READ FIN' },
-      { id: 'enter_dispatch', label: 'Enter Weighbridge Sales, Quarry Intake & Diesel', sub: 'New Sales Ticket, Raw Material 2-Leg Purchase & Fuel Intake (m142)', badge: 'ENTER DISPATCH' },
+      { id: 'enter_dispatch', label: 'Enter Weighbridge Sales, Quarry Intake & Diesel', sub: 'New Sales Ticket, Raw Material 2-Leg Purchase & Fuel Intake', badge: 'ENTER DISPATCH' },
       { id: 'enter_accounting', label: 'Enter Customer Receipts, Expenses & Settlements', sub: 'FIFO Customer Receipt, Cash/Credit Expense & Oldest-Leg AP Settlement', badge: 'ENTER ACCT' },
       { id: 'enter_master', label: 'Enter Master Data, Price Rules & Attendance', sub: 'Customers, Suppliers, Products, Sites, Trucks, Drivers, Price Rules & Attendance', badge: 'ENTER MASTER' },
       { id: 'enter_payroll_jv', label: 'Enter Confidential Payroll, Loans & JV Splits', sub: 'Monthly Salaries, Contracts, Partner Loans, FX Conversions & JV Splits', badge: 'ENTER PAYROLL' },
@@ -1376,7 +1376,7 @@
       { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'CAPACITY', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
       { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'UNIT', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
       { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'METHOD', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
-      { id: 'unlock_fleet_cascade', fields: ['f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Bypass Truck Owner → Truck/Driver cascade or Expense Category → Subcategory lock' },
+      { id: 'unlock_fleet_cascade', fields: ['f_truckowner', 'f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Override Truck → Truck Owner/Driver cascade or Expense Category → Subcategory lock' },
       { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'QUARRY', sub: 'Override the default quarry supplier bound to a raw material origin site' },
       { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'VAT 11%', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
       { id: 'unlock_formula_totals', fields: ['f_date', 'f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Transaction Date & Calculated Total Locks', rule: 'DATE / TOTAL', sub: 'Override locked Transaction Date or computed Material / Transport / Total USD' }
@@ -1405,6 +1405,7 @@
     f_qty: 'unlock_qty_cap',
     f_uom: 'unlock_uom',
     f_method: 'unlock_method',
+    f_truckowner: 'unlock_fleet_cascade',
     f_truck: 'unlock_fleet_cascade',
     f_driver: 'unlock_fleet_cascade',
     f_subcategory: 'unlock_fleet_cascade',
@@ -1987,6 +1988,28 @@
     const n = norm(name);
     if (!n) return null;
     return (SEED.records.equipment || []).find(e => norm(e.name) === n || norm(e.plate_no) === n) || null;
+  }
+  function driverInfo(name) {
+    const n = norm(name);
+    if (!n) return null;
+    return (SEED.records.drivers || []).find(d => norm(d.name) === n || norm(d.driver) === n) || null;
+  }
+  function truckOptionHtml(v) {
+    const info = equipInfo(v);
+    if (!info) return `<option value="${esc(v)}">`;
+    const parts = [];
+    if (info.supplier) parts.push(info.supplier);
+    else if (/^own/i.test(info.ownership || '')) parts.push('Company Fleet');
+    if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
+    return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
+  }
+  function driverOptionHtml(v) {
+    const info = driverInfo(v);
+    if (!info) return `<option value="${esc(v)}">`;
+    const parts = [];
+    if (info.truck_owner) parts.push(info.truck_owner);
+    if (info.truck) parts.push(`Truck ${info.truck}`);
+    return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
   function creditTermsForCustomer(name) {
     const n = norm(name);
@@ -5971,9 +5994,9 @@
           ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { id: 'wrap_f_customer', hintId: 'hint_customer', hint: '' })}
           ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
-          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-open on Company fleet', hintId: 'hint_truck', hint: '' })}
-          ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-filled from Truck Default Driver', hintId: 'hint_driver', hint: '' })}
+          ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck / Equipment; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
           ${truckQvHtml}
           ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (Posts to 4111 AR)'], ['Cash', 'Cash (Posts to 5300 Till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
 
@@ -6027,9 +6050,9 @@
           ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
           ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
-          ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_driver', hint: '' })}
-          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck Plate..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck Plate; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
           ${truckQvHtml}
 
           ${secHdr('2. Quantities & Costs')}
@@ -6168,7 +6191,10 @@
   const FORM_UI = {
     priceManual: false, transManual: false, methodManual: false, uomManual: false,
     otManual: false, ticketManual: false, qtyManual: false, repDateManual: false, showRepDate: false,
+    ownerManuallyPicked: false, driverManual: false,
     lastCompany: '', lastDate: '', lastCategory: null, catCache: null,
+    lastTruck: '', lastTruckOwner: '', lastSaleType: '', lastTransportBy: '',
+    lastSite: '', lastProduct: '', lastCustomer: '', lastSupplier: '', lastRuleType: '',
     adminUnlocked: {}, unlockTargetField: '', unlockNote: ''
   };
   const $ = id => document.getElementById(id);
@@ -6509,29 +6535,127 @@
     return hit;
   }
 
+  function isOwnUnit(truckRow, company) {
+    return !!(truckRow && (/^own/i.test(truckRow.ownership || '') || norm(truckRow.supplier) === norm(company)));
+  }
+
+  function syncFleetCascade(company, isCoFleet, is3P, isUnreg) {
+    const curTruck = val('f_truck');
+    const curOwner = val('f_truckowner');
+    const truckChanged = curTruck !== FORM_UI.lastTruck;
+    const ownerChanged = !truckChanged && curOwner !== FORM_UI.lastTruckOwner;
+
+    if (truckChanged) {
+      FORM_UI.qtyManual = false;
+      FORM_UI.ownerManuallyPicked = false;
+      FORM_UI.driverManual = false;
+      const tRow = curTruck ? equipInfo(curTruck) : null;
+      if (is3P && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner')) {
+        $('f_truckowner').value = (tRow && tRow.supplier && !isOwnUnit(tRow, company)) ? tRow.supplier : '';
+      }
+      if ($('f_driver')) {
+        if (tRow && tRow.default_driver) {
+          $('f_driver').value = tRow.default_driver;
+        } else if (tRow && tRow.supplier && is3P) {
+          const oDrvs = driversForOwner(tRow.supplier, company, false);
+          $('f_driver').value = oDrvs.length === 1 ? oDrvs[0] : '';
+        } else {
+          $('f_driver').value = '';
+        }
+      }
+      if (qtyEl() && !isUnreg) {
+        if (/truck/i.test(val('f_uom'))) {
+          qtyEl().value = '1';
+        } else {
+          qtyEl().value = (tRow && Number(tRow.capacity) > 0) ? Number(tRow.capacity).toFixed(2) : '';
+        }
+      }
+    } else if (ownerChanged && is3P) {
+      FORM_UI.ownerManuallyPicked = !!curOwner;
+      const tRow = curTruck ? equipInfo(curTruck) : null;
+      const allowedTrucks = curOwner ? trucksForOwner(curOwner, company, false) : [];
+      const truckMatches = !!(curOwner && curTruck && ((tRow && norm(tRow.supplier) === norm(curOwner)) || allowedTrucks.some(tn => norm(tn) === norm(curTruck))));
+      if (curTruck && !truckMatches) {
+        if ($('f_truck')) $('f_truck').value = '';
+        if ($('f_driver')) $('f_driver').value = '';
+        FORM_UI.qtyManual = false;
+        if (qtyEl() && !/truck/i.test(val('f_uom'))) qtyEl().value = '';
+      }
+      const curDrv = val('f_driver');
+      const dRow = curDrv ? driverInfo(curDrv) : null;
+      const allowedDrvs = curOwner ? driversForOwner(curOwner, company, false) : [];
+      const drvMatches = !!(curOwner && curDrv && ((dRow && norm(dRow.truck_owner) === norm(curOwner)) || allowedDrvs.some(dn => norm(dn) === norm(curDrv))));
+      if (curDrv && !drvMatches) {
+        if ($('f_driver')) $('f_driver').value = '';
+      }
+    }
+
+    let truckName = val('f_truck');
+    let truckRow = truckName ? equipInfo(truckName) : null;
+    if (is3P && truckRow && truckRow.supplier && !isOwnUnit(truckRow, company) && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
+      $('f_truckowner').value = truckRow.supplier;
+    }
+    const truckOwner = is3P ? val('f_truckowner') : company;
+    const ownerFromTruck = !!(is3P && truckRow && truckRow.supplier && !isOwnUnit(truckRow, company));
+    applyFieldLockState('f_truckowner', ownerFromTruck, ownerFromTruck
+      ? `Locked to ${truckRow.name} registered owner (${truckRow.supplier})`
+      : 'Auto-populated when a Truck with a registered owner is selected; open when truck has no preset owner');
+
+    const dlEq = $('dl_equip');
+    const dlDrv = $('dl_drivers');
+    if (dlEq) {
+      const allowedTrucks = isCoFleet
+        ? trucksForOwner('', company, true)
+        : ((FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? trucksForOwner(truckOwner, company, false) : []);
+      const pool = allowedTrucks.length ? allowedTrucks : equipmentNames();
+      dlEq.innerHTML = pool.map(truckOptionHtml).join('');
+    }
+    if (dlDrv) {
+      const allowedDrivers = isCoFleet
+        ? driversForOwner('', company, true)
+        : (truckOwner ? driversForOwner(truckOwner, company, false) : []);
+      const pool = allowedDrivers.length ? allowedDrivers : driverNames();
+      dlDrv.innerHTML = pool.map(driverOptionHtml).join('');
+    }
+    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver') && !FORM_UI.driverManual) {
+      $('f_driver').value = truckRow.default_driver;
+    }
+
+    FORM_UI.lastTruck = val('f_truck');
+    FORM_UI.lastTruckOwner = val('f_truckowner');
+    return { truckName, truckRow, truckOwner, ownerFromTruck };
+  }
+
   function recalcSales() {
     const company = val('f_company');
     const saleType = val('f_saletype') || 'Pickup';
     const isDelivery = saleType === 'Delivery';
     const isPickup = saleType === 'Pickup';
     const isUnreg = saleType === 'Unregistered';
-    const tbEl = $('f_transportby');
     const customer = val('f_customer');
     const product = val('f_product');
-    const site = val('f_site');
+    let site = val('f_site');
     const date = val('f_date');
     const warnings = [];
 
-    FORM_UI.lastCompany = company;
-
-    // 1. Dynamic Column Visibility (m49 / m51 / m54 / m126b / m130 / m135b)
-    if (tbEl && !isDelivery) {
-      // On Pickup, transport is always customer/third-party hauler ex-quarry; Transported By column is hidden (m130)
-    }
     const transportBy = isDelivery ? (val('f_transportby') || 'Company fleet') : (isPickup ? 'Third-party truck' : '');
     const isCoFleet = isDelivery && transportBy === 'Company fleet';
     const is3POrPickup = (isDelivery && transportBy === 'Third-party truck') || isPickup;
 
+    const saleTypeChanged = FORM_UI.lastSaleType !== '' && FORM_UI.lastSaleType !== saleType;
+    const transportByChanged = FORM_UI.lastTransportBy !== '' && FORM_UI.lastTransportBy !== transportBy;
+    const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
+    const customerChanged = FORM_UI.lastCustomer !== '' && FORM_UI.lastCustomer !== customer;
+    const productChanged = FORM_UI.lastProduct !== '' && FORM_UI.lastProduct !== product;
+    const siteChanged = FORM_UI.lastSite !== '' && FORM_UI.lastSite !== site;
+
+    FORM_UI.lastCompany = company;
+    FORM_UI.lastSaleType = saleType;
+    FORM_UI.lastTransportBy = transportBy;
+    FORM_UI.lastCustomer = customer;
+    FORM_UI.lastProduct = product;
+
+    // 1. Dynamic Column Visibility & Stale-Field Clearing on Mode Switch
     setFieldVisible('wrap_f_transportby', isDelivery);
     setFieldVisible('wrap_f_site', isDelivery);
     setFieldVisible('wrap_f_overtime', isCoFleet);
@@ -6543,14 +6667,45 @@
     setFieldVisible('wrap_f_total_usd', !isUnreg);
     setText('lbl_mat_total', isUnreg ? 'Total (USD) *' : 'Material Total (USD) *');
 
-    // Clear Destination Site when hidden on Pickup / Unregistered (m49)
-    if (!isDelivery && $('f_site') && $('f_site').value) $('f_site').value = '';
+    if (!isDelivery) {
+      if ($('f_site') && $('f_site').value) { $('f_site').value = ''; site = ''; }
+      if ($('f_transunitprice')) $('f_transunitprice').value = '0.00';
+      if ($('f_trans_total')) $('f_trans_total').value = '0.00';
+    }
+    if (isUnreg) {
+      if ($('f_truck') && $('f_truck').value) $('f_truck').value = '';
+      if ($('f_truckowner') && $('f_truckowner').value) $('f_truckowner').value = '';
+      if ($('f_driver') && $('f_driver').value) $('f_driver').value = '';
+      FORM_UI.ownerManuallyPicked = false;
+    } else if (isCoFleet) {
+      if ($('f_truckowner') && $('f_truckowner').value) $('f_truckowner').value = '';
+      FORM_UI.ownerManuallyPicked = false;
+      if (saleTypeChanged || transportByChanged || companyChanged) {
+        const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+        const coUnits = trucksForOwner('', company, true);
+        if (curT && !isOwnUnit(curT, company) && (!coUnits.length || !coUnits.some(u => norm(u) === norm(val('f_truck'))))) {
+          if ($('f_truck')) $('f_truck').value = '';
+          if ($('f_driver')) $('f_driver').value = '';
+          FORM_UI.qtyManual = false;
+          if (qtyEl()) qtyEl().value = '';
+        }
+      }
+    } else if (is3POrPickup && (saleTypeChanged || transportByChanged)) {
+      const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+      if (curT && isOwnUnit(curT, company)) {
+        if ($('f_truck')) $('f_truck').value = '';
+        if ($('f_driver')) $('f_driver').value = '';
+        FORM_UI.qtyManual = false;
+        if (qtyEl()) qtyEl().value = '';
+      }
+    }
+    FORM_UI.lastSite = site;
 
-    // 2. Product -> UoM + ton factor (m132 / m136 / m228)
+    // 2. Product -> UoM + ton factor
     const prod = productInfo(product);
     const baseUom = prod ? (prod.uom || 'm³') : 'm³';
 
-    // 3. Customer -> AR, VAT status, Payment Method lock (m50/m58) & Declared Qty / Ext Invoice visibility (m60/m68)
+    // 3. Customer -> AR, VAT status, Payment Method lock & Declared Qty / Ext Invoice visibility + stale clearing
     const cust = customerInfo(customer);
     const vatReg = !!(cust && cust['VAT Registered'] === 'Yes');
     const ar = cust && cust.in_ar_book ? Number(cust.ar_balance || 0) : null;
@@ -6562,6 +6717,9 @@
     setFieldVisible('wrap_vatinvoice', vatReg);
     setFieldVisible('wrap_f_extqty', !!(cust && cust.customer_declared_qty));
     setFieldVisible('wrap_f_extinvoice', !!(cust && cust.external_invoice));
+    if (!vatReg && $('f_vatinvoice') && $('f_vatinvoice').value && !isFieldAdminUnlocked('f_vatinvoice')) $('f_vatinvoice').value = '';
+    if (!(cust && cust.customer_declared_qty) && $('f_extqty') && $('f_extqty').value) $('f_extqty').value = '';
+    if (!(cust && cust.external_invoice) && $('f_extinvoice') && $('f_extinvoice').value) $('f_extinvoice').value = '';
     applyFieldLockState('f_vatinvoice', true, 'Linked by statutory VAT invoicing batch; unlock with Admin privilege to enter manually');
 
     const methEl = $('f_method');
@@ -6570,55 +6728,21 @@
       methEl.value = custMethod;
     }
 
-    // 4. Cascading Truck Owner -> Truck -> Driver
-    let truckName = val('f_truck');
-    let truckRow = truckName ? equipInfo(truckName) : null;
-    if (is3POrPickup && truckRow && truckRow.supplier && $('f_truckowner') && !val('f_truckowner')) {
-      $('f_truckowner').value = truckRow.supplier;
-    }
-    const truckOwner = is3POrPickup ? val('f_truckowner') : company;
-    const dlEq = $('dl_equip');
-    const dlDrv = $('dl_drivers');
-    if (dlEq) {
-      const allowedTrucks = isCoFleet
-        ? trucksForOwner('', company, true)
-        : (truckOwner ? trucksForOwner(truckOwner, company, false) : []);
-      const pool = allowedTrucks.length ? allowedTrucks : equipmentNames();
-      dlEq.innerHTML = pool.map(v => `<option value="${esc(v)}">`).join('');
-      if (is3POrPickup && truckOwner && allowedTrucks.length === 1 && $('f_truck') && !val('f_truck')) {
-        $('f_truck').value = allowedTrucks[0];
-        truckName = allowedTrucks[0];
-        truckRow = equipInfo(truckName);
-      }
-    }
-    if (dlDrv) {
-      const allowedDrivers = isCoFleet
-        ? driversForOwner('', company, true)
-        : (truckOwner ? driversForOwner(truckOwner, company, false) : []);
-      const pool = allowedDrivers.length ? allowedDrivers : driverNames();
-      dlDrv.innerHTML = pool.map(v => `<option value="${esc(v)}">`).join('');
-      if (is3POrPickup && truckOwner && allowedDrivers.length === 1 && $('f_driver') && !val('f_driver')) {
-        $('f_driver').value = allowedDrivers[0];
-      }
-    }
-    setHint('hint_truckowner', is3POrPickup ? (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Select Truck Owner first to unlock Truck & Driver') : '', is3POrPickup && !truckOwner ? 'warn' : '');
+    // 4. Cascading Truck -> Truck Owner + Driver + Capacity
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg);
+    setHint('hint_truckowner', is3POrPickup
+      ? (ownerFromTruck
+          ? `Provided by Truck ${truckRow.name} (${truckOwner})`
+          : (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Auto-provided when you select a Truck / Equipment'))
+      : '', '');
 
-    const needOwnerFirst = is3POrPickup && !truckOwner && !truckName;
-    applyFieldLockState('f_truck', needOwnerFirst, needOwnerFirst
-      ? 'Select Truck Owner first to unlock Truck, or use Admin Unlock'
-      : 'Unlocked by rule (Company fleet or Truck Owner selected)');
-    applyFieldLockState('f_driver', needOwnerFirst, needOwnerFirst
-      ? 'Select Truck Owner first to unlock Driver, or use Admin Unlock'
-      : 'Unlocked by rule (Company fleet or Truck Owner selected)');
-
-    const ownTruck = !!(truckRow && (/^own/i.test(truckRow.ownership || '') || norm(truckRow.supplier) === norm(company)));
+    const ownTruck = isOwnUnit(truckRow, company);
     const qvWrap = $('paTruckQvWrap');
     if (qvWrap && window.MFG_FORMS) {
       const showQv = !!(truckRow && !isUnreg);
       qvWrap.hidden = !showQv;
       qvWrap.innerHTML = showQv ? window.MFG_FORMS.renderTruckQuickView(truckRow, isCoFleet) : '';
     }
-    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
 
     // 5. Price Agreement & List Price Lock
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
@@ -6626,12 +6750,19 @@
     let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType] }) : null;
     const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
 
+    if ((customerChanged || productChanged || siteChanged || saleTypeChanged) && !isFieldAdminUnlocked('f_uom')) {
+      FORM_UI.uomManual = false;
+    }
+    const prevUom = uomEl ? uomEl.value : 'm³';
     const targetUom = (rule && rule.unit) ? rule.unit : baseUom;
     const uomLocked = applyFieldLockState('f_uom', !isUnreg, `Locked to ${rule && rule.unit ? 'Agreement Unit' : 'Product UoM'} (${targetUom})`);
     if (uomEl && uomLocked && !FORM_UI.uomManual) {
       uomEl.value = targetUom;
     }
     const uom = (uomEl && uomEl.value) ? uomEl.value : targetUom;
+    if (prevUom !== uom && !FORM_UI.qtyManual && qtyEl() && !/truck/i.test(uom) && /truck/i.test(prevUom)) {
+      qtyEl().value = (truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity).toFixed(2) : '';
+    }
     setText('lbl_uom', uom);
     setHint('hint_product', prod ? (Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `1 ${baseUom} = ${prod.ton_factor} t` : '') : (product ? 'Unknown grade' : ''), '');
 
@@ -6645,6 +6776,7 @@
         setText('lbl_pricelock', 'AGREEMENT');
         setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${rule.unit && rule.unit !== baseUom ? ' · priced per ' + rule.unit : ''}`, 'ok');
       } else {
+        if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = '0.00';
         const lpRule = product ? listPriceRule(company, product, date) : null;
         const lp = lpRule ? Number(lpRule.unit_price || 0) : (product ? listPrice(product) : null);
         if (lp != null) {
@@ -6652,6 +6784,7 @@
           setText('lbl_pricelock', 'LIST PRICE');
           setHint('hint_price', (crossType ? `No ${wantType} agreement (customer has ${crossType.rule_type} at ${fmtUSD(crossType.unit_price, 2)}) — ` : 'No customer agreement — ') + (lpRule ? lpRule.name : 'model list price'), 'warn');
         } else {
+          upEl.value = '';
           setText('lbl_pricelock', 'LOCKED');
           setHint('hint_price', product ? 'No agreement or list price found — use Admin Unlock to enter spot price' : 'Select Product & Customer to auto-fill price', '');
         }
@@ -6694,7 +6827,7 @@
     if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', 'crit');
     else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is a third-party unit (${truckRow.supplier || 'hauler'}) — switch Transported By or pick an own truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && ownTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³`, 'ok');
+    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
@@ -6743,99 +6876,162 @@
     const isCoFleet = transportBy === 'Company fleet';
     const site = val('f_site'), product = val('f_product'), date = val('f_date');
 
-    // 1. Dynamic Column Visibility (m81 / m126b / m130)
+    const transportByChanged = FORM_UI.lastTransportBy !== '' && FORM_UI.lastTransportBy !== transportBy;
+    const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
+    const siteChanged = FORM_UI.lastSite !== site;
+    const productChanged = FORM_UI.lastProduct !== '' && FORM_UI.lastProduct !== product;
+
+    FORM_UI.lastCompany = company;
+    FORM_UI.lastTransportBy = transportBy;
+    FORM_UI.lastSite = site;
+    FORM_UI.lastProduct = product;
+
+    // 1. Dynamic Column Visibility & Mode Switch Stale Clearing
     setFieldVisible('wrap_f_overtime', isCoFleet);
     setFieldVisible('wrap_f_truckowner', !isCoFleet);
     setFieldVisible('wrap_f_transunitprice', !isCoFleet);
     setFieldVisible('wrap_f_trans_total', !isCoFleet);
 
-    // 2. Site -> Default Site Owner & Truck Owner auto-fill (m84 / m125)
+    if (isCoFleet) {
+      if ($('f_truckowner') && $('f_truckowner').value) $('f_truckowner').value = '';
+      if ($('f_transunitprice')) $('f_transunitprice').value = '0.00';
+      if ($('f_trans_total')) $('f_trans_total').value = '0.00';
+      FORM_UI.ownerManuallyPicked = false;
+      if (transportByChanged || companyChanged) {
+        const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+        const coUnits = trucksForOwner('', company, true);
+        if (curT && !isOwnUnit(curT, company) && (!coUnits.length || !coUnits.some(u => norm(u) === norm(val('f_truck'))))) {
+          if ($('f_truck')) $('f_truck').value = '';
+          if ($('f_driver')) $('f_driver').value = '';
+          FORM_UI.qtyManual = false;
+          if (qtyEl()) qtyEl().value = '';
+        }
+      }
+    } else if (transportByChanged) {
+      const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+      if (curT && isOwnUnit(curT, company)) {
+        if ($('f_truck')) $('f_truck').value = '';
+        if ($('f_driver')) $('f_driver').value = '';
+        FORM_UI.qtyManual = false;
+        if (qtyEl()) qtyEl().value = '';
+      }
+    }
+
+    // 2. Site -> Default Quarry Site Owner (Material Payee)
     const sInfo = site ? siteInfo(site) : null;
     const siteHasOwner = !!(sInfo && sInfo.supplier);
     const ownerLocked = applyFieldLockState('f_siteowner', siteHasOwner, siteHasOwner
-      ? `Quarry Site Owner Lock (m84): Locked to ${site} default supplier (${sInfo.supplier})`
+      ? `Locked to ${site} default supplier (${sInfo.supplier})`
       : 'Unlocked (Quarry site has no preset default supplier)');
-    if (siteHasOwner && $('f_siteowner') && (ownerLocked || !val('f_siteowner'))) {
-      $('f_siteowner').value = sInfo.supplier;
-    }
-    if (siteHasOwner && !isCoFleet && $('f_truckowner') && !val('f_truckowner')) {
-      $('f_truckowner').value = sInfo.supplier;
+    if ($('f_siteowner') && !isFieldAdminUnlocked('f_siteowner')) {
+      if (siteHasOwner && (ownerLocked || siteChanged || !val('f_siteowner'))) {
+        $('f_siteowner').value = sInfo.supplier;
+      } else if (!siteHasOwner && siteChanged) {
+        $('f_siteowner').value = '';
+      }
     }
     const owner = val('f_siteowner');
 
-    // 3. Cascading Truck Owner -> Driver -> Truck (m125 / m131)
-    let truckName = val('f_truck');
-    let truckRow = truckName ? equipInfo(truckName) : null;
-    if (!isCoFleet && truckRow && truckRow.supplier && $('f_truckowner') && !val('f_truckowner')) {
-      $('f_truckowner').value = truckRow.supplier;
-    }
-    const truckOwner = isCoFleet ? company : val('f_truckowner');
-    const needOwnerFirst = !isCoFleet && !truckOwner && !truckName;
-    applyFieldLockState('f_driver', needOwnerFirst, needOwnerFirst
-      ? 'Cascading Driver Lock (m131): Select Truck Owner first to unlock Driver'
-      : 'Unlocked by rule (Company fleet or Truck Owner selected)');
-    applyFieldLockState('f_truck', needOwnerFirst, needOwnerFirst
-      ? 'Cascading Truck Lock (m125): Select Truck Owner first to unlock Truck Plate'
-      : 'Unlocked by rule (Company fleet or Truck Owner selected)');
+    // 3. Cascading Truck Plate -> Truck Owner + Driver + Capacity
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false);
 
     const qvWrap = $('paTruckQvWrap');
     if (qvWrap && window.MFG_FORMS) {
       qvWrap.hidden = !truckRow;
       qvWrap.innerHTML = truckRow ? window.MFG_FORMS.renderTruckQuickView(truckRow, isCoFleet) : '';
     }
-    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
 
     const warnings = [];
-    FORM_UI.lastCompany = company;
 
-    // 4. Product & Unit Lock (m81 / m222 / m228)
+    // 4. Product & Unit Lock
     const prod = productInfo(product);
     const baseUom = prod ? (prod.uom || 'm³') : 'm³';
-    const uomLocked = applyFieldLockState('f_uom', true, `Unit Lock (m222/m228): Locked to Product UoM (${baseUom})`);
-    if ($('f_uom') && uomLocked && !FORM_UI.uomManual) $('f_uom').value = baseUom;
-    const uom = val('f_uom') || baseUom;
+    const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
+    const rule = (owner || site) && product ? findRule({ company, supplier: owner, site, product, date, types: ['Purchase Price (Site)'] }) : null;
+    const haulRule = site && product && !isCoFleet ? findRule({ company, supplier: truckOwner, site, product, date, types: ['Transport Price (Site)'] }) : null;
+
+    if ((siteChanged || productChanged) && !isFieldAdminUnlocked('f_uom')) {
+      FORM_UI.uomManual = false;
+    }
+    const prevUom = uomEl ? uomEl.value : 'm³';
+    const targetUom = (rule && rule.unit) ? rule.unit : ((haulRule && haulRule.rate_per) ? haulRule.rate_per : baseUom);
+    const uomLocked = applyFieldLockState('f_uom', true, `Locked to Product / Agreement UoM (${targetUom})`);
+    if (uomEl && uomLocked && !FORM_UI.uomManual) uomEl.value = targetUom;
+    const uom = val('f_uom') || targetUom;
+    if (prevUom !== uom && !FORM_UI.qtyManual && qtyEl() && !/truck/i.test(uom) && /truck/i.test(prevUom)) {
+      qtyEl().value = (truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity).toFixed(2) : '';
+    }
     setText('lbl_uom', uom);
 
-    // 5. Quantity Lock (m125 / m128)
+    // 5. Quantity Lock
     const truckHasNoCap = !!(truckRow && !(Number(truckRow.capacity) > 0));
-    const qtyLocked = applyFieldLockState('f_qty', !truckHasNoCap, 'Truck Capacity Lock (m125): Auto-populated from Truck Capacity (m³)');
-    if (truckRow && truckRow.capacity && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
+    const unitOverridden = uom !== baseUom && !/truck/i.test(uom);
+    const shouldLockQty = !truckHasNoCap && !unitOverridden;
+    const qtyLocked = applyFieldLockState('f_qty', shouldLockQty,
+      /truck/i.test(uom)
+        ? 'Unit = Truck locks Quantity to 1 load'
+        : 'Auto-populated from Truck Capacity (m³)');
+    if (/truck/i.test(uom) && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
+      qtyEl().value = '1';
+    } else if (truckRow && truckRow.capacity && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
       qtyEl().value = Number(truckRow.capacity).toFixed(2);
     }
 
-    // 6. Purchase Price (Site) & Transport Price (Site) Lock (m81 / m136)
-    const upEl = $('f_unitprice'), tpEl = $('f_transunitprice');
-    const rule = (owner || site) && product ? findRule({ company, supplier: owner, site, product, date, types: ['Purchase Price (Site)'] }) : null;
-    const haulRule = site && product && !isCoFleet ? findRule({ company, supplier: truckOwner, site, product, date, types: ['Transport Price (Site)'] }) : null;
-    const priceLocked = applyFieldLockState('f_unitprice', true, 'Quarry Purchase Agreement Lock (m81/m136): Locked to Purchase Price (Site) or List Price');
-    const transLocked = applyFieldLockState('f_transunitprice', !isCoFleet, 'Haulage Rate Lock (m81): Locked to Transport Price (Site) agreement');
+    if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
+    else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
+    else setHint('hint_truck', '', '');
+
+    // 6. Purchase Price (Site) & Transport Price (Site) Lock
+    const priceLocked = applyFieldLockState('f_unitprice', true, 'Locked to Purchase Price (Site) or List Price');
+    const transLocked = applyFieldLockState('f_transunitprice', !isCoFleet, 'Locked to Transport Price (Site) agreement');
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
-      if (rule) { upEl.value = Number(rule.unit_price || 0).toFixed(2); setText('lbl_pricelock', 'AGREEMENT'); setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}`, 'ok'); }
-      else { const lpRule = product ? listPriceRule(company, product, date) : null; if (lpRule) { upEl.value = Number(lpRule.unit_price || 0).toFixed(2); setText('lbl_pricelock', 'LIST PRICE'); setHint('hint_price', 'No purchase agreement — ' + lpRule.name, 'warn'); } else { setText('lbl_pricelock', 'LOCKED'); setHint('hint_price', product ? 'No purchase-price agreement — use Admin Unlock to override' : '', ''); } }
-      if (tpEl && !isCoFleet && haulRule && transLocked && !FORM_UI.transManual) tpEl.value = Number(haulRule.trans_unit_price || haulRule.unit_price || 0).toFixed(2);
+      if (rule) {
+        upEl.value = Number(rule.unit_price || 0).toFixed(2);
+        setText('lbl_pricelock', 'AGREEMENT');
+        setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}`, 'ok');
+      } else {
+        const lpRule = product ? listPriceRule(company, product, date) : null;
+        if (lpRule) {
+          upEl.value = Number(lpRule.unit_price || 0).toFixed(2);
+          setText('lbl_pricelock', 'LIST PRICE');
+          setHint('hint_price', 'No purchase agreement — ' + lpRule.name, 'warn');
+        } else {
+          upEl.value = '';
+          setText('lbl_pricelock', 'LOCKED');
+          setHint('hint_price', product ? 'No purchase-price agreement — use Admin Unlock to override' : '', '');
+        }
+      }
     } else if (upEl) {
       setText('lbl_pricelock', isFieldAdminUnlocked('f_unitprice') ? 'ADMIN OVERRIDE' : 'MANUAL');
       setHint('hint_price', rule ? `Overrides ${rule.name} (${fmtUSD(rule.unit_price, 2)})` : '', rule ? 'warn' : '');
     }
 
     if (tpEl) {
-      if (isCoFleet) { tpEl.value = '0.00'; }
-      else { setHint('hint_trans', haulRule ? `${haulRule.rule_type} · ${haulRule.name}` : '', haulRule ? 'ok' : ''); }
+      if (isCoFleet) {
+        tpEl.value = '0.00';
+      } else {
+        if (transLocked && !FORM_UI.transManual) {
+          tpEl.value = haulRule ? Number(haulRule.trans_unit_price || haulRule.unit_price || 0).toFixed(2) : '0.00';
+        }
+        setHint('hint_trans', haulRule ? `${haulRule.rule_type} · ${haulRule.name}` : '', haulRule ? 'ok' : '');
+      }
     }
-    setHint('hint_truckowner', !isCoFleet ? (truckOwner ? '' : 'Required for third-party haulage') : '', !isCoFleet && !truckOwner ? 'crit' : '');
+    setHint('hint_truckowner', !isCoFleet
+      ? (ownerFromTruck ? `Provided by Truck ${truckRow.name} (${truckOwner})` : (truckOwner ? '' : 'Auto-provided by Truck Plate (required for third-party haulage)'))
+      : '', !isCoFleet && !truckOwner && truckName ? 'crit' : '');
     const ap = openApBalance(owner);
     setHint('hint_owner', owner ? (ap != null ? `Open AP ${fmtUSD(ap, 2)}` : 'New payee — not in the AP book yet') : '', '');
 
     syncOvertimeControl(isCoFleet);
 
-    // 7. Formula Locks & Method Lock (m81)
+    // 7. Formula Locks & Method Lock
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isCoFleet ? 0 : num('f_transunitprice'), disc = num('f_discount');
     const mat = round2(Math.max(0, qty * up - disc)), tr = round2(qty * tp);
-    const matLocked = applyFieldLockState('f_mat_total', true, 'Formula Lock (m81): Material Cost = Qty × Material Unit Cost − Discount');
-    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Formula Lock (m81): Haulage Cost = Qty × Haulage Unit Cost');
-    const totLocked = applyFieldLockState('f_total_usd', true, 'Formula Lock (m81): Total Payable = Material Cost + Haulage Cost');
-    const methLocked = applyFieldLockState('f_method', true, 'Quarry Payable Lock (m81): Locked to Credit (2-leg AP split)');
+    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Cost = Qty × Material Unit Cost − Discount');
+    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Haulage Cost = Qty × Haulage Unit Cost');
+    const totLocked = applyFieldLockState('f_total_usd', true, 'Total Payable = Material Cost + Haulage Cost');
+    const methLocked = applyFieldLockState('f_method', true, 'Locked to Credit (2-leg AP split)');
     if ($('f_method') && methLocked && !FORM_UI.methodManual) $('f_method').value = 'Credit';
     if ($('f_mat_total') && matLocked) $('f_mat_total').value = mat.toFixed(2);
     if ($('f_trans_total') && trTotLocked) $('f_trans_total').value = tr.toFixed(2);
@@ -6873,21 +7069,34 @@
     const company = val('f_company'), equipment = val('f_truck'), date = val('f_date');
     const fuelType = val('f_fueltype') || 'Diesel';
     const isLubricant = fuelType === 'Lubricant';
-    // m90 / m91: Lubricant Item (f_item) is hidden when Fuel Type = Diesel or Petrol
+    // Lubricant Item (f_item) is hidden when Fuel Type = Diesel or Petrol
     setFieldVisible('wrap_f_item', isLubricant);
     const itemEl = $('f_item');
     if (itemEl) {
-      if (!isLubricant) itemEl.value = 'Diesel';
-      else if (itemEl.value === 'Diesel') itemEl.value = 'Oil 15W40';
+      if (!isLubricant) itemEl.value = fuelType;
+      else if (itemEl.value === 'Diesel' || itemEl.value === 'Petrol') itemEl.value = 'Oil 15W40';
+    }
+
+    // Equipment -> Default Driver cascade (clears stale driver when switching equipment)
+    if (equipment !== FORM_UI.lastTruck) {
+      FORM_UI.lastTruck = equipment;
+      FORM_UI.driverManual = false;
+      const eqRow = equipment ? equipInfo(equipment) : null;
+      if ($('f_driver')) {
+        $('f_driver').value = (eqRow && eqRow.default_driver) ? eqRow.default_driver : '';
+      }
     }
 
     const type = val('f_metertype') || 'odometer';
-    // Hide Meter Reading column when Meter Type = none
+    // Hide and clear Meter Reading column when Meter Type = none
     setFieldVisible('wrap_f_meter', type !== 'none');
-    const reading = type !== 'none' && $('f_meter') && val('f_meter') !== '' ? num('f_meter') : null;
-    const litres = num('f_qty');
     const mEl = $('f_meter');
-    if (mEl) mEl.disabled = type === 'none';
+    if (mEl) {
+      mEl.disabled = type === 'none';
+      if (type === 'none' && mEl.value) mEl.value = '';
+    }
+    const reading = type !== 'none' && mEl && val('f_meter') !== '' ? num('f_meter') : null;
+    const litres = num('f_qty');
     FORM_UI.lastCompany = company;
 
     const prev = equipment ? lastMeter(company, equipment, date || undefined) : null;
@@ -6935,7 +7144,11 @@
       const subs = hit && hit.subs.length ? hit.subs : uniqSorted(cats.flatMap(c => c.subs));
       dlSub.innerHTML = subs.map(s => `<option value="${esc(s)}">`).join('');
       const subEl = $('f_subcategory');
-      if (subEl && subEl.value && hit && hit.subs.length && !hit.subs.includes(subEl.value) && !isFieldAdminUnlocked('f_subcategory')) subEl.value = '';
+      if (subEl && subEl.value && !isFieldAdminUnlocked('f_subcategory')) {
+        if (!catNow || !hit || (hit.subs.length && !hit.subs.includes(subEl.value))) {
+          subEl.value = '';
+        }
+      }
       if (subEl) subEl.placeholder = !catNow ? 'Pick Category first...' : (hit && hit.subs.length ? `${hit.subs.length} subcategories under ${catNow}` : 'Subcategory...');
     }
     setHint('hint_subcat', subLocked ? 'Pick a Category first' : (catNow ? `Scoped to ${catNow}` : 'Admin override active'), '');
@@ -6976,8 +7189,8 @@
         const usd = num('f_usd'), lbp = num('f_lbp');
         const tot = round2(usd + lbp / 90000);
         const aEl = $('f_amount');
-        const amtLocked = applyFieldLockState('f_amount', true, 'Dual-Currency FX Lock (bhf_usdPreview.js): Total USD = USD + LBP ÷ 90,000');
-        if (aEl && amtLocked && (usd > 0 || lbp > 0 || !aEl.value)) aEl.value = tot.toFixed(2);
+        const amtLocked = applyFieldLockState('f_amount', true, 'Dual-Currency FX Lock: Total USD = USD + LBP ÷ 90,000');
+        if (aEl && amtLocked) aEl.value = (usd > 0 || lbp > 0) ? tot.toFixed(2) : '';
         commonDateChecks([]);
         renderAdminLockBar();
         return { usd, lbp, amount: num('f_amount') };
@@ -6992,23 +7205,63 @@
         const isHaulCust = rt === 'Haulage (Customer Site)';
         const hasTrans = isSalesDel || isTransSite || isHaulCust;
         const hasMat = !isTransSite && !isHaulCust;
+        const showCustomer = isSalesDel || isSalesPick || isHaulCust;
+        const showSupplier = isPurch || isTransSite || isHaulCust;
+        const showSite = !isList && !isSalesPick;
+        const showIndiff = isSalesDel || isSalesPick;
 
-        setFieldVisible('wrap_pr_customer', isSalesDel || isSalesPick || isHaulCust);
-        setFieldVisible('wrap_pr_supplier', isPurch || isTransSite || isHaulCust);
-        setFieldVisible('wrap_pr_site', !isList && !isSalesPick);
+        const prProduct = val('f_product');
+        if (prProduct !== FORM_UI.lastProduct) {
+          FORM_UI.lastProduct = prProduct;
+          const pInfo = productInfo(prProduct);
+          if (pInfo && pInfo.uom && $('f_uom') && !FORM_UI.uomManual) {
+            $('f_uom').value = pInfo.uom;
+          }
+        }
+
+        setFieldVisible('wrap_pr_customer', showCustomer);
+        setFieldVisible('wrap_pr_supplier', showSupplier);
+        setFieldVisible('wrap_pr_site', showSite);
         setFieldVisible('wrap_pr_matprice', hasMat);
         setFieldVisible('wrap_pr_transrate', hasTrans);
         setFieldVisible('wrap_pr_transprice', hasTrans);
-        setFieldVisible('wrap_pr_indiff', isSalesDel || isSalesPick);
+        setFieldVisible('wrap_pr_indiff', showIndiff);
         setFieldVisible('wrap_pr_tier1', !isList);
         setFieldVisible('wrap_pr_adj1', !isList && hasMat);
         setFieldVisible('wrap_pr_transadj1', !isList && hasTrans);
+
+        // Clear hidden fields when Rule Type hides them so stale values are never saved
+        if (!showCustomer && $('f_customer') && $('f_customer').value) $('f_customer').value = '';
+        if (!showSupplier && $('f_supplier') && $('f_supplier').value) $('f_supplier').value = '';
+        if (!showSite && $('f_site') && $('f_site').value) $('f_site').value = '';
+        if (!hasMat) {
+          if ($('f_unitprice') && $('f_unitprice').value !== '0.00') $('f_unitprice').value = '0.00';
+          if ($('f_adj1') && $('f_adj1').value !== '0.00') $('f_adj1').value = '0.00';
+          if ($('f_adj2') && $('f_adj2').value !== '0.00') $('f_adj2').value = '0.00';
+        }
+        if (!hasTrans) {
+          if ($('f_transunitprice') && $('f_transunitprice').value !== '0.00') $('f_transunitprice').value = '0.00';
+          if ($('f_transadj1') && $('f_transadj1').value !== '0.00') $('f_transadj1').value = '0.00';
+          if ($('f_transadj2') && $('f_transadj2').value !== '0.00') $('f_transadj2').value = '0.00';
+        }
+        if (!showIndiff && $('f_indiff') && $('f_indiff').value) $('f_indiff').value = '';
+        if (isList) {
+          if ($('f_qty1') && $('f_qty1').value) $('f_qty1').value = '';
+          if ($('f_adj1') && $('f_adj1').value !== '0.00') $('f_adj1').value = '0.00';
+          if ($('f_transadj1') && $('f_transadj1').value !== '0.00') $('f_transadj1').value = '0.00';
+          if ($('f_enddate') && $('f_enddate').value) $('f_enddate').value = '';
+        }
 
         const q1 = num('f_qty1');
         const showTier2 = !isList && q1 > 0;
         setFieldVisible('wrap_pr_tier2', showTier2);
         setFieldVisible('wrap_pr_adj2', showTier2 && hasMat);
         setFieldVisible('wrap_pr_transadj2', showTier2 && hasTrans);
+        if (!showTier2) {
+          if ($('f_qty2') && $('f_qty2').value) $('f_qty2').value = '';
+          if ($('f_adj2') && $('f_adj2').value !== '0.00') $('f_adj2').value = '0.00';
+          if ($('f_transadj2') && $('f_transadj2').value !== '0.00') $('f_transadj2').value = '0.00';
+        }
 
         const up = num('f_unitprice'), tp = hasTrans ? num('f_transunitprice') : 0, a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
         setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}`);
@@ -7022,7 +7275,7 @@
         const net = num('f_amount');
         const vEl = $('f_vat');
         const vatLocked = applyFieldLockState('f_vat', true, 'Statutory 11% VAT Lock: Computed as Net HT × 11%');
-        if (vEl && vatLocked && !FORM_UI.priceManual && net > 0) vEl.value = round2(net * VAT_RATE).toFixed(2);
+        if (vEl && vatLocked && !FORM_UI.priceManual) vEl.value = net > 0 ? round2(net * VAT_RATE).toFixed(2) : '';
         const vat = num('f_vat');
         setText('calc_mat', fmtUSD(net, 2));
         setText('calc_vat', fmtUSD(vat, 2));
@@ -7032,25 +7285,57 @@
         return { net, vat, ttc: round2(net + vat) };
       }
       if (STATE.modalForm === 'customer') {
-        setFieldVisible('wrap_cust_mof', val('f_vatreg') === 'Yes');
+        const isVat = val('f_vatreg') === 'Yes';
+        setFieldVisible('wrap_cust_mof', isVat);
+        if (!isVat && $('f_mof') && $('f_mof').value) $('f_mof').value = '';
         return {};
       }
       if (STATE.modalForm === 'equipment' || STATE.modalForm === 'companyequipment') {
         const cat = val('f_category') || 'Truck';
         const own = val('f_ownership') || 'Owned';
-        setFieldVisible('wrap_eq_capacity', cat === 'Truck' || cat === 'Mixer');
-        setFieldVisible('wrap_eq_supplier', own !== 'Owned');
+        const hasCap = cat === 'Truck' || cat === 'Mixer';
+        const hasSup = own !== 'Owned';
+        setFieldVisible('wrap_eq_capacity', hasCap);
+        setFieldVisible('wrap_eq_supplier', hasSup);
+        if (!hasCap && $('f_capacity') && $('f_capacity').value !== '0') $('f_capacity').value = '0';
+        if (!hasSup && $('f_supplier') && $('f_supplier').value) $('f_supplier').value = '';
         return {};
       }
       if (STATE.modalForm === 'driver') {
         const isCoDrv = !!($('f_iscompanydriver') && $('f_iscompanydriver').checked);
         setFieldVisible('wrap_drv_supplier', !isCoDrv);
+        if (isCoDrv && $('f_supplier') && $('f_supplier').value) $('f_supplier').value = '';
+        const curT = val('f_truck');
+        const curS = val('f_supplier');
+        if (curT !== FORM_UI.lastTruck) {
+          FORM_UI.lastTruck = curT;
+          const tRow = curT ? equipInfo(curT) : null;
+          if (!isCoDrv && $('f_supplier')) {
+            $('f_supplier').value = (tRow && tRow.supplier) ? tRow.supplier : '';
+          }
+          FORM_UI.lastSupplier = val('f_supplier');
+        } else if (curS !== FORM_UI.lastSupplier) {
+          FORM_UI.lastSupplier = curS;
+          const tRow = curT ? equipInfo(curT) : null;
+          if (curT && tRow && tRow.supplier && norm(tRow.supplier) !== norm(curS) && $('f_truck')) {
+            $('f_truck').value = '';
+            FORM_UI.lastTruck = '';
+          }
+        }
+        return {};
+      }
+      if (STATE.modalForm === 'attendance') {
+        const st = val('f_status') || 'Present';
+        if (['Absent', 'Paid Leave', 'Holiday'].includes(st) && $('f_hours') && Number(val('f_hours')) > 0) {
+          $('f_hours').value = '0';
+        }
         return {};
       }
       if (STATE.modalForm === 'jv') {
         const jvt = val('f_jvtype') || 'distribution';
         setFieldVisible('wrap_jv_share', jvt === 'partnership');
         setFieldVisible('wrap_jv_amount', jvt === 'distribution');
+        if (jvt === 'partnership' && $('f_amount') && $('f_amount').value) $('f_amount').value = '';
         commonDateChecks([]);
         renderAdminLockBar();
         return {};
@@ -7483,8 +7768,13 @@
     wireModalSuggestions(body);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false;
     FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false; FORM_UI.showRepDate = false;
+    FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false;
     FORM_UI.adminUnlocked = {}; FORM_UI.unlockTargetField = ''; FORM_UI.unlockNote = '';
     FORM_UI.lastCompany = val('f_company'); FORM_UI.lastDate = val('f_date'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
+    FORM_UI.lastTruck = val('f_truck'); FORM_UI.lastTruckOwner = val('f_truckowner');
+    FORM_UI.lastSaleType = val('f_saletype'); FORM_UI.lastTransportBy = val('f_transportby');
+    FORM_UI.lastSite = val('f_site'); FORM_UI.lastProduct = val('f_product');
+    FORM_UI.lastCustomer = val('f_customer'); FORM_UI.lastSupplier = val('f_supplier');
 
     const toggleRepBtn = $('toggleRepDateBtn');
     if (toggleRepBtn) {
@@ -7570,10 +7860,11 @@
         if (el.id === 'f_time') FORM_UI.otManual = false;
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
-        // Selecting a new truck resets manual quantity so the truck's capacity populates Quantity
-        if (el.id === 'f_truck' && val('f_truck')) FORM_UI.qtyManual = false;
+        // Selecting or clearing a truck resets manual quantity so the truck's capacity populates Quantity
+        if (el.id === 'f_truck') { FORM_UI.qtyManual = false; FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; }
+        if (el.id === 'f_driver') FORM_UI.driverManual = !!el.value;
         // Changing counterparty / product / site re-runs the agreement lookup unless Admin unlocked the price
-        if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_company'].includes(el.id)) {
+        if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_truck', 'f_company', 'f_saletype', 'f_transportby'].includes(el.id)) {
           if (!isFieldAdminUnlocked('f_unitprice')) FORM_UI.priceManual = false;
           if (!isFieldAdminUnlocked('f_transunitprice')) FORM_UI.transManual = false;
         }
@@ -7621,7 +7912,7 @@
       else if (date > today && f !== 'pricerule') errors.push('Future dates are not allowed.');
       else if (date < MIN_DATE) errors.push('Date is before the books opened (' + MIN_DATE + ').');
       else if (daysBetween(date, today) > 30 && !notes && ['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(f)) errors.push('Back-dated more than 30 days — add a note explaining why.');
-      if (val('f_repdate') && Math.abs(daysBetween(date, repDate)) > 60 && !notes) errors.push('Reporting Date is more than 60 days from Transaction Date (m277) — add a note explaining why.');
+      if (val('f_repdate') && Math.abs(daysBetween(date, repDate)) > 60 && !notes) errors.push('Reporting Date is more than 60 days from Transaction Date — add a note explaining why.');
     }
 
     const adminOverrides = Object.keys(FORM_UI.adminUnlocked || {}).filter(k => k !== '__all' && FORM_UI.adminUnlocked[k]);
@@ -7644,6 +7935,12 @@
         if (!val('f_truck')) errors.push('Truck is required on a Delivery.');
         if (!val('f_driver')) errors.push('Driver is required on a Delivery.');
       }
+      if (c.saleType !== 'Unregistered' && c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
+        const tRow = equipInfo(val('f_truck'));
+        if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
+          errors.push(`Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
+        }
+      }
       if (c.disc > c.mat && c.mat > 0) errors.push('Discount exceeds the material subtotal.');
       if (c.mat > 0 && c.disc > c.mat * 0.2 && !notes) errors.push('Discount above 20% of material needs a note.');
       record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: repDate, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, external_qty: val('f_extqty') ? num('f_extqty') : null, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, tip: c.tip || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!(dup && dup.warn) };
@@ -7657,6 +7954,12 @@
       if (!(c.qty > 0)) errors.push('Quantity must be above zero.');
       if (c.up > 0 && !c.owner) errors.push('Quarry site owner (material payee) is required when the material has a cost.');
       if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) errors.push('Truck owner (haulage payee) is required for third-party haulage.');
+      if (c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
+        const tRow = equipInfo(val('f_truck'));
+        if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
+          errors.push(`Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
+        }
+      }
       record = { ...base, name: `RAW ${date} ${c.site} #${ticket}`, ticket_no: ticket, rep_date: repDate, product: c.product, site: c.site, site_owner: c.owner, transport_by: c.transportBy, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom || (c.prod ? c.prod.uom : 'm³'), qty: c.qty, discount: c.disc || 0, unit_cost: c.up, cost: c.mat, trans_unit_cost: c.tp, trans_cost: c.tr, total: round2(c.mat + c.tr), method: val('f_method'), external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : '', duplicate_confirmed: !!(dup && dup.warn) };
     } else if (f === 'receipt') {
       if (!c.customer) errors.push('Customer is required.');
@@ -7666,7 +7969,7 @@
     } else if (f === 'fuel') {
       if (!c.equipment) errors.push('Equipment is required.');
       if (!(c.litres > 0)) errors.push('Litres must be above zero.');
-      if (c.bbcTankNegative) errors.push('BBConstruction diesel intakes are refused while the tank reconciliation is negative (m212).');
+      if (c.bbcTankNegative) errors.push('BBConstruction diesel intakes are refused while the tank reconciliation is negative.');
       if (c.type !== 'none' && c.reading == null) errors.push('Meter reading is required (or choose "No meter").');
       if (!c.guard.ok) errors.push('Meter guard: ' + c.guard.label);
       if (c.guard.cls === 'warn' && !notes) errors.push('Large meter jump — add a note to confirm the reading.');

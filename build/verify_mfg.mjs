@@ -540,7 +540,8 @@ try {
       idx('f_product') < idx('f_customer') &&
       idx('f_customer') < idx('f_site') &&
       idx('f_site') < idx('f_truck') &&
-      idx('f_truck') < idx('f_driver') &&
+      idx('f_truck') < idx('f_truckowner') &&
+      idx('f_truckowner') < idx('f_driver') &&
       idx('f_driver') < idx('f_method') &&
       idx('f_method') < idx('f_qty') &&
       idx('f_qty') < idx('f_uom') &&
@@ -619,19 +620,70 @@ try {
     upPill.click();
     const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
 
+    // (5) Check Truck Number -> Truck Owner + Driver + Quantity cascade & reverse Truck Owner mismatch clearing across Sales, Raw & other forms
+    set('f_saletype', 'Pickup');
+    const truckUnlockedByDefault = document.getElementById('f_truck').readOnly === false;
+    set('f_truck', 'Aahed');
+    const aahedPopulatedOwner = document.getElementById('f_truckowner').value === 'Aahed';
+    const aahedOwnerLocked = document.getElementById('f_truckowner').readOnly === true;
+    const aahedPopulatedDriver = document.getElementById('f_driver').value === 'Aahed';
+    const aahedPopulatedQty = document.getElementById('f_qty').value === '20.00';
+
+    // Changing Truck Owner from 'Aahed' to 'Aawad' MUST immediately clear mismatched Truck ('Aahed'), Driver ('Aahed'), and Quantity ('20.00')
+    set('f_truckowner', 'Aawad');
+    const ownerChangeClearedTruck = document.getElementById('f_truck').value === '';
+    const ownerChangeClearedDriver = document.getElementById('f_driver').value === '';
+    const ownerChangeClearedQty = document.getElementById('f_qty').value === '';
+
+    // Picking 'Aahed' again and then switching to another truck updates/clears Owner, Driver, and Qty
+    set('f_truck', 'Aahed');
+    set('f_truck', '');
+    const truckClearClearedAll = document.getElementById('f_truckowner').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
+
+    // Check Raw Purchase form: Truck Plate comes before Truck Owner & Driver, and cascades identically
+    document.querySelector('.modal-tab[data-form="raw"]').click();
+    const rawIds = Array.from(document.querySelectorAll('#modalBody input[id], #modalBody select[id]')).map(e => e.id);
+    const rIdx = id => rawIds.indexOf(id);
+    const rawOrderingOk = rIdx('f_siteowner') < rIdx('f_truck') && rIdx('f_truck') < rIdx('f_truckowner') && rIdx('f_truckowner') < rIdx('f_driver');
+    set('f_truck', 'Aahed');
+    const rawAahedCascadeOk = document.getElementById('f_truckowner').value === 'Aahed' && document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_qty').value === '20.00';
+    set('f_truckowner', 'Aawad');
+    const rawOwnerChangeClearedOk = document.getElementById('f_truck').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
+
+    // Check Price Rule form: switching Rule Type to List Price clears hidden Customer, Site, and Tier 1/2 fields
+    document.querySelector('[data-pa-group="pricing"]').click();
+    document.querySelector('.modal-tab[data-form="pricerule"]').click();
+    set('f_ruletype', 'Sales (Delivery)');
+    set('f_customer', 'Kenyar');
+    set('f_site', 'Beirut');
+    set('f_qty1', '20');
+    set('f_adj1', '5');
+    set('f_ruletype', 'List Price');
+    const priceRuleClearedHiddenOk = document.getElementById('f_customer').value === '' && document.getElementById('f_site').value === '' && document.getElementById('f_qty1').value === '' && document.getElementById('f_adj1').value === '0.00';
+
+    // Return to Group 1 -> Sales
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+
+    const fleetCascadeAndStaleClearOk =
+      truckUnlockedByDefault && aahedPopulatedOwner && aahedOwnerLocked && aahedPopulatedDriver && aahedPopulatedQty &&
+      ownerChangeClearedTruck && ownerChangeClearedDriver && ownerChangeClearedQty && truckClearClearedAll &&
+      rawOrderingOk && rawAahedCascadeOk && rawOwnerChangeClearedOk && priceRuleClearedHiddenOk;
+
     return {
       orderingOk, saleTypeOrderOk, overtimeLinkedToTimeOk,
       delivSiteVisible, delivTransVisible, delivOwnerHiddenOnCoFleet,
       pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
       repSynced, noInternalCodes,
-      startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow
+      startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow,
+      fleetCascadeAndStaleClearOk
     };
   })()`);
   intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.overtimeLinkedToTimeOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
   intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
-  intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
-    ? pass('entry desk · v7.9 BU -> Locked Transaction Date -> On-Demand Reporting Date -> Time ordering, Pickup Gating, Clean UI & Admin Unlock')
-    : fail('entry desk v7.9 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
+  intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow && intuitiveEntryProbe.fleetCascadeAndStaleClearOk
+    ? pass('entry desk · v8.3 Truck -> Truck Owner + Driver + Qty cascade, mismatch clearing, Pickup Gating, Clean UI & Admin Unlock')
+    : fail('entry desk v8.3 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
 
   // 6d. Strict Multi-Column Control Box Alignment (locked + unlocked fields stay on 1-line labels with 0px vertical input offset across columns)
   const colAlignmentProbe = await evaluate(`(() => {
