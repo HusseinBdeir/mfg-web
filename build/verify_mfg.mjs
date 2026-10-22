@@ -729,6 +729,178 @@ try {
     ? pass('authGate PIN-only · blank email + unique 4-digit PIN resolves seat & signs in')
     : fail('authGate PIN-only sign-in', JSON.stringify(authFaceFlow));
 
+  // 7b2. Team Seat Inspector (#seatEditorPanel) — inspect all 10 current users & update in-place
+  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(200);
+  const seatInspectorProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    const seatIds = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9', 'u10'];
+    const inspected = [];
+    for (const id of seatIds) {
+      const btn = document.querySelector('[data-edit-user="' + id + '"]');
+      if (btn) btn.click();
+      else T.selectSeatForEdit(id);
+      const nameVal = (document.getElementById('nu_name') || {}).value || '';
+      const emailVal = (document.getElementById('nu_email') || {}).value || '';
+      const pinVal = (document.getElementById('nu_pin') || {}).value || '';
+      const roleVal = (document.getElementById('nu_role') || {}).value || '';
+      const compVal = (document.getElementById('nu_companies') || {}).value || '';
+      const accVal = (document.getElementById('nu_access') || {}).value || '';
+      const statusVal = (document.getElementById('nu_status') || {}).value || '';
+      inspected.push({ id, nameVal, emailVal, pinVal, roleVal, compVal, accVal, statusVal });
+    }
+    const all10Populated = inspected.length === 10 && inspected.every(x =>
+      x.nameVal.length > 2 && x.emailVal.includes('@') && /^\\d{4,8}$/.test(x.pinVal) && x.roleVal && x.compVal && x.accVal.includes('|')
+    );
+
+    // Update u7 (Ali Mansour) in-place, verify table & form reflect update, then restore original values
+    T.selectSeatForEdit('u7');
+    const origName = document.getElementById('nu_name').value;
+    const origRole = document.getElementById('nu_role').value;
+    const origComp = document.getElementById('nu_companies').value;
+    const origAcc = document.getElementById('nu_access').value;
+    document.getElementById('nu_name').value = 'Ali Mansour (WTC Lead Scale)';
+    document.getElementById('nu_role').value = 'Supervisor + Entry';
+    document.getElementById('nu_companies').value = 'WTC, BBConstruction';
+    document.getElementById('nu_access').value = 'full|partial';
+    await T.saveSeatEditorForm();
+    const rowAfterUpdate = (document.querySelector('tr[data-user-row="u7"]') || {}).textContent || '';
+    const updatedOk = rowAfterUpdate.includes('Ali Mansour (WTC Lead Scale)') &&
+      rowAfterUpdate.includes('Supervisor + Entry') &&
+      rowAfterUpdate.includes('WTC, BBConstruction') &&
+      rowAfterUpdate.includes('Full PBI + Ops Statements');
+
+    // Restore u7 original state
+    document.getElementById('nu_name').value = origName;
+    document.getElementById('nu_role').value = origRole;
+    document.getElementById('nu_companies').value = origComp;
+    document.getElementById('nu_access').value = origAcc;
+    await T.saveSeatEditorForm();
+    T.selectSeatForEdit('u1');
+    return { all10Populated, count: inspected.length, updatedOk, sampleU4: inspected[3], sampleU9: inspected[8] };
+  })()`);
+  seatInspectorProbe && seatInspectorProbe.all10Populated && seatInspectorProbe.updatedOk
+    ? pass('users seat inspector · all 10 current users inspectable & editable in-place (name, email, PIN, role, companies RLS, dashboards & status)', `${seatInspectorProbe.count}/10 seats verified · u4=${seatInspectorProbe.sampleU4.accVal} · u9=${seatInspectorProbe.sampleU9.compVal}`)
+    : fail('users seat inspector', JSON.stringify(seatInspectorProbe));
+
+  // 7b3. Scalable Multi-Select Company Selector (100-Company Stress Test) + End-to-End 3-Dimensional Access & RLS Consistency
+  const multiCoAndAccessProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    // 1. Test Multi-Select Company Selector & 100-Company Scalability
+    const extraCos = [];
+    for (let i = 4; i <= 100; i++) {
+      const num = String(i).padStart(3, '0');
+      extraCos.push({ key: 'co_' + num, name: 'Company ' + num, short: 'CO-' + num, sector: 'Plant #' + num });
+    }
+    window.MFG_COMPANIES = extraCos;
+    T.selectSeatForEdit('u9'); // Rami Sleiman: Lions Transport, WTC
+
+    const selRoot = document.getElementById('nuCompanySelector');
+    const trigger = document.getElementById('nuCompaniesTrigger');
+    const popover = document.getElementById('nuCompaniesPopover');
+    const searchInp = document.getElementById('nuCompaniesSearchInput');
+    const selectAllBtn = document.getElementById('nuCompaniesSelectAllBtn');
+    const clearBtn = document.getElementById('nuCompaniesClearBtn');
+    const countPill = document.getElementById('nuCompaniesCountPill');
+    const hiddenInput = document.getElementById('nu_companies');
+    const isNativeSelect = hiddenInput && hiddenInput.tagName === 'SELECT';
+
+    // Open popover
+    trigger.click();
+    const popOpen = popover && !popover.hidden;
+    const totalRenderedOpts = document.querySelectorAll('#nuCompaniesList .co-multi-opt').length;
+    const initialSelectedVal = hiddenInput ? hiddenInput.value : '';
+
+    // Filter to "Company 042"
+    searchInp.value = 'Company 042';
+    searchInp.dispatchEvent(new Event('input', { bubbles: true }));
+    const visibleOnSearch = Array.from(document.querySelectorAll('#nuCompaniesList .co-multi-opt')).filter(el => !el.hidden).length;
+
+    // Clear search and click Select All (100)
+    searchInp.value = '';
+    searchInp.dispatchEvent(new Event('input', { bubbles: true }));
+    selectAllBtn.click();
+    const all100CountText = countPill ? countPill.textContent.trim() : '';
+    const all100ChipsMore = (document.querySelector('#nuCompaniesChips .co-multi-chip-more') || {}).textContent || '';
+    const all100CsvCount = (hiddenInput.value || '').split(',').filter(Boolean).length;
+
+    // Click Clear -> keeps 1 company safety floor
+    clearBtn.click();
+    const afterClearCount = (hiddenInput.value || '').split(',').filter(Boolean).length;
+
+    // Restore u9 companies (Lions Transport, WTC) and clean up synthetic 100 companies
+    window.MFG_COMPANIES = null;
+    T.selectSeatForEdit('u9');
+
+    // 2. Test Multi-Company Subset RLS & Partial Access Consistency (u9: Rami Sleiman — Lions Transport, WTC | Supervisor + Entry | partial|partial)
+    await T.performLogin('ramisleiman@bhfirms.com', '2026', { bypass2FA: true });
+    const u9GroupBtn = document.querySelector('#companySwitch .co-btn[data-co="manufacturing-group"]');
+    const u9WtcBtn = document.querySelector('#companySwitch .co-btn[data-co="wtc"]');
+    const u9BbcBtn = document.querySelector('#companySwitch .co-btn[data-co="bbconstruction"]');
+    const u9LtBtn = document.querySelector('#companySwitch .co-btn[data-co="lionstransport"]');
+    const u9CompanySwitchOk = u9GroupBtn && !u9GroupBtn.disabled && /All Assigned \\(2\\)/.test(u9GroupBtn.textContent) &&
+      u9WtcBtn && !u9WtcBtn.disabled && u9LtBtn && !u9LtBtn.disabled && u9BbcBtn && u9BbcBtn.disabled;
+
+    // Switch u9 to All Assigned (2) on Overview and verify BBConstruction data is never leaked into KPIs or records
+    u9GroupBtn.click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    const u9BbcReconHidden = (document.querySelector('[data-recon-co="bbconstruction"]') || {}).hidden === true;
+    const u9NavPayrollHidden = (document.querySelector('#sidebarNav .nav-item[data-view="payroll"]') || {}).hidden === true;
+    const u9NavPartnersHidden = (document.querySelector('#sidebarNav .nav-item[data-view="partners"]') || {}).hidden === true;
+    const u9NavUsersHidden = (document.querySelector('#sidebarNav .nav-item[data-view="users"]') || {}).hidden === true;
+    const u9NavPbiText = (document.getElementById('navCountPbi') || {}).textContent || '';
+
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    const u9SalesRows = Array.from(document.querySelectorAll('#mainContent table.ledger-table tbody tr'));
+    const u9LeakedBbcSales = u9SalesRows.some(tr => /BBConstruction/i.test(tr.textContent));
+
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const u9PbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
+
+    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    const u9StmtTabs = document.querySelectorAll('.stmt-card[data-stmt]').length;
+
+    document.querySelector('#sidebarNav .nav-item[data-view="tables"]').click();
+    const u9TableChips = document.querySelectorAll('[data-table-key]').length;
+    const u9HasSalariesTable = !!document.querySelector('[data-table-key="salaries"]');
+
+    // 3. Test Sales-Only Single-Company Seat (u8: Abbas Chokor — BBConstruction | Sales | none|none)
+    await T.performLogin('abbaschokor@bhfirms.com', '5566', { bypass2FA: true });
+    const u8VisibleNavViews = Array.from(document.querySelectorAll('#sidebarNav .nav-item[data-view]'))
+      .filter(b => !b.hidden)
+      .map(b => b.getAttribute('data-view'));
+    document.getElementById('openNewTicketBtn').click();
+    const u8VisibleForms = Array.from(document.querySelectorAll('.modal-tab[data-form]'))
+      .filter(b => !b.hidden)
+      .map(b => b.getAttribute('data-form'));
+    const u8FormCoLockedToBbc = (document.getElementById('f_company') || {}).value === 'BBConstruction' &&
+      (document.getElementById('f_company') || {}).disabled === true;
+    document.getElementById('closeModalBtn').click();
+
+    // Restore Owner session (Hussein Bdeir) and All-Time period
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#companySwitch .co-btn[data-co="manufacturing-group"]').click();
+
+    return {
+      selectorOk: !!selRoot && !isNativeSelect && popOpen && totalRenderedOpts === 100 &&
+        initialSelectedVal === 'Lions Transport, WTC' && visibleOnSearch === 1 &&
+        all100CountText === '100 / 100' && /\\+94 more selected/.test(all100ChipsMore) &&
+        all100CsvCount === 100 && afterClearCount === 1,
+      totalRenderedOpts, visibleOnSearch, all100CountText, all100ChipsMore,
+      u9ConsistencyOk: u9CompanySwitchOk && u9BbcReconHidden && u9NavPayrollHidden && u9NavPartnersHidden && u9NavUsersHidden &&
+        u9NavPbiText === '11 Pages' && !u9LeakedBbcSales && u9PbiTabs === 11 && u9StmtTabs === 11 && u9TableChips === 26 && !u9HasSalariesTable,
+      u9PbiTabs, u9StmtTabs, u9TableChips,
+      u8ConsistencyOk: u8VisibleNavViews.join(',') === 'overview,tables,sales,customers' &&
+        u8VisibleForms.join(',') === 'sales,receipt,customer,site' && u8FormCoLockedToBbc,
+      u8VisibleNavViews, u8VisibleForms
+    };
+  })()`);
+  multiCoAndAccessProbe && multiCoAndAccessProbe.selectorOk
+    ? pass('users company selector · searchable multi-select scales to 100 companies (live filter, Select All 100, chip overflow +94, safety floor)', `${multiCoAndAccessProbe.totalRenderedOpts} cos · search=${multiCoAndAccessProbe.visibleOnSearch} · ${multiCoAndAccessProbe.all100CountText}`)
+    : fail('users company multi-select selector', JSON.stringify(multiCoAndAccessProbe));
+  multiCoAndAccessProbe && multiCoAndAccessProbe.u9ConsistencyOk && multiCoAndAccessProbe.u8ConsistencyOk
+    ? pass('access & RLS consistency · multi-company subset (All Assigned 2, 0 leaked rows, 11 PBI, 11 RDL, 26 tables) + Sales seat gating', `u9: ${multiCoAndAccessProbe.u9PbiTabs} PBI / ${multiCoAndAccessProbe.u9StmtTabs} RDL / ${multiCoAndAccessProbe.u9TableChips} tbls · u8 views=${multiCoAndAccessProbe.u8VisibleNavViews.join(',')}`)
+    : fail('access & RLS consistency', JSON.stringify(multiCoAndAccessProbe));
+
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);
   await evaluate(`document.querySelector('[data-pbi-page="p06_ar"]').click()`); await sleep(250);

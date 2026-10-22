@@ -147,13 +147,17 @@ def ensure_auth_schema():
         cur.execute("SELECT id, pin_code, last_login_at FROM users WHERE id = ? OR LOWER(email) = LOWER(?)", (uid, email))
         existing = cur.fetchone()
         if existing:
+            cur_id = existing[0]
+            if cur_id != uid and cur_id in ("u-hussein", "u-zeinab", "u-sabah"):
+                cur.execute("UPDATE users SET id=? WHERE id=?", (uid, cur_id))
+                cur_id = uid
             # Never overwrite a seat the owner has edited in the web app (PIN / role / scope / suspension) on a
             # server restart — only back-fill a seat that still carries the schema placeholder PIN and has never
             # signed in (a fresh build inserts users without a PIN, so the column default '1111' lands on everyone).
             cur_pin = (existing[1] or "").strip()
             never_logged = not (existing[2] or "").strip()
             if not cur_pin or (cur_pin == "1111" and pin != "1111" and never_logged):
-                cur.execute("UPDATE users SET pin_code=? WHERE id=?", (pin, existing[0]))
+                cur.execute("UPDATE users SET pin_code=? WHERE id=?", (pin, cur_id))
         else:
             cur.execute(
                 "INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?)",

@@ -4422,17 +4422,95 @@
   ];
 
   function normalizeCompaniesScope(cStr) {
-    const s = String(cStr || 'WTC');
-    const hasWtc = /WTC/i.test(s);
-    const hasBbc = /BBConstruction/i.test(s);
-    const hasLt = /Lions\s*Transport/i.test(s);
-    if (hasWtc && hasBbc && hasLt) return 'WTC, BBConstruction, Lions Transport';
-    if (hasWtc && hasBbc) return 'WTC, BBConstruction';
-    if (hasLt && hasWtc) return 'Lions Transport, WTC';
-    if (hasBbc && hasLt) return 'BBConstruction, Lions Transport';
-    if (hasBbc) return 'BBConstruction';
-    if (hasLt) return 'Lions Transport';
-    return 'WTC';
+    const names = parseUserCompanies(cStr);
+    const hasWtc = names.some(x => /^WTC$/i.test(x));
+    const hasBbc = names.some(x => /^BBConstruction$/i.test(x));
+    const hasLt = names.some(x => /^Lions\s*Transport$/i.test(x));
+    const extra = names.filter(x => !/^(WTC|BBConstruction|Lions\s*Transport)$/i.test(x));
+    if (!extra.length) {
+      if (hasWtc && hasBbc && hasLt) return 'WTC, BBConstruction, Lions Transport';
+      if (hasWtc && hasBbc) return 'WTC, BBConstruction';
+      if (hasLt && hasWtc) return 'Lions Transport, WTC';
+      if (hasBbc && hasLt) return 'BBConstruction, Lions Transport';
+      if (hasBbc) return 'BBConstruction';
+      if (hasLt) return 'Lions Transport';
+      return 'WTC';
+    }
+    return names.join(', ');
+  }
+
+  function renderCompanyMultiSelectChipsHtml(selected) {
+    if (!selected || !selected.length) {
+      return '<span class="hint" style="color:var(--crit)">No company selected — pick at least 1 company</span>';
+    }
+    const maxChips = 8;
+    const shown = selected.slice(0, maxChips);
+    const extra = selected.length - shown.length;
+    return shown.map(name => `
+      <span class="co-multi-chip" data-co-chip="${esc(name)}">
+        <span>${esc(name)}</span>
+        <button type="button" data-remove-co="${esc(name)}" title="Remove ${esc(name)}" aria-label="Remove ${esc(name)}">✕</button>
+      </span>
+    `).join('') + (extra > 0 ? `<span class="co-multi-chip co-multi-chip-more"><span>+${extra} more selected</span></span>` : '');
+  }
+
+  function formatCompanySummaryLabel(selected, totalCount) {
+    if (!selected || !selected.length) return 'Select 1 or more companies…';
+    if (totalCount > 1 && selected.length === totalCount) {
+      return `All ${totalCount} Companies (${selected.slice(0, 3).join(' · ')}${selected.length > 3 ? ' +' + (selected.length - 3) + ' more' : ''})`;
+    }
+    if (selected.length <= 3) return selected.join(' + ');
+    return `${selected.slice(0, 2).join(', ')} + ${selected.length - 2} more`;
+  }
+
+  function renderCompanyMultiSelectHtml(selectedRaw) {
+    const catalog = getCompanyCatalog();
+    const selected = parseUserCompanies(selectedRaw);
+    const selSet = new Set(selected.map(s => s.toLowerCase()));
+    const summaryLbl = formatCompanySummaryLabel(selected, catalog.length);
+    return `
+      <div class="co-multi-select" id="nuCompanySelector">
+        <input type="hidden" id="nu_companies" value="${esc(selected.join(', '))}">
+        <button type="button" class="co-multi-trigger" id="nuCompanyTrigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="co-multi-trigger-summary" id="nuCompanySummaryText">${esc(summaryLbl)}</span>
+          <span class="co-multi-trigger-meta">
+            <span class="co-multi-count-pill" id="nuCompanyCountPill">${selected.length} / ${catalog.length} selected</span>
+            <span class="co-multi-caret" aria-hidden="true">▾</span>
+          </span>
+        </button>
+        <div class="co-multi-chips" id="nuCompanyChips">
+          ${renderCompanyMultiSelectChipsHtml(selected)}
+        </div>
+        <div class="co-multi-popover" id="nuCompanyPopover" hidden>
+          <div class="co-multi-toolbar">
+            <input type="search" id="nuCompanySearch" class="co-multi-search" placeholder="Search ${catalog.length} companies by name, code or sector..." autocomplete="off">
+            <div class="co-multi-actions">
+              <button type="button" class="co-multi-act-btn" id="nuCompanySelectAllBtn">Select All (${catalog.length})</button>
+              <button type="button" class="co-multi-act-btn" id="nuCompanyClearBtn">Clear</button>
+            </div>
+          </div>
+          <div class="co-multi-list" id="nuCompanyList" role="listbox" aria-multiselectable="true">
+            ${catalog.map(co => {
+              const checked = selSet.has(co.name.toLowerCase());
+              return `
+                <label class="co-multi-opt ${checked ? 'is-checked' : ''}" data-co-opt="${esc(co.name)}" data-co-search="${esc((co.name + ' ' + co.label + ' ' + co.sector + ' ' + co.key).toLowerCase())}">
+                  <input type="checkbox" class="co-multi-cb" value="${esc(co.name)}" ${checked ? 'checked' : ''}>
+                  <span class="co-multi-opt-body">
+                    <b>${esc(co.name)}</b>
+                    <small>${esc(co.sector || co.label)}</small>
+                  </span>
+                  <span class="co-multi-opt-tag">${esc(co.key.toUpperCase().slice(0, 8))}</span>
+                </label>
+              `;
+            }).join('')}
+          </div>
+          <div class="co-multi-foot">
+            <span id="nuCompanyFootStatus">${selected.length} of ${catalog.length} ${catalog.length === 1 ? 'company' : 'companies'} assigned</span>
+            <button type="button" class="btn btn-brass" style="padding:2px 9px;font-size:10.5px" id="nuCompanyDoneBtn">Done</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function seatAccessValue(u) {
@@ -4550,10 +4628,8 @@
               </select>
             </div>
             <div class="form-field">
-              <label for="nu_companies">Assigned Companies (Row-Level Security) *</label>
-              <select id="nu_companies">
-                ${SEAT_COMPANY_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curCompanies === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-              </select>
+              <label for="nuCompanyTrigger">Assigned Companies (Row-Level Security) *</label>
+              ${renderCompanyMultiSelectHtml(curCompanies)}
             </div>
             <div class="form-field">
               <label for="nu_access">Executive Dashboards &amp; Statements</label>
@@ -4713,13 +4789,13 @@
                 </select>
               </div>
               <div class="enrol-config-card enrol-policy-card">
-                <span class="enrol-config-lbl">Sign-In Options</span>
+                <span class="enrol-config-lbl">Sign-In Options${owner ? '' : ' (Owner Policy)'}</span>
                 <label class="enrol-policy-check">
-                  <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''}>
+                  <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''} ${owner ? '' : 'disabled'}>
                   <span>Enforce Face ID 2FA on PIN login</span>
                 </label>
                 <label class="enrol-policy-check">
-                  <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''}>
+                  <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''} ${owner ? '' : 'disabled'}>
                   <span>Require blink check</span>
                 </label>
               </div>
@@ -5161,7 +5237,7 @@
 
   function isAdminUser(u) {
     u = u || activeUser();
-    return /Owner|Admin|Full Access/i.test(String((u && u.role) || '')) || /hussein/i.test(String((u && u.email) || ''));
+    return /Owner|Admin|Full Access|Supervisor/i.test(String((u && u.role) || '')) || /hussein/i.test(String((u && u.email) || ''));
   }
 
   function isFieldAdminUnlocked(fieldId) {
@@ -7209,9 +7285,12 @@
   function buildInspectorSubgrids(key, row) {
     const subgrids = [];
     const rec = SEED.records || {};
+    const allowedCos = allowedCompanyNames();
     const addGrid = (id, title, shortLabel, relBadge, targetKey, rows, cols, sumCol) => {
       if (!rows) return;
-      subgrids.push({ id, title, shortLabel, relBadge, targetKey, rows, cols, sumCol });
+      if (targetKey && !canAccessTable(targetKey)) return;
+      const scoped = rows.filter(r => !r || (!r.voided && (!r.company || allowedCos.includes(r.company))));
+      subgrids.push({ id, title, shortLabel, relBadge, targetKey, rows: scoped, cols, sumCol });
     };
 
     if (key === 'sales_tickets') {
@@ -7707,6 +7786,9 @@
     const out = preferExistingSeat
       ? Object.assign({}, incoming, existing)
       : Object.assign({}, existing, incoming);
+    if (existing.id && /^u\d+$/i.test(String(existing.id)) && /^u-(hussein|zeinab|sabah)$/i.test(String(out.id || ''))) {
+      out.id = existing.id;
+    }
     out.seat_updated_at = exSeatTs > inSeatTs ? exSeatTs : (inSeatTs || exSeatTs);
     if (existing.last_login_at && incoming.last_login_at) {
       out.last_login_at = String(existing.last_login_at) > String(incoming.last_login_at) ? existing.last_login_at : incoming.last_login_at;
@@ -8326,7 +8408,11 @@
       STATE.editingUserId = '__new__';
       STATE.newDraftPin = String(Math.floor(1000 + Math.random() * 9000));
     } else {
-      const u = STATE.users.find(x => String(x.id) === String(targetId) || norm(x.email) === norm(String(targetId || '')));
+      let u = STATE.users.find(x => String(x.id) === String(targetId) || norm(x.email) === norm(String(targetId || '')));
+      if (!u && /^u(\d+)$/i.test(String(targetId || ''))) {
+        const idx = parseInt(String(targetId).slice(1), 10) - 1;
+        if (idx >= 0 && idx < STATE.users.length) u = STATE.users[idx];
+      }
       if (!u) return false;
       STATE.editingUserId = String(u.id);
     }
@@ -8360,7 +8446,8 @@
     const email = norm(val('nu_email'));
     const pin = val('nu_pin');
     const role = val('nu_role') || 'Entry';
-    const companies = normalizeCompaniesScope(val('nu_companies') || 'WTC');
+    const rawCompanies = val('nu_companies');
+    const companies = rawCompanies ? normalizeCompaniesScope(rawCompanies) : '';
     const acc = (val('nu_access') || 'partial|partial').split('|');
     const editUser = (STATE.editingUserId && STATE.editingUserId !== '__new__')
       ? STATE.users.find(x => String(x.id) === String(STATE.editingUserId))
@@ -8369,6 +8456,7 @@
     if (!name) errs.push('Full name is required.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push('Enter a valid email address.');
     if (!/^\d{4,8}$/.test(pin)) errs.push('PIN must be 4 to 8 digits.');
+    if (!companies) errs.push('Select at least one company for Row-Level Security (RLS).');
     const dupUser = STATE.users.find(x => norm(x.email) === email && (!editUser || String(x.id) !== String(editUser.id)));
     if (dupUser && STATE.editingUserId && STATE.editingUserId !== '__new__') {
       errs.push(`Email ${email} is already assigned to ${dupUser.full_name}.`);
@@ -8408,6 +8496,7 @@
     STATE.showAddUserForm = true;
     STATE.userFormDirty = false;
     saveLocalAuthAndRecords();
+    applyUserRlsAndPermissions();
     updateSeatEditorDom();
     updateEnrolStudioDom();
     toast(existingIdx >= 0 ? `✓ Seat updated · ${name} (${role} · ${companies})` : `✓ Seat created · ${name} (PIN ${pin})`);
@@ -8416,8 +8505,153 @@
     return true;
   }
 
+  function wireCompanyMultiSelect(root) {
+    const wrap = root.querySelector('#nuCompanySelector');
+    if (!wrap) return;
+    const hiddenInp = wrap.querySelector('#nu_companies');
+    const triggerBtn = wrap.querySelector('#nuCompanyTrigger');
+    const summaryEl = wrap.querySelector('#nuCompanySummaryText');
+    const countPillEl = wrap.querySelector('#nuCompanyCountPill');
+    const chipsEl = wrap.querySelector('#nuCompanyChips');
+    const popoverEl = wrap.querySelector('#nuCompanyPopover');
+    const searchEl = wrap.querySelector('#nuCompanySearch');
+    const selectAllBtn = wrap.querySelector('#nuCompanySelectAllBtn');
+    const clearBtn = wrap.querySelector('#nuCompanyClearBtn');
+    const doneBtn = wrap.querySelector('#nuCompanyDoneBtn');
+    const listEl = wrap.querySelector('#nuCompanyList');
+    const footStatusEl = wrap.querySelector('#nuCompanyFootStatus');
+
+    const allLabels = () => Array.from(listEl ? listEl.querySelectorAll('.co-multi-opt') : []);
+    const allCbs = () => Array.from(listEl ? listEl.querySelectorAll('.co-multi-cb') : []);
+
+    const syncFromCheckboxes = () => {
+      const cbs = allCbs();
+      const total = cbs.length;
+      const selected = [];
+      cbs.forEach(cb => {
+        const opt = cb.closest('.co-multi-opt');
+        if (opt) opt.classList.toggle('is-checked', !!cb.checked);
+        if (cb.checked) selected.push(cb.value);
+      });
+      if (hiddenInp) hiddenInp.value = selected.join(', ');
+      if (summaryEl) summaryEl.textContent = formatCompanySummaryLabel(selected, total);
+      if (countPillEl) countPillEl.textContent = `${selected.length} / ${total} selected`;
+      const q = searchEl ? String(searchEl.value || '').trim() : '';
+      const visibleCount = allLabels().filter(l => !l.hidden).length;
+      if (footStatusEl) {
+        footStatusEl.textContent = q
+          ? `Showing ${visibleCount} of ${total} companies · ${selected.length} assigned`
+          : `${selected.length} of ${total} ${total === 1 ? 'company' : 'companies'} assigned`;
+      }
+      if (chipsEl) {
+        chipsEl.innerHTML = renderCompanyMultiSelectChipsHtml(selected);
+        chipsEl.querySelectorAll('[data-remove-co]').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const targetCo = String(btn.getAttribute('data-remove-co') || '').toLowerCase();
+            cbs.forEach(cb => {
+              if (String(cb.value || '').toLowerCase() === targetCo) cb.checked = false;
+            });
+            STATE.userFormDirty = true;
+            syncFromCheckboxes();
+          });
+        });
+      }
+    };
+
+    const setOpen = (open) => {
+      wrap.classList.toggle('open', !!open);
+      if (popoverEl) popoverEl.hidden = !open;
+      if (triggerBtn) triggerBtn.setAttribute('aria-expanded', String(!!open));
+      if (open && searchEl) {
+        setTimeout(() => { try { searchEl.focus({ preventScroll: true }); } catch (_) {} }, 20);
+      }
+    };
+
+    if (triggerBtn) {
+      triggerBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        setOpen(popoverEl ? popoverEl.hidden : !wrap.classList.contains('open'));
+      });
+    }
+    if (doneBtn) {
+      doneBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        setOpen(false);
+      });
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        const q = String(searchEl.value || '').trim().toLowerCase();
+        allLabels().forEach(lbl => {
+          const hay = String(lbl.getAttribute('data-co-search') || '').toLowerCase();
+          lbl.hidden = !!(q && !hay.includes(q));
+        });
+        syncFromCheckboxes();
+      });
+    }
+    allCbs().forEach(cb => {
+      cb.addEventListener('change', () => {
+        STATE.userFormDirty = true;
+        syncFromCheckboxes();
+      });
+    });
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        allLabels().forEach(lbl => {
+          if (!lbl.hidden) {
+            const cb = lbl.querySelector('.co-multi-cb');
+            if (cb) cb.checked = true;
+          }
+        });
+        STATE.userFormDirty = true;
+        syncFromCheckboxes();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        allLabels().forEach(lbl => {
+          if (!lbl.hidden) {
+            const cb = lbl.querySelector('.co-multi-cb');
+            if (cb) cb.checked = false;
+          }
+        });
+        STATE.userFormDirty = true;
+        syncFromCheckboxes();
+      });
+    }
+    if (hiddenInp) {
+      hiddenInp.addEventListener('change', () => {
+        const raw = String(hiddenInp.value || '').trim();
+        const names = raw ? parseUserCompanies(raw).map(s => s.toLowerCase()) : [];
+        const set = new Set(names);
+        allCbs().forEach(cb => {
+          cb.checked = set.has(String(cb.value || '').toLowerCase());
+        });
+        syncFromCheckboxes();
+      });
+    }
+    if (!document.body.dataset.coMultiDocWired) {
+      document.body.dataset.coMultiDocWired = '1';
+      document.addEventListener('mousedown', e => {
+        const activeWrap = document.getElementById('nuCompanySelector');
+        if (activeWrap && activeWrap.classList.contains('open') && (!e.target || !e.target.closest('#nuCompanySelector'))) {
+          activeWrap.classList.remove('open');
+          const pop = document.getElementById('nuCompanyPopover');
+          if (pop) pop.hidden = true;
+          const trig = document.getElementById('nuCompanyTrigger');
+          if (trig) trig.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+    syncFromCheckboxes();
+  }
+
   function wireSeatEditorActions(root) {
     if (!root) return;
+    wireCompanyMultiSelect(root);
     const sel = root.querySelector('#nu_seat_select');
     if (sel) {
       sel.addEventListener('change', e => {
@@ -9012,16 +9246,69 @@
   function applyUserRlsAndPermissions() {
     const user = activeUser();
     const allowedCos = getAllowedCompanyKeys(user);
+    const allowedNames = allowedCompanyNames(user);
+    const catalog = getCompanyCatalog();
+    STATE.allowedCompanyNames = allowedNames;
+    STATE.canAccessRdlReport = r => canAccessRdlReport(r, user);
 
     if (!allowedCos.includes(STATE.company)) STATE.company = allowedCos[0];
-    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => {
-      btn.hidden = !allowedCos.includes(btn.getAttribute('data-company'));
-    });
+    const switchEl = $('companySwitch');
+    if (switchEl) {
+      // Ensure any custom companies in allowedCos have an entity button in #companySwitch
+      allowedCos.forEach(coKey => {
+        if (coKey === 'manufacturing-group') return;
+        if (!switchEl.querySelector(`.entity-btn[data-company="${coKey}"]`)) {
+          const coName = COMPANY_BU_MATCH[coKey] || coKey;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'entity-btn';
+          btn.setAttribute('data-company', coKey);
+          btn.textContent = coName;
+          btn.addEventListener('click', () => {
+            STATE.company = coKey;
+            STATE.shown = {};
+            STATE.pbiTablePage = {};
+            saveFilterState();
+            renderApp();
+          });
+          switchEl.appendChild(btn);
+        }
+      });
+      switchEl.querySelectorAll('.entity-btn').forEach(btn => {
+        const key = btn.getAttribute('data-company');
+        btn.hidden = !allowedCos.includes(key);
+        if (key === 'manufacturing-group') {
+          btn.textContent = allowedNames.length >= catalog.length
+            ? `All Group (${allowedNames.length})`
+            : `All Assigned (${allowedNames.length})`;
+        }
+      });
+    }
+
+    COMPANY_LABELS['manufacturing-group'] = allowedNames.length >= catalog.length
+      ? `All Manufacturing Group (${allowedNames.slice(0, 3).join(' · ')}${allowedNames.length > 3 ? ' +' + (allowedNames.length - 3) + ' more' : ''})`
+      : `Assigned Entities (${allowedNames.slice(0, 3).join(' · ')}${allowedNames.length > 3 ? ' +' + (allowedNames.length - 3) + ' more' : ''})`;
+    COMPANY_MOBILE_LABELS['manufacturing-group'] = allowedNames.length >= catalog.length
+      ? `All Group (${allowedNames.length})`
+      : `All Assigned (${allowedNames.length})`;
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
       btn.hidden = !canViewView(btn.getAttribute('data-view'), user);
     });
     if (!canViewView(STATE.view, user)) STATE.view = defaultViewFor(user);
+
+    if (STATE.pbiPage && !canAccessPbiPage(STATE.pbiPage, user)) {
+      STATE.pbiPage = 'p01_overview';
+    }
+    if (STATE.activeTableKey && !canAccessTable(STATE.activeTableKey, user)) {
+      STATE.activeTableKey = 'sales_tickets';
+    }
+    if (window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG)) {
+      const permittedRdl = window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, user));
+      if (permittedRdl.length && !permittedRdl.some(r => r.code === STATE.activeStatement)) {
+        STATE.activeStatement = permittedRdl[0].code;
+      }
+    }
 
     const newBtn = $('newEntryBtn');
     if (newBtn) newBtn.hidden = !canEnterAny(user);
@@ -9030,7 +9317,12 @@
     if (avEl) avEl.textContent = getInitials(user.full_name);
     if (nmEl) nmEl.textContent = user.full_name;
     if (rlEl) rlEl.textContent = user.role;
-    if (scEl) scEl.textContent = String(user.companies || 'WTC').replace(/BBConstruction/g, 'BBC').replace(/Lions Transport/g, 'Lions');
+    if (scEl) {
+      const shortNames = allowedNames.map(n => n.replace(/BBConstruction/g, 'BBC').replace(/Lions Transport/g, 'Lions'));
+      scEl.textContent = shortNames.length <= 3
+        ? shortNames.join(', ')
+        : `${shortNames.slice(0, 2).join(', ')} +${shortNames.length - 2} more`;
+    }
   }
 
   function renderQuickSeatsInAuthGate() {
@@ -9318,13 +9610,23 @@
     if (['sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
     else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
 
+    const pbiCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES))
+      ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length
+      : 20;
+    const tblCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG))
+      ? window.MFG_PBI.TABLE_CATALOG.filter(t => canAccessTable(t.key, user)).length
+      : 34;
+    const stCount = (window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG))
+      ? window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, user)).length
+      : 22;
+
     const specs = {
       exec: [
         { view: 'overview', label: 'Overview', pill: 'Live' },
-        { view: 'pbi', label: 'Power BI', pill: '20' },
-        { view: 'tables', label: '34 Tables', pill: '34' },
+        { view: 'pbi', label: 'Power BI', pill: String(pbiCount) },
+        { view: 'tables', label: `${tblCount} Tables`, pill: String(tblCount) },
         { view: 'sentinels', label: 'Sentinels', pill: String(sentinelsOpen) },
-        { view: 'statements', label: 'Statements', pill: '22' },
+        { view: 'statements', label: 'Statements', pill: String(stCount) },
         { view: 'users', label: 'Team', pill: String(STATE.users.length) }
       ],
       dispatch: [
@@ -9474,8 +9776,8 @@
 
     switch (STATE.view) {
       case 'overview': container.innerHTML = renderOverview(); break;
-      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
-      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, isAppRecord }) : renderOverview(); break;
+      case 'pbi': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
+      case 'tables': container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': container.innerHTML = renderSentinels(); break;
       case 'sales': container.innerHTML = renderSales(); break;
       case 'raw': container.innerHTML = renderRaw(); break;
@@ -9498,6 +9800,49 @@
 
   function wireWorkspace(container, activeUserRow) {
     wireModalSuggestions(container);
+    const allowedCos = getAllowedCompanyKeys(activeUserRow);
+    const allowedNames = allowedCompanyNames(activeUserRow);
+    const totalCatCount = getCompanyCatalog().length;
+
+    // Enforce RLS & permission consistency across entity recon cards, reset buttons & jump links
+    container.querySelectorAll('.sales-recon-card[data-jump-co]').forEach(card => {
+      const targetCo = card.getAttribute('data-jump-co');
+      if (targetCo && !allowedCos.includes(targetCo)) card.hidden = true;
+    });
+    container.querySelectorAll('.sales-recon-reset').forEach(btn => {
+      if (allowedNames.length < 2) {
+        btn.hidden = true;
+      } else {
+        btn.hidden = false;
+        btn.textContent = allowedNames.length >= totalCatCount
+          ? `Show All Group (${allowedNames.length})`
+          : `Show All Assigned (${allowedNames.length})`;
+      }
+    });
+    container.querySelectorAll('.tfoot-sub-split').forEach(el => {
+      if (!(allowedNames.includes('WTC') && allowedNames.includes('BBConstruction'))) {
+        el.hidden = true;
+      }
+    });
+    container.querySelectorAll('[data-nav-jump]').forEach(el => {
+      const targetView = el.getAttribute('data-nav-jump');
+      if (targetView && !canViewView(targetView, activeUserRow)) {
+        if (el.tagName === 'BUTTON' || el.classList.contains('btn') || el.classList.contains('btn-ghost-bar') || el.classList.contains('att-act')) {
+          el.hidden = true;
+        } else {
+          el.removeAttribute('data-nav-jump');
+          el.removeAttribute('role');
+          el.removeAttribute('tabindex');
+          el.classList.remove('kpi-link');
+        }
+      }
+    });
+    container.querySelectorAll('[data-pbi-jump]').forEach(el => {
+      const targetPbi = el.getAttribute('data-pbi-jump');
+      if (!canViewView('pbi', activeUserRow) || (targetPbi && !canAccessPbiPage(targetPbi, activeUserRow))) {
+        if (el.tagName === 'BUTTON' || el.classList.contains('btn')) el.hidden = true;
+      }
+    });
     // Power BI Studio 20-page tabs & dynamic per-page slicers + 34-table hub chips
     container.querySelectorAll('[data-pbi-page]').forEach(btn => btn.addEventListener('click', () => {
       STATE.pbiPage = btn.getAttribute('data-pbi-page');
@@ -9773,6 +10118,7 @@
     }
     wireEnrolPoseSlots($('enrolThumbStrip'));
     wireEnrolPoseSlots($('enrolPoseStepper'));
+    wireSeatEditorActions($('seatEditorWrap') || container);
     wireUsersDirectoryActions($('usersDirectoryTbody') || container);
 
     const camPh = $('enrolCamPlaceholder');
@@ -9853,52 +10199,8 @@
     });
 
     const addUserBtn = $('addWebUserBtn');
-    if (addUserBtn) addUserBtn.addEventListener('click', () => { STATE.showAddUserForm = true; renderApp(); setTimeout(() => { const n = $('nu_name'); if (n) n.focus(); }, 50); });
-    const cancelAddUserBtn = $('cancelAddUserBtn');
-    if (cancelAddUserBtn) cancelAddUserBtn.addEventListener('click', () => { STATE.showAddUserForm = false; renderApp(); });
-
-    const saveNewUserBtn = $('saveNewUserBtn');
-    if (saveNewUserBtn) saveNewUserBtn.addEventListener('click', async () => {
-      if (!isOwner()) return;
-      const name = val('nu_name');
-      const email = norm(val('nu_email'));
-      const pin = val('nu_pin');
-      const role = val('nu_role') || 'Entry';
-      const companies = val('nu_companies') || 'WTC';
-      const acc = (val('nu_access') || 'partial|partial').split('|');
-      const errs = [];
-      if (!name) errs.push('Full name is required.');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push('Enter a valid email address.');
-      if (!/^\d{4,8}$/.test(pin)) errs.push('PIN must be 4 to 8 digits.');
-      const box = $('nuErrors');
-      if (box) { box.hidden = !errs.length; box.innerHTML = errs.length ? `<ul>${errs.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''; }
-      if (errs.length) return;
-
-      const existingIdx = STATE.users.findIndex(x => norm(x.email) === email);
-      const prev = existingIdx >= 0 ? STATE.users[existingIdx] : {};
-      const newUser = {
-        id: existingIdx >= 0 ? prev.id : uid('u'),
-        full_name: name,
-        email,
-        pin_code: pin,
-        role,
-        companies,
-        pbi_access: acc[0] || 'partial',
-        statements_access: acc[1] || 'partial',
-        status: 'Active',
-        last_login_at: prev.last_login_at || '',
-        face_samples: prev.face_samples || [],
-        face_required: !!prev.face_required,
-        face_updated_at: prev.face_updated_at || ''
-      };
-      if (existingIdx >= 0) STATE.users[existingIdx] = Object.assign(STATE.users[existingIdx], newUser);
-      else STATE.users.push(newUser);
-      STATE.showAddUserForm = false;
-      saveLocalAuthAndRecords();
-      renderApp();
-      toast(existingIdx >= 0 ? `Seat updated · ${name}` : `Seat created · ${name} (PIN ${pin})`);
-      if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: newUser }) }); } catch (_) { /* no server.py */ } }
-      await syncWithCloud(true);
+    if (addUserBtn) addUserBtn.addEventListener('click', () => {
+      selectSeatForEdit('__new__', { scroll: true, focusName: true });
     });
 
     const syncNowBtn = $('syncCloudNowBtn');
@@ -10293,6 +10595,8 @@
         updateEnrolStudioDom();
         return true;
       },
+      selectSeatForEdit: (targetId, opts) => selectSeatForEdit(targetId, opts),
+      saveSeatEditorForm: () => saveSeatEditorForm(),
       captureSyntheticPose: (vec, detScore = 0.96, faceSizeFrac = 0.26) =>
         captureEnrolDescriptor({ descriptor: vec, detScore, faceSizeFrac, multiple: false }),
       saveEnrolment: () => saveFaceEnrolment(),
