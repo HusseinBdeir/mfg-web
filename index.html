@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=7.0">
+  <link rel="stylesheet" href="css/app.css?v=7.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -455,9 +455,9 @@
               </div>
 
               <div class="auth-hint-wrap">
-                <div id="authFaceHint" class="auth-face-hint">Loading Face ID biometric models…</div>
+                <div id="authFaceHint" class="auth-face-hint">Loading Face ID…</div>
                 <div id="authStreakBar" class="auth-streak-bar"><div id="authStreakFill" class="auth-streak-fill"></div></div>
-                <small class="auth-cam-note">Full 4:3 frame · Camera turns off automatically on sign-in</small>
+                <small class="auth-cam-note">Camera turns off automatically on sign-in</small>
               </div>
             </div>
           </div>
@@ -501,7 +501,7 @@
         </div>
         <div class="quick-seat-list" id="quickSeatList"></div>
         <div class="auth-right-ftr">
-          Enrol <b>Face ID (3 Poses)</b> with <b>Auto-Enrol</b> or issue PINs &amp; WhatsApp invite links under <b>Team Auth &amp; Users</b>. Enrolled 128-d face templates sync across all devices via the BHFIRMS Cloud Relay.
+          Enrol <b>Face ID (3 Poses)</b> or issue PINs &amp; invite links under <b>Team Auth &amp; Users</b>. Face ID templates sync across all devices via the BHFIRMS Cloud Relay.
         </div>
       </div>
     </div>
@@ -510,14 +510,14 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=7.0"></script>
-  <script src="js/face.js?v=7.0"></script>
-  <script src="js/endpoints.js?v=7.0"></script>
-  <script src="js/seed_data.js?v=7.0"></script>
-  <script src="js/forms_engine.js?v=7.0"></script>
-  <script src="js/pbi_pages.js?v=7.0"></script>
-  <script src="js/rdl_reports.js?v=7.0"></script>
-  <script src="js/app.js?v=7.0"></script>
+  <script src="vendor/face-api.js?v=7.2"></script>
+  <script src="js/face.js?v=7.2"></script>
+  <script src="js/endpoints.js?v=7.2"></script>
+  <script src="js/seed_data.js?v=7.2"></script>
+  <script src="js/forms_engine.js?v=7.2"></script>
+  <script src="js/pbi_pages.js?v=7.2"></script>
+  <script src="js/rdl_reports.js?v=7.2"></script>
+  <script src="js/app.js?v=7.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

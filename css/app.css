@@ -4859,7 +4859,7 @@ td.pbi-cell-amber {
   color: var(--brass);
 }
 
-/* Right Column: 3-Card Configuration Strip */
+/* Right Column: 2-Card Configuration Strip */
 .enrol-controls-col {
   display: flex;
   flex-direction: column;
@@ -4868,7 +4868,7 @@ td.pbi-cell-amber {
 }
 .enrol-config-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 .enrol-config-card {
@@ -8438,5 +8438,85 @@ table.rdl-meta-box td.rdl-meta-val.bold {
   font-size: 10.5px;
   color: var(--muted);
 }
+
+/* ============================================================================
+   v7.0 — Unified Rev 10 Custom Searchable Combobox & Select Popover System
+   (Product/Grade metadata badges, zero native <select> popups across forms,
+    Power BI Studio slicers, Team Auth, and Admin Unlock controls)
+   ============================================================================ */
+.pa-select-wrap > select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none !important;
+  padding-right: 28px !important;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.pa-select-wrap.open > select {
+  border-color: var(--brass) !important;
+  box-shadow: 0 0 0 2px var(--brass-tint);
+}
+.pa-suggest-item {
+  gap: 8px;
+}
+.pa-suggest-meta {
+  font-family: "Archivo", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pa-suggest-item:hover .pa-suggest-meta,
+.pa-suggest-item.active .pa-suggest-meta {
+  border-color: var(--brass-border);
+  color: var(--ink);
+}
+.pa-suggest-item.is-selected {
+  font-weight: 700;
+  color: var(--brass);
+  background: rgba(184, 136, 59, 0.08);
+}
+.pa-suggest-check {
+  color: var(--brass);
+  font-weight: 800;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.pa-select-filter-wrap {
+  padding: 3px 3px 5px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 3px;
+}
+.pa-select-filter {
+  width: 100% !important;
+  padding: 5px 8px !important;
+  font-size: 11.5px !important;
+  border-radius: 5px !important;
+  border: 1px solid var(--line-strong) !important;
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  outline: none !important;
+}
+.pa-select-filter:focus {
+  border-color: var(--brass) !important;
+}
+.pbi-slicer-wrap,
+.pbi-slicer-bar,
+.pbi-slicer-item {
+  overflow: visible !important;
+}
+.pbi-slicer-item .pa-suggest-menu {
+  min-width: 220px;
+  z-index: 120;
+}
+
 
 

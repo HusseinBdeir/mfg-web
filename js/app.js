@@ -104,7 +104,10 @@
     shown: {},
     cloudStatus: 'Connecting...',
     cloudUpdatedAt: '',
-    showAddUserForm: false,
+    showAddUserForm: true,
+    editingUserId: 'u1',
+    newDraftPin: String(Math.floor(1000 + Math.random() * 8999)),
+    userFormDirty: false,
     users: (lsGet('isabi_mfg_users_v2', null) || DEFAULT_USERS.map(u => ({ ...u }))).map(u => {
       const k = String(u && u.email || '').trim().toLowerCase();
       const seed = DEFAULT_FACE_SEEDS[k];
@@ -204,6 +207,12 @@
   CR_KEYS.forEach(k => { if (!Array.isArray(STATE.customRecords[k])) STATE.customRecords[k] = []; });
   if (!Array.isArray(STATE.users) || !STATE.users.length) STATE.users = DEFAULT_USERS.map(u => ({ ...u }));
 
+  const BASE_COMPANY_DIRECTORY = [
+    { key: 'wtc', name: 'WTC', label: 'WTC (World Trading & Construction)', sector: 'Concrete, Quarry & Batching' },
+    { key: 'bbconstruction', name: 'BBConstruction', label: 'BBConstruction', sector: 'Contracting & Aggregates' },
+    { key: 'lionstransport', name: 'Lions Transport', label: 'Lions Transport', sector: 'Heavy Fleet & Haulage' }
+  ];
+
   const COMPANY_LABELS = {
     'manufacturing-group': 'All Manufacturing Group (WTC · BBConstruction · Lions Transport)',
     'wtc': 'WTC (World Trading & Construction)',
@@ -220,6 +229,41 @@
 
   const COMPANY_KEY_BY_NAME = { 'WTC': 'wtc', 'BBConstruction': 'bbconstruction', 'Lions Transport': 'lionstransport' };
   const SENTINEL_MODEL_KEY = { 'manufacturing-group': 'Manufacturing Group', 'wtc': 'WTC', 'bbconstruction': 'BBConstruction', 'lionstransport': 'Lions Transport' };
+
+  function slugCompanyKey(name) {
+    return String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'wtc';
+  }
+
+  function getCompanyCatalog() {
+    const out = [];
+    const seen = new Set();
+    const pushCo = (raw) => {
+      if (!raw) return;
+      const obj = typeof raw === 'string'
+        ? { key: COMPANY_KEY_BY_NAME[raw.trim()] || slugCompanyKey(raw), name: raw.trim(), label: raw.trim(), sector: 'Operating Entity (BU)' }
+        : {
+            key: raw.key || COMPANY_KEY_BY_NAME[String(raw.name || '').trim()] || slugCompanyKey(raw.name),
+            name: String(raw.name || raw.label || '').trim(),
+            label: String(raw.label || raw.name || '').trim(),
+            sector: String(raw.sector || 'Operating Entity (BU)').trim()
+          };
+      if (!obj.name) return;
+      const normName = obj.name.toLowerCase();
+      if (seen.has(normName)) return;
+      seen.add(normName);
+      if (!COMPANY_BU_MATCH[obj.key]) COMPANY_BU_MATCH[obj.key] = obj.name;
+      if (!COMPANY_KEY_BY_NAME[obj.name]) COMPANY_KEY_BY_NAME[obj.name] = obj.key;
+      if (!COMPANY_LABELS[obj.key]) COMPANY_LABELS[obj.key] = obj.label || obj.name;
+      out.push(obj);
+    };
+    BASE_COMPANY_DIRECTORY.forEach(pushCo);
+    if (Array.isArray(window.MFG_COMPANIES)) window.MFG_COMPANIES.forEach(pushCo);
+    if (SEED && Array.isArray(SEED.companies)) SEED.companies.forEach(pushCo);
+    (STATE.users || []).forEach(u => {
+      String((u && u.companies) || '').split(/[,;|]+/).map(s => s.trim()).filter(Boolean).forEach(pushCo);
+    });
+    return out;
+  }
 
   // ==========================================================================
   // FORMATTERS & SMALL HELPERS
@@ -280,8 +324,21 @@
     toastTimer = setTimeout(() => { el.hidden = true; }, kind === 'err' ? 5200 : 3000);
   }
 
+  function resolveEffectiveModelKey(coKey) {
+    const k = coKey || STATE.company;
+    if (k !== 'manufacturing-group') return k;
+    const allowed = allowedCompanyNames();
+    const hasWtc = allowed.includes('WTC');
+    const hasBbc = allowed.includes('BBConstruction');
+    if (hasWtc && !hasBbc) return 'wtc';
+    if (!hasWtc && hasBbc) return 'bbconstruction';
+    if (!hasWtc && !hasBbc) return 'lionstransport';
+    return 'manufacturing-group';
+  }
+
   function getModel() {
-    return SEED.models[STATE.company] || SEED.models['manufacturing-group'] || {
+    const effKey = resolveEffectiveModelKey(STATE.company);
+    return SEED.models[effKey] || SEED.models['manufacturing-group'] || {
       periods: {}, monthly: [], products: [], customers: [], suppliers: [], sites: [], equipment: [], gl_tb: [], soa_stream: []
     };
   }
@@ -3140,12 +3197,42 @@
     const shownSups = sups.slice(0, shownCount('sups'));
     const base = filterRecords(SEED.records.settlements);
     const isSupChip = ['open_ap', 'mat_leg', 'haul_leg', 'exp_leg', 'iva_sup'].includes(STATE.chipFilter);
-    const spays = sortRows(base.filter(r => STATE.chipFilter === 'app' ? isAppRecord(r) : (STATE.chipFilter === 'all' || isSupChip || r.method === STATE.chipFilter)), 'settle', 'date', 'desc');
+    const spays = sortRows(base.filter(r => {
+      if (STATE.chipFilter === 'app') return isAppRecord(r);
+      if (STATE.chipFilter === 'payments_only') return settlementKind(r) === 'Payment';
+      if (STATE.chipFilter === 'vat_paid') return settlementKind(r) === 'VAT paid';
+      return STATE.chipFilter === 'all' || isSupChip || r.method === STATE.chipFilter;
+    }), 'settle', 'date', 'desc');
     const shown = spays.slice(0, shownCount('settle'));
     const methods = uniqSorted(SEED.records.settlements.map(r => r.method));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumAmt = spays.reduce((a, r) => a + Number(r.amount || 0), 0);
-    const sumDisc = spays.reduce((a, r) => a + Number(r.discount || 0), 0);
+    let sumAmt = 0, sumDisc = 0, sumPay = 0, sumVatPaid = 0, sumIvaPaid = 0, sumCommPaid = 0;
+    const byCoSettle = {
+      WTC: { n: 0, pay: 0, vat: 0, iva: 0, comm: 0 },
+      BBConstruction: { n: 0, pay: 0, vat: 0, iva: 0, comm: 0 }
+    };
+    spays.forEach(s => {
+      const a = Number(s.amount || 0);
+      const d = Number(s.discount || 0);
+      const tot = a + d;
+      const kd = settlementKind(s);
+      sumAmt += a;
+      sumDisc += d;
+      if (kd === 'Payment') sumPay += tot;
+      else if (kd === 'VAT paid') sumVatPaid += tot;
+      else if (kd === 'Invoice paid') sumIvaPaid += tot;
+      else if (kd === 'Commission paid') sumCommPaid += tot;
+      const b = byCoSettle[s.company];
+      if (b) {
+        if (kd === 'Payment') { b.n += 1; b.pay += tot; }
+        else if (kd === 'VAT paid') b.vat += tot;
+        else if (kd === 'Invoice paid') b.iva += tot;
+        else if (kd === 'Commission paid') b.comm += tot;
+      }
+    });
+    const wtcSp = byCoSettle.WTC;
+    const bbcSp = byCoSettle.BBConstruction;
+    const isGroupScope = STATE.company === 'manufacturing-group';
 
     return `
       <div class="cockpit-banner">
@@ -3216,9 +3303,42 @@
 
         <div class="panel-card" id="settlePanel">
           <div class="table-toolbar">
-            <div class="chip-bar">${chip('all', `All (${base.length})`)}${methods.map(mm => chip(mm, mm)).join('')}${chip('app', 'App-entered')}</div>
+            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('payments_only', 'Payments Only')}${chip('vat_paid', 'VAT Paid')}${methods.map(mm => chip(mm, mm)).join('')}${chip('app', 'App-entered')}</div>
             <span class="panel-meta">Oldest-First Leg Relief ${exportBtn('settlePanel', 'Supplier_Settlements')}</span>
           </div>
+          ${isGroupScope ? `
+          <div class="sales-entity-recon">
+            <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
+              <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>${fmtNum(wtcSp.n)} Payments</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+              <div class="sales-recon-metrics">
+                <span><small>Settlements Paid</small><b class="brass">${fmtUSD(wtcSp.pay, 2)}</b></span>
+                <span><small>VAT Paid</small><b>${fmtUSD(wtcSp.vat, 2)}</b></span>
+                <span><small>IVA Invoices</small><b>${fmtUSD(wtcSp.iva, 2)}</b></span>
+                <span><small>Commission</small><b>${fmtUSD(wtcSp.comm, 2)}</b></span>
+              </div>
+            </div>
+            <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+              <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>${fmtNum(bbcSp.n)} Payments</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+              <div class="sales-recon-metrics">
+                <span><small>Settlements Paid</small><b class="brass">${fmtUSD(bbcSp.pay, 2)}</b></span>
+                <span><small>VAT Paid</small><b>${fmtUSD(bbcSp.vat, 2)}</b></span>
+                <span><small>IVA Invoices</small><b>${fmtUSD(bbcSp.iva, 2)}</b></span>
+                <span><small>Commission</small><b>${fmtUSD(bbcSp.comm, 2)}</b></span>
+              </div>
+            </div>
+          </div>
+          ` : `
+          <div class="sales-entity-recon single">
+            <div class="sales-recon-single">
+              <span><span class="badge badge-brass">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span></span>
+              <span>Settlements Paid: <b class="brass">${fmtUSD(sumPay, 2)}</b></span>
+              <span>VAT Paid: <b>${fmtUSD(sumVatPaid, 2)}</b></span>
+              <span>IVA Invoices: <b>${fmtUSD(sumIvaPaid, 2)}</b></span>
+              <span>Commission: <b>${fmtUSD(sumCommPaid, 2)}</b></span>
+              <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
+            </div>
+          </div>
+          `}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -3233,14 +3353,23 @@
                     <td class="mono">${esc(sp.name)}${sp.reference ? ` <span class="mu">· ${esc(sp.reference)}</span>` : ''}</td>
                     <td><span class="badge badge-brass">${esc(sp.company)}</span></td>
                     <td>${relLink('suppliers', sp.supplier, sp.supplier, true)}</td>
-                    <td>${esc(sp.method)}</td>
+                    <td>${esc(sp.method)} <span class="mu" style="font-size:10px">(${esc(settlementKind(sp))})</span></td>
                     <td class="r"><strong>${fmtUSD(sp.amount, 2)}</strong></td>
                     <td class="r">${sp.discount ? fmtUSD(sp.discount, 2) : '—'}</td>
                   </tr>
                 `).join('') || emptyRow(7, periodEmptyMsg(SEED.records.settlements, 'supplier settlements'))}
                 ${showMoreRow('settle', spays.length, 7)}
               </tbody>
-              <tfoot><tr><td colspan="5"><b>TOTAL (${fmtNum(spays.length)} SETTLEMENTS)</b></td><td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td><td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td></tr></tfoot>
+              <tfoot>
+                <tr>
+                  <td colspan="5">
+                    <b>SETTLEMENTS PAID: ${fmtUSD(sumPay, 2)} (VAT Paid ${fmtUSD(sumVatPaid, 2)} · IVA Inv. ${fmtUSD(sumIvaPaid, 2)} · Comm. ${fmtUSD(sumCommPaid, 2)} · ${fmtNum(spays.length)} rows)</b>
+                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC Paid: ${fmtUSD(wtcSp.pay, 2)} · VAT Paid: ${fmtUSD(wtcSp.vat, 2)} &nbsp;|&nbsp; BBC Paid: ${fmtUSD(bbcSp.pay, 2)} · VAT Paid: ${fmtUSD(bbcSp.vat, 2)}</div>` : ''}
+                  </td>
+                  <td class="r"><b>${fmtUSD(sumAmt, 2)}</b></td>
+                  <td class="r"><b>${sumDisc ? fmtUSD(sumDisc, 2) : '—'}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -3255,8 +3384,8 @@
     const k = getKPI();
     const base = filterRecords(SEED.records.expenses);
     const expRows = sortRows(base.filter(x => {
-      if (STATE.chipFilter === 'cash') return x.method === 'Cash';
-      if (STATE.chipFilter === 'credit') return x.method === 'Credit';
+      if (STATE.chipFilter === 'cash') return !isCreditExpense(x) && expenseSign(x) !== 0;
+      if (STATE.chipFilter === 'credit') return isCreditExpense(x) && expenseSign(x) !== 0;
       if (STATE.chipFilter === 'app') return isAppRecord(x);
       return true;
     }), 'expenses', 'date', 'desc');
@@ -3264,7 +3393,28 @@
     const salRows = sortRows(filterRecords(SEED.records.salaries), 'salaries', 'date', 'desc');
     const shownSal = salRows.slice(0, shownCount('salaries'));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const sumExp = expRows.reduce((a, r) => a + Number(r.amount || 0), 0);
+    let sumExp = 0, sumCashExp = 0, sumCredExp = 0;
+    const byCoExp = {
+      WTC: { n: 0, tot: 0, cash: 0, cred: 0 },
+      BBConstruction: { n: 0, tot: 0, cash: 0, cred: 0 }
+    };
+    expRows.forEach(r => {
+      const sgn = expenseSign(r);
+      if (sgn === 0) return;
+      const a = sgn * Number(r.amount || 0);
+      const isCr = isCreditExpense(r);
+      sumExp += a;
+      if (isCr) sumCredExp += a; else sumCashExp += a;
+      const b = byCoExp[r.company];
+      if (b) {
+        b.n += 1;
+        b.tot += a;
+        if (isCr) b.cred += a; else b.cash += a;
+      }
+    });
+    const wtcEx = byCoExp.WTC;
+    const bbcEx = byCoExp.BBConstruction;
+    const isGroupScope = STATE.company === 'manufacturing-group';
     const sumSal = salRows.reduce((a, r) => a + Number(r.amount || 0), 0);
 
     return `
@@ -3275,9 +3425,9 @@
           <div class="cockpit-sub">Categorized into Production Cost (Class 60/61), Operating Expenses (Class 62) &amp; Capital Expenditures (Class 2) + Staff Salaries &amp; Overtime.</div>
         </div>
         <div class="cockpit-pills">
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Expenses</div><div class="cockpit-pill-val brass">${fmtUSD(k.expenses, 0)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cash / Credit</div><div class="cockpit-pill-val">${fmtUSD(k.cash_expenses, 0)} / ${fmtUSD(k.credit_expenses, 0)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Salaries Paid</div><div class="cockpit-pill-val emerald">${fmtUSD(k.salaries_paid, 0)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Expenses</div><div class="cockpit-pill-val brass">${fmtUSD(sumExp, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cash / Credit</div><div class="cockpit-pill-val">${fmtUSD(sumCashExp, 2)} / ${fmtUSD(sumCredExp, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Salaries Paid</div><div class="cockpit-pill-val emerald">${fmtUSD(k.salaries_paid, 2)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Overtime Due</div><div class="cockpit-pill-val amber">${fmtUSD(k.overtime_bonus, 0)}</div></div>
           ${appPill('expenses', 'amount', 'expenses')}
         </div>
@@ -3295,6 +3445,35 @@
               ${canEnterForm('expense') ? '<button class="btn btn-primary" data-open-modal="expense">+ New Expense</button>' : ''}
             </div>
           </div>
+          ${isGroupScope ? `
+          <div class="sales-entity-recon">
+            <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
+              <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>${fmtNum(wtcEx.n)} Vouchers</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+              <div class="sales-recon-metrics">
+                <span><small>Cash Exp.</small><b>${fmtUSD(wtcEx.cash, 2)}</b></span>
+                <span><small>Credit Exp.</small><b>${fmtUSD(wtcEx.cred, 2)}</b></span>
+                <span><small>Total Expenses</small><b class="brass">${fmtUSD(wtcEx.tot, 2)}</b></span>
+              </div>
+            </div>
+            <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+              <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>${fmtNum(bbcEx.n)} Vouchers</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+              <div class="sales-recon-metrics">
+                <span><small>Cash Exp.</small><b>${fmtUSD(bbcEx.cash, 2)}</b></span>
+                <span><small>Credit Exp.</small><b>${fmtUSD(bbcEx.cred, 2)}</b></span>
+                <span><small>Total Expenses</small><b class="brass">${fmtUSD(bbcEx.tot, 2)}</b></span>
+              </div>
+            </div>
+          </div>
+          ` : `
+          <div class="sales-entity-recon single">
+            <div class="sales-recon-single">
+              <span><span class="badge badge-brass">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span> <b>${fmtNum(expRows.length)} Vouchers</b></span>
+              <span>Cash: <b>${fmtUSD(sumCashExp, 2)}</b> · Credit: <b>${fmtUSD(sumCredExp, 2)}</b></span>
+              <span>Total Expenses: <b class="brass">${fmtUSD(sumExp, 2)}</b></span>
+              <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
+            </div>
+          </div>
+          `}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -3303,7 +3482,9 @@
                 </tr>
               </thead>
               <tbody>
-                ${shownExp.map(x => `
+                ${shownExp.map(x => {
+                  const sgn = expenseSign(x);
+                  return `
                   <tr class="rrow" data-rkey="expenses" data-rid="${esc(x.id)}">
                     <td class="mono">${esc(recordDate(x))}${appCell(x, 'expenses')}</td>
                     <td><span class="badge badge-brass">${esc(x.company)}</span></td>
@@ -3311,13 +3492,22 @@
                     <td>${x.subcategory ? relLink('expense_subcategories', x.subcategory) : '—'}${x.reference ? ` <span class="mu">· ${esc(x.reference)}</span>` : ''}</td>
                     <td>${x.supplier ? relLink('suppliers', x.supplier) : '—'}</td>
                     <td class="mono">${x.equipment ? relLink('equipment', x.equipment) : '—'}</td>
-                    <td><span class="badge ${x.method === 'Cash' ? 'badge-ok' : 'badge-info'}">${esc(x.method)}</span></td>
-                    <td class="r"><strong>${fmtUSD(x.amount, 2)}</strong></td>
+                    <td><span class="badge ${x.method === 'Cash' ? 'badge-ok' : (sgn < 0 ? 'badge-warn' : 'badge-info')}">${esc(x.method)}</span></td>
+                    <td class="r"><strong>${fmtUSD(sgn * Number(x.amount || 0), 2)}</strong></td>
                   </tr>
-                `).join('') || emptyRow(8, periodEmptyMsg(SEED.records.expenses, 'expenses'))}
+                `;
+                }).join('') || emptyRow(8, periodEmptyMsg(SEED.records.expenses, 'expenses'))}
                 ${showMoreRow('expenses', expRows.length, 8)}
               </tbody>
-              <tfoot><tr><td colspan="7"><b>TOTAL (${fmtNum(expRows.length)} EXPENSES)</b></td><td class="r"><b>${fmtUSD(sumExp, 2)}</b></td></tr></tfoot>
+              <tfoot>
+                <tr>
+                  <td colspan="7">
+                    <b>TOTAL (${fmtNum(expRows.length)} EXPENSES · Cash ${fmtUSD(sumCashExp, 2)} · Credit ${fmtUSD(sumCredExp, 2)})</b>
+                    ${isGroupScope ? `<div class="tfoot-sub-split">WTC (${fmtNum(wtcEx.n)}): Cash ${fmtUSD(wtcEx.cash, 2)} · Credit ${fmtUSD(wtcEx.cred, 2)} · Total ${fmtUSD(wtcEx.tot, 2)} &nbsp;|&nbsp; BBC (${fmtNum(bbcEx.n)}): Cash ${fmtUSD(bbcEx.cash, 2)} · Credit ${fmtUSD(bbcEx.cred, 2)} · Total ${fmtUSD(bbcEx.tot, 2)}</div>` : ''}
+                  </td>
+                  <td class="r"><b>${fmtUSD(sumExp, 2)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -4111,13 +4301,211 @@
     `;
   }
 
+  const SEAT_COMPANY_OPTIONS = [
+    { value: 'WTC', label: 'WTC Only' },
+    { value: 'BBConstruction', label: 'BBConstruction Only' },
+    { value: 'Lions Transport', label: 'Lions Transport Only' },
+    { value: 'WTC, BBConstruction', label: 'WTC + BBConstruction' },
+    { value: 'Lions Transport, WTC', label: 'Lions Transport + WTC' },
+    { value: 'BBConstruction, Lions Transport', label: 'BBConstruction + Lions Transport' },
+    { value: 'WTC, BBConstruction, Lions Transport', label: 'All 3 Companies (Full Group)' }
+  ];
+
+  const SEAT_ROLE_OPTIONS = [
+    { value: 'Full Access (Owner)', label: 'Full Access (Owner)' },
+    { value: 'Supervisor + Entry', label: 'Supervisor + Entry (All Ops + Entry)' },
+    { value: 'Supervisor', label: 'Supervisor (Read-Only Oversight)' },
+    { value: 'Entry', label: 'Entry (Tickets, Fuel, Expenses & Receipts)' },
+    { value: 'Sales', label: 'Sales & AR Collector (Receipts only)' }
+  ];
+
+  const SEAT_ACCESS_OPTIONS = [
+    { value: 'full|full', label: 'Full Executive PBI + All 22 Statements', short: 'Full PBI + 22 Statements', badgeCls: 'badge-ok' },
+    { value: 'full|partial', label: 'Full Executive PBI + Operational Statements', short: 'Full PBI + Ops Statements', badgeCls: 'badge-ok' },
+    { value: 'partial|full', label: 'Operational KPIs + All 22 Statements', short: 'Ops KPIs + 22 Statements', badgeCls: 'badge-info' },
+    { value: 'partial|partial', label: 'Operational KPIs + Statements', short: 'Ops KPIs + Statements', badgeCls: 'badge-info' },
+    { value: 'none|partial', label: 'Weighbridge / Desk + Operational Statements', short: 'Desk + Ops Statements', badgeCls: 'badge-brass' },
+    { value: 'none|none', label: 'Weighbridge / Desk Only (No Financials)', short: 'Desk Only (No Financials)', badgeCls: 'badge-warn' }
+  ];
+
+  function normalizeCompaniesScope(cStr) {
+    const s = String(cStr || 'WTC');
+    const hasWtc = /WTC/i.test(s);
+    const hasBbc = /BBConstruction/i.test(s);
+    const hasLt = /Lions\s*Transport/i.test(s);
+    if (hasWtc && hasBbc && hasLt) return 'WTC, BBConstruction, Lions Transport';
+    if (hasWtc && hasBbc) return 'WTC, BBConstruction';
+    if (hasLt && hasWtc) return 'Lions Transport, WTC';
+    if (hasBbc && hasLt) return 'BBConstruction, Lions Transport';
+    if (hasBbc) return 'BBConstruction';
+    if (hasLt) return 'Lions Transport';
+    return 'WTC';
+  }
+
+  function seatAccessValue(u) {
+    if (!u) return 'partial|partial';
+    const v = `${u.pbi_access || 'partial'}|${u.statements_access || 'partial'}`;
+    return SEAT_ACCESS_OPTIONS.some(o => o.value === v) ? v : 'partial|partial';
+  }
+
+  function seatAccessMeta(u) {
+    const v = seatAccessValue(u);
+    return SEAT_ACCESS_OPTIONS.find(o => o.value === v) || SEAT_ACCESS_OPTIONS[3];
+  }
+
+  function getEditingSeatUser() {
+    if (STATE.editingUserId === '__new__') return null;
+    const hit = STATE.users.find(u => u && String(u.id) === String(STATE.editingUserId));
+    return hit || STATE.users[STATE.activeUserIdx] || STATE.users[0] || null;
+  }
+
+  function renderSeatEditorHtml() {
+    const owner = isOwner(activeUser());
+    if (!owner) return '';
+    const uCount = STATE.users.length;
+    if (!STATE.showAddUserForm) {
+      return `
+        <div class="panel-card seat-editor-collapsed" style="margin-bottom:16px">
+          <div class="seat-collapsed-inner">
+            <div>
+              <strong>Team Seat Inspector &amp; Multi-Device Access Editor</strong>
+              <span class="seat-collapsed-sub">— Check and update Full Name, Login Email, PIN, Role, Assigned Companies (RLS) &amp; Dashboards for any of the ${uCount} current users.</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn btn-brass" id="openSeatInspectorBtn">✎ Check / Update Current Users (${uCount})</button>
+              <button type="button" class="btn btn-primary" id="openNewSeatBarBtn">+ New Team Login</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const editUser = getEditingSeatUser();
+    const editIdx = editUser ? STATE.users.findIndex(u => String(u.id) === String(editUser.id)) : -1;
+    const isNewMode = !editUser;
+    const curRole = editUser ? (editUser.role || 'Entry') : 'Entry';
+    const curCompanies = editUser ? normalizeCompaniesScope(editUser.companies) : 'WTC';
+    const curAccess = editUser ? seatAccessValue(editUser) : 'partial|partial';
+    const curStatus = editUser ? (editUser.status || 'Active') : 'Active';
+    const curPin = editUser ? (editUser.pin_code || '1111') : (STATE.newDraftPin || '3564');
+    const isSelfOwner = editUser && editIdx === STATE.activeUserIdx;
+    const fSamples = editUser ? userFaceSamples(editUser) : [];
+
+    return `
+      <div class="panel-card seat-editor-card" id="seatEditorPanel" style="margin-bottom:16px;border-color:var(--brass)">
+        <div class="panel-head seat-editor-head">
+          <div class="panel-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>CREATE OR UPDATE MULTI-DEVICE TEAM LOGIN SEAT</span>
+            ${editUser
+              ? `<span class="badge badge-ok" id="nuModeBadge">SEAT ${editIdx + 1} OF ${uCount} · ${esc(editUser.full_name)}</span>`
+              : `<span class="badge badge-brass" id="nuModeBadge">NEW TEAM LOGIN SEAT</span>`}
+          </div>
+          <div class="seat-head-actions">
+            <button type="button" class="btn" id="nuPrevSeatBtn" style="padding:3px 8px;font-size:11px" title="Inspect previous team user">‹ Prev User</button>
+            <button type="button" class="btn" id="nuNextSeatBtn" style="padding:3px 8px;font-size:11px" title="Inspect next team user">Next User ›</button>
+            <button type="button" class="btn ${isNewMode ? 'btn-brass' : ''}" id="nuNewBlankBtn" style="padding:3px 9px;font-size:11px" title="Switch form to create a brand-new team seat">+ New Blank Seat</button>
+            <button type="button" class="btn" id="cancelAddUserBtn" style="padding:3px 9px;font-size:11px">✕ Hide</button>
+          </div>
+        </div>
+
+        <div class="seat-picker-bar">
+          <div class="seat-picker-top">
+            <label class="seat-picker-lbl" for="nu_seat_select">Select Current User to Check or Update (${uCount} Seats)</label>
+            <select id="nu_seat_select" class="seat-select-dropdown">
+              ${STATE.users.map((u, idx) => `
+                <option value="${esc(u.id)}" ${!isNewMode && String(u.id) === String(editUser.id) ? 'selected' : ''}>
+                  ${idx + 1}. ${esc(u.full_name)} (${esc(u.email)}) — PIN ${esc(u.pin_code || '1111')} · ${esc(u.role)} · ${esc(normalizeCompaniesScope(u.companies))}
+                </option>
+              `).join('')}
+              <option value="__new__" ${isNewMode ? 'selected' : ''}>+ Create New Team Login Seat (Blank Form)</option>
+            </select>
+          </div>
+          <div class="seat-pill-strip" role="tablist" aria-label="Team login seats">
+            ${STATE.users.map((u, idx) => {
+              const active = !isNewMode && String(u.id) === String(editUser.id);
+              return `<button type="button" class="seat-pick-pill ${active ? 'active' : ''} ${u.status === 'Suspended' ? 'suspended' : ''}" data-pick-seat="${esc(u.id)}" title="Inspect & update ${esc(u.full_name)} (${esc(u.email)})">
+                <span class="seat-pick-num">${idx + 1}</span>
+                <span class="seat-pick-name">${esc(u.full_name)}</span>
+                <small class="mono">${esc(u.pin_code || '1111')}</small>
+              </button>`;
+            }).join('')}
+            <button type="button" class="seat-pick-pill new-seat ${isNewMode ? 'active' : ''}" data-pick-seat="__new__" title="Create a new team login seat">
+              <span>+ New Seat</span>
+            </button>
+          </div>
+        </div>
+
+        <div style="padding:14px 16px 6px">
+          <div class="form-grid-3">
+            <div class="form-field">
+              <label for="nu_name">Full Name *</label>
+              <input type="text" id="nu_name" value="${esc(editUser ? editUser.full_name : '')}" placeholder="e.g. Ali Mansour (WTC Scale)" autocomplete="off">
+            </div>
+            <div class="form-field">
+              <label for="nu_email">Email Address (Login ID) *</label>
+              <input type="email" id="nu_email" value="${esc(editUser ? editUser.email : '')}" placeholder="ali.mansour@bhfirms.com" autocomplete="off">
+              <span class="hint">${editUser ? `Seat ID: ${esc(editUser.id)} · Last login: ${esc(editUser.last_login_at || 'Never')}` : 'An existing email updates that seat instead of creating a new one.'}</span>
+            </div>
+            <div class="form-field">
+              <label for="nu_pin">Access PIN (4–8 Digits) *</label>
+              <input type="text" inputmode="numeric" pattern="[0-9]{4,8}" id="nu_pin" value="${esc(curPin)}" class="mono" autocomplete="off">
+            </div>
+            <div class="form-field">
+              <label for="nu_role">Role &amp; Permissions *</label>
+              <select id="nu_role">
+                ${SEAT_ROLE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curRole === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="nu_companies">Assigned Companies (Row-Level Security) *</label>
+              <select id="nu_companies">
+                ${SEAT_COMPANY_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curCompanies === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="nu_access">Executive Dashboards &amp; Statements</label>
+              <select id="nu_access">
+                ${SEAT_ACCESS_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curAccess === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div id="nuErrors" class="form-errors" hidden></div>
+          <div class="seat-editor-foot">
+            <div class="seat-editor-meta">
+              <label class="seat-status-inline" for="nu_status">
+                <span>Seat Status:</span>
+                <select id="nu_status" ${isSelfOwner ? 'disabled title="Your active owner seat cannot be suspended"' : ''}>
+                  <option value="Active" ${curStatus !== 'Suspended' ? 'selected' : ''}>Active (Can Sign In)</option>
+                  <option value="Suspended" ${curStatus === 'Suspended' ? 'selected' : ''}>Suspended (Sign-In Blocked)</option>
+                </select>
+              </label>
+              ${editUser ? `
+                <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">${fSamples.length ? `✓ Face ID: ${fSamples.length}/3 Poses${userRequiresFace2FA(editUser) ? ' · 2FA' : ''}` : 'Face ID: PIN Only'}</span>
+                <button type="button" class="btn" style="padding:3px 9px;font-size:11px" data-enrol-user="${esc(editUser.id)}">Configure Face ID ↓</button>
+              ` : ''}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${editUser ? `<button type="button" class="btn" id="resetSeatEditBtn">↺ Revert Changes</button>` : ''}
+              <button type="button" class="btn btn-primary" id="saveNewUserBtn">${editUser ? `✓ Update ${esc(editUser.full_name)} &amp; Sync Across All Devices` : '✓ Save New Seat &amp; Sync Across All Devices'}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderUsersDirectoryRowsHtml() {
     const owner = isOwner(activeUser());
+    const editUser = getEditingSeatUser();
+    const editId = (!STATE.showAddUserForm || STATE.editingUserId === '__new__' || !editUser) ? '' : String(editUser.id);
     return STATE.users.map((u, idx) => {
       const fSamples = userFaceSamples(u);
       const isTarget = String(u.id) === String(enrolTargetUser().id);
+      const isEditing = String(u.id) === editId;
+      const accMeta = seatAccessMeta(u);
+      const compNorm = normalizeCompaniesScope(u.companies);
       return `
-      <tr class="${isTarget ? 'enrol-selected-row' : ''}">
+      <tr class="user-dir-row ${isTarget ? 'enrol-selected-row' : ''} ${isEditing ? 'seat-editing-row' : ''}" data-user-row="${esc(u.id)}" title="${owner ? `Click to inspect & update ${esc(u.full_name)}` : ''}">
         <td><strong>${esc(u.full_name)}</strong>${idx === STATE.activeUserIdx ? ' <span class="badge badge-ok">you</span>' : ''}</td>
         <td class="mono">${esc(u.email)}</td>
         ${owner ? `<td class="mono"><span class="badge badge-info">${esc(u.pin_code || '1111')}</span></td>` : ''}
@@ -4127,15 +4515,17 @@
           </span>
         </td>
         <td><span class="badge badge-brass">${esc(u.role)}</span></td>
-        <td><strong>${esc(u.companies)}</strong></td>
+        <td><strong>${esc(compNorm)}</strong></td>
+        <td><span class="badge ${accMeta.badgeCls}">${esc(accMeta.short)}</span></td>
         <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
         <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
         <td style="white-space:nowrap">
-          ${(owner || idx === STATE.activeUserIdx) ? `<button class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
+          ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 8px;font-size:10.5px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">✎ Edit</button>` : ''}
+          ${(owner || idx === STATE.activeUserIdx) ? `<button type="button" class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
           ${owner ? `
-            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
-            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">Invite Link</button>
-            <button class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
+            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
+            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">Invite Link</button>
+            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
           ` : ''}
         </td>
       </tr>`;
@@ -4170,64 +4560,9 @@
         </div>
       </div>
 
-      ${STATE.showAddUserForm && owner ? `
-        <div class="panel-card" style="margin-bottom:16px;border-color:var(--brass)">
-          <div class="panel-head">
-            <div class="panel-title"><span>CREATE OR UPDATE MULTI-DEVICE TEAM LOGIN SEAT</span></div>
-            <button class="btn" id="cancelAddUserBtn" style="padding:3px 9px;font-size:11px">✕ Close</button>
-          </div>
-          <div style="padding:14px 16px 4px">
-          <div class="form-grid-3">
-            <div class="form-field">
-              <label>Full Name *</label>
-              <input type="text" id="nu_name" placeholder="e.g. Ali Mansour (WTC Scale)" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Email Address (Login ID) *</label>
-              <input type="email" id="nu_email" placeholder="ali.mansour@bhfirms.com" autocomplete="off">
-              <span class="hint">An existing email updates that seat instead of creating a new one.</span>
-            </div>
-            <div class="form-field">
-              <label>Access PIN (4–8 Digits) *</label>
-              <input type="text" inputmode="numeric" pattern="[0-9]{4,8}" id="nu_pin" value="${Math.floor(1000 + Math.random() * 8999)}" class="mono" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Role &amp; Permissions *</label>
-              <select id="nu_role">
-                <option value="Entry">Entry (Tickets, Fuel, Expenses &amp; Receipts)</option>
-                <option value="Supervisor + Entry">Supervisor + Entry (All Ops + Entry)</option>
-                <option value="Supervisor">Supervisor (Read-Only Oversight)</option>
-                <option value="Sales">Sales &amp; AR Collector (Receipts only)</option>
-                <option value="Full Access (Owner)">Full Access (Owner)</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label>Assigned Companies (Row-Level Security) *</label>
-              <select id="nu_companies">
-                <option value="WTC">WTC Only</option>
-                <option value="BBConstruction">BBConstruction Only</option>
-                <option value="Lions Transport">Lions Transport Only</option>
-                <option value="WTC, BBConstruction">WTC + BBConstruction</option>
-                <option value="Lions Transport, WTC">Lions Transport + WTC</option>
-                <option value="WTC, BBConstruction, Lions Transport">All 3 Companies (Full Group)</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label>Executive Dashboards &amp; Statements</label>
-              <select id="nu_access">
-                <option value="partial|partial">Operational KPIs + Statements</option>
-                <option value="full|full">Full Executive PBI + All 22 Statements</option>
-                <option value="none|none">Weighbridge / Desk Only (No Financials)</option>
-              </select>
-            </div>
-          </div>
-          <div id="nuErrors" class="form-errors" hidden></div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 0">
-            <button class="btn btn-primary" id="saveNewUserBtn">✓ Save Seat &amp; Sync Across All Devices</button>
-          </div>
-          </div>
-        </div>
-      ` : ''}
+      <div id="seatEditorWrap">
+        ${renderSeatEditorHtml()}
+      </div>
 
       <div class="panel-card mfg-enrol-studio" id="faceEnrolPanel" style="margin-bottom:16px">
         <div class="enrol-console-hdr">
@@ -9127,41 +9462,25 @@
       syncEnrolBufferFromUser(u, true);
       updateEnrolStudioDom();
     });
-    const thrSel = $('enrolThresholdSel');
-    if (thrSel) thrSel.addEventListener('change', e => {
-      STATE.faceSettings.threshold = Number(e.target.value) || 0.50;
-      saveLocalAuthAndRecords();
-      updateEnrolStudioDom();
-      toast(`Face ID match threshold set to τ ≤ ${STATE.faceSettings.threshold.toFixed(2)}`);
-    });
     const req2faCb = $('enrolRequire2faCb');
     if (req2faCb) req2faCb.addEventListener('change', e => {
       STATE.faceSettings.enforce2FA = !!e.target.checked;
       saveLocalAuthAndRecords();
       updateEnrolStudioDom();
-      toast(STATE.faceSettings.enforce2FA ? 'Biometric 2FA enforced for enrolled seats' : 'Biometric 2FA optional on PIN login');
+      toast(STATE.faceSettings.enforce2FA ? 'Face ID 2FA enforced for enrolled seats' : 'Face ID 2FA optional on PIN login');
     });
     const liveCb = $('enrolLivenessCb');
     if (liveCb) liveCb.addEventListener('change', e => {
       STATE.faceSettings.liveness = !!e.target.checked;
       saveLocalAuthAndRecords();
       updateEnrolStudioDom();
-      toast(STATE.faceSettings.liveness ? 'Blink liveness check enabled' : 'Blink liveness check disabled');
-    });
-    const consentCb = $('enrolConsentCb');
-    if (consentCb) consentCb.addEventListener('change', e => {
-      FACE_STATE.enrolConsent = !!e.target.checked;
-      if (FACE_STATE.enrolConsent && FACE_STATE.enrolStatusCls === 'warn') {
-        FACE_STATE.enrolStatusText = 'Biometric consent active — click "Capture Pose" to record and store Pose 1.';
-        FACE_STATE.enrolStatusCls = '';
-        updateEnrolStudioDom();
-      }
+      toast(STATE.faceSettings.liveness ? 'Blink check enabled' : 'Blink check disabled');
     });
     const startCamBtn = $('enrolStartCamBtn');
     if (startCamBtn) startCamBtn.addEventListener('click', async () => {
       if (FACE_STATE.enrolCamActive) {
         stopFaceCamera();
-        FACE_STATE.enrolStatusText = 'Camera stopped.';
+        FACE_STATE.enrolStatusText = '';
         FACE_STATE.enrolStatusCls = '';
         updateEnrolStudioDom();
         return;
@@ -9170,12 +9489,8 @@
     });
     const capBtn = $('enrolCaptureBtn');
     if (capBtn) capBtn.addEventListener('click', () => { captureEnrolDescriptor(); });
-    const saveEnrolBtn = $('enrolSaveBtn');
-    if (saveEnrolBtn) saveEnrolBtn.addEventListener('click', () => { saveFaceEnrolment(); });
     const clearEnrolBtn = $('enrolClearBtn');
     if (clearEnrolBtn) clearEnrolBtn.addEventListener('click', () => { clearFaceEnrolment(); });
-    const calibBtn = $('enrolCalibBtn');
-    if (calibBtn) calibBtn.addEventListener('click', () => { runCalibrationReport(); });
     const testEnrolBtn = $('enrolTestBtn');
     if (testEnrolBtn) testEnrolBtn.addEventListener('click', async () => {
       const target = enrolTargetUser();
@@ -9191,23 +9506,22 @@
         await ensureFaceModelsLoaded();
         const det = await window.Face.detectOne(ev, true);
         if (!det || !det.descriptor) {
-          FACE_STATE.enrolStatusText = 'Test recognition: no face detected in camera frame.';
+          FACE_STATE.enrolStatusText = 'No face detected in camera frame.';
           FACE_STATE.enrolStatusCls = 'warn';
         } else {
           const m = window.Face.match(det.descriptor, pool);
           const dec = window.Face.decide(m, Object.assign({}, window.Face.CONFIG, { threshold: Number(STATE.faceSettings.threshold || 0.50) }), { faceSizeFrac: det.faceSizeFrac });
           FACE_STATE.enrolStatusText = dec.status === 'ok'
-            ? `✓ Match verified: ${dec.best.name} (d=${m.bestDist.toFixed(3)} ≤ τ=${Number(STATE.faceSettings.threshold).toFixed(2)}, runner-up Δ=${(m.secondDist - m.bestDist).toFixed(3)})`
-            : `Test status: ${dec.status} (best=${m.best ? m.best.name : 'none'}, d=${m.bestDist.toFixed(3)})`;
+            ? `✓ Recognized: ${dec.best.name}`
+            : `Not recognized (${dec.status})`;
           FACE_STATE.enrolStatusCls = dec.status === 'ok' ? 'ok' : 'warn';
         }
       } else {
-        // Offline / self-consistency test of the target user's captured/saved descriptors
         const probeVec = (FACE_STATE.enrolCaptures[0] || userFaceSamples(target)[0]);
         if (probeVec && window.Face) {
           const m = window.Face.match(probeVec, pool);
           FACE_STATE.enrolStatusText = m.best
-            ? `✓ Descriptor self-check: matches ${m.best.name} (d=${m.bestDist.toFixed(3)}, runner-up d=${m.secondDist === 9 ? '∞' : m.secondDist.toFixed(3)})`
+            ? `✓ Face ID ready for ${m.best.name}`
             : 'No match found.';
           FACE_STATE.enrolStatusCls = 'ok';
         }
