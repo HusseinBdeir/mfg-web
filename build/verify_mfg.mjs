@@ -1129,7 +1129,8 @@ try {
     // Configure Custom Role permissions:
     // 1. Clear unlocks, dashboards, statements and set rights to read-only first, then pick specific ones
     const clickBulk = val => {
-      const btn = document.querySelector('[data-perm-bulk="' + val + '"]');
+      const alt = val.replace(':none', ':off');
+      const btn = document.querySelector('[data-perm-bulk="' + val + '"], [data-perm-bulk="' + alt + '"]');
       if (btn) btn.click();
     };
     clickBulk('rights:readonly');

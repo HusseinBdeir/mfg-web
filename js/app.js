@@ -1362,15 +1362,15 @@
       { id: 'manage_users', label: 'Administer Team Seats, Roles, Face ID & RLS', sub: 'Create/edit login seats, PINs, custom permissions, RLS & 2FA policies', badge: 'ADMIN SEATS' }
     ],
     unlocks: [
-      { id: 'unlock_unit_price', fields: ['f_unitprice'], label: 'Unit Price & Agreement Lock', rule: 'm56 / m136', sub: 'Override active Customer Price Agreement or List Price for spot-rate dispatches' },
-      { id: 'unlock_trans_price', fields: ['f_transunitprice'], label: 'Transport / Haulage Rate Lock', rule: 'm51 / m81', sub: 'Override contractual delivery or third-party quarry haulage rate per load' },
-      { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'm125 / m229', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
-      { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'm222 / m228', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
-      { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'm50 / m81', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
-      { id: 'unlock_fleet_cascade', fields: ['f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'm125 / m140', sub: 'Bypass Truck Owner → Truck/Driver cascade or Expense Category → Subcategory lock' },
-      { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'm84', sub: 'Override the default quarry supplier bound to a raw material origin site' },
-      { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'm68', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
-      { id: 'unlock_formula_totals', fields: ['f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Calculated Subtotal & Total Locks', rule: 'm56 / m135b', sub: 'Override computed Material Total, Transport Total or Total Ex-VAT USD' }
+      { id: 'unlock_unit_price', fields: ['f_unitprice'], label: 'Unit Price & Agreement Lock', rule: 'PRICE', sub: 'Override active Customer Price Agreement or List Price for spot-rate dispatches' },
+      { id: 'unlock_trans_price', fields: ['f_transunitprice'], label: 'Transport / Haulage Rate Lock', rule: 'HAULAGE', sub: 'Override contractual delivery or third-party quarry haulage rate per load' },
+      { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'CAPACITY', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
+      { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'UNIT', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
+      { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'METHOD', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
+      { id: 'unlock_fleet_cascade', fields: ['f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Bypass Truck Owner → Truck/Driver cascade or Expense Category → Subcategory lock' },
+      { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'QUARRY', sub: 'Override the default quarry supplier bound to a raw material origin site' },
+      { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'VAT 11%', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
+      { id: 'unlock_formula_totals', fields: ['f_date', 'f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Transaction Date & Calculated Total Locks', rule: 'DATE / TOTAL', sub: 'Override locked Transaction Date or computed Material / Transport / Total USD' }
     ],
     dashboards: [
       { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Multi-Company & Sentinel Overview', sub: 'P01 Executive Overview, P02 Multi-Company Comparison, P03 Exceptions & Sentinels', badge: '3 PBI Pages' },
@@ -1390,6 +1390,7 @@
   };
 
   const FIELD_TO_UNLOCK_KEY = {
+    f_date: 'unlock_formula_totals',
     f_unitprice: 'unlock_unit_price',
     f_transunitprice: 'unlock_trans_price',
     f_qty: 'unlock_qty_cap',
@@ -2615,7 +2616,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">AUTONOMOUS AUDIT &amp; ANOMALY DETECTION · M280 ENGINE · RUN ${esc(String(generated).slice(0, 16).replace('T', ' ') || '—')}</div>
+          <div class="cockpit-eyebrow">AUTONOMOUS AUDIT &amp; ANOMALY DETECTION · RUN ${esc(String(generated).slice(0, 16).replace('T', ' ') || '—')}</div>
           <div class="cockpit-title">AI Sentinel Watchdogs</div>
           <div class="cockpit-sub">Deterministic audit rules evaluated against the SQL ledger snapshot for ${esc(COMPANY_LABELS[STATE.company])} — no external BI license required.</div>
         </div>
@@ -3286,7 +3287,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">UNIVERSAL FLEET REGISTRY · M99 + M142 METER TOLERANCE GUARD</div>
+          <div class="cockpit-eyebrow">UNIVERSAL FLEET REGISTRY &amp; METER TOLERANCE GUARD</div>
           <div class="cockpit-title">Equipment, Fleet &amp; Diesel Telemetry</div>
           <div class="cockpit-sub">Tracks ${fmtNum(SEED.records.equipment.length)} trucks, loaders, excavators &amp; generators · Allocates running costs, driver wages &amp; diesel per ton hauled.</div>
         </div>
@@ -3370,7 +3371,7 @@
               <thead>
                 <tr>
                   ${th('fuel', 'Date', 'date')}${th('fuel', 'Ticket', 'ticket_no')}${th('fuel', 'Co.', 'company')}${th('fuel', 'Equipment', 'equipment')}${th('fuel', 'Driver', 'driver')}${th('fuel', 'Item', 'item')}
-                  ${th('fuel', 'Litres', 'litres', 'r')}${th('fuel', 'Meter', 'odometer', 'r')}<th>M142 Guard</th>
+                  ${th('fuel', 'Litres', 'litres', 'r')}${th('fuel', 'Meter', 'odometer', 'r')}<th>Meter Guard</th>
                 </tr>
               </thead>
               <tbody>
@@ -3407,7 +3408,7 @@
         <div class="panel-card" id="driverPanel">
           <div class="panel-head">
             <div class="panel-title"><span>UNIVERSAL EQUIPMENT &amp; DRIVER REGISTRY (${fmtNum(SEED.records.equipment.length)} UNITS · ${fmtNum(SEED.records.drivers.length)} DRIVERS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">M99 + M107 Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}${canEnterForm('equipment') ? '<button class="btn btn-primary" data-open-modal="equipment">+ New Equipment</button>' : ''}</span>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}${canEnterForm('equipment') ? '<button class="btn btn-primary" data-open-modal="equipment">+ New Equipment</button>' : ''}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -3478,7 +3479,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">CONTRACTUAL PRICE ENGINE · M73 + M228 + M276</div>
+          <div class="cockpit-eyebrow">CONTRACTUAL PRICE ENGINE</div>
           <div class="cockpit-title">Price &amp; Commission Agreements</div>
           <div class="cockpit-sub">Governs Sales (Delivery), Sales (Pickup), Quarry Purchase Price (Site), Hauler Transport Price (Site) &amp; Sales Commissions. The entry desk locks ticket prices to the matching active rule.</div>
         </div>
@@ -3839,7 +3840,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">ACCOUNTS PAYABLE · M192 THREE-LEG FIFO SETTLEMENT ENGINE</div>
+          <div class="cockpit-eyebrow">ACCOUNTS PAYABLE · THREE-LEG FIFO SETTLEMENT ENGINE</div>
           <div class="cockpit-title">Suppliers, Quarries &amp; Haulers (AP)</div>
           <div class="cockpit-sub">Tracks open payables across Material Legs (Quarry Owner), Haulage Legs (Truck Owner) &amp; Supplies/Services Legs (Credit Expenses).</div>
         </div>
@@ -4234,7 +4235,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">WORKFORCE &amp; PAYROLL COMMAND · M239 / M244 / M245 / M247</div>
+          <div class="cockpit-eyebrow">WORKFORCE &amp; PAYROLL COMMAND</div>
           <div class="cockpit-title">Payroll, Attendance, Site Allowances &amp; Contracts</div>
           <div class="cockpit-sub">16-column staff earnings register (Base + Overtime + Site Allowances − Lateness &amp; Absence vs Paid), Employment &amp; Freelance Contracts, Mon–Sun Site Allowances, and Attendance.</div>
         </div>
@@ -4275,7 +4276,7 @@
         <div class="panel-head">
           <div>
             <div class="panel-title"><span>PAYROLL BY STAFF MEMBER — BASE, OVERTIME, DEDUCTIONS, SITE ALLOWANCE, EARNINGS, PAID &amp; BALANCE</span></div>
-            <span class="ph-sub">Site allowances are included inside Earnings (m247) · Amber badge = no active contract on file</span>
+            <span class="ph-sub">Site allowances are included inside Earnings · Amber badge = no active contract on file</span>
           </div>
           <span class="panel-meta">${fmtNum(staffRows.length)} Staff ${exportBtn('payStaffRegPanel', 'Payroll_By_Staff')}</span>
         </div>

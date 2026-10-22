@@ -217,7 +217,7 @@
     return { tier: t, qty: resolvedQty, adj, transAdj };
   }
 
-  // ==================== TRUCK QUICK-VIEW STRIP (qv_truck m99) ====================
+  // ==================== TRUCK QUICK-VIEW STRIP ====================
   function renderTruckQuickView(truckObj, isCompanyFleet) {
     if (!truckObj) {
       return '';
@@ -226,13 +226,13 @@
     return `
       <div class="pa-quickview" id="paTruckQuickView">
         <div class="pa-qv-hdr">
-          <span class="pa-qv-tag">LOCKED TRUCK QUICK VIEW · m99</span>
+          <span class="pa-qv-tag">TRUCK DETAILS</span>
           <b>${esc(truckObj.name)}</b>
         </div>
         <div class="pa-qv-cells">
           <div><small>Plate No</small><b>${esc(truckObj.plate_no || truckObj.name)}</b></div>
           <div><small>Category / Type</small><b>${esc(truckObj.type || 'Truck')}</b></div>
-          <div><small>Capacity (m³)</small><b class="${cap > 0 ? 'brass-text' : 'warn-text'}">${cap > 0 ? cap + ' m³ (Auto-Sizes Qty)' : 'Unset (CapLearn Active)'}</b></div>
+          <div><small>Capacity (m³)</small><b class="${cap > 0 ? 'brass-text' : 'warn-text'}">${cap > 0 ? cap + ' m³' : 'Unset'}</b></div>
           <div><small>Owner / Fleet</small><b>${esc(isCompanyFleet ? (truckObj.company || 'Company Fleet') : (truckObj.supplier || '3rd-Party Hauler'))}</b></div>
           <div><small>Default Driver</small><b>${esc(truckObj.default_driver || '—')}</b></div>
         </div>
@@ -240,12 +240,12 @@
     `;
   }
 
-  // ==================== OPEN-TICKET & 3-LEG AP FIFO SUBGRID PREVIEWS (step240 / step241) ====================
+  // ==================== OPEN-TICKET & 3-LEG AP FIFO SUBGRID PREVIEWS ====================
   function renderCustomerOpenTicketsSubgrid(ctx, company, customerName, payAmount, method) {
     const rec = getRecords(ctx);
     const cNorm = norm(customerName);
     if (!cNorm) {
-      return `<div class="pa-subgrid-empty">Select a <b>Customer</b> to inspect open Credit Tickets &amp; live FIFO receipt allocation (step240).</div>`;
+      return `<div class="pa-subgrid-empty">Select a <b>Customer</b> to inspect open Credit Tickets &amp; live FIFO receipt allocation.</div>`;
     }
     const tickets = (rec.sales_tickets || []).filter(t =>
       t && !t.voided && (!company || !t.company || t.company === company) &&
@@ -282,7 +282,7 @@
     return `
       <div class="pa-subgrid">
         <div class="pa-subgrid-hdr">
-          <span>OPEN CUSTOMER TICKETS · LIVE FIFO ALLOCATION PREVIEW (step240 · Oldest First)</span>
+          <span>OPEN CUSTOMER TICKETS · LIVE FIFO ALLOCATION PREVIEW (Oldest First)</span>
           <span>${tickets.length} Credit Tickets Found${pool > 0 ? ` · Unallocated Advance: ${fmtUsd(pool)}` : ''}</span>
         </div>
         <div class="table-wrap" style="max-height:190px;overflow:auto">
@@ -301,7 +301,7 @@
     const rec = getRecords(ctx);
     const sNorm = norm(supplierName);
     if (!sNorm) {
-      return `<div class="pa-subgrid-empty">Select a <b>Supplier / Hauler</b> to inspect open 3-Leg Payables (Material Leg · Haulage Leg · Credit Expense Leg) &amp; live FIFO settlement allocation (step241).</div>`;
+      return `<div class="pa-subgrid-empty">Select a <b>Supplier / Hauler</b> to inspect open 3-Leg Payables (Material Leg · Haulage Leg · Credit Expense Leg) &amp; live FIFO settlement allocation.</div>`;
     }
     const legs = [];
     if (!legFilter || legFilter === 'all' || legFilter === 'material') {
@@ -360,7 +360,7 @@
     return `
       <div class="pa-subgrid">
         <div class="pa-subgrid-hdr">
-          <span>OPEN 3-LEG SUPPLIER PAYABLES · LIVE FIFO ALLOCATION PREVIEW (step241 · m192)</span>
+          <span>OPEN 3-LEG SUPPLIER PAYABLES · LIVE FIFO ALLOCATION PREVIEW</span>
           <span>${legs.length} Payable Legs Found${pool > 0 ? ` · Prepayment / Balance Relief: ${fmtUsd(pool)}` : ''}</span>
         </div>
         <div class="table-wrap" style="max-height:190px;overflow:auto">
@@ -391,7 +391,6 @@
         ${activeGroup.forms.filter(f => !canEnterFn || canEnterFn(f.id)).map(f => `
           <button type="button" class="modal-tab ${f.id === activeForm ? 'active' : ''}" data-form="${esc(f.id)}">
             <span>${esc(f.label)}</span>
-            <small class="mono">${esc(f.badge)}</small>
           </button>
         `).join('')}
       </div>
@@ -404,8 +403,8 @@
   }
   function fld(label, inner, opts = {}) {
     const lockAttr = opts.lockField ? ` data-policy-lock="${esc(opts.lockField)}" data-lock-reason="${esc(opts.lockReason || 'Locked by business rule')}"` : '';
-    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
-    return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
+    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
+    return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.afterHtml || ''}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
   }
   function inp(id, type, value, attrs = '') {
     return `<input type="${type}" id="${id}" value="${esc(value == null ? '' : value)}" autocomplete="off" ${attrs}>`;
@@ -431,7 +430,19 @@
     const comps = helpers.allowedCompanyNames();
     const company = helpers.defaultEntryCompany();
     const today = todayISO();
-    const companyField = fld('Company (BU) *', sel('f_company', comps, company));
+    const dateAttrs = `min="${MIN_DATE}" max="${today}" required`;
+    const companyField = fld('Company (BU) *', sel('f_company', comps, company), { id: 'wrap_f_company' });
+    const lockedDateField = (lbl = 'Transaction Date *') => fld(lbl, inp('f_date', 'date', today, `${dateAttrs} readonly`), {
+      id: 'wrap_f_date',
+      lockField: 'f_date',
+      lockReason: 'Locked to entry date for Cash Flow accuracy — use Reporting Date for report adjustments',
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">📅 Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
+    });
+    const collapsibleRepDateField = () => fld('Reporting Date *', inp('f_repdate', 'date', today, dateAttrs), {
+      id: 'wrap_f_repdate',
+      hidden: true,
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-reset-btn" id="resetRepDateBtn">× Same as Transaction Date</button><span class="hint" id="hint_repdate"></span></div>`
+    });
     const uoms = uniqSorted((rec.uoms || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
     const prodNames = uniqSorted((rec.products || []).map(p => p.name));
     const prodByName = {};
@@ -455,14 +466,13 @@
 
     if (fType === 'pricerule') {
       return `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>Price Agreement Engine (bhf_pricerule · m73 / m103 / m136):</strong> Supports all 6 rule types (<i>Sales Delivery, Sales Pickup, List Price, Purchase Price Site, Transport Price Site, Haulage Customer Site</i>), Tier 1 &amp; Tier 2 truck capacity adjustments, and Indifference Pricing. Irrelevant columns hide automatically based on Rule Type.
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
-          ${secHdr('1. Agreement Scope & Counterparty', 'Rule Type dynamically shows Customer, Supplier, or Site')}
+          ${secHdr('1. Agreement Scope & Counterparty')}
           ${companyField}
-          ${fld('Rule Type (bhf_ruletype) *', sel('f_ruletype', [
+          ${fld('Start Date *', inp('f_date', 'date', today))}
+          ${fld('End Date', inp('f_enddate', 'date', ''))}
+          ${fld('Rule Type *', sel('f_ruletype', [
             ['Sales (Delivery)', 'Sales (Delivery) — Customer + Site + Material/Trans'],
             ['Sales (Pickup)', 'Sales (Pickup) — Ex-Quarry Customer Price'],
             ['List Price', 'List Price — Benchmark Product Price'],
@@ -475,8 +485,8 @@
           ${fld('Customer (Sales Rules) *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames), { id: 'wrap_pr_customer' })}
           ${fld('Supplier / Quarry / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
           ${fld('Site / Destination', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames), { id: 'wrap_pr_site' })}
-          ${secHdr('2. Unit Pricing & Tier 1 / Tier 2 Truck Sizes', 'Tier 2 unlocks once Tier 1 Truck Size is entered (m71/m73)')}
-          ${fld('Priced Per Unit (bhf_unit) *', sel('f_uom', uoms, 'm³'))}
+          ${secHdr('2. Unit Pricing & Tier 1 / Tier 2 Truck Sizes')}
+          ${fld('Priced Per Unit *', sel('f_uom', uoms, 'm³'))}
           ${fld('Material Unit Price ($) *', inp('f_unitprice', 'number', '0.00', 'step="0.01" min="0"'), { id: 'wrap_pr_matprice' })}
           ${fld('Transport Rate Per', sel('f_rateper', [['m³', 'Per m³'], ['Ton', 'Per Ton (× Ton Factor)'], ['Truck', 'Flat Per Truck Load']], 'm³'), { id: 'wrap_pr_transrate' })}
           ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0"'), { id: 'wrap_pr_transprice' })}
@@ -487,15 +497,12 @@
           ${fld('Tier 2 Truck Size (m³)', inp('f_qty2', 'number', '', 'step="0.5" min="0" placeholder="e.g. 22 or 25 m³"'), { id: 'wrap_pr_tier2', hidden: true })}
           ${fld('Tier 2 Price Adj ($)', inp('f_adj2', 'number', '0.00', 'step="0.01"'), { id: 'wrap_pr_adj2', hidden: true })}
           ${fld('Tier 2 Trans Adj ($)', inp('f_transadj2', 'number', '0.00', 'step="0.01"'), { id: 'wrap_pr_transadj2', hidden: true })}
-          ${secHdr('3. Validity Window & Notes', 'Active date range')}
-          ${fld('Start Date *', inp('f_date', 'date', today))}
-          ${fld('End Date', inp('f_enddate', 'date', ''))}
-          ${fld('Notes', inp('f_notes', 'text', ''))}
+          ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
         <div class="live-calc">
           <div><small>Base Material + Trans</small><b id="calc_mat">$0.00 / u</b></div>
-          <div><small>Tier 1 Total per Load (bhf_total1)</small><b id="calc_tr">—</b></div>
-          <div><small>Tier 2 Total per Load (bhf_total2)</small><b id="calc_vat">—</b></div>
+          <div><small>Tier 1 Total per Load</small><b id="calc_tr">—</b></div>
+          <div><small>Tier 2 Total per Load</small><b id="calc_vat">—</b></div>
           <div><small>Delivered Unit Price Total</small><b id="calc_total">$0.00</b></div>
         </div>
       `;
@@ -503,13 +510,12 @@
 
     if (fType === 'vatinvoice') {
       return `
-        <div class="rule-banner"><strong>Official VAT Invoice Header (bhf_vatinvoice):</strong> Links statutory 11% VAT invoices to customer sales tickets and tracks Net HT, 11% VAT, and Total TTC.</div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
+          ${lockedDateField('Transaction Date *')}
+          ${collapsibleRepDateField()}
           ${fld('Invoice Serial No. *', inp('f_ticketno', 'text', '', 'placeholder="e.g. VAT-2026-0412"'))}
-          ${fld('Invoice Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
-          ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Invoice Date (m66)' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Net Amount Ex-VAT ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0"'))}
           ${fld('VAT 11% ($)', inp('f_vat', 'number', '', 'step="0.01" min="0" readonly'), { id: 'wrap_f_vat', lockField: 'f_vat', lockReason: 'Locked to 11% Statutory Tax formula (Net HT × 11%)' })}
@@ -527,11 +533,10 @@
 
     if (fType === 'creditterm') {
       return `
-        <div class="rule-banner"><strong>Customer Credit Terms (bhf_creditterm):</strong> Sets the agreed payment window (days), credit limit ($), and grace period for AR aging &amp; DSO alerts.</div>
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Effective Date *', inp('f_date', 'date', today))}
+          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Payment Days (Net Days) *', inp('f_days', 'number', '30', 'step="1" min="0"'))}
           ${fld('Credit Limit ($)', inp('f_amount', 'number', '25000', 'step="100" min="0"'))}
           ${fld('Notes', inp('f_notes', 'text', ''))}
@@ -541,17 +546,16 @@
 
     if (fType === 'customer') {
       return `
-        <div class="rule-banner"><strong>Customer Master Record (bhf_customer · m50 / m58 / m60):</strong> Controls whether Sales Tickets lock to <b>Cash</b> or <b>Credit</b>, whether 11% VAT applies, and whether <i>Customer-declared Qty</i> or <i>External Invoice</i> fields appear on tickets.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Customer Name *', inp('f_customer', 'text', '', 'placeholder="Full legal / trade name"'))}
-          ${fld('Default Payment Method (Locks Tickets) *', sel('f_method', [['Credit', 'Credit (4111 AR)'], ['Cash', 'Cash (5300 Till)']], 'Credit'))}
+          ${fld('Default Payment Method *', sel('f_method', [['Credit', 'Credit (4111 AR)'], ['Cash', 'Cash (5300 Till)']], 'Credit'))}
           ${fld('VAT Registered (11%)', sel('f_vatreg', [['No', 'No'], ['Yes', 'Yes — 11% VAT Applies']], 'No'))}
-          ${fld('MOF Tax Number', inp('f_mof', 'text', '', 'placeholder="Ministry of Finance # "'), { id: 'wrap_cust_mof', hidden: true })}
+          ${fld('MOF Tax Number', inp('f_mof', 'text', '', 'placeholder="Ministry of Finance #"'), { id: 'wrap_cust_mof', hidden: true })}
           ${fld('Phone / Contact', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
           ${fld('Region / Address', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
-          <div class="form-field check-field"><input type="checkbox" id="f_declqty"><label for="f_declqty">Uses Customer-declared Qty on tickets (m60)</label></div>
-          <div class="form-field check-field"><input type="checkbox" id="f_extinv"><label for="f_extinv">Requires External Invoice # on tickets (m60)</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_declqty"><label for="f_declqty">Uses Customer-declared Qty on tickets</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_extinv"><label for="f_extinv">Requires External Invoice # on tickets</label></div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -559,14 +563,13 @@
 
     if (fType === 'supplier') {
       return `
-        <div class="rule-banner"><strong>Supplier / Quarry / Hauler Master (bhf_supplier · m125):</strong> Flagging <b>Is Truck Owner</b> adds this supplier to the cascading <i>Truck Owner</i> picker on Sales &amp; Raw Tickets; flagging <b>IVA Registered</b> enables 11% input VAT.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'placeholder="Quarry, hauler, or vendor name"'))}
           ${fld('Category', sel('f_category', [['Quarry / Raw Material', 'Quarry / Raw Material'], ['Hauler / Truck Owner', 'Hauler / Truck Owner'], ['Fuel & Lubricants', 'Fuel & Lubricants'], ['Spare Parts & Garage', 'Spare Parts & Garage'], ['General Vendor', 'General Vendor']], 'Hauler / Truck Owner'))}
           ${fld('Phone / Contact', inp('f_phone', 'text', ''))}
           ${fld('MOF Tax Number', inp('f_mof', 'text', ''))}
-          <div class="form-field check-field"><input type="checkbox" id="f_istruckowner" checked><label for="f_istruckowner">Is Truck Owner (appears in Hauler cascade)</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_istruckowner" checked><label for="f_istruckowner">Is Truck Owner</label></div>
           <div class="form-field check-field"><input type="checkbox" id="f_iva"><label for="f_iva">IVA / VAT Registered (11% Input VAT)</label></div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
@@ -575,7 +578,6 @@
 
     if (fType === 'product') {
       return `
-        <div class="rule-banner"><strong>Product &amp; Aggregate Grade Master (bhf_product · m110):</strong> Configures default UoM, Ton conversion factor (m³ → Ton), and whether the item appears on Weighbridge Tickets or Fuel/Lubricant Intakes.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Product / Grade Name *', inp('f_product', 'text', '', 'placeholder="e.g. Sand 0-4mm, Gravel 10-20mm"'))}
@@ -583,8 +585,8 @@
           ${fld('Product Type *', sel('f_prodtype', [['Material', 'Material (Aggregate / Concrete / Block)'], ['Fuel', 'Fuel (Diesel)'], ['Lubricant', 'Lubricant / Oil'], ['Service', 'Service / Transport'], ['Part', 'Spare Part']], 'Material'))}
           ${fld('Ton Conversion Factor (1 m³ = X Tons)', inp('f_tonfactor', 'number', '1.50', 'step="0.01" min="0.1"'))}
           ${fld('Standard List Price ($)', inp('f_unitprice', 'number', '', 'step="0.01" min="0"'))}
-          <div class="form-field check-field"><input type="checkbox" id="f_ticketprod" checked><label for="f_ticketprod">Ticket Product (show on Sales/Raw tickets m110)</label></div>
-          <div class="form-field check-field"><input type="checkbox" id="f_fuelitem"><label for="f_fuelitem">Fuel / Lubricant Item (show on Fuel Intake m91)</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_ticketprod" checked><label for="f_ticketprod">Show on Sales / Raw Material tickets</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_fuelitem"><label for="f_fuelitem">Show on Fuel & Lubricant Intake</label></div>
           <div class="form-field check-field"><input type="checkbox" id="f_inputprod"><label for="f_inputprod">Quarry Input Material</label></div>
         </div>
       `;
@@ -592,12 +594,11 @@
 
     if (fType === 'site') {
       return `
-        <div class="rule-banner"><strong>Site, Quarry &amp; Destination Master (bhf_site · m84 / m125):</strong> Setting <b>Default Quarry / Site Owner</b> automatically fills both <i>Site Owner</i> and <i>Truck Owner</i> when this site is selected on a Raw Material Ticket!</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Site / Quarry Name *', inp('f_site', 'text', '', 'placeholder="Site or quarry name"'))}
           ${fld('Region *', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
-          ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier (auto-fills Raw Tickets)..."') + dl('dl_suppliers', supNames))}
+          ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames))}
           ${fld('Associated Customer (if Delivery Site)', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Latitude (GPS)', inp('f_lat', 'number', '', 'step="0.000001" placeholder="33.8938"'))}
           ${fld('Longitude (GPS)', inp('f_lng', 'number', '', 'step="0.000001" placeholder="35.5018"'))}
@@ -610,7 +611,6 @@
     if (fType === 'equipment' || fType === 'companyequipment') {
       const isCo = fType === 'companyequipment';
       return `
-        <div class="rule-banner"><strong>${isCo ? 'Company Fleet Unit (bhf_companyequipment)' : 'Universal / Third-Party Equipment (bhf_equipment)'} · m99 / m125:</strong> Sets the locked <b>Capacity (m³)</b> and <b>Default Driver</b> shown in the Truck Quick-View strip on tickets.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Unit Code / Plate Identifier *', inp('f_truck', 'text', '', 'placeholder="e.g. B-123456 or SHACMAN-04"'))}
@@ -627,7 +627,6 @@
 
     if (fType === 'driver') {
       return `
-        <div class="rule-banner"><strong>Driver Master Record (bhf_driver · m126b / m131):</strong> Links drivers to their <b>Truck Owner</b> (for third-party haulers) or marks them as <b>Company Fleet Drivers</b>.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Driver Full Name *', inp('f_driver', 'text', '', 'placeholder="Driver name"'))}
@@ -642,19 +641,18 @@
 
     if (fType === 'salary') {
       return `
-        <div class="rule-banner"><strong>Salary Payment (bhf_salarypayment · Dual-Currency):</strong> Posts staff payroll with USD + LBP dual-currency conversion and optional equipment cost-centre allocation.</div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Payment Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
-          ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Payment Date (m66)' })}
+          ${lockedDateField('Transaction Date *')}
+          ${collapsibleRepDateField()}
           ${fld('Payroll Month *', inp('f_paymonth', 'month', today.slice(0, 7)))}
           ${fld('Staff / Driver Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff member..."') + dl('dl_staff', staffNames))}
           ${fld('Allocated Equipment (if Driver)', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipNames))}
           ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Bank', 'Bank Transfer']], 'Cash'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0" placeholder="0.00"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0" placeholder="0"'))}
-          ${fld('Total USD Value (90k FX) *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000 · bhf_usdPreview.js)' })}
+          ${fld('Total USD Value (90k FX) *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -662,7 +660,6 @@
 
     if (fType === 'attendance') {
       return `
-        <div class="rule-banner"><strong>Staff Attendance &amp; Shift Log (bhf_attendance):</strong> Tracks daily presence, absence, overtime hours, and site assignment.</div>
         <div class="form-grid-3">
           ${companyField}
           ${fld('Attendance Date *', inp('f_date', 'date', today))}
@@ -678,11 +675,10 @@
     if (fType === 'freelance' || fType === 'employment') {
       const isContract = fType === 'employment';
       return `
-        <div class="rule-banner"><strong>${isContract ? 'Employment Contract (bhf_employment)' : 'Freelance Work &amp; Day-Rate Entry (bhf_freelancework)'}:</strong> ${isContract ? 'Defines base salary and role so Sentinel S7 can audit salary payments against active contracts.' : 'Logs external/casual day-labour work and payment.'}</div>
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Staff / Worker Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff / worker..."') + dl('dl_staff', staffNames))}
           ${fld(isContract ? 'Start Date *' : 'Work Date *', inp('f_date', 'date', today))}
+          ${fld('Staff / Worker Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff / worker..."') + dl('dl_staff', staffNames))}
           ${fld('Role / Trade *', inp('f_role', 'text', '', 'list="dl_roles" placeholder="Select or type role / trade..."') + dl('dl_roles', roleNames))}
           ${fld('Pay Basis', sel('f_paytype', isContract ? [['Monthly', 'Monthly Salary'], ['Daily', 'Daily Wage']] : [['Daily', 'Daily Freelance Rate'], ['Lump Sum', 'Task Lump Sum']], isContract ? 'Monthly' : 'Daily'))}
           ${fld(isContract ? 'Agreed Base Salary ($) *' : 'Amount ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0"'))}
@@ -694,17 +690,16 @@
 
     if (fType === 'logistics') {
       return `
-        <div class="rule-banner"><strong>Weekly Site Allowance (bhf_logistics):</strong> Marks Mon–Sun active days and computes the dual-currency weekly allowance (USD + LBP ÷ 90,000).</div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Week Ending Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
-          ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Week Ending Date (m66)' })}
+          ${lockedDateField('Transaction Date *')}
+          ${collapsibleRepDateField()}
           ${fld('Staff / Driver *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff / driver..."') + dl('dl_staff', staffNames))}
           ${fld('Site', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames))}
           ${fld('USD Allowance ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
           ${fld('LBP Allowance (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
-          ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000 · bhf_usdPreview.js)' })}
+          ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}
           <div class="form-field span-3" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:4px">
             <strong style="font-size:12px">Days Worked:</strong>
             ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="f_day_${d.toLowerCase()}" ${i < 6 ? 'checked' : ''}> ${d}</label>`).join('')}
@@ -716,14 +711,13 @@
 
     if (fType === 'triprate') {
       return `
-        <div class="rule-banner"><strong>Driver Overtime &amp; Per-Trip Allowance Rate (bhf_triprate · m48 / m93):</strong> Sets the per-trip bonus earned on company-fleet loads dispatched outside the 06:00–17:59 day shift.</div>
         <div class="form-grid-3">
           ${companyField}
+          ${fld('Effective From *', inp('f_date', 'date', today))}
           ${fld('Route / Rate Name *', inp('f_name', 'text', '', 'placeholder="e.g. WTC Quarry → Beirut Night Trip"'))}
           ${fld('Site / Destination *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type destination site..."') + dl('dl_sites', siteNames))}
           ${fld('Equipment Category', sel('f_category', [['Truck', 'Dump Truck'], ['Mixer', 'Mixer'], ['All', 'All Fleet Units']], 'Truck'))}
           ${fld('Overtime Bonus per Trip ($) *', inp('f_amount', 'number', '10.00', 'step="0.50" min="0"'))}
-          ${fld('Effective From *', inp('f_date', 'date', today))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -731,23 +725,22 @@
 
     if (fType === 'treasury') {
       return `
-        <div class="rule-banner"><strong>Treasury, Partner Loans &amp; Currency Conversion Desk (bhf_external / bhf_loan / bhf_conversion):</strong> Logs partner/intercompany cash movements, loan drawdowns/settlements, and LBP ↔ USD till conversions.</div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
+          ${lockedDateField('Transaction Date *')}
+          ${collapsibleRepDateField()}
           ${fld('Treasury Entry Type *', sel('f_trtype', [
-            ['loan', 'Partner / Intercompany Loan Drawdown (bhf_loan)'],
-            ['loan_settlement', 'Loan Repayment / Settlement (bhf_loansettlement)'],
-            ['external', 'External Cash Inflow / Outflow (bhf_external)'],
-            ['conversion', 'Currency Conversion USD ↔ LBP (bhf_conversion)']
+            ['loan', 'Partner / Intercompany Loan Drawdown'],
+            ['loan_settlement', 'Loan Repayment / Settlement'],
+            ['external', 'External Cash Inflow / Outflow'],
+            ['conversion', 'Currency Conversion USD ↔ LBP']
           ], 'loan'))}
-          ${fld('Transaction Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
-          ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Transaction Date (m66)' })}
           ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'list="dl_counterparties" placeholder="Select or type partner, bank, or entity..."') + dl('dl_counterparties', counterpartyNames))}
           ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed (Dr 5300 Till)'], ['Outflow', 'Cash Outflow / Repaid (Cr 5300 Till)']], 'Inflow'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
-          ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000 · bhf_usdPreview.js)' })}
+          ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}
           ${fld('Reference / Voucher', inp('f_reference', 'text', ''))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
@@ -756,12 +749,12 @@
 
     // jv
     return `
-      <div class="rule-banner"><strong>Joint-Venture (JV) Quarry Partnership &amp; Distribution (bhf_jvpartnership / bhf_jvdistribution):</strong> Records JV quarry profit-share distributions or partner capital movements.</div>
+      ${adminHeaderHtml}
       <div class="form-grid-3">
         ${companyField}
+        ${lockedDateField('Transaction Date *')}
+        ${collapsibleRepDateField()}
         ${fld('JV Entry Type *', sel('f_jvtype', [['distribution', 'JV Profit / Cash Distribution'], ['partnership', 'New JV Quarry Partnership Setup']], 'distribution'))}
-        ${fld('Transaction Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
-        ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Transaction Date (m66)' })}
         ${fld('JV Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type JV site..."') + dl('dl_sites', siteNames))}
         ${fld('JV Partner *', inp('f_counterparty', 'text', '', 'list="dl_suppliers" placeholder="Select or type JV partner..."') + dl('dl_suppliers', supNames))}
         ${fld('Partner Share (%)', inp('f_share', 'number', '50', 'step="0.5" min="0" max="100"'), { id: 'wrap_jv_share', hidden: true })}
