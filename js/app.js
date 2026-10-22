@@ -2064,8 +2064,15 @@
   }
 
   // duplicateTicketGuard: checks only the active table (sales_tickets, raw_purchases, or fuel_intakes) in the same BU
-  function ticketExists(company, no, formOrTable) {
-    const t = norm(no);
+  // Rule (2026-10-22):
+  // - Same day or day before (ageDays <= 1): NOT ACCEPTED (status = 'block', red 'crit' error, save blocked)
+  // - > 1 day and <= 30 days (up to a month before): ACCEPTED with yellow warning (status = 'warn')
+  // - > 30 days (more than a month before): ACCEPTED with no warning (status = 'ok')
+  function normTicketNo(no) {
+    return String(no == null ? '' : no).trim().replace(/^#+/, '').toLowerCase();
+  }
+  function ticketExists(company, no, formOrTable, refDate) {
+    const t = normTicketNo(no);
     if (!t) return null;
     const key = formOrTable || STATE.modalForm || 'sales';
     const poolMap = {
@@ -2078,8 +2085,21 @@
     };
     const [k, label] = poolMap[key] || poolMap.sales;
     const rows = (SEED.records && SEED.records[k]) || [];
-    const hit = rows.find(r => r && !r.voided && r.company === company && norm(r.ticket_no) === t);
-    return hit ? { table: k, label, row: hit } : null;
+    const targetDate = String(refDate || val('f_date') || todayISO()).slice(0, 10);
+    let best = null;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.voided || r.company !== company || normTicketNo(r.ticket_no) !== t) continue;
+      const rDate = String(r.date || '').slice(0, 10);
+      const diff = rDate && targetDate ? daysBetween(rDate, targetDate) : 0;
+      const ageDays = Math.abs(diff);
+      if (!best || ageDays < best.ageDays || (ageDays === best.ageDays && rDate > best.dateStr)) {
+        best = { row: r, dateStr: rDate, diffDays: diff, ageDays };
+      }
+    }
+    if (!best) return null;
+    const status = best.ageDays <= 1 ? 'block' : (best.ageDays <= 30 ? 'warn' : 'ok');
+    return { table: k, label, row: best.row, dateStr: best.dateStr, diffDays: best.diffDays, ageDays: best.ageDays, status, blocked: status === 'block', warn: status === 'warn' };
   }
 
   // meterGuard: the unit's last reading strictly before the new date (prior-day readings preferred)
@@ -5909,6 +5929,12 @@
       hidden: true,
       afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-reset-btn" id="resetRepDateBtn">× Same as Transaction Date</button><span class="hint" id="hint_repdate"></span></div>`
     });
+    const initTime = nowHHMM();
+    const initOt = isOvertimeTime(initTime);
+    const timeField = (initCoFleet = true) => fld('Dispatch Time *', inp('f_time', 'time', initTime), {
+      id: 'wrap_f_time',
+      afterHtml: `<div class="repdate-bar time-ot-bar"><div id="wrap_f_overtime" class="ot-inline-wrap"${initCoFleet ? '' : ' hidden'}><input type="checkbox" id="f_overtime" ${initCoFleet && initOt ? 'checked' : ''} hidden><button type="button" class="repdate-toggle-btn overtime-toggle-btn${initCoFleet && initOt ? ' active is-overtime' : ''}" id="toggleOvertimeBtn" aria-pressed="${initCoFleet && initOt ? 'true' : 'false'}">${initOt ? '✓ Overtime Registered (18:00–05:59) · × Clear' : '☀️ Day Shift (06:00–17:59) · + Overtime?'}</button></div><span class="hint" id="hint_time"></span></div>`
+    });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
     const adminHeaderHtml = `<div id="paAdminLockBar"></div><div id="paAdminUnlockBox" hidden></div>`;
@@ -5931,22 +5957,21 @@
           ${companyField}
           ${dateField}
           ${repDateField}
-          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
-          <div class="form-field check-field" id="wrap_f_overtime"><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (outside 06:00–17:59)</label></div>
+          ${timeField(false)}
           ${fld('Sale Type *', sel('f_saletype', [
+            ['Pickup', 'Pick-up (Material Only)'],
             ['Delivery', 'Delivery (Material + Transport)'],
-            ['Pickup', 'Pickup (Ex-Quarry / Plant — No Site or Transport)'],
-            ['Unregistered', 'Unregistered / Spot Cash']
-          ], 'Delivery'), { id: 'wrap_f_saletype' })}
+            ['Unregistered', 'Unregistered (Spot Cash)']
+          ], 'Pickup'), { id: 'wrap_f_saletype' })}
           ${fld('Transported By *', sel('f_transportby', [
             ['Company fleet', 'Company fleet (Own Truck)'],
             ['Third-party truck', 'Third-party truck (Hauler)']
-          ], 'Company fleet'), { id: 'wrap_f_transportby' })}
+          ], 'Company fleet'), { id: 'wrap_f_transportby', hidden: true })}
           ${fld('Ticket / Invoice No. *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter pad ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { id: 'wrap_f_customer', hintId: 'hint_customer', hint: '' })}
-          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
-          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
+          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-open on Company fleet', hintId: 'hint_truck', hint: '' })}
           ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-filled from Truck Default Driver', hintId: 'hint_driver', hint: '' })}
           ${truckQvHtml}
@@ -5958,8 +5983,8 @@
           ${fld('Customer-declared Qty', inp('f_extqty', 'number', '', 'step="0.01" min="0" inputmode="decimal" placeholder="Customer ticket qty"'), { id: 'wrap_f_extqty', hidden: true })}
           ${fld('Unit Price ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Locked on Pickup & Delivery to active Price Agreement or List Price', hintId: 'hint_price', hint: '' })}
           ${fld('<span id="lbl_mat_total">Material Total (USD) *</span>', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Computed as Quantity × Unit Price + Tier Adjustment − Discount', hintId: 'hint_mat_total', hint: 'Qty × Unit Price + Tier Adj − Discount' })}
-          ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Locked to Price Agreement transport rate on Delivery; hidden on Pickup', hintId: 'hint_trans', hint: '' })}
-          ${fld('Transport Total (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Computed as Quantity × Transport Unit Price + Tier Transport Adjustment', hintId: 'hint_trans_total', hint: 'Qty × Transport Unit Price' })}
+          ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', hidden: true, lockField: 'f_transunitprice', lockReason: 'Locked to Price Agreement transport rate on Delivery; hidden on Pickup', hintId: 'hint_trans', hint: '' })}
+          ${fld('Transport Total (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', hidden: true, lockField: 'f_trans_total', lockReason: 'Computed as Quantity × Transport Unit Price + Tier Transport Adjustment', hintId: 'hint_trans_total', hint: 'Qty × Transport Unit Price' })}
           ${fld('Driver Tip ($)', inp('f_tip', 'number', '0.00', 'step="0.50" min="0" inputmode="decimal"'), { id: 'wrap_f_tip' })}
           ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount', hintId: 'hint_disc', hint: '' })}
           ${fld('Total Ex-VAT (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Computed as Material Total + Transport Total', hint: 'Material Total + Transport Total' })}
@@ -5993,8 +6018,7 @@
           ${companyField}
           ${dateField}
           ${repDateField}
-          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
-          <div class="form-field check-field" id="wrap_f_overtime" hidden><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (outside 06:00–17:59)</label></div>
+          ${timeField(false)}
           ${fld('Ticket # *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Transported By *', sel('f_transportby', [
             ['Third-party truck', 'Third-party truck (Hauler paid)'],
@@ -6434,24 +6458,60 @@
     else setHint('hint_date', '', '');
   }
 
-  function dupCheck(company, formType) {
+  function syncOvertimeControl(isCoFleet) {
+    setFieldVisible('wrap_f_overtime', isCoFleet);
+    const otEl = $('f_overtime');
+    const otBtn = $('toggleOvertimeBtn');
+    const timeVal = val('f_time');
+    const otByTime = isOvertimeTime(timeVal);
+    if (otEl) {
+      if (!isCoFleet) {
+        otEl.checked = false;
+      } else if (!FORM_UI.otManual) {
+        otEl.checked = otByTime;
+      }
+    }
+    const isOt = Boolean(isCoFleet && otEl && otEl.checked);
+    if (otBtn) {
+      otBtn.classList.toggle('active', isOt);
+      otBtn.classList.toggle('is-overtime', isOt);
+      otBtn.setAttribute('aria-pressed', isOt ? 'true' : 'false');
+      if (isOt) {
+        otBtn.textContent = otByTime
+          ? '✓ Overtime Registered (18:00–05:59) · × Clear'
+          : '✓ Overtime Registered (Manual) · × Clear';
+        otBtn.title = 'Overtime driver allowance is registered for this load — click to clear overtime';
+      } else {
+        otBtn.textContent = otByTime
+          ? '☀️ No Overtime (Cleared) · + Register Overtime?'
+          : '☀️ Day Shift (06:00–17:59) · + Overtime?';
+        otBtn.title = 'No overtime allowance on this load — click to register overtime';
+      }
+    }
+    setHint('hint_time', '', '');
+  }
+
+  function dupCheck(company, formType, refDate) {
     const tno = val('f_ticketno');
-    const hit = ticketExists(company, tno, formType || STATE.modalForm);
+    const hit = ticketExists(company, tno, formType || STATE.modalForm, refDate);
     const wrap = $('wrap_dupok');
-    if (hit) {
+    if (wrap) { wrap.hidden = true; const cb = $('f_dupok'); if (cb) cb.checked = false; }
+    if (hit && hit.status === 'block') {
       const party = hit.row.customer || hit.row.site_owner || hit.row.site || hit.row.equipment || '';
-      setHint('hint_ticket', `Already used on ${hit.label} ${hit.row.ticket_no} dated ${String(hit.row.date).slice(0, 10)}${party ? ' · ' + party : ''}`, 'crit');
-      if (wrap) wrap.hidden = false;
+      const whenLbl = hit.ageDays === 0 ? 'same day' : (hit.diffDays === 1 ? 'day before' : '1 day apart');
+      setHint('hint_ticket', `Not accepted — already used on ${hit.label} ${hit.row.ticket_no} dated ${hit.dateStr}${party ? ' · ' + party : ''} (${whenLbl})`, 'crit');
+    } else if (hit && hit.status === 'warn') {
+      const party = hit.row.customer || hit.row.site_owner || hit.row.site || hit.row.equipment || '';
+      setHint('hint_ticket', `Already used on ${hit.label} ${hit.row.ticket_no} dated ${hit.dateStr}${party ? ' · ' + party : ''} (${hit.ageDays} days ago — accepted)`, 'warn');
     } else {
-      setHint('hint_ticket', tno ? 'Number is free in ' + company : '', tno ? 'ok' : '');
-      if (wrap) { wrap.hidden = true; const cb = $('f_dupok'); if (cb) cb.checked = false; }
+      setHint('hint_ticket', '', '');
     }
     return hit;
   }
 
   function recalcSales() {
     const company = val('f_company');
-    const saleType = val('f_saletype') || 'Delivery';
+    const saleType = val('f_saletype') || 'Pickup';
     const isDelivery = saleType === 'Delivery';
     const isPickup = saleType === 'Pickup';
     const isUnreg = saleType === 'Unregistered';
@@ -6638,14 +6698,8 @@
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
-    // 7. Overtime suggestion
-    const otEl = $('f_overtime');
-    const otSuggest = isCoFleet && isOvertimeTime(val('f_time'));
-    if (otEl) {
-      if (!isCoFleet) otEl.checked = false;
-      else if (!FORM_UI.otManual) otEl.checked = otSuggest;
-    }
-    setHint('hint_time', otSuggest ? 'Outside the day shift → overtime allowance' : 'Day shift 06:00–17:59', otSuggest ? 'warn' : '');
+    // 7. Time-linked Overtime registration
+    syncOvertimeControl(isCoFleet);
 
     // 8. Policy-Locked Totals & Live Calc
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isDelivery ? num('f_transunitprice') : 0, disc = num('f_discount'), tip = num('f_tip');
@@ -6773,13 +6827,7 @@
     const ap = openApBalance(owner);
     setHint('hint_owner', owner ? (ap != null ? `Open AP ${fmtUSD(ap, 2)}` : 'New payee — not in the AP book yet') : '', '');
 
-    const otEl = $('f_overtime');
-    const otSuggest = isCoFleet && isOvertimeTime(val('f_time'));
-    if (otEl) {
-      if (!isCoFleet) otEl.checked = false;
-      else if (!FORM_UI.otManual) otEl.checked = otSuggest;
-    }
-    setHint('hint_time', otSuggest ? 'Outside the day shift → overtime allowance' : 'Day shift 06:00–17:59', otSuggest ? 'warn' : '');
+    syncOvertimeControl(isCoFleet);
 
     // 7. Formula Locks & Method Lock (m81)
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isCoFleet ? 0 : num('f_transunitprice'), disc = num('f_discount');
@@ -7047,11 +7095,14 @@
 
     const splitOptionLabel = rawText => {
       const txt = String(rawText || '').trim();
+      const parenMatch = txt.match(/^(.*?)\s*\(([^()]+)\)$/);
+      if (parenMatch && parenMatch[1].trim() && !parenMatch[1].includes(' — ') && !parenMatch[1].includes(' · ')) {
+        return { label: parenMatch[1].trim(), meta: parenMatch[2].trim() };
+      }
       const dashIdx = txt.indexOf(' — ');
       if (dashIdx > 0) return { label: txt.slice(0, dashIdx).trim(), meta: txt.slice(dashIdx + 3).trim() };
       const dotIdx = txt.indexOf(' · ');
       if (dotIdx > 0) return { label: txt.slice(0, dotIdx).trim(), meta: txt.slice(dotIdx + 3).trim() };
-      const parenMatch = txt.match(/^(.*?)\s*\(([^()]+)\)$/);
       if (parenMatch && parenMatch[1].trim()) return { label: parenMatch[1].trim(), meta: parenMatch[2].trim() };
       return { label: txt, meta: '' };
     };
@@ -7462,6 +7513,17 @@
         recalcForm();
       });
     }
+    const toggleOtBtn = $('toggleOvertimeBtn');
+    if (toggleOtBtn) {
+      toggleOtBtn.addEventListener('click', ev => {
+        ev.preventDefault();
+        const otEl = $('f_overtime');
+        if (!otEl) return;
+        otEl.checked = !otEl.checked;
+        FORM_UI.otManual = true;
+        recalcForm();
+      });
+    }
 
     // Wire lock pills & locked field clicks to the Admin Privilege Unlock Process
     body.querySelectorAll('[data-lock-pill]').forEach(pill => {
@@ -7505,6 +7567,7 @@
           FORM_UI.repDateManual = val('f_repdate') !== val('f_date');
           if (FORM_UI.repDateManual) FORM_UI.showRepDate = true;
         }
+        if (el.id === 'f_time') FORM_UI.otManual = false;
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
         // Selecting a new truck resets manual quantity so the truck's capacity populates Quantity
@@ -7937,7 +8000,7 @@
         : (lp != null ? `List Price Benchmark: ${fmtUSD(lp, 2)}/${row.uom || 'm³'} (no active customer rule)` : `Spot Ticket Price: ${fmtUSD(row.unit_price, 2)}/${row.uom || 'm³'}`);
       const trTxt = row.sale_type === 'Delivery'
         ? `Transport: ${fmtUSD(row.trans_unit_price || (pr && pr.trans_unit_price) || 0, 2)}/${row.uom || 'm³'} (${fmtUSD(row.trans_price, 2)})`
-        : 'Pickup (Ex-Quarry · $0.00 Transport)';
+        : 'Pick-up (Material Only · $0.00 Transport)';
       const trkTxt = eq
         ? `${eq.ownership || 'Truck'}: ${eq.name}${eq.capacity ? ' (' + fmtNum(eq.capacity, 0) + ' m³)' : ''}${row.driver || eq.default_driver ? ' · ' + (row.driver || eq.default_driver) : ''}`
         : `Truck: ${row.truck || row.transport_by || '—'}${row.driver ? ' · ' + row.driver : ''}`;
@@ -8062,9 +8125,9 @@
             lbl: 'TRUCK & TELEMETRY',
             tag: eq && /^own|company/i.test(eq.ownership || '') ? 'COMPANY FLEET' : '3RD-PARTY',
             tone: 'info',
-            val: row.truck || row.transport_by || 'Pickup',
+            val: row.truck || row.transport_by || 'Pick-up',
             sub1: `Cap: ${eq && eq.capacity ? fmtNum(eq.capacity, 0) + ' m³' : fmtNum(row.qty, 0) + ' m³'} · Owner: ${(eq && eq.supplier) || row.truck_owner || 'Customer'}`,
-            sub2: `Driver: ${row.driver || (eq && eq.default_driver) || '—'} · Site: ${row.site || 'Ex-Quarry'}`,
+            sub2: `Driver: ${row.driver || (eq && eq.default_driver) || '—'} · Site: ${row.site || 'Pick-up (Material Only)'}`,
             pct: 78
           }
         ]

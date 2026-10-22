@@ -35,7 +35,7 @@
 
   // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — enriched with live relational columns & connected tables
   const TABLE_CATALOG = [
-    { key: 'sales_tickets', group: '1 · Plant & Dispatch', label: 'Sales Tickets', dvn: 'bhf_salesticket', form: 'sales', cols: ['date', 'rep_date', 'ticket_no', 'company', 'sale_type', 'customer', 'product', 'site', 'truck', 'driver', 'qty', 'uom', 'unit_price', 'price', 'trans_price', 'vat', 'total_ttc', 'method'], relTables: ['customers', 'price_rules', 'products', 'sites', 'equipment', 'drivers', 'receipts', 'vat_invoices'], views: [{ id: 'all', label: 'All Sales Tickets' }, { id: 'delivery', label: 'Delivery Loads', fn: r => /deliv/i.test(r.sale_type) }, { id: 'pickup', label: 'Pickup (Ex-Quarry)', fn: r => /pick/i.test(r.sale_type) }, { id: 'credit', label: 'Credit / Account', fn: r => !/cash/i.test(r.method) }, { id: 'iva', label: 'IVA / VAT 11%', fn: r => r.iva || Number(r.vat || 0) > 0 }] },
+    { key: 'sales_tickets', group: '1 · Plant & Dispatch', label: 'Sales Tickets', dvn: 'bhf_salesticket', form: 'sales', cols: ['date', 'rep_date', 'ticket_no', 'company', 'sale_type', 'customer', 'product', 'site', 'truck', 'driver', 'qty', 'uom', 'unit_price', 'price', 'trans_price', 'vat', 'total_ttc', 'method'], relTables: ['customers', 'price_rules', 'products', 'sites', 'equipment', 'drivers', 'receipts', 'vat_invoices'], views: [{ id: 'all', label: 'All Sales Tickets' }, { id: 'delivery', label: 'Delivery Loads', fn: r => /deliv/i.test(r.sale_type) }, { id: 'pickup', label: 'Pick-up (Material Only)', fn: r => /pick/i.test(r.sale_type) }, { id: 'credit', label: 'Credit / Account', fn: r => !/cash/i.test(r.method) }, { id: 'iva', label: 'IVA / VAT 11%', fn: r => r.iva || Number(r.vat || 0) > 0 }] },
     { key: 'raw_purchases', group: '1 · Plant & Dispatch', label: 'Raw Material Purchases', dvn: 'bhf_rawpurchase', form: 'raw', cols: ['date', 'rep_date', 'ticket_no', 'company', 'site', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'driver', 'product', 'qty', 'uom', 'unit_cost', 'cost', 'trans_cost', 'total'], relTables: ['sites', 'suppliers', 'price_rules', 'equipment', 'drivers', 'products', 'settlements'], views: [{ id: 'all', label: 'All Raw Purchases' }, { id: 'supplier_haul', label: 'Third-Party Haulage', fn: r => Number(r.trans_cost || 0) > 0 }, { id: 'company_haul', label: 'Company Fleet Haul', fn: r => /company/i.test(r.transport_by) }] },
     { key: 'fuel_intakes', group: '1 · Plant & Dispatch', label: 'Fuel & Lubricant Intakes', dvn: 'bhf_fuelintake', form: 'fuel', cols: ['date', 'ticket_no', 'company', 'equipment', 'driver', 'item', 'litres', 'odometer', 'hours', 'notes'], relTables: ['equipment', 'company_equipment', 'drivers', 'products'], views: [{ id: 'all', label: 'All Fuel & Lube Fills' }, { id: 'diesel', label: 'Diesel Only', fn: r => /diesel|fuel|mazout/i.test(r.item || '') }, { id: 'lube', label: 'Oils & Lubricants', fn: r => !/diesel|fuel|mazout/i.test(r.item || '') }] },
     { key: 'receipts', group: '1 · Plant & Dispatch', label: 'Customer Receipts (AR)', dvn: 'bhf_mfgcustomerreceipt', form: 'receipt', cols: ['date', 'rep_date', 'name', 'company', 'customer', 'method', 'kind', 'amount', 'discount', 'vat_invoice', 'record_ticket', 'reference', 'notes'], relTables: ['customers', 'sales_tickets', 'vat_invoices', 'credit_terms'], views: [{ id: 'all', label: 'All Customer Receipts' }, { id: 'cash', label: 'Cash / Check', fn: r => /cash|check|cheque/i.test(r.method || '') }, { id: 'disc', label: 'With Discount / Rebate', fn: r => Number(r.discount || 0) > 0 }] },
@@ -1723,7 +1723,7 @@
           ${kpiBand('2 · Weighbridge Loads, Tonnage & Unit Realisation', [
             { label: 'Total Loads', value: fmtNum(sc(k.loads), 0), sub: fmtNum(salesRows.length) + ' in web sample' },
             { label: 'Delivery Loads', value: fmtNum(sc(k.delivery_loads), 0), sub: fmtPct(null, k.delivery_loads, k.loads) + ' delivered' },
-            { label: 'Pickup Loads (Ex-Works)', value: fmtNum(sc(k.pickup_loads), 0), sub: 'Customer truck at plant' },
+            { label: 'Pick-up Loads', value: fmtNum(sc(k.pickup_loads), 0), sub: 'Material only (customer truck)' },
             { label: 'Quantity Sold (Units)', value: fmtNum(sc(k.qty_sold), 0), sub: 'Mixed m³ and Ton' },
             { label: 'Tons Sold (Converted)', value: fmtNum(sc(k.tons_sold), 0) + ' t', sub: 'Using grade ton_factor', tone: 'good' },
             { label: 'Avg Realised Price', value: fmtUSD(k.avg_price_ttc, 2), sub: 'Ex-VAT: ' + fmtUSD(k.avg_price_net, 2) + '/u', tone: 'brass' }
@@ -1765,7 +1765,7 @@
             { label: 'Tons Sold', key: 'tons_sold', r: true, fmt: v => fmtNum(v, 0) },
             { label: 'Transport ($)', key: 'trans_rev', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Sales TTC ($)', key: 'sales_ttc', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` }
-          ], siteRows, { subtitle: 'Customer delivery sites and ex-works quarry dispatch locations', unitLabel: 'sites' })}
+          ], siteRows, { subtitle: 'Customer delivery sites and pick-up dispatch locations', unitLabel: 'sites' })}
         </div>
 
         <div class="pbi-grid-1">
@@ -1786,7 +1786,7 @@
             { label: 'Total TTC ($)', key: 'total_ttc', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
             { label: 'Method', key: 'method' }
           ], salesRows, {
-            subtitle: 'Pale navy row = Pickup (ex-works) ticket · Click any row to open full 18-field Record Inspector',
+            subtitle: 'Pale navy row = Pick-up (Material Only) ticket · Click any row to open full 18-field Record Inspector',
             rowNavy: r => r.sale_type === 'Pickup',
             rkey: 'sales_tickets',
             limit: 60,

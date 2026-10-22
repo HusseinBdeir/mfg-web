@@ -474,7 +474,7 @@
           ${fld('End Date', inp('f_enddate', 'date', ''))}
           ${fld('Rule Type *', sel('f_ruletype', [
             ['Sales (Delivery)', 'Sales (Delivery) — Customer + Site + Material/Trans'],
-            ['Sales (Pickup)', 'Sales (Pickup) — Ex-Quarry Customer Price'],
+            ['Sales (Pickup)', 'Sales (Pickup) — Customer Material Price (Pick-up)'],
             ['List Price', 'List Price — Benchmark Product Price'],
             ['Purchase Price (Site)', 'Purchase Price (Site) — Quarry Material Cost'],
             ['Transport Price (Site)', 'Transport Price (Site) — Quarry Haulage Rate'],

@@ -393,6 +393,10 @@ try {
     const prodReopensWhenFilled = prodMenu && !prodMenu.hidden && prodMenu.querySelectorAll('.pa-suggest-item').length > 1 && !!prodMenu.querySelector('.pa-suggest-item.is-selected');
     prodMenu.hidden = true;
 
+    // Sales form defaults to Pickup (so f_truck is policy-locked until Truck Owner is selected or Sale Type is Delivery)
+    const stEl = document.getElementById('f_saletype');
+    stEl.value = 'Delivery';
+    stEl.dispatchEvent(new Event('change', { bubbles: true }));
     const trk = document.getElementById('f_truck');
     trk.value = '10';
     trk.dispatchEvent(new Event('input', { bubbles: true }));
@@ -404,6 +408,8 @@ try {
     if (firstItem) firstItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     const pickedTruck = trk.value;
     const menuClosedAfterPick = menu ? menu.hidden === true : false;
+    stEl.value = 'Pickup';
+    stEl.dispatchEvent(new Event('change', { bubbles: true }));
 
     // Now switch to Raw Quarry Purchase form: 1) f_ticketno starts blank; 2) typing 19950 DOES flag duplicate in raw_purchases
     document.querySelector('.modal-tab[data-form="raw"]').click();
@@ -484,11 +490,12 @@ try {
       idx('f_uom') < idx('f_unitprice') &&
       idx('f_unitprice') < idx('f_mat_total');
 
-    // (2) Check conditional column visibility on Delivery vs Pickup
-    const delivSiteVisible = !document.getElementById('wrap_f_site').hidden;
-    const delivTransVisible = !document.getElementById('wrap_f_transunitprice').hidden;
-    const delivOwnerHiddenOnCoFleet = document.getElementById('wrap_f_truckowner').hidden;
-    set('f_saletype', 'Pickup');
+    // (2) Check Sale Type default = Pickup (1st Pick-up, 2nd Delivery, 3rd Unregistered) & conditional column visibility
+    const stSelect = document.getElementById('f_saletype');
+    const saleTypeDefaultIsPickup = stSelect && stSelect.value === 'Pickup';
+    const saleTypeOptVals = stSelect ? Array.from(stSelect.options).map(o => o.value).join(',') : '';
+    const saleTypeOptLabels = stSelect ? Array.from(stSelect.options).map(o => o.textContent.trim()).join('|') : '';
+    const saleTypeOrderOk = saleTypeDefaultIsPickup && saleTypeOptVals === 'Pickup,Delivery,Unregistered' && saleTypeOptLabels === 'Pick-up (Material Only)|Delivery (Material + Transport)|Unregistered (Spot Cash)';
     const pickupSiteHidden = document.getElementById('wrap_f_site').hidden === true;
     const pickupTransByHidden = document.getElementById('wrap_f_transportby').hidden === true;
     const pickupOvertimeHidden = document.getElementById('wrap_f_overtime').hidden === true;
@@ -496,6 +503,10 @@ try {
     const pickupTransTotHidden = document.getElementById('wrap_f_trans_total').hidden === true;
     const pickupTruckOwnerVisible = document.getElementById('wrap_f_truckowner').hidden === false;
     set('f_saletype', 'Delivery');
+    const delivSiteVisible = !document.getElementById('wrap_f_site').hidden;
+    const delivTransVisible = !document.getElementById('wrap_f_transunitprice').hidden;
+    const delivOwnerHiddenOnCoFleet = document.getElementById('wrap_f_truckowner').hidden;
+    set('f_saletype', 'Pickup');
 
     // (3) Check Policy-Locked Transaction Date (f_date) + On-Demand Collapsible Reporting Date (f_repdate)
     const dEl = document.getElementById('f_date');
@@ -540,14 +551,14 @@ try {
     const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
 
     return {
-      orderingOk,
+      orderingOk, saleTypeOrderOk,
       delivSiteVisible, delivTransVisible, delivOwnerHiddenOnCoFleet,
       pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
       repSynced, noInternalCodes,
       startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow
     };
   })()`);
-  intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
+  intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
   intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
   intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
     ? pass('entry desk · v7.9 BU -> Locked Transaction Date -> On-Demand Reporting Date -> Time ordering, Pickup Gating, Clean UI & Admin Unlock')
