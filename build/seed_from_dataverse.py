@@ -1993,14 +1993,35 @@ def main():
     # synchronously on load in ~35ms so all 93,000+ historical transactions (2024–2026) are available offline.
     import re as _re
     _WB_TAG_RE = _re.compile(r"\s*\[wb:[^\]]+\]")
+    _MIG_TAG_RE = _re.compile(r"\s*\[m\d+[^\]]*\]", _re.I)
+
+    def _clean_notes(s):
+        if not s or not isinstance(s, str):
+            return s
+        s = _WB_TAG_RE.sub("", s)
+        lines = []
+        for raw_line in s.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if _re.match(r"^Merged trucks\s*\(m89", line, _re.I):
+                continue
+            if _re.search(r"\((?:column\s+|text,\s*)?retired\s+m\d+\)", line, _re.I):
+                continue
+            if _re.match(r"^Workbook status\s+\w+\s+from\s+[\d-]+\s*\(m\d+\)", line, _re.I):
+                continue
+            if _re.match(r"^\[m\d+[^\]]*\]$", line, _re.I):
+                continue
+            lines.append(line)
+        return _MIG_TAG_RE.sub("", "\n".join(lines)).strip()
 
     def _compact_row(row):
         out = {}
         for k, v in row.items():
             if k != "id" and (k.endswith("_id") or k.endswith("_code")):
                 continue
-            if k == "notes" and isinstance(v, str) and "[wb:" in v:
-                v = _WB_TAG_RE.sub("", v).strip()
+            if k == "notes" and isinstance(v, str):
+                v = _clean_notes(v)
             if k == "usd_amount" and v == row.get("amount"):
                 continue
             if v is None or v == "" or v == [] or v == {} or v is False or v == 0 or v == 0.0:

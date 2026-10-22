@@ -804,14 +804,25 @@ try {
     set('f_truckowner', 'Aawad');
     const rawOwnerChangeClearedOk = document.getElementById('f_truck').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
 
-    // Check Truck Owner (Supplier) form: has dedicated section for adding Drivers to the Truck Owner
+    // Check Truck Owner (Supplier) form: multi-select Category + no #f_istruckowner button + auto Hauler Fleet & Drivers section
     document.querySelector('[data-pa-group="hq"]').click();
     document.querySelector('.modal-tab[data-form="supplier"]').click();
+    const noTruckOwnerButton = !document.getElementById('f_istruckowner') && !!document.getElementById('supCategoryTrigger');
+    // Selecting 'Aahed' hydrates multi-select categories ('Hauler / Truck Owner, Raw Material Settlements')
+    set('f_supplier', 'Aahed');
+    const aahedChips = Array.from(document.querySelectorAll('#supCategoryChips .pa-ms-chip')).map(c => c.getAttribute('data-ms-val'));
+    const multiCatHydratedOk = aahedChips.includes('Hauler / Truck Owner') && aahedChips.includes('Raw Material Settlements');
+    // Removing Hauler / Truck Owner and picking non-hauler categories hides #wrap_sup_drivers automatically
+    set('f_supplier', 'New Garage Vendor');
+    set('f_category', 'Fuel & Lubricants, Spare Parts & Garage');
+    const nonHaulerHidesDriversWrap = document.getElementById('wrap_sup_drivers')?.hidden === true && document.querySelectorAll('#supCategoryChips .pa-ms-chip').length === 2;
+    // Selecting 'Ali Lakis' re-hydrates Hauler / Truck Owner, reveals #wrap_sup_drivers, shows his 7 trucks, and stages a driver
     set('f_supplier', 'Ali Lakis');
     const supDriversWrapVisible = document.getElementById('wrap_sup_drivers') && !document.getElementById('wrap_sup_drivers').hidden;
     set('f_sup_drv_name', 'Karim Substitute');
     document.getElementById('btnAddSupDriver')?.click();
-    const supDriverStagedOk = supDriversWrapVisible && /Karim Substitute/i.test(document.getElementById('supOwnerDriversList')?.textContent || '');
+    const supPanelTxt = document.getElementById('supOwnerDriversList')?.textContent || '';
+    const supDriverStagedOk = noTruckOwnerButton && multiCatHydratedOk && nonHaulerHidesDriversWrap && supDriversWrapVisible && /Karim Substitute/i.test(supPanelTxt) && /355948/.test(supPanelTxt);
 
     // Check Truck (Equipment) form: has Default Driver location filtered to the Truck Owner's drivers
     document.querySelector('[data-pa-group="hq"]').click();
@@ -2198,8 +2209,28 @@ try {
     ? pass('Command Center branding & Public Showcase navigation · .brand-sub="Command Center" + #railShowcaseLink & #authShowcaseLink', `${showcaseBrandProbe.brandSub} · href=${showcaseBrandProbe.railHref}`)
     : fail('Command Center branding & Public Showcase navigation', JSON.stringify(showcaseBrandProbe));
 
-  // 7h. Universal Record Void / Delete (inline row ✕ + 360° Record Inspector top Command Bar & footer + 1-click Undo restore)
-  const voidAnyRecordProbe = await evaluate(`(() => {
+  // 7h. Universal Record Void / Delete (inline row ✕ + 360° Record Inspector top Command Bar & footer + 1-click Undo restore + Role Gate: Supervisor / Admin / Custom only, blocked for Entry & Sales)
+  const voidAnyRecordProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    const ownerCanVoid = T.canVoid('husseinbdeir@bhfirms.com') === true;
+    const supEntryCanVoid = T.canVoid('zeinabrkein@bhfirms.com') === true;
+    const supOnlyCanVoid = T.canVoid('site.bbc@bhfirms.com') === true;
+    const entryBlocked = T.canVoid('sabahkassab@bhfirms.com') === false && T.canVoid('scale1.wtc@bhfirms.com') === false;
+    const salesBlocked = T.canVoid('ar.mfg@bhfirms.com') === false;
+
+    // Verify Entry seat (u3) renders 0 row-hover void buttons and 0 Record Inspector void buttons
+    await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    const entryRow = document.querySelector('#univRegPanel tbody tr.rrow[data-rid]');
+    const entryHasNoRowVoidBtn = !(entryRow && entryRow.querySelector('.void-btn'));
+    if (entryRow) entryRow.click();
+    const entryHasNoInspVoidBtns = !document.getElementById('inspCmdVoidBtn') && !document.getElementById('inspectorVoidBtn');
+    const doneBtn = document.getElementById('inspectorDoneBtn');
+    if (doneBtn) doneBtn.click();
+
+    // Restore Owner session (u1) and test 2-click Void/Delete + 1-click Undo restore
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
     document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
     const countBefore = (window.MFG_SEED.records.equipment || []).length;
     const firstRow = document.querySelector('#univRegPanel tbody tr.rrow[data-rid]');
@@ -2221,15 +2252,222 @@ try {
     if (undoBtn) undoBtn.click();
     const countAfterUndo = (window.MFG_SEED.records.equipment || []).length;
     const restoredOk = countAfterUndo === countBefore;
+    const roleGatesOk = ownerCanVoid && supEntryCanVoid && supOnlyCanVoid && entryBlocked && salesBlocked && entryHasNoRowVoidBtn && entryHasNoInspVoidBtns;
     document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
     return {
-      ok: hasRowHoverVoidBtn && hasBothInspectorVoidBtns && armedOk && voidDecremented && hasUndoBtn && restoredOk,
+      ok: roleGatesOk && hasRowHoverVoidBtn && hasBothInspectorVoidBtns && armedOk && voidDecremented && hasUndoBtn && restoredOk,
+      roleGatesOk, ownerCanVoid, supEntryCanVoid, supOnlyCanVoid, entryBlocked, salesBlocked, entryHasNoRowVoidBtn, entryHasNoInspVoidBtns,
       countBefore, countAfterVoid, countAfterUndo, hasRowHoverVoidBtn, hasBothInspectorVoidBtns, armedOk, hasUndoBtn, restoredOk
     };
   })()`);
   voidAnyRecordProbe && voidAnyRecordProbe.ok
-    ? pass('record void / delete & undo · inline row ✕ + 360° Record Inspector top/footer 🗑 Void / Delete + 1-click Undo across all registries & ledgers', `${voidAnyRecordProbe.countBefore} → ${voidAnyRecordProbe.countAfterVoid} → ${voidAnyRecordProbe.countAfterUndo}`)
+    ? pass('record void / delete & undo · Supervisor/Admin/Custom only (Entry & Sales blocked) + inline row ✕ + 360° Record Inspector top/footer 🗑 Void / Delete + 1-click Undo', `${voidAnyRecordProbe.countBefore} → ${voidAnyRecordProbe.countAfterVoid} → ${voidAnyRecordProbe.countAfterUndo} · entryBlocked=${voidAnyRecordProbe.entryBlocked}`)
     : fail('record void / delete & undo', JSON.stringify(voidAnyRecordProbe));
+
+  // 7i. Interactive Table Column Manager (Hide / Show columns, Widen / Narrow columns, tfoot colspan sync, 1-click Default reset & automatic revert on view switch)
+  const tableColMgrProbe = await evaluate(`(() => {
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    const panel = document.getElementById('univRegPanel');
+    const tbl = panel ? panel.querySelector('table.ledger-table') : null;
+    if (!tbl || !window.MFG_TABLE_COLS) return { ok: false, reason: 'missing table or MFG_TABLE_COLS' };
+
+    const mgrWrap = panel.querySelector('.tbl-col-mgr-wrap');
+    const trigBtn = mgrWrap ? mgrWrap.querySelector('.tbl-col-trigger-btn') : null;
+    const inlineResetBtn = mgrWrap ? mgrWrap.querySelector('.tbl-col-inline-reset') : null;
+    const popover = mgrWrap ? mgrWrap.querySelector('.tbl-col-popover') : null;
+    const ths = Array.from(tbl.querySelectorAll('thead tr th'));
+    const hasResizersAndTools = ths.length >= 8 && ths.every(th => th.querySelector('.tbl-col-resizer') && th.querySelector('.tbl-th-tools'));
+
+    const origW0 = Math.round(ths[0].getBoundingClientRect().width);
+    const origW3 = Math.round(ths[3].getBoundingClientRect().width);
+    const tfootFirstTd = tbl.querySelector('tfoot tr td:first-child');
+    const origTfootColspan = Number(tfootFirstTd ? tfootFirstTd.getAttribute('colspan') : 0);
+
+    // 1. Open Columns popover & hide col 1 (Co.) via checkbox + hide col 2 (Category) via header quick-tool
+    trigBtn.click();
+    const popOpened = popover && !popover.hidden;
+    const chk1 = popover.querySelector('[data-col-toggle-idx="1"]');
+    if (chk1) {
+      chk1.checked = false;
+      chk1.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const hideBtn2 = ths[2].querySelector('[data-th-hide="2"]');
+    if (hideBtn2) hideBtn2.click();
+
+    const col1Hidden = ths[1].classList.contains('tbl-col-hidden') && getComputedStyle(ths[1]).display === 'none';
+    const col2Hidden = ths[2].classList.contains('tbl-col-hidden') && getComputedStyle(ths[2]).display === 'none';
+    const bodyRow0 = tbl.querySelector('tbody tr');
+    const bodyCellsHidden = bodyRow0 && getComputedStyle(bodyRow0.children[1]).display === 'none' && getComputedStyle(bodyRow0.children[2]).display === 'none';
+    const tfootSpanAfterHide2 = Number(tfootFirstTd ? tfootFirstTd.getAttribute('colspan') : 0);
+
+    // 2. Widen col 0 twice (+48px) and narrow col 3 once (-24px)
+    const widen0 = popover.querySelector('[data-col-widen-idx="0"]');
+    if (widen0) { widen0.click(); widen0.click(); }
+    const narrow3 = popover.querySelector('[data-col-narrow-idx="3"]');
+    if (narrow3) { narrow3.click(); }
+
+    const widenedW0 = Math.round(ths[0].getBoundingClientRect().width);
+    const narrowedW3 = Math.round(ths[3].getBoundingClientRect().width);
+    const widenOk = widenedW0 >= origW0 + 40;
+    const narrowOk = narrowedW3 <= origW3 - 18 || narrowedW3 === 34;
+    const resetBtnVisible = inlineResetBtn && !inlineResetBtn.hidden;
+
+    // 3. Click "Default" inline reset button -> verify immediate revert to default
+    inlineResetBtn.click();
+    const revertedHiddenCount = tbl.querySelectorAll('.tbl-col-hidden').length;
+    const revertedHasResize = tbl.classList.contains('has-col-resize');
+    const revertedTfootSpan = Number(tfootFirstTd ? tfootFirstTd.getAttribute('colspan') : 0);
+    const revertedW0 = Math.round(ths[0].getBoundingClientRect().width);
+    const manualResetOk = revertedHiddenCount === 0 && !revertedHasResize && revertedTfootSpan === origTfootColspan && Math.abs(revertedW0 - origW0) <= 2;
+
+    // 4. Customize again (hide col 1 + widen col 0), then switch view to Drivers & back to Equipment -> verify automatic revert to default
+    window.MFG_TABLE_COLS.toggleColumnVisible(tbl, 1, false);
+    window.MFG_TABLE_COLS.nudgeColumnWidth(tbl, 0, 48);
+    const customizedBeforeNav = tbl.querySelectorAll('.tbl-col-hidden').length > 0 && tbl.classList.contains('has-col-resize');
+
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_drivers"]').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+
+    const tblAfterNav = document.querySelector('#univRegPanel table.ledger-table');
+    const autoRevertedOnNav = tblAfterNav && tblAfterNav.querySelectorAll('.tbl-col-hidden').length === 0 && !tblAfterNav.classList.contains('has-col-resize') && Number(tblAfterNav.querySelector('tfoot tr td:first-child').getAttribute('colspan')) === origTfootColspan;
+
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    return {
+      ok: hasResizersAndTools && popOpened && col1Hidden && col2Hidden && bodyCellsHidden &&
+          origTfootColspan >= 3 && tfootSpanAfterHide2 === origTfootColspan - 2 &&
+          widenOk && narrowOk && resetBtnVisible && manualResetOk &&
+          customizedBeforeNav && autoRevertedOnNav,
+      hasResizersAndTools, popOpened, col1Hidden, col2Hidden, bodyCellsHidden,
+      origTfootColspan, tfootSpanAfterHide2,
+      origW0, widenedW0, origW3, narrowedW3,
+      manualResetOk, customizedBeforeNav, autoRevertedOnNav
+    };
+  })()`);
+  tableColMgrProbe && tableColMgrProbe.ok
+    ? pass('table column manager · hide/show columns (tfoot colspan 4→2), widen/narrow columns & revert to default (manual Default button + auto-revert on view switch)', `col0 ${tableColMgrProbe.origW0}px→${tableColMgrProbe.widenedW0}px · col3 ${tableColMgrProbe.origW3}px→${tableColMgrProbe.narrowedW3}px · tfoot colspan ${tableColMgrProbe.origTfootColspan}→${tableColMgrProbe.tfootSpanAfterHide2}→${tableColMgrProbe.origTfootColspan}`)
+    : fail('table column manager', JSON.stringify(tableColMgrProbe));
+
+  // 7j. Multi-Column Filter Engine, Clean Equipment Search ("truck"), Smart Sort Direction & Computed Column Sorting
+  const multiColFilterProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    await wait(60);
+
+    // 1. Verify zero "(m89)" / "Merged trucks" internal migration tags remain in equipment notes
+    const eqPool = window.MFG_SEED.records.equipment || [];
+    const dirtyNotesCount = eqPool.filter(r => /Merged trucks|\\(m\\d+|Workbook status/i.test(String(r.notes || ''))).length;
+
+    // 2. Reproduce exact user screenshot: click "Company Fleet" view chip, search "truck" -> must show ONLY Truck rows (23), zero Wheel Loader / Vehicle / Excavator
+    const ownViewBtn = document.querySelector('#univRegPanel [data-tbl-view="own"]');
+    if (ownViewBtn) ownViewBtn.click();
+    const searchInp = document.getElementById('tableSearchInput');
+    searchInp.value = 'truck';
+    searchInp.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(220);
+
+    const ownTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
+    const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
+    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && /23 RECORDS/i.test(ownTruckFoot);
+
+    // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,533 total)
+    const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
+    if (allViewBtn) allViewBtn.click();
+    const allTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
+    const allTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
+    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && /1,533 RECORDS/i.test(allTruckFoot);
+
+    // Clear search
+    const clearSearch = document.getElementById('tableSearchInput');
+    clearSearch.value = '';
+    clearSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(220);
+
+    // 4. Click "TYPE" column header -> first click sorts A → Z (asc: Excavator first), NOT Z → A (Wheel Loader first)
+    const typeTh = document.querySelector('#univRegPanel th.sortable[data-sort-key="type"]');
+    if (typeTh) typeTh.click();
+    const firstTypeAfterClick = (document.querySelector('#univRegPanel tbody tr.rrow td:nth-child(4)')?.textContent || '').trim();
+    const typeSortedAscFirst = firstTypeAfterClick === 'Excavator';
+
+    // 5. Click "LOADS HAULED" column header -> sorts numerically descending by computed loads_hauled (top > 1,000)
+    const loadsTh = document.querySelector('#univRegPanel th.sortable[data-sort-key="loads_hauled"]');
+    if (loadsTh) loadsTh.click();
+    const firstLoadsTxt = (document.querySelector('#univRegPanel tbody tr.rrow td:nth-child(9)')?.textContent || '').replace(/[^0-9]/g, '');
+    const loadsSortedDescNumerically = Number(firstLoadsTxt) >= 1000;
+
+    // 6. Multi-Column Filter Bar: combine Type = "Truck" + Co. = "WTC" + Ownership = "Own"
+    const selType = document.querySelector('#univRegPanel .cf-select[data-cf-key="type"]');
+    if (selType) { selType.value = 'Truck'; selType.dispatchEvent(new Event('change', { bubbles: true })); }
+    const selCo = document.querySelector('#univRegPanel .cf-select[data-cf-key="companies_list"]');
+    if (selCo) { selCo.value = 'WTC'; selCo.dispatchEvent(new Event('change', { bubbles: true })); }
+    const selOwn = document.querySelector('#univRegPanel .cf-select[data-cf-key="ownership"]');
+    if (selOwn) { selOwn.value = 'Own'; selOwn.dispatchEvent(new Event('change', { bubbles: true })); }
+
+    const multiRows = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow'));
+    const multiAllMatch = (multiRows.length === 13 || multiRows.length === 15) && multiRows.every(tr =>
+      /WTC/i.test(tr.children[1].textContent) &&
+      tr.children[3].textContent.trim() === 'Truck' &&
+      /Own/i.test(tr.children[4].textContent)
+    );
+    const activePillsCount = document.querySelectorAll('#univRegPanel .cf-active-pill').length;
+
+    // 7. Header Filter Popover: open on Capacity (m³), enter ">=25" and apply
+    const capFilterBtn = document.querySelector('#univRegPanel [data-th-filter-key="capacity"]');
+    if (capFilterBtn) capFilterBtn.click();
+    const pop = document.getElementById('colFilterPopover');
+    const popOpened = !!(pop && !pop.hidden);
+    const popInp = document.getElementById('cfpSearchInput');
+    if (popInp) {
+      popInp.value = '>=25';
+      document.getElementById('cfpApplyBtn').click();
+    }
+    const rowsCap25 = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow'));
+    const capFilterOk = rowsCap25.length > 0 && rowsCap25.length < multiRows.length && rowsCap25.every(tr => Number(tr.children[6].textContent.trim()) >= 25);
+
+    // Clear all column filters via Reset All button
+    const clearAllBtn = document.querySelector('#univRegPanel [data-cf-clear-all]');
+    if (clearAllBtn) clearAllBtn.click();
+    const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
+    const resetRestoredAll = /1,(?:640|562) RECORDS/i.test(restoredAllFoot);
+
+    // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views & 3-card Fleet/Counterparty Guide Strip
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
+    await wait(60);
+    const guideCards = document.querySelectorAll('#fleetCounterpartyGuide .pa-reg-guide-card');
+    const supViews = document.querySelectorAll('#univRegPanel [data-tbl-view]');
+    const supHeaders = Array.from(document.querySelectorAll('#univRegPanel thead th')).map(th => th.textContent.replace(/⧩/g, '').trim());
+    const supLogicalOk = guideCards.length === 3 && supViews.length === 6 &&
+      supHeaders.some(h => /Role/i.test(h)) &&
+      supHeaders.some(h => /Owned Trucks/i.test(h)) &&
+      supHeaders.some(h => /Linked Drivers/i.test(h)) &&
+      supHeaders.some(h => /Haul Loads/i.test(h)) &&
+      !supHeaders.some(h => /Official Name/i.test(h));
+
+    // 8. Verify Column Filter Bar on Operational Sales & Deliveries (#sales) + search syntax "co:WTC method:Cash"
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    await wait(60);
+    const salesHasFilterBar = !!document.querySelector('#salesPanel .col-filter-bar');
+    const salesCoSel = document.querySelector('#salesPanel .cf-select[data-cf-key="company"]');
+    if (salesCoSel) { salesCoSel.value = 'BBConstruction'; salesCoSel.dispatchEvent(new Event('change', { bubbles: true })); }
+    const salesRowsBbc = Array.from(document.querySelectorAll('#salesPanel tbody tr.rrow'));
+    const salesBbcFilteredOk = salesRowsBbc.length > 0 && salesRowsBbc.every(tr => /BBC/i.test(tr.children[2].textContent));
+    const salesClearBtn = document.querySelector('#salesPanel [data-cf-clear-all]');
+    if (salesClearBtn) salesClearBtn.click();
+
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    return {
+      ok: dirtyNotesCount === 0 && ownSearchOnlyTrucks && allSearchOnlyTrucks &&
+          typeSortedAscFirst && loadsSortedDescNumerically &&
+          multiAllMatch && activePillsCount === 3 && popOpened && capFilterOk &&
+          resetRestoredAll && supLogicalOk && salesHasFilterBar && salesBbcFilteredOk,
+      dirtyNotesCount, ownSearchOnlyTrucks, allSearchOnlyTrucks,
+      firstTypeAfterClick, firstLoadsTxt,
+      multiCount: multiRows.length, activePillsCount, popOpened, cap25Count: rowsCap25.length,
+      resetRestoredAll, supLogicalOk, salesHasFilterBar, salesBbcFilteredOk
+    };
+  })()`);
+  multiColFilterProbe && multiColFilterProbe.ok
+    ? pass('multi-column filter engine & equipment search fix · "truck" returns 100% Truck rows (23 Co Fleet / 1,533 All) + TYPE sorts A→Z + LOADS HAULED sorts numerically + multi-column filter bar & popover', `CoFleet=${multiColFilterProbe.ownSearchOnlyTrucks ? 23 : 'err'} · WTC+Own+Truck=${multiColFilterProbe.multiCount} · Cap>=25=${multiColFilterProbe.cap25Count}`)
+    : fail('multi-column filter engine & equipment search fix', JSON.stringify(multiColFilterProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

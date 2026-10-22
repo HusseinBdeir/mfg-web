@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const MIN_COL_W = 44;
+  const MIN_COL_W = 34;
   const MAX_COL_W = 780;
   const STEP_COL_W = 24;
 
@@ -108,8 +108,8 @@
     return ths.map((th, i) => {
       if (th.dataset.colCleanLabel) return th.dataset.colCleanLabel;
       const clone = th.cloneNode(true);
-      clone.querySelectorAll('.tbl-col-resizer, .tbl-th-tools, .sr-only, i').forEach(el => el.remove());
-      const raw = clone.textContent.replace(/[▲▼]/g, '').replace(/\s+/g, ' ').trim();
+      clone.querySelectorAll('.tbl-col-resizer, .tbl-th-tools, .th-filter-btn, .sr-only, i').forEach(el => el.remove());
+      const raw = clone.textContent.replace(/[▲▼▾]/g, '').replace(/\s+/g, ' ').trim();
       const label = raw || ('Column ' + (i + 1));
       th.dataset.colCleanLabel = label;
       return label;
@@ -137,15 +137,16 @@
     const headRow = table.querySelector('thead tr');
     if (!headRow) return;
     const ths = Array.from(headRow.children).filter(el => el.tagName === 'TH' || el.tagName === 'TD');
+    const nat = Array.isArray(table._naturalWidths) && table._naturalWidths.length === ths.length ? table._naturalWidths : null;
     if (!st.baseWidths || st.baseWidths.length !== ths.length) {
-      st.baseWidths = ths.map(th => {
-        const w = Math.round(th.getBoundingClientRect().width || 0);
+      st.baseWidths = ths.map((th, i) => {
+        const w = (nat && nat[i] >= MIN_COL_W) ? nat[i] : Math.round(th.getBoundingClientRect().width || 0);
         return w >= MIN_COL_W ? w : 96;
       });
     } else {
       ths.forEach((th, i) => {
         if (!st.baseWidths[i] || st.baseWidths[i] < MIN_COL_W) {
-          const w = Math.round(th.getBoundingClientRect().width || 0);
+          const w = (nat && nat[i] >= MIN_COL_W) ? nat[i] : Math.round(th.getBoundingClientRect().width || 0);
           if (w >= MIN_COL_W) st.baseWidths[i] = w;
         }
       });
@@ -226,7 +227,8 @@
       }
       cg.innerHTML = colHtml.join('');
       table.classList.add('has-col-resize');
-      table.style.width = Math.max(240, totalVisWidth) + 'px';
+      table.style.width = Math.max(180, totalVisWidth) + 'px';
+      table.style.minWidth = '0px';
 
       const bodyAndHeadRows = Array.from(table.querySelectorAll('thead tr, tbody tr, tfoot tr'));
       bodyAndHeadRows.forEach(tr => {
@@ -290,7 +292,8 @@
     const headRow = table.querySelector('thead tr');
     const ths = headRow ? Array.from(headRow.children) : [];
     const measured = ths[colIdx] ? Math.round(ths[colIdx].getBoundingClientRect().width || 0) : 0;
-    const curW = st.colWidths.has(colIdx) ? st.colWidths.get(colIdx) : (measured >= MIN_COL_W ? measured : (st.baseWidths[colIdx] || 96));
+    const baseW = (st.baseWidths && st.baseWidths[colIdx] >= MIN_COL_W) ? st.baseWidths[colIdx] : (measured >= MIN_COL_W ? measured : 96);
+    const curW = st.colWidths.has(colIdx) ? st.colWidths.get(colIdx) : baseW;
     setColumnWidth(table, colIdx, curW + deltaPx);
   }
 
@@ -403,7 +406,44 @@
     }
 
     if (popover && !popover.hidden) {
-      popover.innerHTML = renderPopoverInnerHtml(table);
+      const existingRows = popover.querySelectorAll('.tbl-col-pop-row');
+      if (existingRows.length !== colCount) {
+        popover.innerHTML = renderPopoverInnerHtml(table);
+      } else {
+        const hiddenSet = (st && st.hiddenCols) ? st.hiddenCols : new Set();
+        const widthMap = (st && st.colWidths) ? st.colWidths : new Map();
+        const headRow = table.querySelector('thead tr');
+        const ths = headRow ? Array.from(headRow.children) : [];
+        const titleStrong = popover.querySelector('.tbl-col-pop-title strong');
+        if (titleStrong) titleStrong.textContent = `Columns (${visibleCount}/${colCount})`;
+        const popReset = popover.querySelector('.tbl-col-pop-reset');
+        if (popReset) popReset.disabled = !customized;
+        existingRows.forEach((rowEl, ci) => {
+          const isHidden = hiddenSet.has(ci);
+          const hasCustomW = widthMap.has(ci);
+          const measuredW = ths[ci] && !isHidden ? Math.round(ths[ci].getBoundingClientRect().width || 0) : ((st && st.baseWidths && st.baseWidths[ci]) || 0);
+          const dispW = hasCustomW ? `${widthMap.get(ci)}px` : (measuredW ? `${measuredW}px` : 'Auto');
+          const disableHide = !isHidden && visibleCount <= 1;
+          rowEl.classList.toggle('is-hidden', isHidden);
+          rowEl.classList.toggle('is-resized', hasCustomW);
+          const chk = rowEl.querySelector('[data-col-toggle-idx]');
+          if (chk) {
+            chk.checked = !isHidden;
+            chk.disabled = disableHide;
+          }
+          const narrowBtn = rowEl.querySelector('[data-col-narrow-idx]');
+          if (narrowBtn) narrowBtn.disabled = isHidden;
+          const widenBtn = rowEl.querySelector('[data-col-widen-idx]');
+          if (widenBtn) widenBtn.disabled = isHidden;
+          const valBtn = rowEl.querySelector('[data-col-reset-w-idx]');
+          if (valBtn) {
+            valBtn.disabled = isHidden;
+            valBtn.classList.toggle('custom', hasCustomW);
+            valBtn.textContent = dispW;
+            valBtn.title = hasCustomW ? 'Click to revert this column width to default' : 'Current column width';
+          }
+        });
+      }
     }
   }
 
@@ -416,10 +456,14 @@
     if (prev && prev.classList.contains('table-toolbar')) {
       return { host: prev.lastElementChild || prev, prepend: true };
     }
+    if (prev && prev.classList.contains('col-filter-bar') && prev.previousElementSibling && prev.previousElementSibling.classList.contains('table-toolbar')) {
+      const tb = prev.previousElementSibling;
+      return { host: tb.lastElementChild || tb, prepend: true };
+    }
     const parentCard = wrap.parentElement;
     if (parentCard) {
       const tb = parentCard.querySelector(':scope > .table-toolbar');
-      if (tb && tb.nextElementSibling === wrap) {
+      if (tb) {
         return { host: tb.lastElementChild || tb, prepend: true };
       }
       const pbiHdr = parentCard.querySelector(':scope > .pbi-panel-hdr');
@@ -439,8 +483,15 @@
       if (ph) {
         return { host: ph, prepend: false };
       }
-      const rdlBar = parentCard.querySelector('.rdl-toolbar-right');
+      const rdlBar = parentCard.querySelector('.rdl-toolbar-right, .rdl-tb-right');
       if (rdlBar) {
+        return { host: rdlBar, prepend: true };
+      }
+    }
+    const rdlShell = table.closest('.rdl-viewer-shell');
+    if (rdlShell) {
+      const rdlBar = rdlShell.querySelector('.rdl-tb-right');
+      if (rdlBar && table === rdlShell.querySelector('table.rdl-table')) {
         return { host: rdlBar, prepend: true };
       }
     }
@@ -456,13 +507,19 @@
     const tableId = getTableId(table, idx);
     indexTableCells(table);
     extractHeaderLabels(table);
+    if (!table.classList.contains('has-col-resize')) {
+      const natWidths = ths.map(th => Math.round(th.getBoundingClientRect().width || 0));
+      if (natWidths.some(w => w >= MIN_COL_W)) {
+        table._naturalWidths = natWidths;
+      }
+    }
 
     // 1. Enhance every <th> with a drag resizer + hover quick-actions (narrow / widen / hide)
     const thead = table.querySelector('thead');
     if (thead && thead.dataset.colMgrCaptureWired !== '1') {
       thead.dataset.colMgrCaptureWired = '1';
       thead.addEventListener('click', e => {
-        if (Date.now() - lastResizeEndAt < 260 || e.target.closest('.tbl-col-resizer, .tbl-th-tools')) {
+        if (Date.now() - lastResizeEndAt < 260 || e.target.closest('.tbl-col-resizer')) {
           e.stopPropagation();
           e.preventDefault();
         }

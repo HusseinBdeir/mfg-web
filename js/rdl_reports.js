@@ -3010,6 +3010,9 @@
       if (sheet) sheet.innerHTML = renderRdlSheet(meta.id, updatedCtx);
       wireParamControls();
       wireTableSorting();
+      if (window.MFG_TABLE_COLS && typeof window.MFG_TABLE_COLS.enhanceAllTables === 'function') {
+        window.MFG_TABLE_COLS.enhanceAllTables(root, STATE);
+      }
     };
 
     // Category filter buttons

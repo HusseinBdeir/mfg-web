@@ -26,6 +26,21 @@
     if (!Array.isArray(SEED.records[k])) SEED.records[k] = [];
   });
 
+  function cleanNotesText(s) {
+    if (!s || typeof s !== 'string') return s;
+    const lines = s.split(/\r?\n/).map(line => line.trim()).filter(line => {
+      if (!line) return false;
+      if (/Merged trucks|\(m\d+|\[m\d+|Workbook status|\((?:column\s+|text,\s*)?retired\s+m\d+\)|Earlier window\s+\d{4}|owner type\s+\d|their notes:/i.test(line)) return false;
+      return true;
+    });
+    return lines.join('\n').replace(/\s*\[m\d+[^\]]*\]/gi, '').trim();
+  }
+  Object.keys(SEED.records).forEach(k => {
+    (SEED.records[k] || []).forEach(r => {
+      if (r && r.notes) r.notes = cleanNotesText(r.notes);
+    });
+  });
+
   const CLOUD_CFG = window.MFG_CLOUD_CFG || {};
   const CLOUD_URL = CLOUD_CFG.u ? atob(CLOUD_CFG.u) : '';
   const CLOUD_KEY = CLOUD_CFG.k ? atob(CLOUD_CFG.k) : '';
@@ -121,6 +136,7 @@
     saving: false,
     renderPending: false,
     sortBy: {},
+    colFilters: {},
     shown: {},
     cloudStatus: 'Connecting...',
     cloudUpdatedAt: '',
@@ -1222,6 +1238,339 @@
     return fmtDateDMY(recordDate(r));
   }
 
+  // ---- multi-column filtering, relational cell resolution & sorting ----------
+  const _tablePoolCache = {};
+  const MULTI_TOKEN_COLS = new Set(['companies_list', 'assigned_trucks', 'category1', 'category']);
+  const VIEW_TABLE_KEY_MAP = {
+    sales: 'sales_tickets',
+    raw: 'raw_purchases',
+    fuel: 'fuel_intakes',
+    receipts: 'receipts',
+    settle: 'settlements',
+    expenses: 'expenses',
+    pricing: 'price_rules',
+    coeq: 'company_equipment',
+    salaries: 'salaries',
+    pay_sal: 'salaries',
+    pay_emp: 'employments',
+    pay_att: 'attendance',
+    pay_log: 'logistics_allowances'
+  };
+
+  const COL_KEY_ALIASES = {
+    type: ['type', 'Type', 'sale_type', 'rule_type', 'fuel_type'],
+    ownership: ['ownership', 'Ownership', 'transport_by'],
+    owner: ['supplier', 'Supplier', 'truck_owner', 'site_owner', 'ownership', 'Ownership'],
+    supplier: ['supplier', 'Supplier', 'truck_owner', 'site_owner'],
+    hauler: ['supplier', 'Supplier', 'truck_owner'],
+    customer: ['customer', 'Customer'],
+    driver: ['default_driver', 'driver', 'day_operator', 'night_operator'],
+    truck: ['name', 'plate_no', 'truck', 'equipment', 'Equipment', 'assigned_trucks'],
+    plate: ['plate_no', 'name', 'truck', 'equipment', 'Equipment'],
+    company: ['company', 'companies_list', 'bu'],
+    bu: ['company', 'companies_list', 'bu'],
+    site: ['site', 'Site', 'location'],
+    product: ['product', 'Product', 'item'],
+    grade: ['product', 'Product'],
+    method: ['method'],
+    status: ['status', 'gps_status'],
+    category: ['category', 'category1', 'cost_class'],
+    capacity: ['capacity'],
+    cap: ['capacity'],
+    loads: ['loads_hauled', 'sales_loads', 'raw_loads', 'loads', 'trips'],
+    fills: ['fuel_fills'],
+    notes: ['notes']
+  };
+
+  const COL_FRIENDLY_LABELS = {
+    name: 'Name / Code',
+    plate_no: 'Plate No.',
+    type: 'Type',
+    Type: 'Type',
+    ownership: 'Ownership',
+    Ownership: 'Ownership',
+    capacity: 'Capacity (m³)',
+    supplier: 'Supplier / Owner',
+    Supplier: 'Supplier',
+    default_driver: 'Default Driver',
+    companies_list: 'Assigned BU',
+    loads_hauled: 'Loads Hauled',
+    fuel_fills: 'Fuel Fills',
+    assigned_trucks: 'Assigned Trucks',
+    truck_owner: 'Truck Owner',
+    site_owner: 'Site Owner',
+    sale_type: 'Sale Type',
+    rule_type: 'Rule Type',
+    customer: 'Customer',
+    Customer: 'Customer',
+    product: 'Product / Grade',
+    Product: 'Product / Grade',
+    site: 'Site',
+    Site: 'Site',
+    region: 'Region',
+    uom: 'UoM',
+    UoM: 'UoM',
+    method: 'Method',
+    category: 'Category',
+    subcategory: 'Subcategory',
+    equipment: 'Equipment',
+    Equipment: 'Equipment',
+    driver: 'Driver',
+    staff: 'Staff Member',
+    status: 'Status',
+    company: 'Company (BU)',
+    ar_balance: 'Open AR ($)',
+    ap_balance: 'Open AP ($)',
+    sales_loads: 'Sales Loads',
+    raw_loads: 'Raw Loads',
+    active_rules: 'Active Rules',
+    total_ttc: 'Total TTC ($)',
+    total: 'Total ($)',
+    amount: 'Amount ($)',
+    litres: 'Litres (L)',
+    unit_price: 'Unit Price ($)',
+    is_jv: 'JV Quarry',
+    vat_registered: 'VAT Reg',
+    is_truck_owner: 'Truck Owner?'
+  };
+
+  const VIEW_COL_DEFS = {
+    sales: [
+      { key: 'company', label: 'Company' },
+      { key: 'sale_type', label: 'Sale Type' },
+      { key: 'customer', label: 'Customer' },
+      { key: 'product', label: 'Product' },
+      { key: 'site', label: 'Site' },
+      { key: 'truck', label: 'Truck' },
+      { key: 'driver', label: 'Driver' },
+      { key: 'method', label: 'Method' },
+      { key: 'total_ttc', label: 'Total TTC ($)', kind: 'numeric' }
+    ],
+    raw: [
+      { key: 'company', label: 'Company' },
+      { key: 'site', label: 'Quarry Site' },
+      { key: 'site_owner', label: 'Site Owner' },
+      { key: 'truck_owner', label: 'Truck Owner' },
+      { key: 'product', label: 'Product' },
+      { key: 'truck', label: 'Truck' },
+      { key: 'total', label: 'Total ($)', kind: 'numeric' }
+    ],
+    equip: [
+      { key: 'Type', label: 'Type' },
+      { key: 'Ownership', label: 'Ownership' },
+      { key: 'Equipment', label: 'Equipment' },
+      { key: 'trips', label: 'Trips', kind: 'numeric' },
+      { key: 'diesel_litres', label: 'Diesel (L)', kind: 'numeric' },
+      { key: 'total_cost', label: 'Total Cost ($)', kind: 'numeric' }
+    ],
+    fuel: [
+      { key: 'company', label: 'Company' },
+      { key: 'equipment', label: 'Equipment' },
+      { key: 'driver', label: 'Driver' },
+      { key: 'item', label: 'Item' },
+      { key: 'litres', label: 'Litres (L)', kind: 'numeric' }
+    ],
+    pricing: [
+      { key: 'company', label: 'Company' },
+      { key: 'rule_type', label: 'Rule Type' },
+      { key: 'customer', label: 'Customer' },
+      { key: 'supplier', label: 'Supplier' },
+      { key: 'product', label: 'Product' },
+      { key: 'site', label: 'Site' },
+      { key: 'unit', label: 'Unit' },
+      { key: 'unit_price', label: 'Unit Price ($)', kind: 'numeric' }
+    ],
+    custs: [
+      { key: 'Customer', label: 'Customer' },
+      { key: 'VAT Registered', label: 'VAT Reg' },
+      { key: 'loads', label: 'Loads', kind: 'numeric' },
+      { key: 'ar_60_plus', label: 'Overdue 60+ ($)', kind: 'numeric' },
+      { key: 'ar_balance', label: 'Open AR ($)', kind: 'numeric' }
+    ],
+    receipts: [
+      { key: 'company', label: 'Company' },
+      { key: 'customer', label: 'Customer' },
+      { key: 'method', label: 'Method' },
+      { key: 'amount', label: 'Cash ($)', kind: 'numeric' }
+    ],
+    sups: [
+      { key: 'Supplier', label: 'Supplier' },
+      { key: 'IVA', label: 'IVA' },
+      { key: 'raw_loads', label: 'Raw Loads', kind: 'numeric' },
+      { key: 'ap_material', label: 'Mat. Leg ($)', kind: 'numeric' },
+      { key: 'ap_haulage', label: 'Haul Leg ($)', kind: 'numeric' },
+      { key: 'ap_balance', label: 'Net AP ($)', kind: 'numeric' }
+    ],
+    settle: [
+      { key: 'company', label: 'Company' },
+      { key: 'supplier', label: 'Supplier' },
+      { key: 'method', label: 'Method' },
+      { key: 'amount', label: 'Cash Paid ($)', kind: 'numeric' }
+    ],
+    expenses: [
+      { key: 'company', label: 'Company' },
+      { key: 'category', label: 'Category' },
+      { key: 'subcategory', label: 'Subcategory' },
+      { key: 'supplier', label: 'Supplier' },
+      { key: 'equipment', label: 'Equipment' },
+      { key: 'method', label: 'Method' },
+      { key: 'amount', label: 'Amount ($)', kind: 'numeric' }
+    ],
+    pay_staff: [
+      { key: 'company', label: 'Company' },
+      { key: 'type', label: 'Contract' },
+      { key: 'status', label: 'Status' },
+      { key: 'staff', label: 'Staff Member' },
+      { key: 'paid', label: 'Paid ($)', kind: 'numeric' },
+      { key: 'balance', label: 'Balance ($)', kind: 'numeric' }
+    ],
+    gl: [
+      { key: 'Class', label: 'CoA Class' },
+      { key: 'Code', label: 'GL Code' },
+      { key: 'Account', label: 'Account Name' },
+      { key: 'balance', label: 'Net Balance ($)', kind: 'numeric' }
+    ],
+    soa: [
+      { key: 'company', label: 'Company' },
+      { key: 'code', label: 'GL Code' },
+      { key: 'account', label: 'Account' },
+      { key: 'detail', label: 'Counterparty' },
+      { key: 'debit', label: 'Debit ($)', kind: 'numeric' },
+      { key: 'credit', label: 'Credit ($)', kind: 'numeric' }
+    ]
+  };
+
+  function viewToTableKey(view) {
+    const v = String(view || '');
+    if (v.startsWith('ureg_')) return v.slice(5);
+    if (v.startsWith('tbl_')) return v.slice(4);
+    return VIEW_TABLE_KEY_MAP[v] || v;
+  }
+
+  function resolveColVal(r, colKey, view) {
+    if (!r || !colKey) return null;
+    if (colKey === 'date' && r.date !== undefined) return recordDate(r);
+    if (r[colKey] !== undefined && r[colKey] !== null && r[colKey] !== '') return r[colKey];
+    if (window.MFG_PBI && typeof window.MFG_PBI.cellValue === 'function') {
+      const tk = viewToTableKey(view);
+      const rel = window.MFG_PBI.getHubRelIndex ? window.MFG_PBI.getHubRelIndex(SEED) : null;
+      if (rel) {
+        const cv = window.MFG_PBI.cellValue(r, colKey, tk, rel);
+        if (cv !== undefined) return cv;
+      }
+    }
+    return r[colKey];
+  }
+
+  function isBooleanColKey(colKey, sampleVal) {
+    if (typeof sampleVal === 'boolean') return true;
+    return /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(String(colKey || ''));
+  }
+
+  function isNumericColKey(colKey) {
+    const k = String(colKey || '');
+    if (isBooleanColKey(k)) return false;
+    return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
+  }
+
+  function isDefaultDescSortKey(colKey) {
+    const k = String(colKey || '');
+    if (/^(date|rep_date|start_date|end_date|last_sale|transaction_date|reporting_date)$/i.test(k)) return true;
+    return isNumericColKey(k);
+  }
+
+  function normalizeColDisplayVal(rawVal, colKey) {
+    if (rawVal == null || rawVal === '') return '';
+    if (isBooleanColKey(colKey, rawVal)) {
+      if (rawVal === true || rawVal === 1 || rawVal === '1' || /^yes|true$/i.test(String(rawVal))) return 'Yes';
+      if (rawVal === false || rawVal === 0 || rawVal === '0' || /^no|false$/i.test(String(rawVal))) return 'No';
+    }
+    return String(rawVal).trim();
+  }
+
+  function matchColFilterValue(rawVal, specRaw, colKey) {
+    const spec = String(specRaw == null ? '' : specRaw).trim();
+    if (!spec) return true;
+    const disp = normalizeColDisplayVal(rawVal, colKey);
+    if (spec === '__nonempty__') {
+      if (!disp || disp === '—') return false;
+      if (typeof rawVal === 'number' && rawVal === 0) return false;
+      return true;
+    }
+    if (spec === '__empty__') {
+      return !disp || disp === '—' || (typeof rawVal === 'number' && rawVal === 0);
+    }
+    const rangeMatch = spec.match(/^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/);
+    if (rangeMatch) {
+      const n = Number(rawVal);
+      if (!Number.isFinite(n) || rawVal === '' || rawVal == null) return false;
+      const lo = Number(rangeMatch[1]), hi = Number(rangeMatch[2]);
+      return n >= Math.min(lo, hi) && n <= Math.max(lo, hi);
+    }
+    const opMatch = spec.match(/^(>=|<=|!=|>|<|=)\s*(-?\d+(?:\.\d+)?)$/);
+    if (opMatch) {
+      const op = opMatch[1];
+      const target = Number(opMatch[2]);
+      const n = (rawVal === '' || rawVal == null) ? ((op === '=' && target === 0) ? 0 : NaN) : Number(rawVal);
+      if (!Number.isFinite(n)) return false;
+      if (op === '>') return n > target;
+      if (op === '>=') return n >= target;
+      if (op === '<') return n < target;
+      if (op === '<=') return n <= target;
+      if (op === '!=') return Math.abs(n - target) > 1e-6;
+      if (op === '=') return Math.abs(n - target) <= 1e-6;
+    }
+    const want = (spec.startsWith('=') ? spec.slice(1) : spec).trim().toLowerCase();
+    if (!disp) return want === '';
+    if (MULTI_TOKEN_COLS.has(colKey)) {
+      const parts = disp.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (parts.includes(want) || disp.toLowerCase() === want) return true;
+    }
+    if (disp.toLowerCase() === want) return true;
+    if (spec.startsWith('=')) return false;
+    return disp.toLowerCase().includes(want);
+  }
+
+  function hasActiveColFilters(view) {
+    const cf = STATE.colFilters && STATE.colFilters[view];
+    if (!cf) return false;
+    return Object.values(cf).some(v => Boolean(v && String(v).trim()));
+  }
+
+  function applyColFiltersForView(rows, view) {
+    const cf = STATE.colFilters && STATE.colFilters[view];
+    if (!cf) return rows || [];
+    const activeEntries = Object.entries(cf).filter(([, spec]) => Boolean(spec && String(spec).trim()));
+    if (!activeEntries.length) return rows || [];
+    return (rows || []).filter(r => {
+      for (const [colKey, spec] of activeEntries) {
+        const v = resolveColVal(r, colKey, view);
+        if (!matchColFilterValue(v, spec, colKey)) return false;
+      }
+      return true;
+    });
+  }
+
+  function parseSearchTokens(qRaw) {
+    const tokens = [];
+    const re = /([a-zA-Z0-9_]+:"[^"]+"|[a-zA-Z0-9_]+:\S+|"[^"]+"|\S+)/g;
+    let m;
+    while ((m = re.exec(qRaw)) !== null) {
+      const tok = m[1];
+      const colonIdx = tok.indexOf(':');
+      if (colonIdx > 0 && !tok.startsWith('"')) {
+        const colPart = tok.slice(0, colonIdx).trim().toLowerCase();
+        const valPart = tok.slice(colonIdx + 1).replace(/^"|"$/g, '').trim();
+        if (valPart) {
+          tokens.push({ col: colPart, val: valPart });
+          continue;
+        }
+      }
+      tokens.push({ col: null, val: tok.replace(/^"|"$/g, '').toLowerCase() });
+    }
+    return tokens;
+  }
+
   function filterRecords(list, opts = {}) {
     const scopeKey = String(opts.company || STATE.company || 'manufacturing-group');
     const isIndustryScope = scopeKey.startsWith('industry:');
@@ -1231,7 +1580,11 @@
       : null;
     const bu = (opts.ignoreCompany || isIndustryScope) ? null : COMPANY_BU_MATCH[scopeKey];
     const allowedCos = (opts.ignoreCompany || opts.ignoreRls) ? null : allowedCompanyNames(opts.user);
-    const q = opts.ignoreSearch ? '' : STATE.search.trim().toLowerCase();
+    const qRaw = opts.ignoreSearch ? '' : STATE.search.trim();
+    const qTokens = qRaw ? parseSearchTokens(qRaw) : [];
+    const showNotes = Array.isArray(opts.cols) && opts.cols.includes('notes');
+    const rel = (qTokens.length && window.MFG_PBI && window.MFG_PBI.getHubRelIndex) ? window.MFG_PBI.getHubRelIndex(SEED) : null;
+    const tk = opts.tableKey || '';
     const range = opts.ignorePeriod ? null : periodRange(STATE.period);
     const basis = opts.basis || STATE.basis;
     return (list || []).filter(r => {
@@ -1243,9 +1596,45 @@
         const d = recordDateFor(r, basis);
         if (d && (d < range.from || d > range.to)) return false;
       }
-      if (q) {
-        const hay = (Object.keys(r).filter(k => k !== 'id').map(k => r[k]).join(' ') + ' ' + recordDateDMY(r)).toLowerCase();
-        if (!hay.includes(q)) return false;
+      if (qTokens.length) {
+        let hay = null;
+        for (const t of qTokens) {
+          if (t.col) {
+            const candidateKeys = COL_KEY_ALIASES[t.col] || [t.col];
+            const matchedCol = candidateKeys.some(ck => {
+              let v = r[ck];
+              if ((v === undefined || v === null || v === '') && rel && window.MFG_PBI && window.MFG_PBI.cellValue) {
+                v = window.MFG_PBI.cellValue(r, ck, tk, rel);
+              }
+              if (v === undefined || v === null || v === '') return false;
+              return matchColFilterValue(v, t.val, ck);
+            });
+            if (!matchedCol) return false;
+          } else {
+            if (hay === null) {
+              const parts = [];
+              const keys = Object.keys(r);
+              for (let i = 0; i < keys.length; i++) {
+                const k = keys[i];
+                if (k === 'id' || (k === 'notes' && !showNotes)) continue;
+                const val = r[k];
+                if (val != null && val !== '') parts.push(val);
+              }
+              if (Array.isArray(opts.cols) && rel && window.MFG_PBI && window.MFG_PBI.cellValue) {
+                for (let i = 0; i < opts.cols.length; i++) {
+                  const ck = opts.cols[i];
+                  if (r[ck] === undefined) {
+                    const cv = window.MFG_PBI.cellValue(r, ck, tk, rel);
+                    if (cv != null && cv !== '') parts.push(cv);
+                  }
+                }
+              }
+              parts.push(recordDateDMY(r));
+              hay = parts.join(' ').toLowerCase();
+            }
+            if (!hay.includes(t.val)) return false;
+          }
+        }
       }
       return true;
     });
@@ -1253,13 +1642,16 @@
 
   // ---- sorting / paging / table helpers --------------------------------------
   function sortRows(rows, view, defKey, defDir) {
-    const s = STATE.sortBy[view] || { key: defKey, dir: defDir || 'desc' };
-    if (!s.key) return rows;
+    const rawPool = Array.isArray(rows) ? rows : [];
+    if (view) _tablePoolCache[view] = rawPool;
+    const filteredRows = view ? applyColFiltersForView(rawPool, view) : rawPool;
+    const s = STATE.sortBy[view] || { key: defKey, dir: defDir || (isDefaultDescSortKey(defKey) ? 'desc' : 'asc') };
+    if (!s.key) return filteredRows;
     const dir = s.dir === 'asc' ? 1 : -1;
     const useRecDate = s.key === 'date';
-    return rows.slice().sort((a, b) => {
-      const av = useRecDate ? recordDate(a) : a[s.key];
-      const bv = useRecDate ? recordDate(b) : b[s.key];
+    return filteredRows.slice().sort((a, b) => {
+      const av = useRecDate ? recordDate(a) : resolveColVal(a, s.key, view);
+      const bv = useRecDate ? recordDate(b) : resolveColVal(b, s.key, view);
       if ((av == null || av === '') && (bv == null || bv === '')) return 0;
       if (av == null || av === '') return 1;
       if (bv == null || bv === '') return -1;
@@ -1277,7 +1669,326 @@
   function th(view, label, key, cls) {
     const s = STATE.sortBy[view] || {};
     const on = s.key === key;
-    return `<th class="${cls || ''} sortable${on ? ' on' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Sort by ${esc(label)}">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i></th>`;
+    const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
+    const hasFilter = Boolean(cf[key] && String(cf[key]).trim());
+    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click to sort by ${esc(label)} · Click ⧩ to filter column">${label}<i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter ${esc(label)} column">⧩</span></th>`;
+  }
+
+  function getColLabel(colKey) {
+    if (COL_FRIENDLY_LABELS[colKey]) return COL_FRIENDLY_LABELS[colKey];
+    return String(colKey || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function formatFilterSpecHuman(specRaw) {
+    const spec = String(specRaw || '').trim();
+    if (!spec) return 'All';
+    if (spec === '__nonempty__') return 'Has Value';
+    if (spec === '__empty__') return 'Blank / None';
+    if (spec.startsWith('=')) return spec.slice(1);
+    return spec;
+  }
+
+  function getColFilterDefsForView(view, colsOverride) {
+    const tk = viewToTableKey(view);
+    if (tk === 'equipment' && (view === 'ureg_equipment' || view === 'tbl_equipment')) {
+      return [
+        { key: 'type', label: 'Type' },
+        { key: 'ownership', label: 'Ownership' },
+        { key: 'companies_list', label: 'Assigned BU' },
+        { key: 'supplier', label: 'Supplier / Owner' },
+        { key: 'default_driver', label: 'Default Driver' },
+        { key: 'capacity', label: 'Capacity (m³)', kind: 'numeric' },
+        { key: 'loads_hauled', label: 'Loads Hauled', kind: 'numeric' }
+      ];
+    }
+    if (VIEW_COL_DEFS[view]) return VIEW_COL_DEFS[view];
+    const cols = Array.isArray(colsOverride) && colsOverride.length
+      ? colsOverride
+      : ((window.MFG_PBI && (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === tk) || {}).cols || []);
+    if (!cols.length) return [];
+    const skipAuto = new Set(['date', 'rep_date', 'start_date', 'end_date', 'notes', 'reference', 'latitude', 'longitude']);
+    const prioritized = [];
+    const seen = new Set();
+    const addCol = ck => {
+      if (!ck || seen.has(ck) || !cols.includes(ck)) return;
+      seen.add(ck);
+      prioritized.push({
+        key: ck,
+        label: getColLabel(ck),
+        kind: isNumericColKey(ck) ? 'numeric' : 'categorical'
+      });
+    };
+    ['type', 'ownership', 'company', 'companies_list', 'rule_type', 'sale_type', 'status', 'category', 'subcategory', 'region', 'uom', 'method', 'customer', 'supplier', 'site_owner', 'truck_owner', 'product', 'site', 'truck', 'equipment', 'driver', 'default_driver', 'staff', 'is_jv', 'vat_registered', 'is_truck_owner'].forEach(addCol);
+    cols.forEach(ck => {
+      if (prioritized.length < 7 && !skipAuto.has(ck)) addCol(ck);
+    });
+    return prioritized.slice(0, 7);
+  }
+
+  function buildNumericFilterOptions(pool, colKey, view) {
+    let posCnt = 0, zeroCnt = 0, negCnt = 0;
+    const exactCounts = new Map();
+    pool.forEach(r => {
+      const raw = resolveColVal(r, colKey, view);
+      const n = (raw === '' || raw == null) ? 0 : Number(raw);
+      if (!Number.isFinite(n) || raw === '' || raw == null || Math.abs(n) < 1e-9) {
+        zeroCnt++;
+      } else {
+        if (n > 0) posCnt++;
+        if (n < 0) negCnt++;
+        const k = String(Math.round(n * 100) / 100);
+        exactCounts.set(k, (exactCounts.get(k) || 0) + 1);
+      }
+    });
+    const opts = [];
+    if (posCnt > 0) opts.push({ v: '>0', l: `> 0 · Active (${fmtNum(posCnt)})` });
+    if (zeroCnt > 0) opts.push({ v: '=0', l: `= 0 / None (${fmtNum(zeroCnt)})` });
+    if (negCnt > 0) opts.push({ v: '<0', l: `< 0 · Negative (${fmtNum(negCnt)})` });
+
+    if (colKey === 'capacity') {
+      [20, 25, 30].forEach(thr => {
+        const cnt = pool.filter(r => Number(resolveColVal(r, colKey, view) || 0) >= thr).length;
+        if (cnt > 0 && cnt < pool.length) opts.push({ v: `>=${thr}`, l: `≥ ${thr} m³ (${fmtNum(cnt)})` });
+      });
+      Array.from(exactCounts.entries())
+        .sort((a, b) => Number(b[0]) - Number(a[0]))
+        .slice(0, 15)
+        .forEach(([valStr, cnt]) => {
+          opts.push({ v: `=${valStr}`, l: `${valStr} m³ (${fmtNum(cnt)})` });
+        });
+    } else if (/loads|trips|fills|rules|tickets|_count$/i.test(colKey)) {
+      [10, 50, 100, 500].forEach(thr => {
+        const cnt = pool.filter(r => Number(resolveColVal(r, colKey, view) || 0) >= thr).length;
+        if (cnt > 0 && cnt < pool.length) opts.push({ v: `>=${thr}`, l: `≥ ${fmtNum(thr)} (${fmtNum(cnt)})` });
+      });
+    } else if (/price|cost|amount|total|balance|paid|salary|debit|credit/i.test(colKey)) {
+      [100, 1000, 10000].forEach(thr => {
+        const cnt = pool.filter(r => Number(resolveColVal(r, colKey, view) || 0) >= thr).length;
+        if (cnt > 0 && cnt < pool.length) opts.push({ v: `>=${thr}`, l: `≥ $${fmtNum(thr)} (${fmtNum(cnt)})` });
+      });
+    } else if (exactCounts.size > 0 && exactCounts.size <= 20) {
+      Array.from(exactCounts.entries())
+        .sort((a, b) => Number(b[0]) - Number(a[0]))
+        .forEach(([valStr, cnt]) => {
+          opts.push({ v: `=${valStr}`, l: `${valStr} (${fmtNum(cnt)})` });
+        });
+    }
+    return opts;
+  }
+
+  function buildCategoricalFilterOptions(pool, colKey, view, maxItems = 75) {
+    const counts = new Map();
+    let nonEmptyCnt = 0, emptyCnt = 0;
+    const isMulti = MULTI_TOKEN_COLS.has(colKey);
+    pool.forEach(r => {
+      const raw = resolveColVal(r, colKey, view);
+      const disp = normalizeColDisplayVal(raw, colKey);
+      if (!disp || disp === '—') {
+        emptyCnt++;
+        return;
+      }
+      nonEmptyCnt++;
+      if (isMulti) {
+        disp.split(',').map(s => s.trim()).filter(Boolean).forEach(tok => {
+          counts.set(tok, (counts.get(tok) || 0) + 1);
+        });
+      } else {
+        counts.set(disp, (counts.get(disp) || 0) + 1);
+      }
+    });
+    const entries = Array.from(counts.entries());
+    if (entries.length <= 12) {
+      entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
+    } else {
+      entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    const opts = [];
+    if (emptyCnt > 0 && nonEmptyCnt > 0) {
+      opts.push({ v: '__nonempty__', l: `✦ Has ${getColLabel(colKey)} (${fmtNum(nonEmptyCnt)})` });
+      opts.push({ v: '__empty__', l: `∅ Blank / None (${fmtNum(emptyCnt)})` });
+    }
+    entries.slice(0, maxItems).forEach(([valStr, cnt]) => {
+      opts.push({ v: valStr, l: `${valStr} (${fmtNum(cnt)})`, rawVal: valStr, count: cnt });
+    });
+    return opts;
+  }
+
+  function renderColFilterBar(view, colsOverride) {
+    const pool = _tablePoolCache[view] || [];
+    const defs = getColFilterDefsForView(view, colsOverride);
+    if (!defs.length) return '';
+    const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
+    const activeEntries = Object.entries(cf).filter(([, v]) => Boolean(v && String(v).trim()));
+    const filteredCount = applyColFiltersForView(pool, view).length;
+
+    return `
+      <div class="col-filter-bar" data-cf-bar="${esc(view)}">
+        <span class="cf-bar-lbl" title="Filter rows by combining any columns below (or click ⧩ on any column header)">⧩ Column Filters:</span>
+        <div class="cf-controls">
+          ${defs.map(def => {
+            const curVal = String(cf[def.key] || '');
+            const isNum = def.kind === 'numeric' || isNumericColKey(def.key);
+            const opts = isNum
+              ? buildNumericFilterOptions(pool, def.key, view)
+              : buildCategoricalFilterOptions(pool, def.key, view, 75);
+            const hasCurInOpts = !curVal || opts.some(o => o.v === curVal);
+            return `
+              <div class="cf-item${curVal ? ' is-active' : ''}">
+                <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}">
+                  <option value="">${esc(def.label)}: All</option>
+                  ${!hasCurInOpts ? `<option value="${esc(curVal)}" selected>${esc(def.label)}: ${esc(formatFilterSpecHuman(curVal))}</option>` : ''}
+                  ${opts.map(o => `<option value="${esc(o.v)}" ${curVal === o.v ? 'selected' : ''}>${esc(curVal === o.v ? (def.label + ': ' + o.l) : o.l)}</option>`).join('')}
+                </select>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${activeEntries.length ? `
+          <div class="cf-active-strip">
+            ${activeEntries.map(([ck, spec]) => `
+              <button type="button" class="cf-active-pill" data-cf-clear-view="${esc(view)}" data-cf-clear-key="${esc(ck)}" title="Remove ${esc(getColLabel(ck))} filter">
+                <span>${esc(getColLabel(ck))}: <b>${esc(formatFilterSpecHuman(spec))}</b></span>
+                <span class="cf-pill-x">✕</span>
+              </button>
+            `).join('')}
+            <button type="button" class="cf-clear-all-btn" data-cf-clear-all="${esc(view)}" title="Clear all column filters">✕ Clear (${fmtNum(filteredCount)}/${fmtNum(pool.length)})</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function closeColFilterPopover() {
+    const pop = document.getElementById('colFilterPopover');
+    if (pop) pop.hidden = true;
+  }
+
+  function openColFilterPopover(btnEl) {
+    if (!btnEl) return;
+    const view = btnEl.getAttribute('data-th-filter-view');
+    const colKey = btnEl.getAttribute('data-th-filter-key');
+    const colLabel = btnEl.getAttribute('data-th-filter-label') || getColLabel(colKey);
+    if (!view || !colKey) return;
+
+    let pop = document.getElementById('colFilterPopover');
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.id = 'colFilterPopover';
+      pop.className = 'col-filter-popover';
+      pop.hidden = true;
+      document.body.appendChild(pop);
+      document.addEventListener('mousedown', e => {
+        if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.th-filter-btn')) {
+          pop.hidden = true;
+        }
+      });
+    }
+
+    const pool = _tablePoolCache[view] || [];
+    const curFilter = ((STATE.colFilters && STATE.colFilters[view]) || {})[colKey] || '';
+    const curSort = STATE.sortBy[view] || {};
+    const isNum = isNumericColKey(colKey);
+    const catOpts = buildCategoricalFilterOptions(pool, colKey, view, 200);
+    const numOpts = isNum ? buildNumericFilterOptions(pool, colKey, view) : [];
+    const allOpts = isNum ? numOpts : catOpts;
+
+    pop.innerHTML = `
+      <div class="cf-pop-hdr">
+        <div>
+          <span class="cf-pop-eyebrow">COLUMN FILTER &amp; SORT</span>
+          <strong class="cf-pop-title">${esc(colLabel)}</strong>
+        </div>
+        <button type="button" class="cf-pop-close" id="cfPopCloseBtn" aria-label="Close">✕</button>
+      </div>
+      <div class="cf-pop-sort-row">
+        <button type="button" class="cf-pop-sort-btn ${curSort.key === colKey && curSort.dir === 'asc' ? 'active' : ''}" id="cfPopSortAscBtn">▲ Sort ${isNum ? 'Low → High' : 'A → Z'}</button>
+        <button type="button" class="cf-pop-sort-btn ${curSort.key === colKey && curSort.dir === 'desc' ? 'active' : ''}" id="cfPopSortDescBtn">▼ Sort ${isNum ? 'High → Low' : 'Z → A'}</button>
+      </div>
+      <div class="cf-pop-custom-row">
+        <input type="text" id="cfpSearchInput" class="cf-pop-input" value="${esc(curFilter.startsWith('=') ? curFilter.slice(1) : (curFilter === '__nonempty__' || curFilter === '__empty__' ? '' : curFilter))}" placeholder="${isNum ? 'e.g. >0, >=25, 10..50, =30' : 'Contains text or =Exact...'}" autocomplete="off">
+        <button type="button" class="btn btn-primary cf-pop-apply-btn" id="cfpApplyBtn">Apply</button>
+      </div>
+      <div class="cf-pop-quick-row">
+        <button type="button" class="cf-pop-qpill ${!curFilter ? 'active' : ''}" data-cf-pop-val="">All (${fmtNum(pool.length)})</button>
+        <button type="button" class="cf-pop-qpill ${curFilter === '__nonempty__' ? 'active' : ''}" data-cf-pop-val="__nonempty__">✦ Has Value</button>
+        <button type="button" class="cf-pop-qpill ${curFilter === '__empty__' ? 'active' : ''}" data-cf-pop-val="__empty__">∅ Blank</button>
+      </div>
+      ${allOpts.length > 5 ? `<div class="cf-pop-search-wrap"><input type="search" id="cfPopValueSearch" class="cf-pop-input" placeholder="Search ${allOpts.length} distinct values..." autocomplete="off"></div>` : ''}
+      <div class="cf-pop-list" id="cfPopValuesList">
+        ${allOpts.filter(o => o.v !== '__nonempty__' && o.v !== '__empty__').map(o => `
+          <button type="button" class="cf-pop-opt ${curFilter === o.v ? 'active' : ''}" data-cf-pop-val="${esc(o.v)}">
+            <span class="cf-pop-opt-lbl">${esc(o.l)}</span>
+            ${curFilter === o.v ? '<span class="cf-pop-check">✓</span>' : ''}
+          </button>
+        `).join('') || '<div class="cf-pop-empty">No distinct values in current scope</div>'}
+      </div>
+    `;
+
+    pop.hidden = false;
+    const rect = btnEl.getBoundingClientRect();
+    const popW = 268;
+    const left = Math.max(8, Math.min(window.innerWidth - popW - 8, rect.right - popW));
+    const top = Math.min(window.innerHeight - 340, rect.bottom + 6);
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(8, top) + 'px';
+
+    const applyFilterVal = valStr => {
+      if (!STATE.colFilters[view]) STATE.colFilters[view] = {};
+      if (!valStr) delete STATE.colFilters[view][colKey];
+      else STATE.colFilters[view][colKey] = valStr;
+      STATE.shown = {};
+      closeColFilterPopover();
+      renderApp();
+    };
+
+    const closeBtn = document.getElementById('cfPopCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeColFilterPopover);
+
+    const ascBtn = document.getElementById('cfPopSortAscBtn');
+    if (ascBtn) ascBtn.addEventListener('click', () => {
+      STATE.sortBy[view] = { key: colKey, dir: 'asc' };
+      closeColFilterPopover();
+      renderApp();
+    });
+    const descBtn = document.getElementById('cfPopSortDescBtn');
+    if (descBtn) descBtn.addEventListener('click', () => {
+      STATE.sortBy[view] = { key: colKey, dir: 'desc' };
+      closeColFilterPopover();
+      renderApp();
+    });
+
+    const customInp = document.getElementById('cfpSearchInput');
+    const applyBtn = document.getElementById('cfpApplyBtn');
+    if (applyBtn && customInp) {
+      applyBtn.addEventListener('click', () => applyFilterVal(customInp.value.trim()));
+      customInp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applyFilterVal(customInp.value.trim());
+        } else if (e.key === 'Escape') {
+          closeColFilterPopover();
+        }
+      });
+    }
+
+    pop.querySelectorAll('[data-cf-pop-val]').forEach(b => {
+      b.addEventListener('click', () => applyFilterVal(b.getAttribute('data-cf-pop-val') || ''));
+    });
+
+    const valSearch = document.getElementById('cfPopValueSearch');
+    const listBox = document.getElementById('cfPopValuesList');
+    if (valSearch && listBox) {
+      valSearch.addEventListener('input', () => {
+        const q = valSearch.value.trim().toLowerCase();
+        listBox.querySelectorAll('.cf-pop-opt').forEach(optBtn => {
+          const txt = (optBtn.textContent || '').toLowerCase();
+          optBtn.hidden = Boolean(q && !txt.includes(q));
+        });
+      });
+      setTimeout(() => { try { valSearch.focus({ preventScroll: true }); } catch (_) {} }, 20);
+    } else if (customInp) {
+      setTimeout(() => { try { customInp.focus({ preventScroll: true }); } catch (_) {} }, 20);
+    }
   }
 
   function shownCount(view) { return STATE.shown[view] || PAGE; }
@@ -1341,7 +2052,7 @@
 
   function tableToCsv(table) {
     return Array.from(table.querySelectorAll('tr')).map(tr =>
-      Array.from(tr.querySelectorAll('th,td')).map(td => '"' + td.innerText.replace(/\s+/g, ' ').trim().replace(/"/g, '""') + '"').join(',')
+      Array.from(tr.querySelectorAll('th:not(.tbl-col-hidden),td:not(.tbl-col-hidden)')).map(td => '"' + td.innerText.replace(/\s+/g, ' ').trim().replace(/"/g, '""') + '"').join(',')
     ).join('\r\n');
   }
 
@@ -1508,7 +2219,7 @@
       { id: 'enter_master', label: 'Enter Master Data, Price Rules & Attendance', sub: 'Customers, Suppliers, Products, Sites, Trucks, Drivers, Price Rules & Attendance', badge: 'ENTER MASTER' },
       { id: 'enter_payroll_jv', label: 'Enter Confidential Payroll, Loans & JV Splits', sub: 'Monthly Salaries, Contracts, Partner Loans, FX Conversions & JV Splits', badge: 'ENTER PAYROLL' },
       { id: 'modify_data', label: 'Modify Existing Records (Inline 360° Edit)', sub: 'Edit posted quantities, unit prices, references & notes with audit trail', badge: 'MODIFY DATA' },
-      { id: 'void_data', label: 'Void App-Entered Transactions', sub: 'Reverse app-entered tickets & vouchers via multi-device cloud tombstones', badge: 'VOID DATA' },
+      { id: 'void_data', label: 'Void / Delete Records', sub: 'Void or delete records via multi-device cloud tombstones & 1-click Undo (Supervisor / Admin / Custom)', badge: 'VOID DATA' },
       { id: 'manage_users', label: 'Administer Team Seats, Roles, Face ID & RLS', sub: 'Create/edit login seats, PINs, custom permissions, RLS & 2FA policies', badge: 'ADMIN SEATS' }
     ],
     unlocks: [
@@ -1574,19 +2285,19 @@
       tierBadge: 'TIER 2 · SUPERVISOR + ENTRY',
       badgeCls: 'badge-ok',
       defaultAccess: 'full|full',
-      summary: 'Full operational & financial visibility, all entry forms, inline record modification, all 9 policy-lock overrides, and linked Executive Dashboards & Statements.',
-      rights: { read_ops: true, read_fin: true, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: true, modify_data: true, void_data: false, manage_users: false },
+      summary: 'Full operational & financial visibility, all entry forms, inline record modification, record voiding, all 9 policy-lock overrides, and linked Executive Dashboards & Statements.',
+      rights: { read_ops: true, read_fin: true, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: true, modify_data: true, void_data: true, manage_users: false },
       unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: true, unlock_method: true, unlock_fleet_cascade: true, unlock_site_owner: true, unlock_vat_serial: true, unlock_formula_totals: true },
       dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true },
       statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
     },
     'Supervisor': {
-      title: 'Supervisor (Read-Only Oversight & Audit)',
-      tierBadge: 'TIER 3 · SUPERVISOR (READ-ONLY)',
+      title: 'Supervisor (Oversight, Audit & Void)',
+      tierBadge: 'TIER 3 · SUPERVISOR',
       badgeCls: 'badge-info',
       defaultAccess: 'full|full',
-      summary: 'Strictly read-only oversight across registers, AI sentinels, 20 Power BI dashboards & 22 statements. Cannot post new tickets or void records.',
-      rights: { read_ops: true, read_fin: true, enter_dispatch: false, enter_accounting: false, enter_master: false, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
+      summary: 'Oversight across registers, AI sentinels, 20 Power BI dashboards & 22 statements; can void records & unlock policy-locked fields (cannot post new tickets).',
+      rights: { read_ops: true, read_fin: true, enter_dispatch: false, enter_accounting: false, enter_master: false, enter_payroll_jv: false, modify_data: false, void_data: true, manage_users: false },
       unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: true, unlock_method: true, unlock_fleet_cascade: true, unlock_site_owner: true, unlock_vat_serial: false, unlock_formula_totals: false },
       dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true },
       statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
@@ -1596,8 +2307,8 @@
       tierBadge: 'TIER 4 · ENTRY OPERATOR',
       badgeCls: 'badge-brass',
       defaultAccess: 'partial|partial',
-      summary: 'Enters Sales Tickets, Quarry Intake, Fuel, Expenses, Customer Receipts & Master Data; can void own app entries. Policy-locked fields require Admin PIN unless customized.',
-      rights: { read_ops: true, read_fin: false, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: false, modify_data: false, void_data: true, manage_users: false },
+      summary: 'Enters Sales Tickets, Quarry Intake, Fuel, Expenses, Customer Receipts & Master Data (create-only; cannot modify or void records). Policy-locked fields require Admin PIN unless customized.',
+      rights: { read_ops: true, read_fin: false, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
       unlocks: { unlock_unit_price: false, unlock_trans_price: false, unlock_qty_cap: false, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: false, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
       dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false },
       statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: false, stmt_financial_board: false }
@@ -1631,7 +2342,7 @@
     if (/^Custom/i.test(r)) return 'Custom';
     if (/Owner|Full Access|Admin/i.test(r)) return 'Full Access (Owner)';
     if (/Supervisor\s*\+\s*Entry/i.test(r)) return 'Supervisor + Entry';
-    if (/^Supervisor$/i.test(r)) return 'Supervisor';
+    if (/Supervisor/i.test(r)) return 'Supervisor';
     if (/Sales/i.test(r)) return 'Sales';
     return 'Entry';
   }
@@ -1782,9 +2493,7 @@
   }
   function canVoid(u) {
     u = u || activeUser();
-    const role = String(u.role || '');
-    if (/^Custom/i.test(role)) return !!getEffectivePermissions(u).rights.void_data;
-    return /Owner|Entry/i.test(role);
+    return !!getEffectivePermissions(u).rights.void_data;
   }
   function canModifyData(u) {
     u = u || activeUser();
@@ -2079,7 +2788,10 @@
   }
   function truckOwnerNames() {
     const out = [];
-    (SEED.records.suppliers || []).forEach(s => { if (s.is_truck_owner || Number(s.trucks_count || 0) > 0) out.push(s.name); });
+    (SEED.records.suppliers || []).forEach(s => {
+      const catStr = [s.category, s.category1, s.category2, s.category3].concat(Array.isArray(s.categories) ? s.categories : []).filter(Boolean).join(', ');
+      if (s.is_truck_owner || Number(s.trucks_count || 0) > 0 || /hauler|truck\s*owner|transport/i.test(catStr)) out.push(s.name);
+    });
     (SEED.records.equipment || []).forEach(e => { if (e.supplier) out.push(e.supplier); });
     (SEED.records.drivers || []).forEach(d => { if (d.truck_owner) out.push(d.truck_owner); });
     SEED.records.raw_purchases.forEach(r => { if (r.truck_owner) out.push(r.truck_owner); });
@@ -2263,10 +2975,27 @@
       if (s) { mdl = s; break; }
     }
     if (!dvn && !mdl) return null;
+    const rawCats = [];
+    if (dvn) {
+      if (Array.isArray(dvn.categories)) rawCats.push(...dvn.categories);
+      else if (dvn.category) rawCats.push(...String(dvn.category).split(/\s*,\s*/));
+      [dvn.category1, dvn.category2, dvn.category3].forEach(c => { if (c) rawCats.push(c); });
+    }
+    const isTo = !!((dvn && (dvn.is_truck_owner || Number(dvn.trucks_count || 0) > 0)) || rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c))));
+    if (isTo && !rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) rawCats.push('Hauler / Truck Owner');
+    const seenCat = new Set();
+    const categories = [];
+    rawCats.forEach(c => {
+      const s = String(c || '').trim();
+      const k = s.toLowerCase();
+      if (s && !seenCat.has(k)) { seenCat.add(k); categories.push(s); }
+    });
     return Object.assign({}, dvn || {}, mdl || {}, {
       Supplier: (mdl && mdl.Supplier) || (dvn && dvn.name) || name,
+      categories,
+      category: categories.join(', '),
       iva: !!((dvn && dvn.iva) || (mdl && mdl.IVA === 'Yes')),
-      is_truck_owner: !!(dvn && dvn.is_truck_owner),
+      is_truck_owner: isTo,
       ap_balance: mdl ? Number(mdl.ap_balance || 0) : null,
       in_ap_book: !!mdl
     });
@@ -3109,7 +3838,7 @@
         bucket.disc += disc;
       }
     });
-    const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all');
+    const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all' || hasActiveColFilters('sales'));
     const mdlProds = getModel().products || [];
     const mdlSites = getModel().sites || [];
     const allProds = !isSalesFiltered ? mdlProds : (() => {
@@ -3250,6 +3979,7 @@
         </div>
         `}
 
+        ${renderColFilterBar('sales')}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -3496,6 +4226,7 @@
             </div>
           </div>
           `}
+          ${renderColFilterBar('raw')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -3697,6 +4428,7 @@
               ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
             </div>
           </div>
+          ${renderColFilterBar('equip')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -3750,6 +4482,7 @@
               ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
             </div>
           </div>
+          ${renderColFilterBar('fuel')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -3886,6 +4619,7 @@
             ${canEnterForm('pricerule') ? '<button class="btn btn-primary" data-open-modal="pricerule">+ New Price Agreement</button>' : ''}
           </div>
         </div>
+        ${renderColFilterBar('pricing')}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -4051,6 +4785,7 @@
               ${canEnterForm('receipt') ? '<button class="btn btn-primary" data-open-modal="receipt">+ Customer Receipt (FIFO)</button>' : ''}
             </div>
           </div>
+          ${renderColFilterBar('custs')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -4126,6 +4861,7 @@
             </div>
           </div>
           `}
+          ${renderColFilterBar('receipts')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -4249,6 +4985,7 @@
               ${canEnterForm('settlement') ? '<button class="btn btn-primary" data-open-modal="settlement">+ Supplier Settlement</button>' : ''}
             </div>
           </div>
+          ${renderColFilterBar('sups')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -4325,6 +5062,7 @@
             </div>
           </div>
           `}
+          ${renderColFilterBar('settle')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -4460,6 +5198,7 @@
             </div>
           </div>
           `}
+          ${renderColFilterBar('expenses')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
@@ -4604,13 +5343,18 @@
       return s;
     }).sort((a, b) => b.paid - a.paid || b.earnings - a.earnings);
 
-    const shownStaff = sortRows(staffRows, 'pay_staff', 'paid', 'desc').slice(0, shownCount('pay_staff'));
-    const shownSal = sortRows(salAll, 'pay_sal', 'date', 'desc').slice(0, shownCount('pay_sal'));
-    const shownEmp = sortRows(empAll, 'pay_emp', 'start_date', 'desc').slice(0, shownCount('pay_emp'));
-    const shownAtt = sortRows(attAll, 'pay_att', 'date', 'desc').slice(0, shownCount('pay_att'));
-    const shownLog = sortRows(logAll, 'pay_log', 'start_date', 'desc').slice(0, shownCount('pay_log'));
+    const filteredStaff = sortRows(staffRows, 'pay_staff', 'paid', 'desc');
+    const shownStaff = filteredStaff.slice(0, shownCount('pay_staff'));
+    const filteredSal = sortRows(salAll, 'pay_sal', 'date', 'desc');
+    const shownSal = filteredSal.slice(0, shownCount('pay_sal'));
+    const filteredEmp = sortRows(empAll, 'pay_emp', 'start_date', 'desc');
+    const shownEmp = filteredEmp.slice(0, shownCount('pay_emp'));
+    const filteredAtt = sortRows(attAll, 'pay_att', 'date', 'desc');
+    const shownAtt = filteredAtt.slice(0, shownCount('pay_att'));
+    const filteredLog = sortRows(logAll, 'pay_log', 'start_date', 'desc');
+    const shownLog = filteredLog.slice(0, shownCount('pay_log'));
     const unmatchedRows = pricing.unmatched_salary_by_staff || [];
-    const totalSiteAllow = staffRows.reduce((a, r) => a + r.site_allow, 0);
+    const totalSiteAllow = filteredStaff.reduce((a, r) => a + r.site_allow, 0);
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
 
     return `
@@ -4659,8 +5403,9 @@
             <div class="panel-title"><span>PAYROLL BY STAFF MEMBER — BASE, OVERTIME, DEDUCTIONS, SITE ALLOWANCE, EARNINGS, PAID &amp; BALANCE</span></div>
             <span class="ph-sub">Site allowances are included inside Earnings · Amber badge = no active contract on file</span>
           </div>
-          <span class="panel-meta">${fmtNum(staffRows.length)} Staff ${exportBtn('payStaffRegPanel', 'Payroll_By_Staff')}</span>
+          <span class="panel-meta">${fmtNum(filteredStaff.length)} Staff ${exportBtn('payStaffRegPanel', 'Payroll_By_Staff')}</span>
         </div>
+        ${renderColFilterBar('pay_staff')}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -4691,22 +5436,22 @@
                   <td class="r ${r.balance < 0 ? 'pbi-neg' : ''}"><strong>${fmtUSD(r.balance, 2)}</strong></td>
                 </tr>
               `).join('') || emptyRow(15, 'No staff records match filter')}
-              ${showMoreRow('pay_staff', staffRows.length, 15)}
+              ${showMoreRow('pay_staff', filteredStaff.length, 15)}
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="4">TOTAL (${fmtNum(staffRows.length)} STAFF · BOOK PAYROLL ${fmtUSD(k.salaries_paid, 2)})</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.base, 0), 2)}</td>
-                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.ot_hrs, 0), 1)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.ot_pay, 0), 2)}</td>
-                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.late_hrs, 0), 1)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.late_ded, 0), 2)}</td>
-                <td class="r">${fmtNum(staffRows.reduce((a, r) => a + r.absent_days, 0), 0)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.abs_ded, 0), 2)}</td>
+                <td colspan="4">TOTAL (${fmtNum(filteredStaff.length)} STAFF · BOOK PAYROLL ${fmtUSD(k.salaries_paid, 2)})</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.base, 0), 2)}</td>
+                <td class="r">${fmtNum(filteredStaff.reduce((a, r) => a + r.ot_hrs, 0), 1)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.ot_pay, 0), 2)}</td>
+                <td class="r">${fmtNum(filteredStaff.reduce((a, r) => a + r.late_hrs, 0), 1)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.late_ded, 0), 2)}</td>
+                <td class="r">${fmtNum(filteredStaff.reduce((a, r) => a + r.absent_days, 0), 0)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.abs_ded, 0), 2)}</td>
                 <td class="r">${fmtUSD(totalSiteAllow, 2)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.earnings, 0), 2)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.paid, 0), 2)}</td>
-                <td class="r">${fmtUSD(staffRows.reduce((a, r) => a + r.balance, 0), 2)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.earnings, 0), 2)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.paid, 0), 2)}</td>
+                <td class="r">${fmtUSD(filteredStaff.reduce((a, r) => a + r.balance, 0), 2)}</td>
               </tr>
             </tfoot>
           </table>
@@ -4899,6 +5644,7 @@
           ${searchBox('Search GL code, account, class...')}
           <div style="display:flex;gap:6px">${exportBtn('glPanel', 'Trial_Balance')}<button class="btn" data-nav-jump="statements" data-stmt-jump="05">Print Official Trial Balance RDL (#05) →</button></div>
         </div>
+        ${renderColFilterBar('gl')}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -4935,6 +5681,7 @@
           <div class="panel-title"><span>AUDITED SOA DOUBLE-ENTRY JOURNAL STREAM (${fmtNum((m.soa_stream || []).length)} RECENT LEGS)</span></div>
           <span class="panel-meta">Balanced Debit &amp; Credit Postings ${exportBtn('soaPanel', 'SOA_Journal_Stream')}</span>
         </div>
+        ${renderColFilterBar('soa')}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -4944,7 +5691,11 @@
               </tr>
             </thead>
             <tbody>
-              ${sortRows((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)), 'soa', 'date', 'desc').map(r => `
+              ${(() => {
+                const soaRows = sortRows((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)), 'soa', 'date', 'desc');
+                const soaDr = soaRows.reduce((s, r) => s + (+r.debit || 0), 0);
+                const soaCr = soaRows.reduce((s, r) => s + (+r.credit || 0), 0);
+                return (soaRows.map(r => `
                 <tr>
                   <td class="mono">${esc(fmtDateDMY(r.date))}</td>
                   <td>${coBadge(r.company || 'WTC')}</td>
@@ -4956,15 +5707,16 @@
                   <td class="r">${r.debit ? fmtUSD(r.debit, 2) : '—'}</td>
                   <td class="r">${r.credit ? fmtUSD(r.credit, 2) : '—'}</td>
                 </tr>
-              `).join('') || emptyRow(9, 'No SOA journal legs in this snapshot')}
+              `).join('') || emptyRow(9, 'No SOA journal legs in this snapshot')) + `
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="7">TOTAL SOA JOURNAL STREAM (${fmtNum((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).length)} LEGS)</td>
-                <td class="r">${fmtUSD((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).reduce((s, r) => s + (+r.debit || 0), 0), 2)}</td>
-                <td class="r">${fmtUSD((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)).reduce((s, r) => s + (+r.credit || 0), 0), 2)}</td>
+                <td colspan="7">TOTAL SOA JOURNAL STREAM (${fmtNum(soaRows.length)} LEGS)</td>
+                <td class="r">${fmtUSD(soaDr, 2)}</td>
+                <td class="r">${fmtUSD(soaCr, 2)}</td>
               </tr>
-            </tfoot>
+            </tfoot>`;
+              })()}
           </table>
         </div>
       </div>
@@ -7654,13 +8406,38 @@
         return {};
       }
       if (STATE.modalForm === 'supplier') {
-        const isTo = !!($('f_istruckowner') && $('f_istruckowner').checked);
-        setFieldVisible('wrap_sup_drivers', isTo);
         const supName = val('f_supplier');
         const company = val('f_company');
+        const oTrucks = supName ? trucksForOwner(supName, company, false) : [];
+        const oDrvs = supName ? driversForOwner(supName, company, false) : [];
+        if (supName !== FORM_UI.lastSupplier) {
+          FORM_UI.lastSupplier = supName;
+          const dvn = supName ? ((SEED.records.suppliers || []).find(s => norm(s.name) === norm(supName)) || null) : null;
+          const sInfo = supName ? supplierInfo(supName) : null;
+          if (dvn || sInfo || oTrucks.length || oDrvs.length) {
+            const hydrated = [];
+            if (dvn) {
+              if (Array.isArray(dvn.categories)) hydrated.push(...dvn.categories);
+              else if (dvn.category) hydrated.push(...String(dvn.category).split(/\s*,\s*/));
+              [dvn.category1, dvn.category2, dvn.category3].forEach(c => { if (c) hydrated.push(c); });
+            }
+            const knownHauler = Boolean((dvn && (dvn.is_truck_owner || Number(dvn.trucks_count || 0) > 0)) || oTrucks.length > 0 || oDrvs.length > 0);
+            if (knownHauler && !isHaulerCategoryList(hydrated)) hydrated.unshift('Hauler / Truck Owner');
+            const cleanCats = parseSupplierCategories(hydrated.join(', '));
+            if (cleanCats.length && $('f_category')) $('f_category').value = cleanCats.join(', ');
+            if (dvn && dvn.method && $('f_method')) $('f_method').value = dvn.method;
+            if ($('f_phone') && !val('f_phone') && dvn && (dvn.phone || dvn.contact)) $('f_phone').value = dvn.phone || dvn.contact;
+            if ($('f_mof') && !val('f_mof') && dvn && (dvn.mof_no || dvn.financial_no)) $('f_mof').value = dvn.mof_no || dvn.financial_no;
+            if ($('f_iva') && (dvn || sInfo)) $('f_iva').checked = !!((dvn && dvn.iva) || (sInfo && sInfo.iva));
+          }
+        }
+        syncSupplierCategoryUI();
+        const cats = parseSupplierCategories(val('f_category'));
+        const stagedDrvs = Array.isArray(FORM_UI.stagedOwnerDrivers) ? FORM_UI.stagedOwnerDrivers : [];
+        const isTo = isHaulerCategoryList(cats) || stagedDrvs.length > 0;
+        setFieldVisible('wrap_sup_drivers', isTo);
         const dlEq = $('dl_equip');
         if (dlEq && supName) {
-          const oTrucks = trucksForOwner(supName, company, false);
           const pool = oTrucks.length ? oTrucks.concat(equipmentNames().filter(t => !oTrucks.some(ot => norm(ot) === norm(t)))) : equipmentNames();
           dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, false)).join('');
         }
@@ -7785,6 +8562,94 @@
     return res;
   }
 
+  function parseSupplierCategories(rawVal) {
+    const arr = Array.isArray(rawVal)
+      ? rawVal
+      : String(rawVal == null ? '' : rawVal).split(/\s*[,;|]\s*/);
+    const seen = new Set();
+    const out = [];
+    arr.forEach(item => {
+      const s = String(item || '').trim();
+      const k = s.toLowerCase();
+      if (s && !seen.has(k)) {
+        seen.add(k);
+        out.push(s);
+      }
+    });
+    return out;
+  }
+
+  function isHaulerCategoryList(cats) {
+    const list = Array.isArray(cats) ? cats : parseSupplierCategories(cats);
+    return list.some(c => /hauler|truck\s*owner|transport/i.test(String(c || '')));
+  }
+
+  function getSupplierCategoryCatalog() {
+    const core = [
+      { value: 'Hauler / Truck Owner', label: 'Hauler / Truck Owner', meta: '3rd-Party Haulage & Fleet', core: true },
+      { value: 'Quarry / Raw Material', label: 'Quarry / Raw Material', meta: 'Aggregate & Quarry Payee', core: true },
+      { value: 'Fuel & Lubricants', label: 'Fuel & Lubricants', meta: 'Diesel, Oils & Bowser', core: true },
+      { value: 'Spare Parts & Garage', label: 'Spare Parts & Garage', meta: 'Parts, Tyres & Workshop', core: true },
+      { value: 'General Vendor', label: 'General Vendor', meta: 'Supplies & Services', core: true }
+    ];
+    const seen = new Set(core.map(c => c.value.toLowerCase()));
+    const extra = [];
+    const addExtra = (nm, metaLbl) => {
+      const s = String(nm || '').trim();
+      const k = s.toLowerCase();
+      if (!s || seen.has(k)) return;
+      seen.add(k);
+      extra.push({ value: s, label: s, meta: metaLbl || 'Expense / Ledger Category', core: false });
+    };
+    ['Raw Material Settlements', 'Transportation', 'Repairs and Maintenance', 'Spare Parts', 'Fuel', 'Oils', 'Tools', 'Utilities', 'Capital Expenditures', 'Minor Equipment', 'Skilled Labor', 'Licences and Fees', 'Insurance', 'Rent', 'Office Supplies', 'Other Costs'].forEach(c => addExtra(c, 'Supplier & Expense Category'));
+    (SEED.records.suppliers || []).forEach(s => {
+      [s.category1, s.category2, s.category3].forEach(c => addExtra(c, 'Supplier Category'));
+    });
+    (SEED.records.expense_categories || []).forEach(c => {
+      if (c && c.name) addExtra(c.name, 'Expense Category');
+    });
+    return core.concat(extra);
+  }
+
+  function syncSupplierCategoryUI() {
+    const catInp = $('f_category');
+    const chipsBox = $('supCategoryChips');
+    const trigger = $('supCategoryTrigger');
+    if (!catInp || !chipsBox || !trigger) return;
+    const cats = parseSupplierCategories(catInp.value);
+    if (!cats.length) {
+      chipsBox.innerHTML = `<span class="pa-ms-placeholder">Select one or more categories...</span>`;
+    } else {
+      chipsBox.innerHTML = cats.map(c => {
+        const isHauler = /hauler|truck\s*owner|transport/i.test(c);
+        return `<span class="pa-ms-chip${isHauler ? ' is-hauler-chip' : ''}" data-ms-val="${esc(c)}"><span class="pa-ms-chip-txt">${esc(c)}</span><i class="pa-ms-chip-rm" data-ms-rm="${esc(c)}" title="Remove ${esc(c)}">×</i></span>`;
+      }).join('');
+    }
+    chipsBox.querySelectorAll('[data-ms-rm]').forEach(rmBtn => {
+      const removeCat = ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const target = rmBtn.getAttribute('data-ms-rm') || '';
+        const next = parseSupplierCategories(catInp.value).filter(c => c.toLowerCase() !== target.toLowerCase());
+        catInp.value = next.join(', ');
+        syncSupplierCategoryUI();
+        const menu = $('supCategoryMenu');
+        if (menu && !menu.hidden && typeof menu._refreshMultiRows === 'function') menu._refreshMultiRows();
+        recalcForm();
+      };
+      rmBtn.addEventListener('mousedown', removeCat);
+      rmBtn.addEventListener('click', removeCat);
+    });
+    const hasHauler = isHaulerCategoryList(cats);
+    if (cats.length === 0) {
+      setHint('hint_sup_category', 'Select at least one category (e.g. Hauler / Truck Owner, Quarry / Raw Material)', 'warn');
+    } else if (hasHauler) {
+      setHint('hint_sup_category', `${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} selected · Hauler Fleet & Drivers active below`, 'ok');
+    } else {
+      setHint('hint_sup_category', `${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} selected · Add "Hauler / Truck Owner" if this vendor also owns trucks`, '');
+    }
+  }
+
   function renderSupplierDriversPanel() {
     const box = $('supOwnerDriversList');
     if (!box) return;
@@ -7792,6 +8657,7 @@
     const company = val('f_company');
     const staged = Array.isArray(FORM_UI.stagedOwnerDrivers) ? FORM_UI.stagedOwnerDrivers : [];
     const existingNames = supName ? driversForOwner(supName, company, false) : [];
+    const ownerTrucks = supName ? trucksForOwner(supName, company, false) : [];
     const rows = [];
     const seen = new Set();
     staged.forEach((sd, idx) => {
@@ -7816,14 +8682,24 @@
       });
     });
 
+    const trucksStripHtml = ownerTrucks.length ? `
+      <div class="pa-owner-trucks-strip">
+        <span class="pa-owner-trucks-lbl">🚚 <b>${ownerTrucks.length}</b> Registered Truck${ownerTrucks.length === 1 ? '' : 's'} under ${esc(supName)}:</span>
+        <div class="pa-owner-trucks-badges">
+          ${ownerTrucks.slice(0, 14).map(t => `<span class="badge badge-brass mono">${esc(t)}</span>`).join('')}
+          ${ownerTrucks.length > 14 ? `<span class="badge">+${ownerTrucks.length - 14} more</span>` : ''}
+        </div>
+      </div>
+    ` : '';
+
     if (!rows.length) {
-      box.innerHTML = `<div class="pa-owner-drivers-empty">${supName ? `No drivers linked to <b>${esc(supName)}</b> yet — enter a driver name above and click <b>+ Add Driver to Owner</b> (or type a driver name above before saving).` : 'Enter the Truck Owner name above, then add one or more drivers for this hauler.'}</div>`;
+      box.innerHTML = trucksStripHtml + `<div class="pa-owner-drivers-empty">${supName ? `No drivers linked to <b>${esc(supName)}</b> yet — enter a driver name above and click <b>+ Add Driver to Owner</b> (or type a driver name above before saving).` : 'Enter the Supplier / Hauler name above, then add one or more drivers for this hauler.'}</div>`;
       return;
     }
 
-    box.innerHTML = `
+    box.innerHTML = trucksStripHtml + `
       <div class="pa-owner-drivers-hdr">
-        <span><b>${rows.length}</b> Driver${rows.length === 1 ? '' : 's'} Linked to ${esc(supName || 'this Truck Owner')}</span>
+        <span><b>${rows.length}</b> Driver${rows.length === 1 ? '' : 's'} Linked to ${esc(supName || 'this Hauler')}</span>
         <small>Shown in the Driver dropdown when ${esc(supName || 'this owner')} is selected on Delivery or Raw Material tickets</small>
       </div>
       <div class="pa-owner-drivers-chips">
@@ -7855,7 +8731,7 @@
   function addStagedSupplierDriver() {
     const nm = val('f_sup_drv_name');
     if (!nm) {
-      toast('Enter a Driver Full Name to add to this Truck Owner', 'err');
+      toast('Enter a Driver Full Name to add to this Hauler', 'err');
       const el = $('f_sup_drv_name');
       if (el) { try { el.focus(); } catch (_) {} }
       return false;
@@ -7872,8 +8748,18 @@
     if ($('f_sup_drv_name')) $('f_sup_drv_name').value = '';
     if ($('f_sup_drv_phone')) $('f_sup_drv_phone').value = '';
     if ($('f_sup_drv_truck')) $('f_sup_drv_truck').value = '';
+    // Ensure 'Hauler / Truck Owner' is selected in multi-select Category when adding a driver
+    const catInp = $('f_category');
+    if (catInp) {
+      const curCats = parseSupplierCategories(catInp.value);
+      if (!isHaulerCategoryList(curCats)) {
+        curCats.unshift('Hauler / Truck Owner');
+        catInp.value = curCats.join(', ');
+        syncSupplierCategoryUI();
+      }
+    }
     renderSupplierDriversPanel();
-    toast(`Driver "${nm}" linked to Truck Owner`, 'ok');
+    toast(`Driver "${nm}" linked to Hauler`, 'ok');
     return true;
   }
 
@@ -8324,6 +9210,140 @@
         }
       });
     });
+
+    // Multi-Select Supplier Category popover (#supCategoryMultiWrap)
+    const supMsWrap = body.querySelector('#supCategoryMultiWrap');
+    const supMsTrig = body.querySelector('#supCategoryTrigger');
+    const supMsMenu = body.querySelector('#supCategoryMenu');
+    const supCatInp = body.querySelector('#f_category');
+    if (supMsWrap && supMsTrig && supMsMenu && supCatInp && supMsTrig.dataset.msWired !== '1') {
+      supMsTrig.dataset.msWired = '1';
+      syncSupplierCategoryUI();
+      const onHiddenCatChange = () => {
+        syncSupplierCategoryUI();
+        if ( !supMsMenu.hidden && typeof supMsMenu._refreshMultiRows === 'function' ) {
+          supMsMenu._refreshMultiRows();
+        }
+      };
+      supCatInp.addEventListener('input', onHiddenCatChange);
+      supCatInp.addEventListener('change', onHiddenCatChange);
+
+      const toggleCategoryValue = valStr => {
+        const v = String(valStr || '').trim();
+        if (!v) return;
+        const cur = parseSupplierCategories(supCatInp.value);
+        const idx = cur.findIndex(c => c.toLowerCase() === v.toLowerCase());
+        if (idx >= 0) cur.splice(idx, 1);
+        else cur.push(v);
+        supCatInp.value = cur.join(', ');
+        syncSupplierCategoryUI();
+        if (!supMsMenu.hidden && typeof supMsMenu._refreshMultiRows === 'function') {
+          supMsMenu._refreshMultiRows();
+        }
+        recalcForm();
+      };
+
+      const openSupMultiMenu = () => {
+        const allCats = getSupplierCategoryCatalog();
+        closeAll(supMsMenu);
+        supMsMenu.innerHTML = `
+          <div class="pa-select-filter-wrap pa-ms-head-bar">
+            <input type="text" class="pa-select-filter" placeholder="Filter ${allCats.length} categories..." autocomplete="off" spellcheck="false">
+            <button type="button" class="pa-ms-quick-btn" data-ms-action="clear" title="Clear selected categories">Clear</button>
+          </div>
+          <div class="pa-suggest-list-rows pa-ms-rows-scroll"></div>
+        `;
+        const rowsBox = supMsMenu.querySelector('.pa-suggest-list-rows');
+        const filterInput = supMsMenu.querySelector('.pa-select-filter');
+        const clearBtn = supMsMenu.querySelector('[data-ms-action="clear"]');
+        if (clearBtn) {
+          clearBtn.addEventListener('mousedown', ev => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            supCatInp.value = '';
+            syncSupplierCategoryUI();
+            if (typeof supMsMenu._refreshMultiRows === 'function') supMsMenu._refreshMultiRows();
+            recalcForm();
+          });
+        }
+
+        const renderMultiRows = qRaw => {
+          const q = String(qRaw !== undefined ? qRaw : (filterInput ? filterInput.value : '')).trim();
+          const ql = q.toLowerCase();
+          const selected = parseSupplierCategories(supCatInp.value);
+          const selSet = new Set(selected.map(s => s.toLowerCase()));
+          const pool = allCats.slice();
+          selected.forEach(s => {
+            if (!pool.some(o => o.value.toLowerCase() === s.toLowerCase())) {
+              pool.unshift({ value: s, label: s, meta: 'Custom Category', core: true });
+            }
+          });
+          const filtered = ql
+            ? pool.filter(o => o.label.toLowerCase().includes(ql) || (o.meta && o.meta.toLowerCase().includes(ql)))
+            : pool;
+          if (!filtered.length) {
+            rowsBox.innerHTML = `<div class="pa-suggest-more" style="text-align:center;border-top:0">No matching categories</div>`;
+            return;
+          }
+          rowsBox.innerHTML = filtered.map(o => {
+            const isSel = selSet.has(o.value.toLowerCase());
+            return `
+              <div class="pa-suggest-item pa-ms-option${isSel ? ' is-selected' : ''}" role="option" aria-selected="${isSel ? 'true' : 'false'}" data-ms-opt="${esc(o.value)}">
+                <span class="pa-ms-chk-box">${isSel ? '✓' : ''}</span>
+                <span class="pa-suggest-label">${highlightMatch(o.label, q)}</span>
+                ${o.meta ? `<span class="pa-suggest-meta">${highlightMatch(o.meta, q)}</span>` : ''}
+              </div>
+            `;
+          }).join('');
+          rowsBox.querySelectorAll('[data-ms-opt]').forEach(row => {
+            const onToggle = ev => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              toggleCategoryValue(row.getAttribute('data-ms-opt'));
+            };
+            row.addEventListener('mousedown', onToggle);
+            row.addEventListener('click', onToggle);
+          });
+        };
+
+        supMsMenu._refreshMultiRows = () => renderMultiRows();
+        renderMultiRows('');
+        supMsMenu.hidden = false;
+        supMsWrap.classList.add('open');
+        supMsTrig.setAttribute('aria-expanded', 'true');
+        if (filterInput) {
+          filterInput.addEventListener('mousedown', ev => ev.stopPropagation());
+          filterInput.addEventListener('input', () => renderMultiRows(filterInput.value));
+          filterInput.addEventListener('keydown', ev => {
+            if (ev.key === 'Escape' || ev.key === 'Tab') {
+              closeAll(null);
+              supMsTrig.setAttribute('aria-expanded', 'false');
+            }
+          });
+          try { filterInput.focus({ preventScroll: true }); } catch (_) {}
+        }
+      };
+
+      supMsTrig.addEventListener('mousedown', ev => {
+        if (ev.target && ev.target.closest('[data-ms-rm]')) return;
+        ev.preventDefault();
+        if (!supMsMenu.hidden) {
+          closeAll(null);
+          supMsTrig.setAttribute('aria-expanded', 'false');
+        } else {
+          openSupMultiMenu();
+        }
+      });
+      supMsTrig.addEventListener('keydown', ev => {
+        if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          if (supMsMenu.hidden) openSupMultiMenu();
+        } else if (ev.key === 'Escape') {
+          closeAll(null);
+          supMsTrig.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
   }
 
   let modalFocusTimer = null;
@@ -8632,13 +9652,25 @@
       const allDrvNames = uniqSorted(existingDrvs.concat(stagedDrvs.map(d => d.name)));
       const existingTrucks = nm ? trucksForOwner(nm, company, false) : [];
       const allTruckNames = uniqSorted(existingTrucks.concat(stagedDrvs.map(d => d.truck).filter(Boolean)));
+      const cats = parseSupplierCategories(val('f_category'));
+      if (!cats.length && allDrvNames.length === 0 && allTruckNames.length === 0) {
+        addErr('f_category', 'Select at least one Supplier Category.');
+      }
+      const isTo = isHaulerCategoryList(cats) || allDrvNames.length > 0 || allTruckNames.length > 0;
+      if (isTo && !isHaulerCategoryList(cats)) cats.unshift('Hauler / Truck Owner');
       record = {
         ...base,
         name: nm,
-        category: val('f_category'),
+        categories: cats,
+        category: cats.join(', '),
+        category1: cats[0] || '',
+        category2: cats[1] || '',
+        category3: cats[2] || '',
+        method: val('f_method') || 'Credit',
         phone: val('f_phone'),
         mof_no: val('f_mof'),
-        is_truck_owner: !!($('f_istruckowner') && $('f_istruckowner').checked) || allDrvNames.length > 0,
+        financial_no: val('f_mof'),
+        is_truck_owner: isTo,
         iva: !!($('f_iva') && $('f_iva').checked),
         trucks_count: allTruckNames.length,
         trucks: allTruckNames,
@@ -8928,6 +9960,7 @@
   const SEED_VOIDED_ARCHIVE = {};
 
   function restoreVoidedRecord(crKey, id) {
+    if (!canVoid()) { toast('Only Supervisor, Admin, or authorized Custom seats can void or restore records', 'err'); return; }
     const q = String(id == null ? '' : id).trim();
     const nq = norm(q);
     const matchRow = x => x && (String(x.id) === q || (nq && (norm(x.name) === nq || norm(x.ticket_no) === nq || norm(x.invoice_no) === nq || norm(x.staff) === nq || norm(x.driver) === nq || norm(x.equipment) === nq)));
@@ -8961,7 +9994,7 @@
   }
 
   function voidRecord(crKey, id) {
-    if (!canVoid()) { toast('Your seat cannot void or delete records', 'err'); return; }
+    if (!canVoid()) { toast('Only Supervisor, Admin, or authorized Custom seats can void or delete records', 'err'); return; }
     if (!Array.isArray(STATE.customRecords[crKey])) STATE.customRecords[crKey] = [];
     const list = STATE.customRecords[crKey];
     const q = String(id == null ? '' : id).trim();
@@ -10110,6 +11143,9 @@
     panel.hidden = false;
     bodyEl.scrollTop = 0;
     document.body.classList.add('modal-open');
+    if (window.MFG_TABLE_COLS && typeof window.MFG_TABLE_COLS.enhanceAllTables === 'function') {
+      window.MFG_TABLE_COLS.enhanceAllTables(bodyEl);
+    }
   }
 
   function closeRecordInspector() {
@@ -11712,7 +12748,7 @@
           let nextVal = false;
           if (mode === 'all' || mode === 'on' || mode === 'full') nextVal = true;
           else if (mode === 'off' || mode === 'none') nextVal = false;
-          else if (grp === 'rights' && mode === 'ops') nextVal = ['read_ops', 'enter_dispatch', 'enter_accounting', 'enter_master', 'void_data'].includes(itemId);
+          else if (grp === 'rights' && mode === 'ops') nextVal = ['read_ops', 'enter_dispatch', 'enter_accounting', 'enter_master'].includes(itemId);
           else if (grp === 'rights' && mode === 'readonly') nextVal = ['read_ops', 'read_fin'].includes(itemId);
           else if (grp === 'unlocks' && mode === 'pricing') nextVal = ['unlock_unit_price', 'unlock_trans_price', 'unlock_qty_cap', 'unlock_uom'].includes(itemId);
           else if (grp === 'dashboards' && mode === 'ops') nextVal = ['dash_overview', 'dash_commercial', 'dash_plant_fleet', 'dash_expenses_vat'].includes(itemId);
@@ -14627,7 +15663,7 @@
     switch (STATE.view) {
       case 'overview': wsHtml = renderOverview(); break;
       case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
-      case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
+      case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': wsHtml = renderSentinels(); break;
       case 'kiosks': wsHtml = renderKiosks(); break;
       case 'sales': wsHtml = renderSales(); break;
@@ -14650,7 +15686,7 @@
       case 'reg_customers':
       case 'reg_suppliers':
       case 'reg_categories':
-        wsHtml = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
+        wsHtml = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
         break;
       case 'statements': wsHtml = renderStatements(); break;
       case 'users': wsHtml = renderUsers(); break;
@@ -14952,10 +15988,44 @@
         renderApp();
       });
     }
-    container.querySelectorAll('th.sortable').forEach(h => h.addEventListener('click', () => {
+    container.querySelectorAll('th.sortable').forEach(h => h.addEventListener('click', e => {
+      if (e.target && e.target.closest('.th-filter-btn')) return;
       const view = h.getAttribute('data-sort-view'), key = h.getAttribute('data-sort-key');
       const cur = STATE.sortBy[view] || {};
-      STATE.sortBy[view] = { key, dir: cur.key === key && cur.dir === 'desc' ? 'asc' : (cur.key === key ? 'desc' : (['date', 'start_date', 'name', 'Code', 'Customer', 'Supplier', 'Site', 'Equipment', 'customer', 'supplier', 'staff', 'payroll_month'].includes(key) && !/^(date|start_date)$/.test(key) ? 'asc' : 'desc')) };
+      const defaultDir = !isDefaultDescSortKey(key) ? 'asc' : 'desc';
+      STATE.sortBy[view] = { key, dir: cur.key === key ? (cur.dir === 'desc' ? 'asc' : 'desc') : defaultDir };
+      renderApp();
+    }));
+    container.querySelectorAll('[data-th-filter-key]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openColFilterPopover(btn);
+    }));
+    container.querySelectorAll('.cf-select[data-cf-view][data-cf-key]').forEach(sel => sel.addEventListener('change', e => {
+      const view = sel.getAttribute('data-cf-view');
+      const key = sel.getAttribute('data-cf-key');
+      if (!STATE.colFilters) STATE.colFilters = {};
+      if (!STATE.colFilters[view]) STATE.colFilters[view] = {};
+      const val = String(e.target.value || '').trim();
+      if (!val) delete STATE.colFilters[view][key];
+      else STATE.colFilters[view][key] = val;
+      STATE.shown = {};
+      renderApp();
+    }));
+    container.querySelectorAll('[data-cf-clear-key]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const view = btn.getAttribute('data-cf-view');
+      const key = btn.getAttribute('data-cf-clear-key');
+      if (STATE.colFilters && STATE.colFilters[view]) {
+        delete STATE.colFilters[view][key];
+      }
+      STATE.shown = {};
+      renderApp();
+    }));
+    container.querySelectorAll('[data-cf-clear-all]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const view = btn.getAttribute('data-cf-clear-all');
+      if (STATE.colFilters) delete STATE.colFilters[view];
+      STATE.shown = {};
       renderApp();
     }));
     container.querySelectorAll('[data-show-more]').forEach(btn => btn.addEventListener('click', () => {
@@ -15184,6 +16254,10 @@
       saveSbBtn.textContent = '✓ Saved';
       setTimeout(() => { if (saveSbBtn.isConnected) saveSbBtn.textContent = 'Save'; }, 1500);
     });
+
+    if (window.MFG_TABLE_COLS && typeof window.MFG_TABLE_COLS.enhanceAllTables === 'function') {
+      window.MFG_TABLE_COLS.enhanceAllTables(container, STATE);
+    }
   }
 
   function setView(view, opts = {}) {
@@ -15754,6 +16828,10 @@
       canModifyData: email => {
         const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
         return canModifyData(u);
+      },
+      canVoid: email => {
+        const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();
+        return canVoid(u);
       },
       canAccessPbiPage: (pageId, email) => {
         const u = email ? STATE.users.find(x => norm(x.email) === norm(email)) : activeUser();

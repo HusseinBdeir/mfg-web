@@ -546,15 +546,28 @@
     if (fType === 'supplier') {
       return `
         <div class="form-grid-3">
-          ${secHdr('1. Supplier / Truck Owner Identity (Universal Registry · All BUs)')}
-          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Quarry, hauler, or truck owner name"') + dl('dl_suppliers', supNames))}
-          ${fld('Category', sel('f_category', [['Quarry / Raw Material', 'Quarry / Raw Material'], ['Hauler / Truck Owner', 'Hauler / Truck Owner'], ['Fuel & Lubricants', 'Fuel & Lubricants'], ['Spare Parts & Garage', 'Spare Parts & Garage'], ['General Vendor', 'General Vendor']], 'Hauler / Truck Owner'))}
-          ${fld('Phone / Contact', inp('f_phone', 'text', ''))}
-          ${fld('MOF Tax Number', inp('f_mof', 'text', ''))}
-          <div class="form-field check-field"><input type="checkbox" id="f_istruckowner" checked><label for="f_istruckowner">Is Truck Owner (Hauler)</label></div>
+          ${secHdr('1. Supplier / Hauler Identity (Universal Registry · All BUs)')}
+          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type quarry, hauler, or vendor name..."') + dl('dl_suppliers', supNames))}
+          <div class="form-field" id="wrap_f_category">
+            <label for="supCategoryTrigger"><span class="pa-fld-lbl">Category (Multi-Select) *</span></label>
+            <div class="pa-suggest-wrap pa-multiselect-wrap" id="supCategoryMultiWrap">
+              <input type="hidden" id="f_category" value="Hauler / Truck Owner">
+              <button type="button" class="pa-multiselect-trigger" id="supCategoryTrigger" aria-haspopup="listbox" aria-expanded="false">
+                <div class="pa-ms-chips" id="supCategoryChips">
+                  <span class="pa-ms-chip" data-ms-val="Hauler / Truck Owner"><span>Hauler / Truck Owner</span><i class="pa-ms-chip-rm" data-ms-rm="Hauler / Truck Owner" title="Remove Hauler / Truck Owner">×</i></span>
+                </div>
+                <span class="pa-suggest-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="pa-suggest-menu pa-multiselect-menu" id="supCategoryMenu" role="listbox" aria-multiselectable="true" hidden></div>
+            </div>
+            <span class="hint" id="hint_sup_category">Select all roles that apply — Hauler / Truck Owner opens Fleet &amp; Drivers below</span>
+          </div>
+          ${fld('Phone / Contact', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
+          ${fld('Default Payment Method', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'))}
+          ${fld('MOF Tax Number', inp('f_mof', 'text', '', 'placeholder="Tax / MOF registration #"'))}
           <div class="form-field check-field"><input type="checkbox" id="f_iva"><label for="f_iva">IVA / VAT Registered (11% Input VAT)</label></div>
           <div class="form-field span-3" id="wrap_sup_drivers">
-            ${secHdr('2. Truck Owner Drivers (Add & Manage Drivers for this Hauler)')}
+            ${secHdr('2. Hauler Fleet & Drivers (Auto-Enabled when Hauler / Truck Owner is Selected)')}
             <div class="pa-owner-drivers-panel">
               <div class="pa-owner-drivers-add">
                 <div class="form-field">
@@ -636,10 +649,12 @@
     if (fType === 'driver') {
       return `
         <div class="form-grid-3">
+          ${secHdr('1. Driver / Operator Identity & Truck Assignment (Universal Registry · All BUs)')}
           ${fld('Driver Full Name *', inp('f_driver', 'text', '', 'placeholder="Driver name"'))}
           ${fld('Default Truck Plate', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipNames))}
           ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Auto-filled from Truck Plate (or select hauler)..."') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
           ${fld('Phone Number', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
+          <div class="form-field check-field"><input type="checkbox" id="f_iscompanydriver"><label for="f_iscompanydriver">Company Fleet Driver (WTC / BBC / Lions Payroll)</label></div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;

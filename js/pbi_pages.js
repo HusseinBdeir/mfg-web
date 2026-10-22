@@ -44,15 +44,22 @@
     { key: 'price_rules', group: '2 · Commercial & Pricing', label: 'Price & Commission Agreements', dvn: 'bhf_pricerule', form: 'pricerule', cols: ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'qty1', 'adj1', 'total1', 'qty2', 'adj2', 'total2', 'indiff_price', 'start_date', 'end_date', 'matched_tickets'], relTables: ['customers', 'suppliers', 'products', 'sites', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Price Agreements' }, { id: 'active', label: 'Active Agreements', fn: r => !r.end_date }, { id: 'sales', label: 'Customer Sales Rules', fn: r => /sale|pickup|deliv/i.test(r.rule_type || '') }, { id: 'transport', label: 'Transport & Raw Rules', fn: r => /trans|raw|purch/i.test(r.rule_type || '') }, { id: 'list', label: 'List Prices', fn: r => /list/i.test(r.rule_type || '') }] },
     { key: 'credit_terms', group: '2 · Commercial & Pricing', label: 'Customer Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['name', 'company', 'customer', 'credit_days', 'credit_limit', 'ar_balance', 'start_date', 'end_date', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All Credit Terms' }, { id: 'active', label: 'Active Policies', fn: r => !r.end_date }] },
     { key: 'vat_invoices', group: '2 · Commercial & Pricing', label: 'VAT 11% Tax Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['invoice_no', 'date', 'company', 'customer', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc', 'tickets_count', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All VAT Invoices' }] },
-    { key: 'equipment', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_equipment', label: 'Equipment & Trucks', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier', 'default_driver', 'companies_list', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'company', label: 'Company Fleet', fn: r => /company|own/i.test(r.ownership || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company|own/i.test(r.ownership || '') }] },
+    { key: 'equipment', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_equipment', label: 'Equipment & Trucks', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'companies_list', 'plate_no', 'type', 'ownership', 'supplier', 'capacity', 'default_driver', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'trucks', label: 'Trucks Only', fn: r => /^truck$/i.test(r.type || 'Truck') }, { id: 'own', label: 'Company Fleet', fn: r => /company|own/i.test(r.ownership || '') }, { id: 'company_trucks', label: 'Company Trucks', fn: r => /company|own/i.test(r.ownership || '') && /^truck$/i.test(r.type || 'Truck') }, { id: 'machinery', label: 'Heavy Machinery & Plant', fn: r => /excavator|loader|bulldozer|generator|other/i.test(r.type || '') }, { id: 'vehicles', label: 'Vehicles & Pickups', fn: r => /vehicle/i.test(r.type || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company|own/i.test(r.ownership || '') }] },
     { key: 'drivers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_drivers', label: 'Drivers & Operators', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'assigned_trucks', 'companies_list', 'phone', 'loads_hauled', 'fuel_fills'], relTables: ['company_drivers', 'equipment', 'suppliers', 'sales_tickets', 'raw_purchases', 'fuel_intakes'], views: [{ id: 'all', label: 'All Drivers & Operators' }] },
     { key: 'sites', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_sites', label: 'Quarries & Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Quarries & Sites' }, { id: 'jv', label: 'JV 50/50 Quarries', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
     { key: 'regions', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_regions', label: 'Regions & Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code', 'sites_count', 'overtime_rate', 'sales_loads'], relTables: ['sites', 'overtime_rates', 'sales_tickets'], views: [{ id: 'all', label: 'All Regions & Zones' }] },
     { key: 'products', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_products', label: 'Products & Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product', 'active_rules', 'sales_loads', 'revenue_account'], relTables: ['sales_tickets', 'raw_purchases', 'price_rules', 'fuel_intakes', 'product_types', 'uoms'], views: [{ id: 'all', label: 'All Products & Grades' }, { id: 'agg', label: 'Ticket / Aggregate Grades', fn: r => Boolean(r.ticket_product) }, { id: 'fuel', label: 'Fuel & Lube Items', fn: r => Boolean(r.fuel_item) }] },
     { key: 'product_types', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code', 'products_count', 'sales_loads'], relTables: ['products', 'sales_tickets'], views: [{ id: 'all', label: 'All Product Families' }] },
     { key: 'uoms', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Units of Measure (UoM)', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code', 'products_count', 'tickets_count'], relTables: ['products', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Units of Measure' }] },
-    { key: 'customers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_customers', label: 'Customers Registry', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'official_name', 'vat_registered', 'mof_no', 'phone', 'address', 'method', 'credit_days', 'credit_limit', 'active_rules', 'sales_loads', 'ar_balance'], relTables: ['sales_tickets', 'receipts', 'price_rules', 'credit_terms', 'vat_invoices'], views: [{ id: 'all', label: 'All Customers' }, { id: 'open_ar', label: 'Open AR Balance > $0', fn: (r, rel) => ((rel.custByName[norm(r.name)] || {}).ar_balance || 0) > 1 }, { id: 'vat', label: 'VAT Registered (MOF)', fn: r => Boolean(r.vat_registered || r.mof_no) }] },
-    { key: 'suppliers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_suppliers', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'official_name', 'category1', 'is_truck_owner', 'iva', 'financial_no', 'contact', 'location', 'trucks_count', 'active_rules', 'raw_loads', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Suppliers & Haulers' }, { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 }, { id: 'haulers', label: 'Truck Owners / Haulers', fn: r => Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0) }] },
+    { key: 'customers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_customers', label: 'Customers Registry', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'method', 'vat_registered', 'mof_no', 'phone', 'address', 'credit_days', 'credit_limit', 'active_rules', 'sales_loads', 'ar_balance'], relTables: ['sales_tickets', 'receipts', 'price_rules', 'credit_terms', 'vat_invoices'], views: [{ id: 'all', label: 'All Customers' }, { id: 'open_ar', label: 'Open AR Balance > $0', fn: (r, rel) => ((rel.custByName[norm(r.name)] || {}).ar_balance || 0) > 1 }, { id: 'vat', label: 'VAT Registered (MOF)', fn: r => Boolean(r.vat_registered || r.mof_no) }] },
+    { key: 'suppliers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_suppliers', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'supplier_role', 'method', 'trucks_list', 'drivers_list', 'haul_loads', 'raw_loads', 'expenses_count', 'active_rules', 'iva', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [
+      { id: 'all', label: 'All Suppliers & Haulers' },
+      { id: 'haulers', label: 'Truck Owners / Haulers', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; return Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0))); } },
+      { id: 'quarries', label: 'Quarries & Material Suppliers', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; return Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Raw Material/i.test(r.category || r.category1 || '')); } },
+      { id: 'vendors', label: 'Expense & Parts Vendors', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; const isH = Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0))); const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Raw Material/i.test(r.category || r.category1 || '')); return Boolean((se && (se.is_expense || se.expenses_count > 0)) || (!isH && !isQ)); } },
+      { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 },
+      { id: 'iva', label: 'IVA / VAT Registered', fn: r => Boolean(r.iva || r.financial_no || r.mof_no) }
+    ] },
     { key: 'expense_categories', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_categories', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [{ id: 'all', label: 'All Expense Categories' }] },
     { key: 'expense_subcategories', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
     { key: 'company_equipment', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
@@ -108,14 +115,39 @@
     };
     const ensure = (map, k, init) => { const nk = norm(k); if (!nk) return null; if (!map[nk]) map[nk] = init(); return map[nk]; };
 
+    const initSupp = () => ({
+      raw_loads: 0,
+      raw_loads_cnt: 0,
+      haul_loads: 0,
+      expenses_count: 0,
+      expenses_usd: 0,
+      ap_balance: 0,
+      active_rules: 0,
+      is_quarry: false,
+      is_hauler: false,
+      is_expense: false,
+      trucks: new Set(),
+      drivers: new Set(),
+      sites: new Set()
+    });
+
     // Seed from semantic model AR / AP summaries first
     (((SEED && SEED.semantic_model) || {}).customer_ar_summary || []).forEach(c => {
       const e = ensure(rel.custByName, c.Customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
       if (e) { e.sales_loads = Number(c.loads || 0); e.ar_balance = Number(c.ar_balance || 0); }
     });
     (((SEED && SEED.semantic_model) || {}).supplier_ap_summary || []).forEach(s => {
-      const e = ensure(rel.suppByName, s.Supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
+      const e = ensure(rel.suppByName, s.Supplier, initSupp);
       if (e) { e.raw_loads = Number(s.raw_loads || 0); e.ap_balance = Number(s.ap_balance || 0); }
+    });
+
+    (rec.suppliers || []).forEach(s => {
+      const e = ensure(rel.suppByName, s.name, initSupp);
+      if (!e) return;
+      if (Array.isArray(s.trucks)) s.trucks.forEach(t => { if (t) e.trucks.add(t); });
+      if (Array.isArray(s.drivers)) s.drivers.forEach(d => { if (d) e.drivers.add(d); });
+      if (s.is_truck_owner || Number(s.trucks_count || 0) > 0 || e.trucks.size > 0 || /hauler|truck owner/i.test(s.category || '')) e.is_hauler = true;
+      if (/quarry|raw material/i.test(s.category || s.category1 || '')) e.is_quarry = true;
     });
 
     (rec.credit_terms || []).forEach(ct => {
@@ -132,7 +164,7 @@
         if (e && !pr.end_date) e.active_rules++;
       }
       if (pr.supplier) {
-        const e = ensure(rel.suppByName, pr.supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
+        const e = ensure(rel.suppByName, pr.supplier, initSupp);
         if (e && !pr.end_date) e.active_rules++;
       }
       if (pr.product) {
@@ -159,6 +191,10 @@
     (rec.sites || []).forEach(s => {
       const re = ensure(rel.regByName, s.region, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
       if (re) re.sites_count++;
+      if (s.supplier) {
+        const se = ensure(rel.suppByName, s.supplier, initSupp);
+        if (se) { se.is_quarry = true; if (s.name) se.sites.add(s.name); }
+      }
     });
     (rec.overtime_rates || []).forEach(ot => {
       const re = ensure(rel.regByName, ot.region, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
@@ -179,8 +215,22 @@
         if (de && eq.name) de.trucks.add(eq.name);
       }
       if (eq.supplier) {
-        const se = ensure(rel.suppByName, eq.supplier, () => ({ raw_loads: 0, ap_balance: 0, active_rules: 0, trucks: new Set() }));
-        if (se && eq.name) se.trucks.add(eq.name);
+        const se = ensure(rel.suppByName, eq.supplier, initSupp);
+        if (se) {
+          se.is_hauler = true;
+          if (eq.name) se.trucks.add(eq.name);
+          if (eq.default_driver) se.drivers.add(eq.default_driver);
+        }
+      }
+    });
+    (rec.drivers || []).forEach(drv => {
+      if (drv.truck_owner) {
+        const se = ensure(rel.suppByName, drv.truck_owner, initSupp);
+        if (se) {
+          se.is_hauler = true;
+          if (drv.name || drv.driver) se.drivers.add(drv.name || drv.driver);
+          if (drv.truck) se.trucks.add(drv.truck);
+        }
       }
     });
     (rec.company_drivers || []).forEach(cd => {
@@ -199,6 +249,15 @@
       if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
       const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+      if (t.truck_owner) {
+        const he = ensure(rel.suppByName, t.truck_owner, initSupp);
+        if (he) {
+          he.is_hauler = true;
+          he.haul_loads++;
+          if (t.truck) he.trucks.add(t.truck);
+          if (t.driver) he.drivers.add(t.driver);
+        }
+      }
       if (t.vat_invoice) rel.vatInvByNo[norm(t.vat_invoice)] = (rel.vatInvByNo[norm(t.vat_invoice)] || 0) + 1;
     });
 
@@ -211,6 +270,24 @@
       if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
       const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+      if (t.site_owner) {
+        const qe = ensure(rel.suppByName, t.site_owner, initSupp);
+        if (qe) {
+          qe.is_quarry = true;
+          qe.raw_loads_cnt++;
+          if (qe.raw_loads_cnt > qe.raw_loads) qe.raw_loads = qe.raw_loads_cnt;
+          if (t.site) qe.sites.add(t.site);
+        }
+      }
+      if (t.truck_owner) {
+        const he = ensure(rel.suppByName, t.truck_owner, initSupp);
+        if (he) {
+          he.is_hauler = true;
+          he.haul_loads++;
+          if (t.truck) he.trucks.add(t.truck);
+          if (t.driver) he.drivers.add(t.driver);
+        }
+      }
     });
 
     (rec.fuel_intakes || []).forEach(f => {
@@ -218,6 +295,10 @@
       if (ee) ee.fuel_fills++;
       const de = ensure(rel.drvByName, f.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (de) de.fuel_fills++;
+      if (f.supplier) {
+        const se = ensure(rel.suppByName, f.supplier, initSupp);
+        if (se) { se.is_expense = true; se.expenses_count++; }
+      }
     });
 
     (rec.expense_subcategories || []).forEach(sc => {
@@ -230,6 +311,10 @@
       if (ce) { ce.expenses_count++; ce.total_spent += amt; }
       const se = ensure(rel.subcatByName, ex.subcategory, () => ({ expenses_count: 0, total_spent: 0 }));
       if (se) { se.expenses_count++; se.total_spent += amt; }
+      if (ex.supplier) {
+        const supE = ensure(rel.suppByName, ex.supplier, initSupp);
+        if (supE) { supE.is_expense = true; supE.expenses_count++; supE.expenses_usd += amt; }
+      }
     });
 
     (rec.salaries || []).forEach(sal => {
@@ -251,8 +336,39 @@
     return rel;
   }
 
+  function formatCompactSet(setOrArr, maxItems = 2) {
+    const arr = Array.isArray(setOrArr) ? setOrArr.filter(Boolean) : (setOrArr ? Array.from(setOrArr).filter(Boolean) : []);
+    if (!arr.length) return '';
+    if (arr.length <= maxItems) return arr.join(', ');
+    return `${arr.slice(0, maxItems).join(', ')} (+${arr.length - maxItems})`;
+  }
+
   function cellValue(r, c, tableKey, rel) {
     if (!r) return null;
+    if (tableKey === 'suppliers' && (c === 'category1' || c === 'category')) {
+      const rawCats = [];
+      if (Array.isArray(r.categories)) rawCats.push(...r.categories);
+      else if (r.category) rawCats.push(...String(r.category).split(/\s*,\s*/));
+      [r.category1, r.category2, r.category3].forEach(x => { if (x) rawCats.push(x); });
+      if (r.is_truck_owner && !rawCats.some(x => /hauler|truck\s*owner|transport/i.test(String(x)))) {
+        rawCats.push('Hauler / Truck Owner');
+      }
+      const seen = new Set();
+      const uniq = [];
+      rawCats.forEach(x => {
+        const s = String(x || '').trim();
+        const k = s.toLowerCase();
+        if (s && !seen.has(k)) { seen.add(k); uniq.push(s); }
+      });
+      if (uniq.length) return uniq.join(', ');
+    }
+    if (c === 'notes' && r.notes) {
+      const cleaned = String(r.notes)
+        .replace(/^Manufacturing\s*\([^)]+\)\s*(?:supplier|customer)\s*—\s*seeded from the workbooks\s*\d{4}-\d{2}-\d{2}\.?\s*/i, '')
+        .replace(/\[wb:[^\]]+\]/gi, '')
+        .trim();
+      return cleaned || null;
+    }
     if (r[c] != null && r[c] !== '') {
       if (Array.isArray(r[c])) return r[c].join(', ');
       return r[c];
@@ -288,15 +404,42 @@
 
     if (rel) {
       if (tableKey === 'customers' || tableKey === 'credit_terms') {
+        if (c === 'vat_registered') return Boolean(r.vat_registered || r.mof_no);
         const ce = rel.custByName[norm(r.customer || r.name)];
         if (ce && ce[c] != null) return ce[c];
       }
       if (tableKey === 'suppliers') {
         const se = rel.suppByName[norm(r.name)];
+        if (c === 'iva') return Boolean(r.iva || r.financial_no || r.mof_no);
+        if (c === 'is_truck_owner') return Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0)));
         if (c === 'trucks_count') return r.trucks_count != null ? r.trucks_count : (se ? se.trucks.size : 0);
+        if (c === 'trucks_list') return formatCompactSet(se ? se.trucks : r.trucks, 2);
+        if (c === 'drivers_list') return formatCompactSet(se ? se.drivers : r.drivers, 2);
+        if (c === 'haul_loads') return se ? se.haul_loads : 0;
+        if (c === 'raw_loads') return se ? se.raw_loads : 0;
+        if (c === 'expenses_count') return se ? se.expenses_count : 0;
+        if (c === 'active_rules') return se ? se.active_rules : 0;
+        if (c === 'ap_balance') return se ? se.ap_balance : 0;
+        if (c === 'supplier_role') {
+          if (r.category && !/Raw Material Settlements/i.test(r.category)) {
+            if (/Quarry\s*\+\s*Hauler/i.test(r.category)) return 'Quarry + Hauler';
+            if (/Hauler|Truck Owner/i.test(r.category)) return 'Truck Owner (Hauler)';
+            if (/Quarry|Raw Material/i.test(r.category)) return 'Quarry / Material';
+            return r.category;
+          }
+          const isH = Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0)));
+          const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Raw Material/i.test(r.category1 || ''));
+          const isE = Boolean(se && (se.is_expense || se.expenses_count > 0));
+          if (isH && isQ) return 'Quarry + Hauler';
+          if (isH) return 'Truck Owner (Hauler)';
+          if (isQ) return 'Quarry / Material';
+          if (isE) return 'Expense / Parts Vendor';
+          return 'General Vendor';
+        }
         if (se && se[c] != null) return se[c];
       }
       if (tableKey === 'products') {
+        if (c === 'ticket_product' || c === 'fuel_item' || c === 'input_product') return Boolean(r[c]);
         const pe = rel.prodByName[norm(r.name)];
         if (pe && pe[c] != null) return pe[c];
       }
@@ -309,6 +452,7 @@
         if (ue && ue[c] != null) return ue[c];
       }
       if (tableKey === 'sites') {
+        if (c === 'is_jv') return Boolean(r.is_jv);
         const se = rel.siteByName[norm(r.name)];
         if (se && se[c] != null) return se[c];
       }
@@ -3604,6 +3748,8 @@
     const isUniv = Boolean(meta.universal);
     const rlsScopedRaw = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true, ignoreCompany: isUniv, ignoreRls: isUniv });
     const baseFiltered = filterRecords(rawList, {
+      cols: meta.cols,
+      tableKey: meta.key,
       ignoreCompany: isUniv,
       ignoreRls: isUniv,
       ignorePeriod: isUniv || !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key)
@@ -3676,18 +3822,19 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search ' + meta.label + '...')}
+            ${searchBox('Search ' + meta.label + ' (or type col:value)...')}
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('tablesHubPanel', meta.key)}
             ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/s$/, ''))}</button>` : ''}
           </div>
         </div>
+        ${typeof ctx.renderColFilterBar === 'function' ? ctx.renderColFilterBar('tbl_' + meta.key, meta.cols) : ''}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('tbl_' + meta.key, c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('tbl_' + meta.key, hubColLabel(c, meta.key), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
@@ -3707,7 +3854,7 @@
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : (c === 'company' ? shortCoHtml(cell) : esc(cell));
+                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : esc(cell)));
                     return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
@@ -3726,7 +3873,7 @@
                   let firstNum = meta.cols.findIndex((col, idx) => idx > 0 && isColNumeric(col).num);
                   if (firstNum < 0) firstNum = meta.cols.length;
                   const leadSpan = Math.max(1, firstNum);
-                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`];
+                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} RECORDS)</b></td>`];
                   for (let ci = leadSpan; ci < meta.cols.length; ci++) {
                     const c = meta.cols[ci];
                     const { isM: isMoney, isN: isNum } = isColNumeric(c);
@@ -3755,6 +3902,96 @@
     `;
   }
 
+  const HUB_COL_LABELS = {
+    supplier_role: 'Role / Type',
+    trucks_list: 'Owned Trucks',
+    drivers_list: 'Linked Drivers',
+    haul_loads: 'Haul Loads',
+    raw_loads: 'Quarry Loads',
+    expenses_count: 'Expense Bills',
+    active_rules: 'Price Rules',
+    iva: 'IVA (VAT)',
+    ap_balance: 'AP Balance',
+    ar_balance: 'AR Balance',
+    vat_registered: 'VAT (11%)',
+    mof_no: 'MOF Tax #',
+    companies_list: 'Assigned BUs',
+    assigned_trucks: 'Assigned Trucks',
+    loads_hauled: 'Loads Hauled',
+    fuel_fills: 'Fuel Fills',
+    default_driver: 'Default Driver',
+    truck_owner: 'Truck Owner (Hauler)',
+    site_owner: 'Quarry Owner',
+    is_jv: 'JV 50/50',
+    gps_status: 'GPS Pin'
+  };
+
+  function hubColLabel(c, tableKey) {
+    if (c === 'name') {
+      if (tableKey === 'suppliers') return 'Supplier / Hauler';
+      if (tableKey === 'equipment') return 'Unit / Plate #';
+      if (tableKey === 'drivers') return 'Driver Name';
+      if (tableKey === 'customers') return 'Customer';
+      if (tableKey === 'sites') return 'Quarry / Site';
+      if (tableKey === 'products') return 'Product / Grade';
+    }
+    if (HUB_COL_LABELS[c]) return HUB_COL_LABELS[c];
+    return String(c || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  function formatSupplierRoleHtml(roleTxt) {
+    const r = String(roleTxt || '').trim();
+    if (!r || r === '—') return '—';
+    const cls = /Quarry \+ Hauler|Truck Owner|Hauler/i.test(r)
+      ? 'badge-brass'
+      : (/Quarry/i.test(r) ? 'badge-info' : 'badge');
+    return `<span class="badge ${cls}">${esc(r)}</span>`;
+  }
+
+  function renderFleetCounterpartyGuideStrip(activeKey) {
+    if (!['suppliers', 'equipment', 'drivers'].includes(activeKey)) return '';
+    const cards = [
+      {
+        key: 'suppliers',
+        navView: 'reg_suppliers',
+        icon: '🏢',
+        step: '1 · AP Counterparties (Who Gets Paid)',
+        title: 'Suppliers & Haulers',
+        desc: 'Register Truck Owners (paid for haulage), Quarries (paid for raw material), and Expense / Parts Vendors.'
+      },
+      {
+        key: 'equipment',
+        navView: 'reg_equipment',
+        icon: '🚛',
+        step: '2 · Physical Vehicles & Plates',
+        title: 'Equipment & Trucks',
+        desc: 'Register dump truck plates, m³ box capacities & yellow machinery, linked to their Truck Owner & Default Driver.'
+      },
+      {
+        key: 'drivers',
+        navView: 'reg_drivers',
+        icon: '👤',
+        step: '3 · People Behind the Wheel',
+        title: 'Drivers & Operators',
+        desc: 'Register company & third-party drivers, linked to their Default Truck Plate and Truck Owner (Hauler).'
+      }
+    ];
+    return `
+      <div class="pa-registry-guide-strip" id="fleetCounterpartyGuide">
+        ${cards.map(c => `
+          <button type="button" class="pa-reg-guide-card ${c.key === activeKey ? 'is-active' : ''}" data-univ-reg-key="${esc(c.key)}" data-univ-nav-view="${esc(c.navView)}">
+            <div class="pa-reg-guide-top">
+              <span class="pa-reg-guide-step">${esc(c.icon)} ${esc(c.step)}</span>
+              <span class="pa-reg-guide-badge">${c.key === activeKey ? 'Viewing Now' : 'Open Registry →'}</span>
+            </div>
+            <div class="pa-reg-guide-title">${esc(c.title)}</div>
+            <div class="pa-reg-guide-desc">${esc(c.desc)}</div>
+          </button>
+        `).join('')}
+      </div>
+    `;
+  }
+
   // ==================== DEDICATED UNIVERSAL REGISTRIES WORKSPACE RENDERER ====================
   function renderUniversalRegistriesView(ctx) {
     const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle } = ctx;
@@ -3765,7 +4002,7 @@
     const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
     const totalAllBu = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true });
-    const baseFiltered = filterRecords(rawList, { ignorePeriod: true, ignoreCompany: true, ignoreRls: true });
+    const baseFiltered = filterRecords(rawList, { cols: meta.cols, tableKey: meta.key, ignorePeriod: true, ignoreCompany: true, ignoreRls: true });
     const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
     const activeView = views.find(v => v.id === activeViewId) || views[0];
@@ -3802,6 +4039,8 @@
         </div>
       </div>
 
+      ${renderFleetCounterpartyGuideStrip(meta.key)}
+
       <div class="panel-card" id="univRegPanel">
         <div class="pa-hub-rel-strip">
           <div class="pa-hub-views">
@@ -3825,18 +4064,19 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search ' + meta.label + ' (All BUs)...')}
+            ${searchBox('Search ' + meta.label + ' (All BUs · or type col:value)...')}
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('univRegPanel', meta.key)}
             ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/s$/, ''))}</button>` : ''}
           </div>
         </div>
+        ${typeof ctx.renderColFilterBar === 'function' ? ctx.renderColFilterBar('ureg_' + meta.key, meta.cols) : ''}
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('ureg_' + meta.key, c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('ureg_' + meta.key, hubColLabel(c, meta.key), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
@@ -3856,7 +4096,7 @@
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : (c === 'company' ? shortCoHtml(cell) : esc(cell));
+                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : esc(cell)));
                     return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
@@ -3875,7 +4115,7 @@
                   let firstNum = meta.cols.findIndex((col, idx) => idx > 0 && isColNumeric(col).num);
                   if (firstNum < 0) firstNum = meta.cols.length;
                   const leadSpan = Math.max(1, firstNum);
-                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`];
+                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} RECORDS)</b></td>`];
                   for (let ci = leadSpan; ci < meta.cols.length; ci++) {
                     const c = meta.cols[ci];
                     const { isM: isMoney, isN: isNum } = isColNumeric(c);
