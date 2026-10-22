@@ -2479,18 +2479,40 @@ try {
     const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
     const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,640');
 
-    // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views & 3-card Fleet/Counterparty Guide Strip
+    // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, 3-card Fleet/Counterparty Guide Strip, clean header hover, wide search box & custom pill popover
     document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
     await wait(60);
     const guideCards = document.querySelectorAll('#fleetCounterpartyGuide .pa-reg-guide-card');
     const supViews = document.querySelectorAll('#univRegPanel [data-tbl-view]');
     const supHeaders = Array.from(document.querySelectorAll('#univRegPanel thead th')).map(th => th.textContent.replace(/⧩/g, '').trim());
+    const supSearchEl = document.querySelector('#univRegPanel .table-toolbar .search-input');
+    const supSearchPlaceholderClean = supSearchEl && supSearchEl.placeholder === 'Search Suppliers & Haulers...';
+    const supSearchWidthOk = Boolean(supSearchEl && (window.innerWidth < 768 || supSearchEl.getBoundingClientRect().width >= 235));
+    const methodTh = document.querySelector('#univRegPanel th[data-sort-key="method"]');
+    const methodFilterBtn = methodTh ? methodTh.querySelector('.th-filter-btn') : null;
+    const methodTools = methodTh ? methodTh.querySelector('.tbl-th-tools') : null;
+    const headerNoJamOk = Boolean(
+      methodFilterBtn && getComputedStyle(methodFilterBtn).position === 'relative' &&
+      methodTools && getComputedStyle(methodTools).opacity === '0'
+    );
+    const trucksPillBtn = document.querySelector('#univRegPanel .cf-pill-trigger[data-th-filter-key="trucks_list"]');
+    if (trucksPillBtn) trucksPillBtn.click();
+    const supPop = document.getElementById('colFilterPopover');
+    const supPopInputsCount = supPop ? supPop.querySelectorAll('input').length : 0;
+    const supPopOptTexts = supPop ? Array.from(supPop.querySelectorAll('.cf-pop-opt-lbl')).map(el => el.textContent.trim()) : [];
+    const supPopTokenizedOk = supPop && !supPop.hidden && supPopInputsCount === 1 &&
+      supPopOptTexts.length > 10 &&
+      !supPopOptTexts.some(t => /\\(\\+\\d+\\)/.test(t)) &&
+      Boolean(document.getElementById('cfPopWidenBtn'));
+    const closePopBtn = document.getElementById('cfPopCloseBtn');
+    if (closePopBtn) closePopBtn.click();
     const supLogicalOk = guideCards.length === 3 && supViews.length === 6 &&
       supHeaders.some(h => /Role/i.test(h)) &&
       supHeaders.some(h => /Owned Trucks/i.test(h)) &&
       supHeaders.some(h => /Linked Drivers/i.test(h)) &&
       supHeaders.some(h => /Haul Loads/i.test(h)) &&
-      !supHeaders.some(h => /Official Name/i.test(h));
+      !supHeaders.some(h => /Official Name/i.test(h)) &&
+      supSearchPlaceholderClean && supSearchWidthOk && headerNoJamOk && supPopTokenizedOk;
 
     // 8. Verify Column Filter Bar on Operational Sales & Deliveries (#sales) + search syntax "co:WTC method:Cash"
     document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();

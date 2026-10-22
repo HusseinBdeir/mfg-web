@@ -64,6 +64,21 @@ ALLOWED_TABLES = {
 # Tables the web entry desk may write through POST /api/records
 USER_WRITABLE_TABLES = ALLOWED_TABLES - {"users"}
 
+# Universal registries where main column (name, or (category, name) for expense_subcategories) must be unique
+UNIVERSAL_UNIQUE_TABLES = {
+    "customers",
+    "suppliers",
+    "products",
+    "product_types",
+    "uoms",
+    "sites",
+    "regions",
+    "equipment",
+    "drivers",
+    "expense_categories",
+    "expense_subcategories",
+}
+
 # App-entry audit columns added on first run so INSERT OR REPLACE keeps them
 APP_AUDIT_COLUMNS = (
     ("source", "TEXT DEFAULT ''"),
@@ -468,6 +483,28 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(str(DB_PATH))
             cur = conn.cursor()
             cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+            if table in UNIVERSAL_UNIQUE_TABLES and not record.get("voided"):
+                rec_id = str(record.get("id") or "").strip()
+                main_val = str(record.get("name") or record.get("driver") or record.get("equipment") or "").strip()
+                if main_val and "name" in cols:
+                    void_clause = "AND COALESCE(voided, 0) = 0" if "voided" in cols else ""
+                    if table == "expense_subcategories" and "category" in cols:
+                        cat_val = str(record.get("category") or "").strip()
+                        dup_row = cur.execute(
+                            f"SELECT id, name FROM {table} WHERE id != ? AND lower(trim(name)) = lower(trim(?)) AND lower(trim(COALESCE(category,''))) = lower(trim(?)) {void_clause} LIMIT 1",
+                            (rec_id, main_val, cat_val),
+                        ).fetchone()
+                    else:
+                        dup_row = cur.execute(
+                            f"SELECT id, name FROM {table} WHERE id != ? AND lower(trim(name)) = lower(trim(?)) {void_clause} LIMIT 1",
+                            (rec_id, main_val),
+                        ).fetchone()
+                    if dup_row:
+                        conn.close()
+                        return self._send_json(
+                            {"ok": False, "error": f"Duplicate {table} main column '{main_val}' already exists (id={dup_row[0]})."},
+                            409,
+                        )
             valid = {}
             for k, v in record.items():
                 if k not in cols:
