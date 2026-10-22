@@ -463,16 +463,17 @@ try {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
-    // (1) Check canonical ordering: Sale Type -> Transported By -> Ticket # -> Date -> Reporting Date -> Product -> Customer -> Site -> Truck -> Driver -> Method -> Qty -> Unit -> Unit Price -> Totals
+    // (1) Check canonical ordering: Company (BU) -> Transaction Date -> Reporting Date -> Dispatch Time -> Sale Type -> Transported By -> Ticket # -> Product -> Customer -> Site -> Truck -> Driver -> Method -> Qty -> Unit -> Unit Price -> Totals
     const orderedIds = Array.from(document.querySelectorAll('#modalBody input[id], #modalBody select[id]')).map(e => e.id);
     const idx = id => orderedIds.indexOf(id);
     const orderingOk =
-      idx('f_company') < idx('f_saletype') &&
+      idx('f_company') < idx('f_date') &&
+      idx('f_date') < idx('f_repdate') &&
+      idx('f_repdate') < idx('f_time') &&
+      idx('f_time') < idx('f_saletype') &&
       idx('f_saletype') < idx('f_transportby') &&
       idx('f_transportby') < idx('f_ticketno') &&
-      idx('f_ticketno') < idx('f_date') &&
-      idx('f_date') < idx('f_repdate') &&
-      idx('f_repdate') < idx('f_product') &&
+      idx('f_ticketno') < idx('f_product') &&
       idx('f_product') < idx('f_customer') &&
       idx('f_customer') < idx('f_site') &&
       idx('f_site') < idx('f_truck') &&
@@ -496,9 +497,26 @@ try {
     const pickupTruckOwnerVisible = document.getElementById('wrap_f_truckowner').hidden === false;
     set('f_saletype', 'Delivery');
 
-    // (3) Check Reporting Date (f_repdate) auto-sync with Transaction Date (f_date)
-    set('f_date', '2026-06-12');
-    const repSynced = document.getElementById('f_repdate').value === '2026-06-12';
+    // (3) Check Policy-Locked Transaction Date (f_date) + On-Demand Collapsible Reporting Date (f_repdate)
+    const dEl = document.getElementById('f_date');
+    const dWrap = document.getElementById('wrap_f_date');
+    const repEl = document.getElementById('f_repdate');
+    const repWrap = document.getElementById('wrap_f_repdate');
+    const toggleRepBtn = document.getElementById('toggleRepDateBtn');
+    const resetRepBtn = document.getElementById('resetRepDateBtn');
+    const dateStartsLocked = dEl && dEl.readOnly === true && dWrap && dWrap.classList.contains('is-policy-locked');
+    const repStartsHiddenAndSynced = repWrap && repWrap.hidden === true && repEl.value === dEl.value && toggleRepBtn && !toggleRepBtn.hidden;
+    if (toggleRepBtn) toggleRepBtn.click();
+    const repRevealedOnClick = repWrap && repWrap.hidden === false;
+    set('f_repdate', '2026-06-12');
+    const repKeptWhenDifferent = repWrap && repWrap.hidden === false && repEl.value === '2026-06-12';
+    if (resetRepBtn) resetRepBtn.click();
+    const repResetAndCollapsed = repWrap && repWrap.hidden === true && repEl.value === dEl.value;
+    const repSynced = dateStartsLocked && repStartsHiddenAndSynced && repRevealedOnClick && repKeptWhenDifferent && repResetAndCollapsed;
+
+    // Verify zero (m66) / (mNN) / bhf_* internal strings in modal UI
+    const modalText = (document.getElementById('modalBody')?.textContent || '') + ' ' + (document.getElementById('paModalSubtabs')?.textContent || '');
+    const noInternalCodes = !/\\(m\\d+/i.test(modalText) && !/\\bbhf_[a-z]/i.test(modalText);
 
     // (4) Check Policy-Locked state + Admin Privilege Unlock Process
     const upEl = document.getElementById('f_unitprice');
@@ -525,15 +543,15 @@ try {
       orderingOk,
       delivSiteVisible, delivTransVisible, delivOwnerHiddenOnCoFleet,
       pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
-      repSynced,
+      repSynced, noInternalCodes,
       startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow
     };
   })()`);
   intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
   intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
-  intuitiveEntryProbe.repSynced && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
-    ? pass('entry desk · v7.0 Intuitive Ordering, Pickup Column Gating (Site/Trans hidden), Reporting Date Sync & Admin Unlock Process')
-    : fail('entry desk v7.0 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
+  intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
+    ? pass('entry desk · v7.9 BU -> Locked Transaction Date -> On-Demand Reporting Date -> Time ordering, Pickup Gating, Clean UI & Admin Unlock')
+    : fail('entry desk v7.9 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
 
   // 6d. Strict Multi-Column Control Box Alignment (locked + unlocked fields stay on 1-line labels with 0px vertical input offset across columns)
   const colAlignmentProbe = await evaluate(`(() => {

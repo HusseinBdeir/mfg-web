@@ -5839,12 +5839,12 @@
   // SMART ENTRY DESK — SIX FORMS WITH THE DATAVERSE FORM RULES
   // ==========================================================================
   const FORM_TITLES = Object.assign({
-    sales: 'New Sales Ticket (Price Agreement · VAT · Overtime · Duplicate Guards)',
-    raw: 'New Raw Material Quarry Receipt (2-Leg AP Split)',
-    receipt: 'New Customer Receipt (FIFO Auto-Allocated)',
-    fuel: 'New Diesel / Lubricant Intake (M142 Meter Guard)',
-    expense: 'New Expense (Cash Till or Supplier Credit)',
-    settlement: 'New Supplier / Hauler Settlement (Oldest Leg First)'
+    sales: 'New Sales Ticket',
+    raw: 'New Raw Material Ticket',
+    receipt: 'New Customer Settlement',
+    fuel: 'New Fuel & Lubricant Intake',
+    expense: 'New Expense',
+    settlement: 'New Supplier Settlement'
   }, (window.MFG_FORMS && window.MFG_FORMS.FORM_TITLES) || {});
   const FORM_CR_KEY = Object.assign({
     sales: 'sales_tickets', raw: 'raw_purchases', receipt: 'receipts',
@@ -5857,7 +5857,7 @@
   function fld(label, inner, opts = {}) {
     const lockAttr = opts.lockField ? ` data-policy-lock="${esc(opts.lockField)}" data-lock-reason="${esc(opts.lockReason || 'Locked by business rule')}"` : '';
     const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
-    return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
+    return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.afterHtml || ''}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
   }
   function inp(id, type, value, attrs = '') {
     return `<input type="${type}" id="${id}" value="${esc(value == null ? '' : value)}" autocomplete="off" ${attrs}>`;
@@ -5889,8 +5889,17 @@
     const today = todayISO();
     const dateAttrs = `min="${MIN_DATE}" max="${today}" required`;
     const companyField = fld('Company (BU) *', sel('f_company', comps, company), { id: 'wrap_f_company', hint: comps.length === 1 ? 'Your seat is scoped to this entity' : '' });
-    const dateField = fld('Transaction Date *', inp('f_date', 'date', today, dateAttrs), { id: 'wrap_f_date', hintId: 'hint_date', hint: '' });
-    const repDateField = fld('Reporting Date *', inp('f_repdate', 'date', today, dateAttrs), { id: 'wrap_f_repdate', hintId: 'hint_repdate', hint: 'Auto-follows Transaction Date (m66)' });
+    const dateField = fld('Transaction Date *', inp('f_date', 'date', today, `${dateAttrs} readonly`), {
+      id: 'wrap_f_date',
+      lockField: 'f_date',
+      lockReason: 'Locked to entry date for Cash Flow accuracy — use Reporting Date for report adjustments',
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">📅 Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
+    });
+    const repDateField = fld('Reporting Date *', inp('f_repdate', 'date', today, dateAttrs), {
+      id: 'wrap_f_repdate',
+      hidden: true,
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-reset-btn" id="resetRepDateBtn">× Same as Transaction Date</button><span class="hint" id="hint_repdate"></span></div>`
+    });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
     const adminHeaderHtml = `<div id="paAdminLockBar"></div><div id="paAdminUnlockBox" hidden></div>`;
@@ -5907,13 +5916,14 @@
       const prods = productList(true);
       const prodMetaItems = prods.map(p => [p.name, `${p.uom || 'm³'}${Number(p.ton_factor) && Number(p.ton_factor) !== 1 ? ' · ×' + p.ton_factor + ' t' : ''}`]);
       return cockpitHtml + `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>Smart Agreement &amp; Policy-Lock Engine (bhf_salesticket):</strong> Ordered by the canonical Dataverse dispatch workflow (<i>Sale Type → Transported By → Ticket # → Dates &amp; Time → Product → Customer → Site → Cascading Fleet → Locked Amounts</i>). Irrelevant columns hide automatically (e.g., <b>Pickup</b> hides <i>Destination Site, Transported By, Overtime &amp; Transport Price</i>). Policy-locked fields show <b>🔒 LOCKED</b> and can be unlocked via your <b>Admin Privilege</b>.
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
-          ${secHdr('1. Ticket, Dispatch & Cascading Fleet', 'Sale Type & Transported By dynamically show/hide Site, Truck Owner & Overtime (m49/m126b/m130)')}
+          ${secHdr('1. Ticket, Dispatch & Fleet')}
           ${companyField}
+          ${dateField}
+          ${repDateField}
+          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
+          <div class="form-field check-field" id="wrap_f_overtime"><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (outside 06:00–17:59)</label></div>
           ${fld('Sale Type *', sel('f_saletype', [
             ['Delivery', 'Delivery (Material + Transport)'],
             ['Pickup', 'Pickup (Ex-Quarry / Plant — No Site or Transport)'],
@@ -5924,34 +5934,30 @@
             ['Third-party truck', 'Third-party truck (Hauler)']
           ], 'Company fleet'), { id: 'wrap_f_transportby' })}
           ${fld('Ticket / Invoice No. *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter pad ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
-          ${dateField}
-          ${repDateField}
-          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
-          <div class="form-field check-field" id="wrap_f_overtime"><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (company fleet outside 06:00–17:59 · m130)</label></div>
-          ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: 'Product leads Customer (m132) so List Price & UoM populate immediately' })}
+          ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { id: 'wrap_f_customer', hintId: 'hint_customer', hint: '' })}
-          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: 'Required on Delivery (hidden on Pickup · m49)' })}
-          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, hintId: 'hint_truckowner', hint: 'Filters Truck & Driver lists (m125/m131)' })}
-          ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Cascading Fleet Lock (m125): Locked on Third-party / Pickup until Truck Owner is selected; auto-open on Company fleet', hintId: 'hint_truck', hint: 'Required on Delivery' })}
-          ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Cascading Driver Lock (m131): Locked on Third-party / Pickup until Truck Owner is selected; auto-filled from Truck Default Driver', hintId: 'hint_driver', hint: 'Required on Delivery' })}
+          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
+          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-open on Company fleet', hintId: 'hint_truck', hint: '' })}
+          ${fld('Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked on Third-party / Pickup until Truck Owner is selected; auto-filled from Truck Default Driver', hintId: 'hint_driver', hint: '' })}
           ${truckQvHtml}
-          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (Posts to 4111 AR)'], ['Cash', 'Cash (Posts to 5300 Till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Customer Payment Method Lock (m50 / m58): Locked to the Customer Master default (Cash or Credit) so Cash customers never post to AR', hintId: 'hint_method', hint: 'Locked to customer default (m50/m58)' })}
+          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (Posts to 4111 AR)'], ['Cash', 'Cash (Posts to 5300 Till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
 
-          ${secHdr('2. Quantities & Policy-Locked Amounts (m56 / m103 / m222)', 'Unit Price, Quantity, Unit & Totals are policy-locked to Agreement / Truck Capacity; Discount & Driver Tip are open')}
-          ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Truck Capacity Quantity Lock (m125 / m128 / m229): Locked to Truck Capacity (m³) or 1 when Unit = Truck; auto-unlocks if truck has no capacity or Unit overrides Product UoM', hintId: 'hint_qty', hint: '' })}
-          ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Unit of Measure Lock (m222 / m228): Locked to Price Agreement Unit or Product default UoM; unlock as Admin to override Unit', hintId: 'hint_uom', hint: 'Locked to Agreement / Product UoM (m228)' })}
-          ${fld('Customer-declared Qty', inp('f_extqty', 'number', '', 'step="0.01" min="0" inputmode="decimal" placeholder="Customer ticket qty"'), { id: 'wrap_f_extqty', hidden: true, hint: 'Shown for customers with Declared Qty flag (m60)' })}
-          ${fld('Unit Price ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Price Agreement Lock (m56 / m136): Locked on Pickup & Delivery to active Price Agreement or List Price; unlock with Admin privilege for spot pricing', hintId: 'hint_price', hint: '' })}
-          ${fld('<span id="lbl_mat_total">Material Total (USD) *</span>', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Formula Lock (m56 / m103): Computed as Quantity × Unit Price + Tier Adjustment − Discount', hintId: 'hint_mat_total', hint: 'Qty × Unit Price + Tier Adj − Discount' })}
-          ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Transport Rate Lock (m51 / m56): Locked to Price Agreement transport rate on Delivery; hidden on Pickup', hintId: 'hint_trans', hint: '' })}
-          ${fld('Transport Total (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Formula Lock (m51 / m56): Computed as Quantity × Transport Unit Price + Tier Transport Adjustment', hintId: 'hint_trans_total', hint: 'Qty × Transport Unit Price' })}
-          ${fld('Driver Tip ($)', inp('f_tip', 'number', '0.00', 'step="0.50" min="0" inputmode="decimal"'), { id: 'wrap_f_tip', hint: 'Optional driver tip (unlocked)' })}
-          ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount', hintId: 'hint_disc', hint: 'Editable discount (>20% requires note)' })}
-          ${fld('Total Ex-VAT (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Formula Lock (m135b): Computed as Material Total + Transport Total', hint: 'Material Total + Transport Total (m135b)' })}
+          ${secHdr('2. Quantities & Amounts')}
+          ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Locked to Truck Capacity (m³) or 1 when Unit = Truck; auto-unlocks if truck has no capacity', hintId: 'hint_qty', hint: '' })}
+          ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Locked to Price Agreement Unit or Product default UoM', hintId: 'hint_uom', hint: '' })}
+          ${fld('Customer-declared Qty', inp('f_extqty', 'number', '', 'step="0.01" min="0" inputmode="decimal" placeholder="Customer ticket qty"'), { id: 'wrap_f_extqty', hidden: true })}
+          ${fld('Unit Price ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Locked on Pickup & Delivery to active Price Agreement or List Price', hintId: 'hint_price', hint: '' })}
+          ${fld('<span id="lbl_mat_total">Material Total (USD) *</span>', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Computed as Quantity × Unit Price + Tier Adjustment − Discount', hintId: 'hint_mat_total', hint: 'Qty × Unit Price + Tier Adj − Discount' })}
+          ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Locked to Price Agreement transport rate on Delivery; hidden on Pickup', hintId: 'hint_trans', hint: '' })}
+          ${fld('Transport Total (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Computed as Quantity × Transport Unit Price + Tier Transport Adjustment', hintId: 'hint_trans_total', hint: 'Qty × Transport Unit Price' })}
+          ${fld('Driver Tip ($)', inp('f_tip', 'number', '0.00', 'step="0.50" min="0" inputmode="decimal"'), { id: 'wrap_f_tip' })}
+          ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount', hintId: 'hint_disc', hint: '' })}
+          ${fld('Total Ex-VAT (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Computed as Material Total + Transport Total', hint: 'Material Total + Transport Total' })}
 
-          ${secHdr('3. References, Statutory VAT & Notes', 'VAT Invoice & External Invoice unhide automatically based on Customer Master flags (m60/m68)')}
-          ${fld('VAT Invoice No.', inp('f_vatinvoice', 'text', '', 'placeholder="Auto-linked VAT invoice" readonly'), { id: 'wrap_vatinvoice', hidden: true, lockField: 'f_vatinvoice', lockReason: 'VAT Invoice Lock (m68): Linked by statutory VAT invoicing batch; Admin can unlock to bind a manual serial', hint: '11% VAT applies to this customer (m68)' })}
-          ${fld('External Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Customer external ref"'), { id: 'wrap_f_extinvoice', hidden: true, hint: 'Shown for customers requiring External Invoice # (m60)' })}
+          ${secHdr('3. References, Statutory VAT & Notes')}
+          ${fld('VAT Invoice No.', inp('f_vatinvoice', 'text', '', 'placeholder="Auto-linked VAT invoice" readonly'), { id: 'wrap_vatinvoice', hidden: true, lockField: 'f_vatinvoice', lockReason: 'Linked by statutory VAT invoicing batch', hint: '11% VAT applies to this customer' })}
+          ${fld('External Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Customer external ref"'), { id: 'wrap_f_extinvoice', hidden: true })}
           ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Optional PO / dispatch ref"'), { id: 'wrap_f_reference' })}
           <div class="form-field check-field" id="wrap_dupok" hidden><input type="checkbox" id="f_dupok"><label for="f_dupok">Post anyway — duplicate ticket number confirmed</label></div>
           ${notesField}
@@ -5972,42 +5978,39 @@
         return [nm, p ? `${p.uom || 'm³'}${Number(p.ton_factor) && Number(p.ton_factor) !== 1 ? ' · ×' + p.ton_factor + ' t' : ''}` : 'm³'];
       });
       return cockpitHtml + `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>Two-Payable Raw Intake &amp; Policy-Lock Engine (bhf_rawpurchase · m81 / m125 / m192):</strong> Material cost is owed to the <strong>Quarry Site Owner</strong>; haulage is owed to the <strong>Truck Owner</strong> and hides when a company-fleet truck hauls it. Selecting a Quarry Site auto-fills Site Owner &amp; Truck Owner (m84). Discount leads the Amounts section and is the only unlocked amount field by default (m81).
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
-          ${secHdr('1. Quarry Receipt, Dates & Cascading Haulage', 'Transported By = Company fleet hides Truck Owner & Haulage Cost; Site auto-fills Owners (m84/m126b/m130)')}
+          ${secHdr('1. Quarry Receipt & Haulage')}
           ${companyField}
+          ${dateField}
+          ${repDateField}
+          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
+          <div class="form-field check-field" id="wrap_f_overtime" hidden><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (outside 06:00–17:59)</label></div>
           ${fld('Ticket # *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Transported By *', sel('f_transportby', [
             ['Third-party truck', 'Third-party truck (Hauler paid)'],
             ['Company fleet', 'Company fleet (Own Truck — Haulage $0)']
           ], 'Third-party truck'), { id: 'wrap_f_transportby' })}
-          ${dateField}
-          ${repDateField}
-          ${fld('Dispatch Time *', inp('f_time', 'time', nowHHMM()), { id: 'wrap_f_time', hintId: 'hint_time', hint: 'Day shift 06:00–17:59' })}
-          <div class="form-field check-field" id="wrap_f_overtime" hidden><input type="checkbox" id="f_overtime"><label for="f_overtime">Overtime load (company fleet outside 06:00–17:59 · m130)</label></div>
-          ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: 'Leads before Quarry Site (m80/m132)' })}
-          ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: 'Auto-fills Site Owner & Truck Owner (m84)' })}
-          ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Site Default Owner Lock (m84): Locked to the Quarry Site default supplier when configured; unlock as Admin to override payee', hintId: 'hint_owner', hint: 'Required when the material has a cost' })}
-          ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hintId: 'hint_truckowner', hint: 'Required for third-party haulage (hidden on Company fleet · m126b)' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Cascading Driver Lock (m131): Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_driver', hint: 'Placed right after Truck Owner (m131)' })}
-          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Cascading Truck Lock (m125): Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_truck', hint: '' })}
+          ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
+          ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
+          ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
+          ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Select or type truck owner..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_driver', hint: '' })}
+          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', lockField: 'f_truck', lockReason: 'Locked on Third-party haulage until Truck Owner is selected', hintId: 'hint_truck', hint: '' })}
           ${truckQvHtml}
 
-          ${secHdr('2. Quantities & Policy-Locked Costs (m81 / m222)', 'Discount is first and open; Quantity, Unit, Material Cost & Haulage Cost are policy-locked (m81)')}
-          ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount', hint: 'First in Amounts & unlocked by default (m81)' })}
-          ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Truck Capacity Quantity Lock (m125 / m128): Locked to Truck Capacity (m³) when known; auto-unlocks if truck has no capacity', hintId: 'hint_qty', hint: '' })}
-          ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Unit Lock (m222 / m228): Locked to Product / Agreement UoM; unlock as Admin to override' })}
-          ${fld('Material Unit Cost ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Quarry Purchase Agreement Lock (m81 / m136): Locked to Purchase Price (Site) or List Price; unlock with Admin privilege to override', hintId: 'hint_price', hint: '' })}
-          ${fld('Material Cost (USD) *', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Formula Lock (m81): Computed as Quantity × Material Unit Cost − Discount' })}
-          ${fld('Haulage Unit Cost ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Haulage Rate Lock (m81): Locked to Transport Price (Site) agreement on third-party loads; hidden on Company fleet', hintId: 'hint_trans', hint: '' })}
-          ${fld('Haulage Cost (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Formula Lock (m81): Computed as Quantity × Haulage Unit Cost' })}
-          ${fld('Total Payable (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Formula Lock (m81): Computed as Material Cost + Haulage Cost' })}
-          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (owed to payees)'], ['Cash', 'Cash (paid from till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Quarry Payable Lock (m81): Locked to Credit (2-leg AP split) by default; unlock as Admin for direct cash purchase' })}
+          ${secHdr('2. Quantities & Costs')}
+          ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount' })}
+          ${fld('Quantity (<span id="lbl_uom">m³</span>) *', inp('f_qty', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_qty', lockField: 'f_qty', lockReason: 'Locked to Truck Capacity (m³) when known', hintId: 'hint_qty', hint: '' })}
+          ${fld('Unit (UoM) *', sel('f_uom', uoms, 'm³'), { id: 'wrap_f_uom', lockField: 'f_uom', lockReason: 'Locked to Product / Agreement UoM' })}
+          ${fld('Material Unit Cost ($) * <span id="lbl_pricelock" hidden>—</span>', inp('f_unitprice', 'number', '', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_unitprice', lockField: 'f_unitprice', lockReason: 'Locked to Purchase Price (Site) or List Price', hintId: 'hint_price', hint: '' })}
+          ${fld('Material Cost (USD) *', inp('f_mat_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_mat_total', lockField: 'f_mat_total', lockReason: 'Computed as Quantity × Material Unit Cost − Discount' })}
+          ${fld('Haulage Unit Cost ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal" readonly'), { id: 'wrap_f_transunitprice', lockField: 'f_transunitprice', lockReason: 'Locked to Transport Price (Site) agreement on third-party loads', hintId: 'hint_trans', hint: '' })}
+          ${fld('Haulage Cost (USD)', inp('f_trans_total', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_trans_total', lockField: 'f_trans_total', lockReason: 'Computed as Quantity × Haulage Unit Cost' })}
+          ${fld('Total Payable (USD) *', inp('f_total_usd', 'number', '0.00', 'step="0.01" readonly'), { id: 'wrap_f_total_usd', lockField: 'f_total_usd', lockReason: 'Computed as Material Cost + Haulage Cost' })}
+          ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit (owed to payees)'], ['Cash', 'Cash (paid from till)']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to Credit (2-leg AP split) by default' })}
 
-          ${secHdr('3. References & Notes', 'Optional supplier invoice & dispatch notes')}
+          ${secHdr('3. References & Notes')}
           ${fld('Supplier Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Quarry / hauler invoice #"'), { id: 'wrap_f_extinvoice' })}
           ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Weighbridge / voucher ref"'), { id: 'wrap_f_reference' })}
           <div class="form-field check-field" id="wrap_dupok" hidden><input type="checkbox" id="f_dupok"><label for="f_dupok">Post anyway — duplicate ticket number confirmed</label></div>
@@ -6024,13 +6027,10 @@
 
     if (fType === 'receipt') {
       return cockpitHtml + `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>FIFO Auto-Allocation (step240 + m165):</strong> the receipt settles the customer's oldest open credit tickets first. VAT-registered customers carry 11% inside their balance; a <strong>VAT</strong> method receipt settles only the VAT leg.
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${dateField.replace('Transaction Date', 'Receipt Date')}
+          ${dateField}
           ${repDateField}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { hintId: 'hint_customer', hint: '' })}
           ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment (Dr 5300 Till / 5121 Bank)'], ['Barter', 'Barter (goods / services)'], ['VAT', 'VAT 11% receipt'], ['Rent', 'Rent offset'], ['VATRent', 'VAT on rent']], 'Payment'))}
@@ -6052,22 +6052,19 @@
     if (fType === 'fuel') {
       const fuelLocs = uniqSorted(['Main Plant Tank', 'WTC Quarry Tank', 'BBConstruction Tank', 'Mobile Bowser', 'External Station'].concat((SEED.records.fuel_intakes || []).map(r => r.location)));
       return cockpitHtml + `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>M91 / M142 Fuel &amp; Meter Guard:</strong> <b>Fuel Type</b> leads first (m91) and hides <i>Lubricant Item</i> when <b>Diesel</b> is selected. Meter Reading hides when <i>No meter</i> is selected and guards against backwards readings or jumps over 5,000 km / 500 h.
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
-          ${secHdr('1. Fuel Type, Dates & Equipment (m91)', 'Lubricant Item hides on Diesel; Reporting Date follows Transaction Date')}
+          ${secHdr('1. Fuel Type, Dates & Equipment')}
           ${companyField}
-          ${fld('Fuel Type *', sel('f_fueltype', [['Diesel', 'Diesel (Plant Tank Issue)'], ['Lubricant', 'Lubricant / Hydraulic / Oil'], ['Petrol', 'Petrol / Gasoline']], 'Diesel'), { id: 'wrap_f_fueltype', hint: 'First field on Fuel Intake (m91)' })}
           ${dateField}
           ${repDateField}
+          ${fld('Fuel Type *', sel('f_fueltype', [['Diesel', 'Diesel (Plant Tank Issue)'], ['Lubricant', 'Lubricant / Hydraulic / Oil'], ['Petrol', 'Petrol / Gasoline']], 'Diesel'), { id: 'wrap_f_fueltype' })}
           ${fld('Ticket #', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Optional ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
-          ${fld('Lubricant / Item *', inp('f_item', 'text', 'Diesel', 'list="dl_fuel_items" placeholder="Select or type lubricant / item..."') + dlMeta('dl_fuel_items', [['Diesel', 'Bulk Fuel (L)'], ['Oil 15W40', 'Engine Oil'], ['Oil 68', 'Hydraulic 68'], ['Hydraulic Oil', 'Hydraulic'], ['Grease', 'Lubricant'], ['Other lubricant', 'Lubricant']]), { id: 'wrap_f_item', hidden: true, hint: 'Visible when Fuel Type = Lubricant (m90/m91)' })}
+          ${fld('Lubricant / Item *', inp('f_item', 'text', 'Diesel', 'list="dl_fuel_items" placeholder="Select or type lubricant / item..."') + dlMeta('dl_fuel_items', [['Diesel', 'Bulk Fuel (L)'], ['Oil 15W40', 'Engine Oil'], ['Oil 68', 'Hydraulic 68'], ['Hydraulic Oil', 'Hydraulic'], ['Grease', 'Lubricant'], ['Other lubricant', 'Lubricant']]), { id: 'wrap_f_item', hidden: true })}
           ${fld('Equipment / Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver' })}
 
-          ${secHdr('2. Intake Quantity & Meter Guard (m142)', 'Meter Reading hides when Meter Type = No meter')}
+          ${secHdr('2. Intake Quantity & Meter Reading')}
           ${fld('Litres Issued (L) *', inp('f_qty', 'number', '', 'step="0.1" min="0.1" inputmode="decimal"'), { id: 'wrap_f_qty', hintId: 'hint_qty', hint: '' })}
           ${fld('Meter Type', sel('f_metertype', [['odometer', 'Odometer (km)'], ['hours', 'Hour meter (h)'], ['none', 'No meter']], 'odometer'), { id: 'wrap_f_metertype' })}
           ${fld('Meter Reading', inp('f_meter', 'number', '', 'step="1" min="0" inputmode="numeric"'), { id: 'wrap_f_meter', hintId: 'hint_meter', hint: '' })}
@@ -6086,17 +6083,14 @@
     if (fType === 'expense') {
       const cats = expenseCategories();
       return cockpitHtml + `
-        <div class="rule-banner" id="smartRuleBanner">
-          <strong>Expense Posting &amp; Strict Category Cascade (bhf_subcatFilter.js · m140):</strong> <i>Subcategory</i> stays locked until a <b>Category</b> is chosen. Cash expenses credit the till (5300); Credit expenses require a <b>Supplier</b> and open a Class 4 payable leg.
-        </div>
         ${adminHeaderHtml}
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Payment Method (Scope) *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Credit', 'Credit (Cr 4011 Supplier AP)']], 'Cash'), { id: 'wrap_f_method' })}
           ${dateField}
           ${repDateField}
+          ${fld('Payment Method (Scope) *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Credit', 'Credit (Cr 4011 Supplier AP)']], 'Cash'), { id: 'wrap_f_method' })}
           ${fld('Category *', inp('f_category', 'text', '', 'list="dl_categories" placeholder="Select or type category..."') + dlMeta('dl_categories', cats.map(c => [c.category, c.subs && c.subs.length ? `${c.subs.length} subcats` : ''])), { id: 'wrap_f_category' })}
-          ${fld('Subcategory', inp('f_subcategory', 'text', '', 'list="dl_subcats" placeholder="Pick Category first..." readonly') + dl('dl_subcats', uniqSorted(cats.flatMap(c => c.subs))), { id: 'wrap_f_subcategory', lockField: 'f_subcategory', lockReason: 'Strict Category -> Subcategory Cascade Lock (bhf_subcatFilter.js): Locked until Category is selected; Admin can unlock to enter custom subcategory', hintId: 'hint_subcat', hint: 'Locked until Category is picked' })}
+          ${fld('Subcategory', inp('f_subcategory', 'text', '', 'list="dl_subcats" placeholder="Pick Category first..." readonly') + dl('dl_subcats', uniqSorted(cats.flatMap(c => c.subs))), { id: 'wrap_f_subcategory', lockField: 'f_subcategory', lockReason: 'Locked until Category is selected', hintId: 'hint_subcat', hint: '' })}
           ${fld('Supplier / Vendor', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_supplier', hintId: 'hint_supplier', hint: 'Required for Credit' })}
           ${fld('Equipment (cost centre)', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck' })}
           ${fld('Quantity', inp('f_qty', 'number', '1', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_qty' })}
@@ -6115,13 +6109,10 @@
 
     // settlement
     return cockpitHtml + `
-      <div class="rule-banner" id="smartRuleBanner">
-        <strong>Supplier settlement (step241):</strong> the payment relieves the supplier's oldest open legs first (material, haulage, then credit expenses). A <strong>VAT / IVA</strong> method settles only the VAT leg of an IVA invoice.
-      </div>
       ${adminHeaderHtml}
       <div class="form-grid-3">
         ${companyField}
-        ${dateField.replace('Transaction Date', 'Settlement Date')}
+        ${dateField}
         ${repDateField}
         ${fld('Supplier / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames()), { hintId: 'hint_supplier', hint: '' })}
         ${fld('Payment Method *', sel('f_method', [['Payment', 'Payment (Cr 5300 Till / 5121 Bank)'], ['Barter', 'Barter'], ['VAT', 'VAT 11% only'], ['IVA', 'IVA invoice (net + VAT)']], 'Payment'))}
@@ -6143,7 +6134,7 @@
   // ---- live rule & policy-lock engine -----------------------------------------
   const FORM_UI = {
     priceManual: false, transManual: false, methodManual: false, uomManual: false,
-    otManual: false, ticketManual: false, qtyManual: false, repDateManual: false,
+    otManual: false, ticketManual: false, qtyManual: false, repDateManual: false, showRepDate: false,
     lastCompany: '', lastDate: '', lastCategory: null, catCache: null,
     adminUnlocked: {}, unlockTargetField: '', unlockNote: ''
   };
@@ -6405,18 +6396,26 @@
     const d = val('f_date');
     const today = todayISO();
     if (!d) return;
-    // Sync Reporting Date (f_repdate) to Transaction Date (f_date) unless manually edited (bhf_txnDate.js parity)
+    // Sync Reporting Date (f_repdate) to Transaction Date (f_date) unless manually edited
     const repEl = $('f_repdate');
     if (repEl) {
+      applyFieldLockState('f_date', true, 'Locked to entry date for Cash Flow accuracy — use Reporting Date for report adjustments');
       if (!FORM_UI.repDateManual || !repEl.value || repEl.value === FORM_UI.lastDate) {
         repEl.value = d;
       }
+      const showRep = Boolean(FORM_UI.showRepDate || (FORM_UI.repDateManual && repEl.value && repEl.value !== d));
+      setFieldVisible('wrap_f_repdate', showRep);
+      const tBtn = $('toggleRepDateBtn');
+      if (tBtn) {
+        tBtn.textContent = showRep ? `📅 Reporting Date (${repEl.value})` : '📅 Different Reporting Date?';
+        tBtn.classList.toggle('active', showRep);
+      }
       const gap = daysBetween(d, repEl.value);
       if (Math.abs(gap) > 60) {
-        setHint('hint_repdate', `Reporting Date is ${Math.abs(gap)} days from Transaction Date (>60d m277 guard)`, 'warn');
+        setHint('hint_repdate', `Reporting Date is ${Math.abs(gap)} days from Transaction Date (>60d)`, 'warn');
         warnings.push('repdate_gap');
       } else {
-        setHint('hint_repdate', repEl.value === d ? 'Synced with Transaction Date (m66)' : `Custom Reporting Date (${repEl.value})`, '');
+        setHint('hint_repdate', repEl.value === d ? 'Same as Transaction Date' : `For reports & statements (${repEl.value})`, '');
       }
     }
     FORM_UI.lastDate = d;
@@ -6494,18 +6493,17 @@
     setFieldVisible('wrap_vatinvoice', vatReg);
     setFieldVisible('wrap_f_extqty', !!(cust && cust.customer_declared_qty));
     setFieldVisible('wrap_f_extinvoice', !!(cust && cust.external_invoice));
-    applyFieldLockState('f_vatinvoice', true, 'VAT Invoice Lock (m68): Linked by statutory VAT invoicing batch; unlock with Admin privilege to enter manually');
+    applyFieldLockState('f_vatinvoice', true, 'Linked by statutory VAT invoicing batch; unlock with Admin privilege to enter manually');
 
     const methEl = $('f_method');
-    const methodLocked = applyFieldLockState('f_method', true, `Customer Payment Method Lock (m50/m58): Locked to ${cust ? cust.Customer + ' default (' + custMethod + ')' : 'default (' + custMethod + ')'}`);
+    const methodLocked = applyFieldLockState('f_method', true, `Locked to ${cust ? cust.Customer + ' default (' + custMethod + ')' : 'default (' + custMethod + ')'}`);
     if (methEl && methodLocked && !FORM_UI.methodManual && (custMethod === 'Cash' || custMethod === 'Credit')) {
       methEl.value = custMethod;
     }
 
-    // 4. Cascading Truck Owner -> Truck -> Driver (m125 / m126b / m131)
+    // 4. Cascading Truck Owner -> Truck -> Driver
     let truckName = val('f_truck');
     let truckRow = truckName ? equipInfo(truckName) : null;
-    // If a truck was selected or set programmatically on a 3P/Pickup load without Truck Owner, back-fill Truck Owner from the truck's supplier (bhf_manufacturing.js line 405)
     if (is3POrPickup && truckRow && truckRow.supplier && $('f_truckowner') && !val('f_truckowner')) {
       $('f_truckowner').value = truckRow.supplier;
     }
@@ -6534,14 +6532,14 @@
         $('f_driver').value = allowedDrivers[0];
       }
     }
-    setHint('hint_truckowner', is3POrPickup ? (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Select Truck Owner first to unlock Truck & Driver (m125/m131)') : '', is3POrPickup && !truckOwner ? 'warn' : '');
+    setHint('hint_truckowner', is3POrPickup ? (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Select Truck Owner first to unlock Truck & Driver') : '', is3POrPickup && !truckOwner ? 'warn' : '');
 
     const needOwnerFirst = is3POrPickup && !truckOwner && !truckName;
     applyFieldLockState('f_truck', needOwnerFirst, needOwnerFirst
-      ? 'Cascading Fleet Lock (m125): Select Truck Owner first to unlock Truck, or use Admin Unlock'
+      ? 'Select Truck Owner first to unlock Truck, or use Admin Unlock'
       : 'Unlocked by rule (Company fleet or Truck Owner selected)');
     applyFieldLockState('f_driver', needOwnerFirst, needOwnerFirst
-      ? 'Cascading Driver Lock (m131): Select Truck Owner first to unlock Driver, or use Admin Unlock'
+      ? 'Select Truck Owner first to unlock Driver, or use Admin Unlock'
       : 'Unlocked by rule (Company fleet or Truck Owner selected)');
 
     const ownTruck = !!(truckRow && (/^own/i.test(truckRow.ownership || '') || norm(truckRow.supplier) === norm(company)));
@@ -6553,23 +6551,23 @@
     }
     if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver')) $('f_driver').value = truckRow.default_driver;
 
-    // 5. Price Agreement & List Price Lock (m56 / m103 / m136 / m228 / m229)
+    // 5. Price Agreement & List Price Lock
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
     const wantType = isPickup ? 'Sales (Pickup)' : 'Sales (Delivery)';
     let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType] }) : null;
     const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
 
     const targetUom = (rule && rule.unit) ? rule.unit : baseUom;
-    const uomLocked = applyFieldLockState('f_uom', !isUnreg, `Unit Lock (m222/m228): Locked to ${rule && rule.unit ? 'Agreement Unit' : 'Product UoM'} (${targetUom})`);
+    const uomLocked = applyFieldLockState('f_uom', !isUnreg, `Locked to ${rule && rule.unit ? 'Agreement Unit' : 'Product UoM'} (${targetUom})`);
     if (uomEl && uomLocked && !FORM_UI.uomManual) {
       uomEl.value = targetUom;
     }
     const uom = (uomEl && uomEl.value) ? uomEl.value : targetUom;
     setText('lbl_uom', uom);
-    setHint('hint_product', prod ? (Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `1 ${baseUom} = ${prod.ton_factor} t` : `Default UoM: ${baseUom}`) : (product ? 'Unknown grade' : 'Pick Product first to load List Price & UoM (m132)'), '');
+    setHint('hint_product', prod ? (Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `1 ${baseUom} = ${prod.ton_factor} t` : '') : (product ? 'Unknown grade' : ''), '');
 
-    const priceLocked = applyFieldLockState('f_unitprice', !isUnreg, 'Price Agreement Lock (m56/m136): Locked to active Price Agreement or List Price on Pickup & Delivery');
-    const transLocked = applyFieldLockState('f_transunitprice', isDelivery, 'Transport Price Lock (m51/m56): Locked to Price Agreement transport rate on Delivery');
+    const priceLocked = applyFieldLockState('f_unitprice', !isUnreg, 'Locked to active Price Agreement or List Price on Pickup & Delivery');
+    const transLocked = applyFieldLockState('f_transunitprice', isDelivery, 'Locked to Price Agreement transport rate on Delivery');
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
       if (rule) {
@@ -6603,7 +6601,7 @@
     }
     setHint('hint_site', isDelivery ? (site ? '' : 'Required on Delivery') : '', isDelivery && !site ? 'crit' : '');
 
-    // 6. Quantity Lock & Tier 1/2 Truck Capacity Adjustment (m103 / m125 / m128 / m222 / m229)
+    // 6. Quantity Lock & Tier 1/2 Truck Capacity Adjustment
     let tier = { tier: 0, adj: 0, transAdj: 0 };
     if (rule && truckRow && truckRow.capacity && window.MFG_FORMS) tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
     else if (rule && !truckRow && window.MFG_FORMS && rule.qty1 != null && !isPickup) tier = window.MFG_FORMS.matchTier(rule, null);
@@ -6613,10 +6611,10 @@
     const shouldLockQty = !isUnreg && !truckHasNoCap && !unitOverridden;
     const qtyLocked = applyFieldLockState('f_qty', shouldLockQty,
       /truck/i.test(uom)
-        ? 'Per-Load Unit Lock (m229): Unit = Truck locks Quantity to 1 load'
+        ? 'Unit = Truck locks Quantity to 1 load'
         : (truckRow && truckRow.capacity
-            ? `Truck Capacity Lock (m125): Locked to ${truckRow.name} capacity (${truckRow.capacity} m³)`
-            : 'Quantity Policy Lock (m125): Auto-populated from Truck Capacity (m³); unlock as Admin to enter manual quantity'));
+            ? `Locked to ${truckRow.name} capacity (${truckRow.capacity} m³)`
+            : 'Auto-populated from Truck Capacity (m³); unlock as Admin to enter manual quantity'));
 
     if (/truck/i.test(uom) && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
       qtyEl().value = '1';
@@ -6627,11 +6625,11 @@
     if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', 'crit');
     else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is a third-party unit (${truckRow.supplier || 'hauler'}) — switch Transported By or pick an own truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && ownTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³ (auto-sizes Quantity · m125)`, 'ok');
-    else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity auto-unlocked (CapLearn m128)', 'warn');
-    else setHint('hint_truck', isDelivery ? '' : 'Pick Truck Owner & Truck to auto-fill capacity', '');
+    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³`, 'ok');
+    else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
+    else setHint('hint_truck', '', '');
 
-    // 7. Overtime suggestion (m93 / m130: only visible & active on Delivery + Company fleet)
+    // 7. Overtime suggestion
     const otEl = $('f_overtime');
     const otSuggest = isCoFleet && isOvertimeTime(val('f_time'));
     if (otEl) {
@@ -6640,7 +6638,7 @@
     }
     setHint('hint_time', otSuggest ? 'Outside the day shift → overtime allowance' : 'Day shift 06:00–17:59', otSuggest ? 'warn' : '');
 
-    // 8. Policy-Locked Totals & Live Calc (m56 / m103 / m135b / m268)
+    // 8. Policy-Locked Totals & Live Calc
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isDelivery ? num('f_transunitprice') : 0, disc = num('f_discount'), tip = num('f_tip');
     const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice')) ? 0 : Number(tier.adj || 0);
     const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || !isDelivery) ? 0 : Number(tier.transAdj || 0);
@@ -6648,9 +6646,9 @@
     const matNet = round2(matGross - disc);
     const tr = isDelivery ? round2(qty * tp + tierTrAdj) : 0;
 
-    const matLocked = applyFieldLockState('f_mat_total', true, 'Formula Lock (m56/m103): Material Total = Qty × Unit Price + Tier Adj − Discount');
-    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Formula Lock (m51/m56): Transport Total = Qty × Transport Unit Price + Tier Trans Adj');
-    const totUsdLocked = applyFieldLockState('f_total_usd', true, 'Formula Lock (m135b): Total (USD) = Material Total + Transport Total');
+    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Total = Qty × Unit Price + Tier Adj − Discount');
+    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Transport Total = Qty × Transport Unit Price + Tier Trans Adj');
+    const totUsdLocked = applyFieldLockState('f_total_usd', true, 'Total (USD) = Material Total + Transport Total');
 
     if ($('f_mat_total') && matLocked) $('f_mat_total').value = matNet.toFixed(2);
     if ($('f_trans_total') && trTotLocked) $('f_trans_total').value = tr.toFixed(2);
@@ -6859,7 +6857,7 @@
     const known = equipmentNames().some(n => norm(n) === norm(equipment));
     setHint('hint_truck', equipment ? (known ? '' : 'Not in the equipment registry — check the plate') : '', equipment && !known ? 'warn' : '');
     const bbcTankNegative = company === 'BBConstruction' && (fuelType === 'Diesel' || /diesel/i.test(val('f_item'))) && Number((((SEED.sentinels.fleet_fuel_overtime_auditor || {}).by_model || {}).BBConstruction || {}).diesel_stock_balance_l || 0) < 0;
-    setHint('hint_qty', bbcTankNegative ? 'BBConstruction tank is negative — diesel intakes are refused until the history is corrected (m212)' : (litres <= 0 && val('f_qty') ? 'Must be above zero' : ''), bbcTankNegative || (litres <= 0 && val('f_qty')) ? 'crit' : '');
+    setHint('hint_qty', bbcTankNegative ? 'BBConstruction tank is negative — diesel intakes are refused until the history is corrected' : (litres <= 0 && val('f_qty') ? 'Must be above zero' : ''), bbcTankNegative || (litres <= 0 && val('f_qty')) ? 'crit' : '');
     commonDateChecks([]);
     if (val('f_ticketno')) dupCheck(company); else setHint('hint_ticket', 'Optional — leave blank for an unnumbered intake', '');
     renderAdminLockBar();
@@ -6868,10 +6866,9 @@
 
   function recalcExpense() {
     const method = val('f_method'), supplier = val('f_supplier'), amount = num('f_amount');
-    // bhf_subcatFilter.js: the Subcategory field stays policy-locked until a Category is selected
     const catNow = val('f_category');
     const subLocked = applyFieldLockState('f_subcategory', !catNow, !catNow
-      ? 'Category Cascade Lock (bhf_subcatFilter.js): Pick a Category first to unlock Subcategory'
+      ? 'Pick a Category first to unlock Subcategory'
       : `Unlocked — filtered to ${catNow} subcategories`);
     const dlSub = $('dl_subcats');
     if (dlSub && FORM_UI.lastCategory !== catNow) {
@@ -6884,7 +6881,7 @@
       if (subEl && subEl.value && hit && hit.subs.length && !hit.subs.includes(subEl.value) && !isFieldAdminUnlocked('f_subcategory')) subEl.value = '';
       if (subEl) subEl.placeholder = !catNow ? 'Pick Category first...' : (hit && hit.subs.length ? `${hit.subs.length} subcategories under ${catNow}` : 'Subcategory...');
     }
-    setHint('hint_subcat', subLocked ? 'Locked until Category is picked (bhf_subcatFilter.js)' : (catNow ? `Scoped to ${catNow}` : 'Admin override active'), '');
+    setHint('hint_subcat', subLocked ? 'Pick a Category first' : (catNow ? `Scoped to ${catNow}` : 'Admin override active'), '');
     setText('calc_total', fmtUSD(amount, 2));
     setText('calc_post', method === 'Cash' ? 'Cash till 5300' : 'Supplier credit 4011');
     const ap = openApBalance(supplier);
@@ -6998,6 +6995,7 @@
         setFieldVisible('wrap_jv_share', jvt === 'partnership');
         setFieldVisible('wrap_jv_amount', jvt === 'distribution');
         commonDateChecks([]);
+        renderAdminLockBar();
         return {};
       }
       switch (STATE.modalForm) {
@@ -7424,9 +7422,37 @@
     clearTimeout(modalFocusTimer);
     wireModalSuggestions(body);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false;
-    FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false;
+    FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false; FORM_UI.showRepDate = false;
     FORM_UI.adminUnlocked = {}; FORM_UI.unlockTargetField = ''; FORM_UI.unlockNote = '';
     FORM_UI.lastCompany = val('f_company'); FORM_UI.lastDate = val('f_date'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
+
+    const toggleRepBtn = $('toggleRepDateBtn');
+    if (toggleRepBtn) {
+      toggleRepBtn.addEventListener('click', ev => {
+        ev.preventDefault();
+        if (FORM_UI.showRepDate) {
+          FORM_UI.showRepDate = false;
+          FORM_UI.repDateManual = false;
+          if ($('f_repdate')) $('f_repdate').value = val('f_date');
+          recalcForm();
+        } else {
+          FORM_UI.showRepDate = true;
+          recalcForm();
+          const rEl = $('f_repdate');
+          if (rEl) { try { rEl.focus(); } catch (_) {} }
+        }
+      });
+    }
+    const resetRepBtn = $('resetRepDateBtn');
+    if (resetRepBtn) {
+      resetRepBtn.addEventListener('click', ev => {
+        ev.preventDefault();
+        FORM_UI.showRepDate = false;
+        FORM_UI.repDateManual = false;
+        if ($('f_repdate')) $('f_repdate').value = val('f_date');
+        recalcForm();
+      });
+    }
 
     // Wire lock pills & locked field clicks to the Admin Privilege Unlock Process
     body.querySelectorAll('[data-lock-pill]').forEach(pill => {
@@ -7443,6 +7469,7 @@
           if (fid === 'f_method') FORM_UI.methodManual = false;
           if (fid === 'f_uom') FORM_UI.uomManual = false;
           if (fid === 'f_qty') FORM_UI.qtyManual = false;
+          if (fid === 'f_date' && $('f_date')) $('f_date').value = todayISO();
           recalcForm();
           toast('Field re-locked to policy rule', 'ok');
         } else {
@@ -7455,7 +7482,7 @@
       // Clicking a policy-locked input/select opens the Admin Privilege Unlock Process
       el.addEventListener('mousedown', ev => {
         if (el.dataset.policyLockedNow === '1' && !isFieldAdminUnlocked(el.id)) {
-          if (el.tagName === 'SELECT') ev.preventDefault();
+          if (el.tagName === 'SELECT' || el.type === 'date') ev.preventDefault();
           openAdminUnlockPrompt(el.id);
         }
       });
@@ -7465,10 +7492,13 @@
         if (el.id === 'f_method' && (isFieldAdminUnlocked('f_method') || el.dataset.policyLockedNow !== '1')) FORM_UI.methodManual = true;
         if (el.id === 'f_uom' && (isFieldAdminUnlocked('f_uom') || el.dataset.policyLockedNow !== '1')) FORM_UI.uomManual = true;
         if (el.id === 'f_qty') FORM_UI.qtyManual = !!el.value;
-        if (el.id === 'f_repdate') FORM_UI.repDateManual = val('f_repdate') !== val('f_date');
+        if (el.id === 'f_repdate') {
+          FORM_UI.repDateManual = val('f_repdate') !== val('f_date');
+          if (FORM_UI.repDateManual) FORM_UI.showRepDate = true;
+        }
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
-        // Selecting a new truck resets manual quantity so the truck's capacity populates Quantity (m125)
+        // Selecting a new truck resets manual quantity so the truck's capacity populates Quantity
         if (el.id === 'f_truck' && val('f_truck')) FORM_UI.qtyManual = false;
         // Changing counterparty / product / site re-runs the agreement lookup unless Admin unlocked the price
         if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_company'].includes(el.id)) {
@@ -10784,19 +10814,19 @@
   // ==========================================================================
   const VIEW_TITLES = {
     overview: 'Consolidated Command & Ledger Overview',
-    pbi: '20-Page Power BI Semantic Report Studio (m18c Parity)',
-    tables: 'All 34 Power Apps Dataverse Tables & Registers (m14 Parity)',
-    sentinels: 'AI Sentinel Watchdogs & Deterministic Audit (m280)',
+    pbi: '20-Page Power BI Semantic Report Studio',
+    tables: 'All 34 Tables & Registers',
+    sentinels: 'AI Sentinel Watchdogs & Audit',
     sales: 'Sales & Weighbridge Deliveries Register',
     raw: 'Raw Material & Quarry Intake (2-Leg Payable Split)',
-    fleet: 'Equipment, Fleet Telemetry & Diesel Control (m142)',
+    fleet: 'Equipment, Fleet Telemetry & Diesel Control',
     pricing: 'Customer & Quarry Price Matrix & Commissions',
     customers: 'Customers & FIFO Accounts Receivable Aging',
     ar: 'Customers & FIFO Accounts Receivable Aging',
     suppliers: 'Suppliers, Quarries & 3-Leg Accounts Payable',
     ap: 'Suppliers, Quarries & 3-Leg Accounts Payable',
     expenses: 'Operating Expenses, Spare Parts & Overhead',
-    payroll: 'Payroll, Attendance, Site Allowances & Contracts (m239/m247)',
+    payroll: 'Payroll, Attendance, Site Allowances & Contracts',
     ledger: 'Lebanese CoA Trial Balance & SOA Journal Stream',
     gl: 'Lebanese CoA Trial Balance & SOA Journal Stream',
     statements: '22 Printable A4 Financial & Operational Statements',
@@ -10806,7 +10836,7 @@
     overview: 'Command & Ledger Overview',
     pbi: 'Power BI Studio (20 Pages)',
     tables: 'All 34 Tables & Setup',
-    sentinels: 'AI Sentinel Audit (m280)',
+    sentinels: 'AI Sentinel Audit',
     sales: 'Sales & Deliveries',
     raw: 'Quarry Intake (2-Leg AP)',
     fleet: 'Fleet & Diesel Control',

@@ -22,14 +22,14 @@
     { id: 'p09_fuel', num: '09', label: 'Fuel & Lubricants', title: 'Diesel Tank Balance, Consumption per 100 km / hr & Meter Guard (m142)' },
     { id: 'p10_fleet', num: '10', label: 'Equipment & Fleet', title: 'Equipment Registry, Utilization, Running Cost & Cost per Ton' },
     { id: 'p11_drivers', num: '11', label: 'Drivers & Overtime', title: 'Driver Trips, Day vs Night Shift & Company-Fleet Overtime Bonus' },
-    { id: 'p12_payroll', num: '12', label: 'Payroll & Attendance', title: 'Staff Payroll Register, Contracts, Site Allowances & Freelance (m239/m245/m247)' },
+    { id: 'p12_payroll', num: '12', label: 'Payroll & Attendance', title: 'Staff Payroll Register, Contracts, Site Allowances & Freelance' },
     { id: 'p13_vat', num: '13', label: 'VAT & Invoices', title: '11% Output vs Input VAT, Quarterly Position & Uninvoiced IVA Sales' },
     { id: 'p14_cashflow', num: '14', label: 'Cash Flow & Till', title: 'Cash Inflows vs Outflows, Daily Till 5300 & Payment Method Mix' },
     { id: 'p15_treasury', num: '15', label: 'Treasury & Loans', title: 'Partner Loans, Repayments, External Movements, FX Conversions & Barter' },
     { id: 'p16_financial', num: '16', label: 'Financial GL & SOA', title: 'Lebanese CoA Income Statement, Balance Sheet, Trial Balance & SOA Stream' },
     { id: 'p17_jv', num: '17', label: 'JV Sites', title: 'Joint Venture 50/50 Quarries, Stock Entitlement & Partner Ledger' },
     { id: 'p18_tickets', num: '18', label: 'Ticket Books', title: '25/50-Ticket Weighbridge Pads — Completeness, Missing & Duplicate Serials' },
-    { id: 'p19_changelog', num: '19', label: 'Change Log', title: 'Daily Totals Ledger, Snapshot Drift & Tx vs Reporting Date Parity (m276)' },
+    { id: 'p19_changelog', num: '19', label: 'Change Log', title: 'Daily Totals Ledger, Snapshot Drift & Tx vs Reporting Date Parity' },
     { id: 'p20_recon', num: '20', label: 'Statement Recon', title: 'Counterparty Statement Reconciliation Bridge & 22 A4 PDF Statements' }
   ];
 
@@ -1311,7 +1311,7 @@
       <div class="pbi-studio-hdr">
         <div class="pbi-studio-top">
           <div>
-            <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · m18c_report.py PARITY+ · ${pagePool.length} PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
+            <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · ${pagePool.length} PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
             <h2 class="pbi-studio-title">Page ${esc(activePage.num)} · ${esc(activePage.title)}</h2>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2615,17 +2615,17 @@
       });
 
       bodyHtml = `
-        ${pbiHeading('Staff payroll & attendance', 'Monthly salary accruals, attendance days, deductions, bonuses, and net balance by employee (m239 / m220)')}
+        ${pbiHeading('Staff payroll & attendance', 'Monthly salary accruals, attendance days, deductions, bonuses, and net balance by employee')}
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Payroll Earnings, Base Salaries, Overtime & Disbursements (m239 / m247)', [
+          ${kpiBand('1 · Payroll Earnings, Base Salaries, Overtime & Disbursements', [
             { label: 'Staff on payroll', value: fmtNum(staffPayrollRows.length), sub: fmtNum(empRows.length) + ' employment contracts' },
             { label: 'Base salaries', value: fmtUSD(totBase, 0), sub: 'Contracted monthly + daily base' },
             { label: 'Overtime pay', value: fmtUSD(totOtPay, 0), sub: 'Shift & trip overtime accrued' },
-            { label: 'Site allowances', value: fmtUSD(totSiteAcc, 0), sub: 'Included inside Earnings (m247)' },
+            { label: 'Site allowances', value: fmtUSD(totSiteAcc, 0), sub: 'Included inside Earnings' },
             { label: 'Total earnings', value: fmtUSD(totEarn, 0), sub: 'Base + OT + Allowances − Ded', tone: 'brass' },
             { label: 'Payroll paid (contracted)', value: fmtUSD(prSn.payroll_paid_contracted_usd || totPaid, 0), sub: 'Applied to contracted months', tone: 'good' }
           ])}
-          ${kpiBand('2 · Payroll Balance, Hours, Attendance & Contract Hygiene (m220)', [
+          ${kpiBand('2 · Payroll Balance, Hours, Attendance & Contract Hygiene', [
             { label: 'Balance due', value: fmtUSD(totBal, 0), sub: 'Earnings − Paid', neg: true, tone: totBal < 0 ? 'crit' : 'brass' },
             { label: 'Overtime hours', value: fmtNum(totOtHrs, 1) + ' h', sub: 'Logged on attendance sheets' },
             { label: 'Lateness hours', value: fmtNum(totLateHrs, 1) + ' h', sub: 'Deducted at hourly rate' },
@@ -2691,7 +2691,7 @@
             { label: 'Paid', key: 'paid', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Balance', key: 'balance', r: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` }
           ], staffPayrollRows, {
-            subtitle: 'Site allowance is included inside Earnings (m247) · Amber row = Employment contract has ended (m244)',
+            subtitle: 'Site allowance is included inside Earnings · Amber row = Employment contract has ended',
             rowAmber: r => r.status === 'Ended',
             unitLabel: 'staff',
             foot: [
@@ -2727,7 +2727,7 @@
             { label: 'Monthly Salary', key: 'salary_usd', r: true, fmt: v => fmtUSD(v, 2) },
             { label: 'Daily Rate', key: 'daily_rate', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' }
           ], empRows, {
-            subtitle: 'Amber shaded row = Employment contract has ended (m244)',
+            subtitle: 'Amber shaded row = Employment contract has ended',
             rowAmber: r => r.status === 'Ended' || Boolean(r.end_date && String(r.end_date) < today),
             rkey: 'employments',
             limit: 45,
@@ -2748,7 +2748,7 @@
 
         <!-- 62/38 Split: Salary payments + Salary payments without a contract (m220c) -->
         <div class="pbi-grid-62-38">
-          ${pbiTable('Salary payments (m225: Amount on first screen, Document last)', [
+          ${pbiTable('Salary payments', [
             { label: 'Date', key: 'date', mono: true },
             { label: 'Payroll Month', key: 'payroll_month', mono: true },
             { label: 'Co.', key: 'company' },
@@ -2757,7 +2757,7 @@
             { label: 'Document', key: 'name', mono: true }
           ], salRows, { rkey: 'salaries', limit: 45, unitLabel: 'payments' })}
 
-          ${pbiTable('Salary payments without a contract (m220)', [
+          ${pbiTable('Salary payments without a contract', [
             { label: 'Staff Member', key: 'staff', bold: true },
             { label: 'Unmatched Paid ($)', key: 'unmatched_usd', r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], unmatchedSal, {
@@ -2766,8 +2766,8 @@
           })}
         </div>
 
-        <!-- SECTION 2: SITE ALLOWANCES (m247 headed section: cards -> charts -> tables) -->
-        ${pbiHeading('Site allowances', 'A daily amount for staff posted to a site · counted on the ticked weekdays, less recorded absence · paid with the salary (m247)')}
+        <!-- SECTION 2: SITE ALLOWANCES -->
+        ${pbiHeading('Site allowances', 'A daily amount for staff posted to a site · counted on the ticked weekdays, less recorded absence · paid with the salary')}
         <div class="pbi-overview-bands" style="padding-top:6px">
           ${kpiBand('', [
             { label: 'Staff on allowance', value: fmtNum(siteStaffRows.length), sub: fmtNum(logRows.length) + ' arrangements' },
@@ -2819,15 +2819,15 @@
             { label: 'Per working day ($)', raw: r => r.daily_usd || r.usd_amount || (Number(r.lbp_amount || 0) / 89500), r: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
             { label: 'LBP Rate', key: 'lbp_amount', r: true, mono: true, fmt: v => v ? fmtNum(v, 0) + ' LBP' : '—' }
           ], logRows, {
-            subtitle: 'Amber shaded row = the arrangement has ended · an arrangement without an end date runs until today · latest first (m244)',
+            subtitle: 'Amber shaded row = the arrangement has ended · an arrangement without an end date runs until today · latest first',
             rowAmber: r => Boolean(r.end_date && String(r.end_date) < today),
             rkey: 'logistics_allowances',
             unitLabel: 'arrangements'
           })}
         </div>
 
-        <!-- SECTION 3: FREELANCE (m245 headed section: cards -> charts -> tables) -->
-        ${pbiHeading('Freelance', 'Shift work by freelancers · earned from the entries, paid from the payments · the rate comes from a Freelance employment (m245)')}
+        <!-- SECTION 3: FREELANCE -->
+        ${pbiHeading('Freelance', 'Shift work by freelancers · earned from the entries, paid from the payments · the rate comes from a Freelance employment')}
         <div class="pbi-overview-bands" style="padding-top:6px">
           ${kpiBand('', [
             { label: 'Freelancers', value: fmtNum(freelanceContractStaff.length), sub: 'With Freelance / Daily contract' },
@@ -2891,7 +2891,7 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Output VAT 11%, Collections, Receivable & Net Cash VAT Position (m254)', [
+          ${kpiBand('1 · Output VAT 11%, Collections, Receivable & Net Cash VAT Position', [
             { label: 'Output VAT invoiced', value: fmtUSD(k.sales_vat, 2), sub: 'Account 4427 (11%)', tone: 'brass' },
             { label: 'Net invoiced (ex-VAT)', value: fmtUSD(k.net_sales, 0), sub: 'Taxable + non-taxable base' },
             { label: 'VAT collected', value: fmtUSD(vatCollected, 2), sub: 'Tagged VAT + paid beyond net', tone: 'good' },
@@ -2930,7 +2930,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Customers — VAT invoiced, collected and due (m254)', [
+          ${pbiTable('Customers — VAT invoiced, collected and due', [
             { label: 'Customer', key: 'Customer', bold: true },
             { label: 'IVA', key: 'VAT Registered' },
             { label: 'Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
@@ -2940,7 +2940,7 @@
             { label: 'VAT Due ($)', key: 'vat_receivable', r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
             { label: 'Open AR ($)', key: 'ar_balance', r: true, fmt: v => fmtUSD(v, 0) }
           ], vatCusts, {
-            subtitle: 'VAT due = 11% on the customer\'s credit sales not yet received, capped at its open balance (any receipt settles net first, VAT last — m254)',
+            subtitle: 'VAT due = 11% on the customer\'s credit sales not yet received, capped at its open balance (any receipt settles net first, VAT last)',
             unitLabel: 'IVA customers'
           })}
         </div>
@@ -3278,12 +3278,12 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Joint Venture (JV) 50/50 Quarry Sites & Partner Stock Entitlement (m114)', [
+          ${kpiBand('1 · Joint Venture (JV) 50/50 Quarry Sites & Partner Stock Entitlement', [
             { label: 'Active JV Quarry Sites', value: fmtNum(jvSites.length), sub: 'Halat JV · Jiyeh JV · Nahr Ibrahim JV', tone: 'brass' },
             { label: 'JV Partnership Contracts', value: fmtNum(jvParts.length), sub: '50% / 50% profit & stock split' },
             { label: 'JV Sites Sales TTC', value: fmtUSD(jvSites.reduce((a, r) => a + Number(r.sales_ttc || 0), 0), 0), sub: 'Dispatched from JV pits' },
             { label: 'JV Sites Raw Material Cost', value: fmtUSD(totJvRaw, 0), sub: 'Total quarry intake on JV sites' },
-            { label: 'Partner 50% Stock Entitlement', value: fmtUSD(totJvRaw / 2, 0), sub: '50% × JV Raw Material Cost (m114)', tone: 'good' },
+            { label: 'Partner 50% Stock Entitlement', value: fmtUSD(totJvRaw / 2, 0), sub: '50% × JV Raw Material Cost', tone: 'good' },
             { label: 'JV Partner Distributions Paid', value: fmtUSD(totJvDist, 0), sub: fmtNum(jvDists.length) + ' distribution vouchers' }
           ])}
         </div>
@@ -3301,7 +3301,7 @@
             { label: 'Raw Loads', key: 'raw_loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Raw Cost ($)', key: 'raw_cost', r: true, bar: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Partner 50% Entitlement ($)', raw: r => Number(r.raw_cost || 0) / 2, r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 0)}</b>` }
-          ], jvSites, { subtitle: 'Stock Entitlement rule (m114): partner share × the JV site\'s raw material cost', unitLabel: 'JV sites' })}
+          ], jvSites, { subtitle: 'Stock Entitlement rule: partner share × the JV site\'s raw material cost', unitLabel: 'JV sites' })}
         </div>
 
         <div class="pbi-grid-2">
@@ -3373,7 +3373,7 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Weighbridge Ticket Pad Hygiene, Missing Serials & Duplicate Guard (m116)', [
+          ${kpiBand('1 · Weighbridge Ticket Pad Hygiene, Missing Serials & Duplicate Guard', [
             { label: 'Duplicate Ticket Numbers', value: fmtNum(prSn.duplicate_ticket_numbers || 0), sub: 'Across active pads', tone: 'warn' },
             { label: 'Unnumbered Tickets', value: fmtNum(prSn.unnumbered_tickets || 0), sub: 'Tickets missing serial #' },
             { label: 'Incomplete Ticket Books', value: fmtNum(prSn.incomplete_ticket_books || 0), sub: '25/50-ticket physical pads' },
@@ -3389,7 +3389,7 @@
             { key: 'raw_loads', label: 'Quarry Pad Tickets', color: '#D9A54A' }
           ], { isMoney: false }), { legend: [{ label: 'Sales Pad', color: '#2B5C8F' }, { label: 'Quarry Pad', color: '#D9A54A' }] })}
 
-          ${pbiTable('25-Ticket Pad Completeness & Missing Serial Audit (m116)', [
+          ${pbiTable('25-Ticket Pad Completeness & Missing Serial Audit', [
             { label: 'Pad Range', key: 'book', mono: true, bold: true },
             { label: 'Co.', key: 'company' },
             { label: 'Pad Stream', key: 'stream' },
@@ -3449,18 +3449,18 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Daily Totals Snapshot Ledger (m117) & Transaction vs Reporting Date Bridge (m276)', [
+          ${kpiBand('1 · Daily Totals Snapshot Ledger & Transaction vs Reporting Date Bridge', [
             { label: 'Sales (Tx Date Basis)', value: fmtUSD(k.sales_ttc, 0), sub: 'Operational weighbridge date', tone: 'brass' },
-            { label: 'Sales (Rep Date Basis)', value: fmtUSD(k.sales_rep_date || k.sales_ttc, 0), sub: 'SharePoint ExpectedDate basis' },
+            { label: 'Sales (Rep Date Basis)', value: fmtUSD(k.sales_rep_date || k.sales_ttc, 0), sub: 'Reporting Date basis' },
             { label: 'Raw Cost (Tx vs Rep)', value: fmtUSD(k.raw_cost, 0), sub: 'Rep: ' + fmtUSD(k.raw_rep_date || k.raw_cost, 0) },
-            { label: 'Snapshot Rows Logged', value: fmtNum(dtRows.length), sub: 'Daily totals ledger (m117)' },
+            { label: 'Snapshot Rows Logged', value: fmtNum(dtRows.length), sub: 'Daily totals ledger' },
             { label: 'Date Gaps > 31 Days', value: fmtNum(paritySn.date_basis_anomalies_gt_31d_count || gaps.length), sub: 'Flagged by Sentinel S8', tone: 'warn' },
-            { label: '60-Day Gap Guard (m277)', value: 'Active', sub: 'Requires explanation on entry', tone: 'good' }
+            { label: '60-Day Gap Guard', value: 'Active', sub: 'Requires explanation on entry', tone: 'good' }
           ])}
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Transaction date vs reporting date (SharePoint ExpectedDate parity bridge — m276)', [
+          ${pbiTable('Transaction date vs reporting date parity bridge', [
             { label: 'Month', key: 'month', bold: true },
             { label: 'Sales (Txn $)', key: 's_tx', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Sales (Rep $)', key: 's_rep', r: true, fmt: v => fmtUSD(v, 0) },
@@ -3601,9 +3601,9 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">POWER APPS SITEMAP PARITY (m14_sitemap.py) · ${tablePool.length} DATAVERSE TABLES &amp; REGISTERS</div>
-          <div class="cockpit-title">${esc(meta.label)} <span class="mono" style="font-size:13px;color:var(--brass)">(${esc(meta.dvn)})</span></div>
-          <div class="cockpit-sub">Browse, search, sort, switch Power Apps System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
+          <div class="cockpit-eyebrow">${tablePool.length} OPERATIONAL &amp; MASTER TABLES</div>
+          <div class="cockpit-title">${esc(meta.label)}</div>
+          <div class="cockpit-sub">Browse, search, sort, switch System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Table</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
@@ -3629,10 +3629,10 @@
       </div>
 
       <div class="panel-card" id="tablesHubPanel">
-        <!-- Power Apps System Views & Connected Tables Relational Bar -->
+        <!-- System Views & Connected Tables Relational Bar -->
         <div class="pa-hub-rel-strip">
           <div class="pa-hub-views">
-            <span class="pa-hub-lbl">System Views (m13):</span>
+            <span class="pa-hub-lbl">System Views:</span>
             ${views.map(vw => {
               const vCnt = vw.fn ? baseFiltered.filter(r => vw.fn(r, rel)).length : baseFiltered.length;
               return `<button type="button" class="filter-chip ${vw.id === activeView.id ? 'active' : ''}" data-tbl-view="${esc(vw.id)}" data-tbl-key="${esc(meta.key)}">${esc(vw.label)} <span class="mono" style="opacity:.75">(${fmtNum(vCnt)})</span></button>`;
@@ -3643,7 +3643,7 @@
               <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
               ${relTablesMeta.map(rt => {
                 const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true }).length;
-                return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)} (${esc(rt.dvn)})">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
+                return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)}">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
               }).join('')}
             </div>
           ` : ''}
@@ -3651,7 +3651,7 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search ' + meta.label + ' (' + meta.dvn + ')...')}
+            ${searchBox('Search ' + meta.label + '...')}
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('tablesHubPanel', meta.key)}
