@@ -970,7 +970,8 @@
   }
 
   function modelHasLedger(key) {
-    const m = SEED.models[key || STATE.company];
+    const effKey = resolveEffectiveModelKey(key || STATE.company);
+    const m = SEED.models[effKey];
     const p = m && m.periods && m.periods.all;
     return !!(p && (p.sales_ttc != null || p.loads != null || p.expenses != null));
   }
@@ -985,12 +986,14 @@
 
   function filterRecords(list, opts = {}) {
     const bu = COMPANY_BU_MATCH[opts.company || STATE.company];
+    const allowedCos = opts.ignoreRls ? null : allowedCompanyNames(opts.user);
     const q = opts.ignoreSearch ? '' : STATE.search.trim().toLowerCase();
     const range = opts.ignorePeriod ? null : periodRange(STATE.period);
     const basis = opts.basis || STATE.basis;
     return (list || []).filter(r => {
       if (!r || r.voided) return false;
       if (bu && r.company && r.company !== bu) return false;
+      if (allowedCos && r.company && !allowedCos.includes(r.company)) return false;
       if (range) {
         const d = recordDateFor(r, basis);
         if (d && (d < range.from || d > range.to)) return false;
@@ -1179,44 +1182,126 @@
     return list;
   }
   function canEnterForm(form, u) {
-    const role = String((u || activeUser()).role || '');
-    if (/Owner/i.test(role)) return true;
-    if (/Entry/i.test(role)) return true;            // Entry · Supervisor + Entry
-    if (/Sales/i.test(role)) return ['receipt', 'pricerule', 'vatinvoice', 'creditterm', 'customer'].includes(form); // AR / commercial seat
-    return false;                                      // Supervisor = read-only oversight
+    const role = String((u || activeUser()).role || '').trim();
+    if (/Owner|Full Access/i.test(role)) return true;
+    if (/Supervisor\s*\+\s*Entry/i.test(role)) return true;
+    if (/^Supervisor$/i.test(role)) return false; // Supervisor = strictly read-only oversight
+    if (/Sales/i.test(role)) {
+      return ['sales', 'receipt', 'pricerule', 'vatinvoice', 'creditterm', 'customer', 'site'].includes(form);
+    }
+    if (/Entry/i.test(role)) {
+      return [
+        'sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement',
+        'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'attendance'
+      ].includes(form);
+    }
+    return false;
   }
   function canEnterAny(u) { return canEnterForm('sales', u) || canEnterForm('receipt', u); }
   function canVoid(u) { return /Owner|Entry/i.test(String((u || activeUser()).role || '')); }
 
   function canViewView(view, u) {
     u = u || activeUser();
+    const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
-    if (view === 'overview' || view === 'pbi' || view === 'expenses' || view === 'payroll') return pbi !== 'none';
+    if (view === 'overview' || view === 'pbi' || view === 'expenses') return pbi !== 'none';
+    if (view === 'payroll') return pbi === 'full' || /Owner|Supervisor/i.test(role);
     if (view === 'sentinels' || view === 'ledger' || view === 'gl') return pbi === 'full';
     if (view === 'statements') return st !== 'none';
     return true;
   }
+
+  function canAccessPbiPage(pageId, u) {
+    u = u || activeUser();
+    const role = String(u.role || '');
+    const pbi = u.pbi_access || 'partial';
+    if (pbi === 'none') return false;
+    if (pageId === 'p02_companies' && allowedCompanyNames(u).length < 2) return false;
+    if (pbi === 'full' || /Owner|Supervisor/i.test(role)) return true;
+    return !['p12_payroll', 'p15_treasury', 'p16_financial', 'p17_jv'].includes(pageId);
+  }
+
+  function canAccessTable(tableKey, u) {
+    u = u || activeUser();
+    const role = String(u.role || '');
+    const pbi = u.pbi_access || 'partial';
+    if (pbi === 'full' || /Owner|Supervisor/i.test(role)) return true;
+    return ![
+      'salaries', 'employments', 'freelance_entries', 'logistics_allowances', 'overtime_rates',
+      'external_movements', 'loans', 'loan_settlements', 'conversions', 'jv_partnerships', 'jv_distributions'
+    ].includes(tableKey);
+  }
+
+  function canAccessRdlReport(report, u) {
+    u = u || activeUser();
+    const role = String(u.role || '');
+    const st = u.statements_access || 'partial';
+    if (st === 'none') return false;
+    if (st === 'full' || /Owner|Supervisor/i.test(role)) return true;
+    const code = typeof report === 'string' ? report : (report && report.code);
+    const cat = typeof report === 'object' && report ? String(report.cat || '') : '';
+    if (cat) {
+      return ['Digest', 'Registers', 'Counterparties', 'Documents'].includes(cat) && code !== '10';
+    }
+    return !['02', '03', '04', '05', '06', '07', '10', '18', '19'].includes(String(code || ''));
+  }
+
   function defaultViewFor(u) {
     u = u || activeUser();
     if (canViewView('overview', u)) return 'overview';
     return /fuel/i.test(u.email || '') ? 'fleet' : 'sales';
   }
 
+  function parseUserCompanies(userOrRaw) {
+    const raw = (userOrRaw && typeof userOrRaw === 'object' && !Array.isArray(userOrRaw))
+      ? userOrRaw.companies
+      : userOrRaw;
+    const cat = getCompanyCatalog();
+    const byLower = new Map(cat.map(c => [c.name.toLowerCase(), c.name]));
+    cat.forEach(c => byLower.set(c.key.toLowerCase(), c.name));
+    const tokens = Array.isArray(raw)
+      ? raw.map(x => String(x || '').trim()).filter(Boolean)
+      : String(raw == null ? 'WTC' : raw).split(/[,;|]+/).map(s => s.trim()).filter(Boolean);
+    if (tokens.some(t => /^all(\s+\d+)?\s*(companies|group)?$/i.test(t) || t.toLowerCase() === 'manufacturing-group')) {
+      return cat.map(c => c.name);
+    }
+    const out = [];
+    const seen = new Set();
+    tokens.forEach(tok => {
+      const canonical = byLower.get(tok.toLowerCase()) || tok;
+      const k = canonical.toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(canonical);
+      }
+    });
+    return out.length ? out : ['WTC'];
+  }
+
+  function formatUserCompanies(list) {
+    const names = parseUserCompanies(list);
+    return names.join(', ');
+  }
+
   function getAllowedCompanyKeys(user) {
-    const cStr = String((user && user.companies) || 'WTC');
-    const allowed = [];
-    const hasWtc = cStr.includes('WTC');
-    const hasBbc = cStr.includes('BBConstruction');
-    const hasLt = cStr.includes('Lions Transport');
-    if (hasWtc && hasBbc && hasLt) allowed.push('manufacturing-group');
-    if (hasWtc) allowed.push('wtc');
-    if (hasBbc) allowed.push('bbconstruction');
-    if (hasLt) allowed.push('lionstransport');
-    return allowed.length ? allowed : ['wtc'];
+    const names = parseUserCompanies(user || activeUser());
+    const cat = getCompanyCatalog();
+    const keys = [];
+    names.forEach(name => {
+      const hit = cat.find(c => c.name.toLowerCase() === name.toLowerCase());
+      const k = (hit && hit.key) || COMPANY_KEY_BY_NAME[name] || slugCompanyKey(name);
+      if (!COMPANY_BU_MATCH[k]) COMPANY_BU_MATCH[k] = name;
+      if (!COMPANY_KEY_BY_NAME[name]) COMPANY_KEY_BY_NAME[name] = k;
+      if (!COMPANY_LABELS[k]) COMPANY_LABELS[k] = (hit && hit.label) || name;
+      if (!keys.includes(k)) keys.push(k);
+    });
+    if (!keys.length) keys.push('wtc');
+    if (keys.length >= 2) keys.unshift('manufacturing-group');
+    return keys;
   }
   function allowedCompanyNames(u) {
-    return getAllowedCompanyKeys(u || activeUser()).filter(k => k !== 'manufacturing-group').map(k => COMPANY_BU_MATCH[k]);
+    return parseUserCompanies(u || activeUser());
   }
   function defaultEntryCompany() {
     const names = allowedCompanyNames();
@@ -1600,12 +1685,16 @@
     const expVal = STATE.basis === 'rep' ? (k.exp_rep_date || k.expenses) : k.expenses;
     const opProfit = STATE.basis === 'rep' ? (k.op_profit_rep_date || k.operating_profit) : k.operating_profit;
 
+    const allowedNames = allowedCompanyNames();
+    const allowedKeys = getAllowedCompanyKeys(activeUser());
     const sentinelRows = buildSentinelItems().slice(0, 4);
-    const soaAll = m.soa_stream || [];
+    const soaAll = (m.soa_stream || []).filter(r => !r || !r.company || allowedNames.includes(r.company));
     const soaRows = soaAll.slice(0, 8);
     const tb = tbStatus(k);
-    const booksCount = STATE.company === 'manufacturing-group' ? '2' : (modelHasLedger() ? '1' : '0');
-    const booksUnit = STATE.company === 'manufacturing-group' ? ' of 3 live' : ' of 1';
+    const liveAllowedBooks = allowedKeys.filter(ek => ek !== 'manufacturing-group' && modelHasLedger(ek)).length;
+    const totalAllowedEntities = allowedNames.length;
+    const booksCount = STATE.company === 'manufacturing-group' ? String(liveAllowedBooks) : (modelHasLedger() ? '1' : '0');
+    const booksUnit = STATE.company === 'manufacturing-group' ? ` of ${totalAllowedEntities} live` : ' of 1';
 
     let totDeb = 0, totCred = 0;
     soaAll.forEach(r => { totDeb += Number(r.debit || 0); totCred += Number(r.credit || 0); });
@@ -1728,7 +1817,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${[['wtc', 'WTC<span class="hide-xs"> · World Trading</span>', wtcK], ['bbconstruction', 'BBConstruction', bbcK]].map(([key, label, kk]) => {
+                ${[['wtc', 'WTC<span class="hide-xs"> · World Trading</span>', wtcK], ['bbconstruction', 'BBConstruction', bbcK]].filter(([key]) => allowedKeys.includes(key)).map(([key, label, kk]) => {
                   const t = tbStatus(kk);
                   return `
                 <tr class="clickable-row" data-jump-co="${key}">
@@ -1740,6 +1829,7 @@
                   <td><span class="m-chip ${t.ok === false ? 'crit' : 'closed'}">${esc(t.label)}</span></td>
                 </tr>`;
                 }).join('')}
+                ${allowedKeys.includes('lionstransport') ? `
                 <tr class="clickable-row" data-jump-co="lionstransport">
                   <td><b>Lions Transport</b></td>
                   <td class="n">${ltHasLedger ? fmtUSD(ltK.sales_ttc, 0) : '—'}</td>
@@ -1747,18 +1837,19 @@
                   <td class="n">${ltHasLedger ? fmtPct(ltK.gm_pct, ltK.gross_margin, ltK.net_sales) : 'Fleet'}</td>
                   <td class="n">${ltHasLedger ? fmtUSD(ltK.operating_profit, 0) : '—'}</td>
                   <td><span class="m-chip ${ltHasLedger ? 'closed' : ''}">${ltHasLedger ? 'Balanced' : 'No ledger'}</span></td>
-                </tr>
+                </tr>` : ''}
               </tbody>
+              ${allowedNames.length >= 2 ? `
               <tfoot>
                 <tr class="total">
-                  <td><b>Group Total<span class="hide-xs"> (${ltHasLedger ? 3 : 2} live BUs)</span></b></td>
+                  <td><b>${allowedNames.length < getCompanyCatalog().length ? 'Assigned Total' : 'Group Total'}<span class="hide-xs"> (${liveAllowedBooks} live BUs)</span></b></td>
                   <td class="n"><b>${fmtUSD(grpK.sales_ttc, 0)}</b></td>
                   <td class="n hide-xs"><b>${fmtNum(grpK.loads)}</b></td>
                   <td class="n"><b>${fmtPct(grpK.gm_pct, grpK.gross_margin, grpK.net_sales)}</b></td>
                   <td class="n"><b>${fmtUSD(grpK.operating_profit, 0)}</b></td>
                   <td><span class="m-chip ${tb.ok === false ? 'crit' : 'brass'}">${tb.ok === false ? 'TB ' + tb.label : 'Audited'}</span></td>
                 </tr>
-              </tfoot>
+              </tfoot>` : ''}
             </table>
           </div>
 
@@ -3417,24 +3508,25 @@
     const bbcEx = byCoExp.BBConstruction;
     const isGroupScope = STATE.company === 'manufacturing-group';
     const sumSal = salRows.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const showPayroll = canViewView('payroll');
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">OPERATING COSTS, SPARE PARTS &amp; WORKFORCE PAYROLL</div>
-          <div class="cockpit-title">Expenses &amp; Payroll Ledger</div>
-          <div class="cockpit-sub">Categorized into Production Cost (Class 60/61), Operating Expenses (Class 62) &amp; Capital Expenditures (Class 2) + Staff Salaries &amp; Overtime.</div>
+          <div class="cockpit-eyebrow">OPERATING COSTS, SPARE PARTS${showPayroll ? ' &amp; WORKFORCE PAYROLL' : ''}</div>
+          <div class="cockpit-title">Expenses${showPayroll ? ' &amp; Payroll' : ''} Ledger</div>
+          <div class="cockpit-sub">Categorized into Production Cost (Class 60/61), Operating Expenses (Class 62) &amp; Capital Expenditures (Class 2)${showPayroll ? ' + Staff Salaries &amp; Overtime' : ''}.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total Expenses</div><div class="cockpit-pill-val brass">${fmtUSD(sumExp, 2)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Cash / Credit</div><div class="cockpit-pill-val">${fmtUSD(sumCashExp, 2)} / ${fmtUSD(sumCredExp, 2)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Salaries Paid</div><div class="cockpit-pill-val emerald">${fmtUSD(k.salaries_paid, 2)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Overtime Due</div><div class="cockpit-pill-val amber">${fmtUSD(k.overtime_bonus, 0)}</div></div>
+          ${showPayroll ? `<div class="cockpit-pill"><div class="cockpit-pill-lbl">Salaries Paid</div><div class="cockpit-pill-val emerald">${fmtUSD(k.salaries_paid, 2)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Overtime Due</div><div class="cockpit-pill-val amber">${fmtUSD(k.overtime_bonus, 0)}</div></div>` : ''}
           ${appPill('expenses', 'amount', 'expenses')}
         </div>
       </div>
 
-      <div class="split-grid-2">
+      <div class="${showPayroll ? 'split-grid-2' : ''}">
         <div class="panel-card" id="expPanel">
           <div class="table-toolbar">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -3513,7 +3605,7 @@
           </div>
         </div>
 
-        <div class="panel-card" id="salPanel">
+        ${showPayroll ? `<div class="panel-card" id="salPanel">
           <div class="panel-head">
             <div class="panel-title"><span>STAFF SALARIES &amp; PAYROLL DISBURSEMENTS</span></div>
             <span class="panel-meta" style="display:flex;gap:6px;align-items:center">
@@ -3545,7 +3637,7 @@
               <tfoot><tr><td colspan="5"><b>TOTAL (${fmtNum(salRows.length)} PAYMENTS)</b></td><td class="r"><b>${fmtUSD(sumSal, 2)}</b></td></tr></tfoot>
             </table>
           </div>
-        </div>
+        </div>` : ''}
       </div>
     `;
   }
@@ -4670,6 +4762,7 @@
                   <th>Face ID (2FA)</th>
                   <th>Role</th>
                   <th>Allowed Companies (RLS)</th>
+                  <th>Dashboards &amp; Statements</th>
                   <th>Status</th>
                   <th>Last Login</th>
                   <th>Actions</th>
@@ -7606,9 +7699,20 @@
   }
 
   function mergeUserRow(existing, incoming) {
-    if (!existing) return Object.assign({ face_samples: [], face_thumbs: [], face_required: false, face_updated_at: '' }, incoming);
+    if (!existing) return Object.assign({ face_samples: [], face_thumbs: [], face_required: false, face_updated_at: '', seat_updated_at: '' }, incoming);
     if (!incoming) return existing;
-    const out = Object.assign({}, existing, incoming);
+    const exSeatTs = String(existing.seat_updated_at || '');
+    const inSeatTs = String(incoming.seat_updated_at || '');
+    const preferExistingSeat = !!(exSeatTs && (!inSeatTs || exSeatTs > inSeatTs));
+    const out = preferExistingSeat
+      ? Object.assign({}, incoming, existing)
+      : Object.assign({}, existing, incoming);
+    out.seat_updated_at = exSeatTs > inSeatTs ? exSeatTs : (inSeatTs || exSeatTs);
+    if (existing.last_login_at && incoming.last_login_at) {
+      out.last_login_at = String(existing.last_login_at) > String(incoming.last_login_at) ? existing.last_login_at : incoming.last_login_at;
+    } else {
+      out.last_login_at = existing.last_login_at || incoming.last_login_at || '';
+    }
     const exSamples = userFaceSamples(existing);
     const inSamples = userFaceSamples(incoming);
     const exThumbs = userFaceThumbs(existing);
@@ -7692,7 +7796,7 @@
     if (m && !m.hidden) return true;
     const ins = $('recordInspector');
     if (ins && !ins.hidden) return true;
-    if (STATE.showAddUserForm || FACE_STATE.enrolCamActive) return true;
+    if ((STATE.view === 'users' && STATE.userFormDirty) || FACE_STATE.enrolCamActive) return true;
     const a = document.activeElement;
     return !!(a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName) && a.id !== 'aiInput');
   }
@@ -7722,9 +7826,14 @@
         if (rLocal.ok) {
           const dLocal = await rLocal.json();
           if (Array.isArray(dLocal.users) && dLocal.users.length) {
-            const byEmail = new Map(STATE.users.map(u => [norm(u.email), u]));
-            dLocal.users.forEach(u => { const k = norm(u.email); if (k) byEmail.set(k, mergeUserRow(byEmail.get(k), u)); });
-            STATE.users = Array.from(byEmail.values());
+            const merged = STATE.users.map(u => Object.assign({}, u));
+            dLocal.users.forEach(u => {
+              if (!u || !u.email) return;
+              const idx = merged.findIndex(x => (u.id && String(x.id) === String(u.id)) || norm(x.email) === norm(u.email));
+              if (idx >= 0) merged[idx] = mergeUserRow(merged[idx], u);
+              else merged.push(mergeUserRow(null, u));
+            });
+            STATE.users = merged;
           }
         }
       } catch (_) { /* server.py not running */ }
@@ -7754,19 +7863,24 @@
       let changed = false;
 
       if (Array.isArray(remote.users) && remote.users.length) {
-        const byEmail = new Map();
-        remote.users.forEach(u => { if (u && u.email) byEmail.set(norm(u.email), u); });
-        if (pushChanges) STATE.users.forEach(u => { if (u && u.email) byEmail.set(norm(u.email), mergeUserRow(byEmail.get(norm(u.email)), u)); });
-        else {
+        const merged = remote.users.filter(u => u && u.email).map(u => Object.assign({}, u));
+        if (pushChanges) {
+          STATE.users.forEach(u => {
+            if (!u || !u.email) return;
+            const idx = merged.findIndex(x => (u.id && String(x.id) === String(u.id)) || norm(x.email) === norm(u.email));
+            if (idx >= 0) merged[idx] = mergeUserRow(merged[idx], u);
+            else merged.push(mergeUserRow(null, u));
+          });
+        } else {
           // keep any seat or biometric enrolment only this device knows about so it is not lost before the next push
           STATE.users.forEach(u => {
             if (!u || !u.email) return;
-            const k = norm(u.email);
-            if (!byEmail.has(k)) { byEmail.set(k, u); pushChanges = true; }
-            else byEmail.set(k, mergeUserRow(u, byEmail.get(k)));
+            const idx = merged.findIndex(x => (u.id && String(x.id) === String(u.id)) || norm(x.email) === norm(u.email));
+            if (idx < 0) { merged.push(u); pushChanges = true; }
+            else merged[idx] = mergeUserRow(u, merged[idx]);
           });
         }
-        const next = Array.from(byEmail.values());
+        const next = merged;
         if (JSON.stringify(next) !== JSON.stringify(STATE.users)) { changed = true; }
         const myEmail = norm(activeUser().email);
         STATE.users = next;
@@ -8204,9 +8318,212 @@
     });
   }
 
+  function selectSeatForEdit(targetId, opts = {}) {
+    if (!isOwner()) return false;
+    STATE.showAddUserForm = true;
+    STATE.userFormDirty = false;
+    if (targetId === '__new__') {
+      STATE.editingUserId = '__new__';
+      STATE.newDraftPin = String(Math.floor(1000 + Math.random() * 9000));
+    } else {
+      const u = STATE.users.find(x => String(x.id) === String(targetId) || norm(x.email) === norm(String(targetId || '')));
+      if (!u) return false;
+      STATE.editingUserId = String(u.id);
+    }
+    updateSeatEditorDom();
+    if (opts.scroll) {
+      const p = $('seatEditorPanel');
+      if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (opts.focusName) {
+      setTimeout(() => { const n = $('nu_name'); if (n) n.focus(); }, 30);
+    }
+    return true;
+  }
+
+  function updateSeatEditorDom() {
+    const wrap = $('seatEditorWrap');
+    if (wrap) {
+      wrap.innerHTML = renderSeatEditorHtml();
+      wireSeatEditorActions(wrap);
+    }
+    const tbody = $('usersDirectoryTbody');
+    if (tbody) {
+      tbody.innerHTML = renderUsersDirectoryRowsHtml();
+      wireUsersDirectoryActions(tbody);
+    }
+  }
+
+  async function saveSeatEditorForm() {
+    if (!isOwner()) return false;
+    const name = val('nu_name');
+    const email = norm(val('nu_email'));
+    const pin = val('nu_pin');
+    const role = val('nu_role') || 'Entry';
+    const companies = normalizeCompaniesScope(val('nu_companies') || 'WTC');
+    const acc = (val('nu_access') || 'partial|partial').split('|');
+    const editUser = (STATE.editingUserId && STATE.editingUserId !== '__new__')
+      ? STATE.users.find(x => String(x.id) === String(STATE.editingUserId))
+      : null;
+    const errs = [];
+    if (!name) errs.push('Full name is required.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push('Enter a valid email address.');
+    if (!/^\d{4,8}$/.test(pin)) errs.push('PIN must be 4 to 8 digits.');
+    const dupUser = STATE.users.find(x => norm(x.email) === email && (!editUser || String(x.id) !== String(editUser.id)));
+    if (dupUser && STATE.editingUserId && STATE.editingUserId !== '__new__') {
+      errs.push(`Email ${email} is already assigned to ${dupUser.full_name}.`);
+    }
+    const box = $('nuErrors');
+    if (box) { box.hidden = !errs.length; box.innerHTML = errs.length ? `<ul>${errs.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''; }
+    if (errs.length) return false;
+
+    const existingIdx = editUser
+      ? STATE.users.findIndex(x => String(x.id) === String(editUser.id))
+      : STATE.users.findIndex(x => norm(x.email) === email);
+    const prev = existingIdx >= 0 ? STATE.users[existingIdx] : {};
+    const isSelfOwner = existingIdx === STATE.activeUserIdx;
+    const statusEl = $('nu_status');
+    const statusVal = isSelfOwner ? 'Active' : ((statusEl && statusEl.value === 'Suspended') ? 'Suspended' : (prev.status || 'Active'));
+    const nowIso = new Date().toISOString();
+    const newUser = {
+      id: existingIdx >= 0 ? prev.id : uid('u'),
+      full_name: name,
+      email,
+      pin_code: pin,
+      role,
+      companies,
+      pbi_access: acc[0] || 'partial',
+      statements_access: acc[1] || 'partial',
+      status: statusVal,
+      last_login_at: prev.last_login_at || '',
+      face_samples: prev.face_samples || [],
+      face_thumbs: prev.face_thumbs || [],
+      face_required: !!prev.face_required,
+      face_updated_at: prev.face_updated_at || '',
+      seat_updated_at: nowIso
+    };
+    if (existingIdx >= 0) STATE.users[existingIdx] = Object.assign(STATE.users[existingIdx], newUser);
+    else STATE.users.push(newUser);
+    STATE.editingUserId = String(newUser.id);
+    STATE.showAddUserForm = true;
+    STATE.userFormDirty = false;
+    saveLocalAuthAndRecords();
+    updateSeatEditorDom();
+    updateEnrolStudioDom();
+    toast(existingIdx >= 0 ? `✓ Seat updated · ${name} (${role} · ${companies})` : `✓ Seat created · ${name} (PIN ${pin})`);
+    if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: newUser }) }); } catch (_) { /* no server.py */ } }
+    await syncWithCloud(true);
+    return true;
+  }
+
+  function wireSeatEditorActions(root) {
+    if (!root) return;
+    const sel = root.querySelector('#nu_seat_select');
+    if (sel) {
+      sel.addEventListener('change', e => {
+        selectSeatForEdit(e.target.value, { focusName: e.target.value === '__new__' });
+      });
+    }
+    root.querySelectorAll('[data-pick-seat]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-pick-seat');
+        selectSeatForEdit(target, { focusName: target === '__new__' });
+      });
+    });
+    const prevBtn = root.querySelector('#nuPrevSeatBtn');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        if (!STATE.users.length) return;
+        const cur = getEditingSeatUser();
+        const idx = cur ? STATE.users.findIndex(x => String(x.id) === String(cur.id)) : 0;
+        const nextIdx = (idx - 1 + STATE.users.length) % STATE.users.length;
+        selectSeatForEdit(STATE.users[nextIdx].id);
+      });
+    }
+    const nextBtn = root.querySelector('#nuNextSeatBtn');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        if (!STATE.users.length) return;
+        const cur = getEditingSeatUser();
+        const idx = cur ? STATE.users.findIndex(x => String(x.id) === String(cur.id)) : -1;
+        const nextIdx = (idx + 1) % STATE.users.length;
+        selectSeatForEdit(STATE.users[nextIdx].id);
+      });
+    }
+    const newBlankBtn = root.querySelector('#nuNewBlankBtn');
+    if (newBlankBtn) {
+      newBlankBtn.addEventListener('click', () => {
+        selectSeatForEdit('__new__', { focusName: true });
+      });
+    }
+    const cancelBtn = root.querySelector('#cancelAddUserBtn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        STATE.showAddUserForm = false;
+        STATE.userFormDirty = false;
+        updateSeatEditorDom();
+      });
+    }
+    const openInspBtn = root.querySelector('#openSeatInspectorBtn');
+    if (openInspBtn) {
+      openInspBtn.addEventListener('click', () => {
+        const cur = getEditingSeatUser();
+        selectSeatForEdit(cur ? cur.id : (STATE.users[0] && STATE.users[0].id));
+      });
+    }
+    const openNewBarBtn = root.querySelector('#openNewSeatBarBtn');
+    if (openNewBarBtn) {
+      openNewBarBtn.addEventListener('click', () => {
+        selectSeatForEdit('__new__', { focusName: true });
+      });
+    }
+    const resetBtn = root.querySelector('#resetSeatEditBtn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        STATE.userFormDirty = false;
+        updateSeatEditorDom();
+        toast('Reverted unsaved field changes');
+      });
+    }
+    const saveBtn = root.querySelector('#saveNewUserBtn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        saveSeatEditorForm();
+      });
+    }
+    root.querySelectorAll('[data-enrol-user]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const uidTarget = btn.getAttribute('data-enrol-user');
+        const u = STATE.users.find(x => String(x.id) === String(uidTarget));
+        if (!u) return;
+        FACE_STATE.enrolUserId = u.id;
+        syncEnrolBufferFromUser(u, true);
+        updateEnrolStudioDom();
+        const panel = $('faceEnrolPanel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+    root.querySelectorAll('#nu_name, #nu_email, #nu_pin, #nu_role, #nu_companies, #nu_access, #nu_status').forEach(inp => {
+      inp.addEventListener('input', () => { STATE.userFormDirty = true; });
+      inp.addEventListener('change', () => { STATE.userFormDirty = true; });
+    });
+  }
+
   function wireUsersDirectoryActions(root) {
     if (!root) return;
-    root.querySelectorAll('[data-enrol-user]').forEach(btn => btn.addEventListener('click', () => {
+    root.querySelectorAll('[data-edit-user]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const uidTarget = btn.getAttribute('data-edit-user');
+      selectSeatForEdit(uidTarget, { scroll: true });
+    }));
+    root.querySelectorAll('tr[data-user-row]').forEach(row => row.addEventListener('click', e => {
+      if (!isOwner()) return;
+      if (e.target && e.target.closest('button, a, input, select')) return;
+      const uidTarget = row.getAttribute('data-user-row');
+      if (uidTarget) selectSeatForEdit(uidTarget, { scroll: false });
+    }));
+    root.querySelectorAll('[data-enrol-user]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
       const uidTarget = btn.getAttribute('data-enrol-user');
       const u = STATE.users.find(x => String(x.id) === String(uidTarget));
       if (!u) return;
@@ -8216,12 +8533,14 @@
       const panel = $('faceEnrolPanel');
       if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }));
-    root.querySelectorAll('[data-sim-user]').forEach(btn => btn.addEventListener('click', () => {
+    root.querySelectorAll('[data-sim-user]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
       if (!isOwner()) return;
       const u = STATE.users[Number(btn.getAttribute('data-sim-user'))];
       if (u) performLogin(u.email, u.pin_code || '1111', { bypass2FA: true, method: 'Owner Impersonation' });
     }));
-    root.querySelectorAll('[data-invite-user]').forEach(btn => btn.addEventListener('click', () => {
+    root.querySelectorAll('[data-invite-user]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
       if (!isOwner()) return;
       const u = STATE.users[Number(btn.getAttribute('data-invite-user'))];
       if (!u) return;
@@ -8230,14 +8549,17 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inviteUrl).then(done).catch(() => { window.prompt('Copy this invite link:', inviteUrl); });
       else window.prompt('Copy this invite link:', inviteUrl);
     }));
-    root.querySelectorAll('[data-toggle-user]').forEach(btn => btn.addEventListener('click', async () => {
+    root.querySelectorAll('[data-toggle-user]').forEach(btn => btn.addEventListener('click', async e => {
+      e.stopPropagation();
       if (!isOwner()) return;
       const idx = Number(btn.getAttribute('data-toggle-user'));
       const u = STATE.users[idx];
       if (!u) return;
       if (idx === STATE.activeUserIdx) { toast('You cannot suspend your own seat', 'err'); return; }
       u.status = u.status === 'Suspended' ? 'Active' : 'Suspended';
+      u.seat_updated_at = new Date().toISOString();
       saveLocalAuthAndRecords();
+      updateSeatEditorDom();
       updateEnrolStudioDom();
       if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: u }) }); } catch (_) { /* no server.py */ } }
       syncWithCloud(true);
