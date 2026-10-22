@@ -9719,6 +9719,7 @@
 
   async function completeFaceLogin(user, dist, snapshotUrl, methodLabel, opts = {}) {
     if (!user) return false;
+    if (STATE.authed && !navigator.webdriver && !window.__MFG_HEADLESS_TEST) return true;
     const seatMode = effectiveSeatAuthMode(user);
     // If seat requires BOTH PIN + Face ID and the user scanned Face ID first (before entering PIN):
     if (seatMode === 'both' && !FACE_STATE.pending2faUser) {
@@ -9784,6 +9785,7 @@
   // Evaluates a single 128-d face detection against enrolled seats (used by live camera loop AND headless tests)
   // Anti-screenshot rule: NEVER unlock on 1 frame — always require >= 3 consecutive matching frames + liveness.
   async function handleAuthDescriptor(det, snapshotUrl, opts = {}) {
+    if (opts && opts.liveCamera && STATE.authed) return { status: 'already-authed' };
     const needed = Math.max(3, Number(STATE.faceSettings.confirmFrames || 3));
     const enrolled = usableFaces();
     if (!enrolled.length) {
@@ -9931,7 +9933,15 @@
       FACE_STATE.busy = true;
       try {
         await ensureFaceModelsLoaded();
+        if (STATE.authed || !FACE_STATE.camActive) {
+          if (STATE.authed && !FACE_STATE.enrolCamActive) stopFaceCamera();
+          return;
+        }
         const det = await window.Face.detectOne(videoEl, false);
+        if (STATE.authed || !FACE_STATE.camActive) {
+          if (STATE.authed && !FACE_STATE.enrolCamActive) stopFaceCamera();
+          return;
+        }
         if (overlayEl && window.Face.drawOverlay) {
           const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#B8883B') : '#DC2626';
           window.Face.drawOverlay(overlayEl, videoEl, det, color, FACE_STATE.streakUser ? FACE_STATE.streakUser.name : '');
@@ -11632,6 +11642,8 @@
 
   function openAuthGate(prefillEmail) {
     STATE.authed = false;
+    window.__mfgSwResuming = false;
+    document.documentElement.classList.remove('sw-resuming');
     FACE_STATE.pending2faUser = null;
     FACE_STATE.pendingPinUser = null;
     FACE_STATE.streakUser = null;
@@ -11651,11 +11663,13 @@
     if (gate) gate.hidden = false;
     document.body.classList.add('locked');
     if (!FACE_STATE.authCamStoppedByUser) startAuthFaceScanner(false);
-    setTimeout(() => { const t = prefillEmail ? pinEl : emEl; if (t) t.focus(); }, 80);
+    setTimeout(() => { if (!STATE.authed) { const t = prefillEmail ? pinEl : emEl; if (t) t.focus(); } }, 80);
   }
 
   function closeAuthGate() {
     STATE.authed = true;
+    window.__mfgSwResuming = false;
+    document.documentElement.classList.remove('sw-resuming');
     FACE_STATE.pending2faUser = null;
     FACE_STATE.pendingPinUser = null;
     FACE_STATE.enrolCamActive = false;

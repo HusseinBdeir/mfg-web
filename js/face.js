@@ -96,7 +96,7 @@ const Face = (() => {
   }
 
   function prewarm() {
-    if (typeof window === "undefined" || navigator.webdriver || window.__MFG_HEADLESS_TEST) return;
+    if (typeof window === "undefined" || navigator.webdriver || window.__MFG_HEADLESS_TEST || window.__mfgSwResuming) return;
     // 1. Start loading WebGL + 128-d recognition models immediately (before 10.4 MB seed_data.js parses)
     load().catch(() => {});
     // 2. Request webcam stream immediately if #authGate is visible so the video feed appears in <150ms

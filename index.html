@@ -7,14 +7,23 @@
   <meta name="description" content="ISABI Systems — Manufacturing Operations Command Center &amp; Double-Entry Ledger for WTC, BBConstruction &amp; Lions Transport.">
   <meta name="theme-color" content="#F4F2EE">
   <script id="pre">
-    // Pre-paint theme + iOS standalone detection (no white flash, safe-area inset ready) — PWA.md §3.1 & §3.3
+    // Pre-paint theme + iOS standalone + SW-resume detection (no white flash or auth-gate flash on reload) — PWA.md §3.1 & §3.3
     try {
+      window.__MFG_SHELL_VER = '8.4';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
       if (rw >= 176 && rw <= 420) document.documentElement.style.setProperty('--rail-w', rw + 'px');
       var isStandalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
       if (isStandalone) document.documentElement.classList.add('ios-standalone');
+      var rawSw = sessionStorage.getItem('isabi_mfg_sw_resume');
+      if (rawSw) {
+        var parsedSw = JSON.parse(rawSw);
+        if (parsedSw && parsedSw.email && (Date.now() - Number(parsedSw.ts || 0)) < 15000) {
+          window.__mfgSwResuming = true;
+          document.documentElement.classList.add('sw-resuming');
+        }
+      }
     } catch (e) {}
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,7 +36,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=8.3">
+  <link rel="stylesheet" href="css/app.css?v=8.4">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -552,28 +561,35 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=8.3"></script>
-  <script src="js/face.js?v=8.3"></script>
-  <script src="js/endpoints.js?v=8.3"></script>
-  <script src="js/seed_data.js?v=8.3"></script>
-  <script src="js/forms_engine.js?v=8.3"></script>
-  <script src="js/pbi_pages.js?v=8.3"></script>
-  <script src="js/rdl_reports.js?v=8.3"></script>
-  <script src="js/app.js?v=8.3"></script>
+  <script src="vendor/face-api.js?v=8.4"></script>
+  <script src="js/face.js?v=8.4"></script>
+  <script src="js/endpoints.js?v=8.4"></script>
+  <script src="js/seed_data.js?v=8.4"></script>
+  <script src="js/forms_engine.js?v=8.4"></script>
+  <script src="js/pbi_pages.js?v=8.4"></script>
+  <script src="js/rdl_reports.js?v=8.4"></script>
+  <script src="js/app.js?v=8.4"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
+      const hadController = !!navigator.serviceWorker.controller;
       let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!refreshing && !navigator.webdriver) {
-          refreshing = true;
-          try {
-            const g = document.getElementById('authGate');
-            if (g && g.hidden && window.__mfgAuthedEmail) {
-              sessionStorage.setItem('isabi_mfg_sw_resume', JSON.stringify({ email: window.__mfgAuthedEmail, ts: Date.now() }));
-            }
-          } catch (_) {}
-          location.reload();
+      navigator.serviceWorker.addEventListener('controllerchange', async () => {
+        if (refreshing || navigator.webdriver || !hadController) return;
+        // Never reload if the user has already signed in or is actively signing in (prevents post-login portal flash)
+        const g = document.getElementById('authGate');
+        const pinInp = document.getElementById('authPinInput');
+        const faceSt = window.MFG_FACE_TEST && typeof window.MFG_FACE_TEST.state === 'function' ? window.MFG_FACE_TEST.state() : null;
+        if ((g && g.hidden) || window.__mfgAuthedEmail || (faceSt && (faceSt.authed || faceSt.streakCount > 0 || faceSt.pending2fa || faceSt.pendingPin)) || (pinInp && pinInp.value)) {
+          return;
         }
+        // Because sw.js serves navigation network-first, if this page already loaded the current SHELL version, do not reload
+        try {
+          if (window.caches && window.__MFG_SHELL_VER && await caches.has('isabi-mfg-v' + window.__MFG_SHELL_VER)) {
+            return;
+          }
+        } catch (_) {}
+        refreshing = true;
+        location.reload();
       });
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {});

@@ -1,9 +1,9 @@
-const CACHE = 'isabi-mfg-v8.3';
+const CACHE = 'isabi-mfg-v8.4';
 const SHELL = [
   './',
   './index.html',
-  './css/app.css?v=8.3',
-  './vendor/face-api.js?v=8.3',
+  './css/app.css?v=8.4',
+  './vendor/face-api.js?v=8.4',
   './vendor/models/tiny_face_detector_model-weights_manifest.json',
   './vendor/models/tiny_face_detector_model.bin',
   './vendor/models/ssd_mobilenetv1_model-weights_manifest.json',
@@ -14,13 +14,13 @@ const SHELL = [
   './vendor/models/face_landmark_68_tiny_model.bin',
   './vendor/models/face_recognition_model-weights_manifest.json',
   './vendor/models/face_recognition_model.bin',
-  './js/face.js?v=8.3',
-  './js/endpoints.js?v=8.3',
-  './js/seed_data.js?v=8.3',
-  './js/forms_engine.js?v=8.3',
-  './js/pbi_pages.js?v=8.3',
-  './js/rdl_reports.js?v=8.3',
-  './js/app.js?v=8.3',
+  './js/face.js?v=8.4',
+  './js/endpoints.js?v=8.4',
+  './js/seed_data.js?v=8.4',
+  './js/forms_engine.js?v=8.4',
+  './js/pbi_pages.js?v=8.4',
+  './js/rdl_reports.js?v=8.4',
+  './js/app.js?v=8.4',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -32,11 +32,20 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE).then(cache =>
       Promise.all(
-        SHELL.map(url =>
-          fetch(new Request(url, { cache: 'reload' }))
+        SHELL.map(url => {
+          const isImmutableOrVersioned = url.includes('/vendor/') || url.includes('?v=');
+          if (isImmutableOrVersioned) {
+            return caches.match(url).then(cached => {
+              if (cached) return cache.put(url, cached.clone());
+              return fetch(new Request(url, { cache: 'no-cache' }))
+                .then(res => (res.ok ? cache.put(url, res) : null))
+                .catch(() => null);
+            });
+          }
+          return fetch(new Request(url, { cache: 'reload' }))
             .then(res => (res.ok ? cache.put(url, res) : null))
-            .catch(() => null)
-        )
+            .catch(() => null);
+        })
       )
     )
   );

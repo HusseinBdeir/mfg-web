@@ -926,6 +926,15 @@ try {
     const pinOnlyLogin = await T.performLogin('', '1111');
     const unlockedPinOnly = pinOnlyLogin === true && document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
     const camStoppedOnEnter = !document.getElementById('authFaceVideo').srcObject && !T.state().camActive;
+    // Verify post-login late camera frame guard & pre-paint sw-resuming CSS rule (prevents post-login portal flash)
+    const lateFrameRes = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.28, yaw: 0.0 });
+    const lateFrameBlockedOk = lateFrameRes && lateFrameRes.status === 'already-authed';
+    const gateEl = document.getElementById('authGate');
+    gateEl.hidden = false;
+    document.documentElement.classList.add('sw-resuming');
+    const swResumeGateHidden = getComputedStyle(gateEl).display === 'none';
+    document.documentElement.classList.remove('sw-resuming');
+    gateEl.hidden = true;
 
     return {
       gateOverflow,
@@ -938,6 +947,8 @@ try {
       hintNoOverlap,
       noSoundBtn,
       camStoppedOnEnter,
+      lateFrameBlockedOk,
+      swResumeGateHidden,
       pinStep,
       bannerVisible,
       stillLockedAfterPin,
@@ -985,8 +996,8 @@ try {
   authFaceFlow.faceOnlyPinBlocked === 'face_only_required' && authFaceFlow.pinOnlyFaceBlocked === 'face-disabled' && authFaceFlow.bothFaceThenPinOk
     ? pass('authGate Sign-In Requirement modes · Either, Both (PIN->Face & Face->PIN), Face ID Only & PIN Only enforced')
     : fail('authGate Sign-In Requirement modes', JSON.stringify(authFaceFlow));
-  authFaceFlow.unlockedPinOnly
-    ? pass('authGate PIN-only · blank email + unique 4-digit PIN resolves seat & signs in')
+  authFaceFlow.unlockedPinOnly && authFaceFlow.lateFrameBlockedOk && authFaceFlow.swResumeGateHidden
+    ? pass('authGate PIN-only & no post-login portal flash · blank email + 4-digit PIN signs in, late camera frames ignored & SW-resume pre-paint guard active')
     : fail('authGate PIN-only sign-in', JSON.stringify(authFaceFlow));
 
   // 7b2. Team Seat Inspector (#seatEditorPanel) — inspect all 10 current users & update in-place
