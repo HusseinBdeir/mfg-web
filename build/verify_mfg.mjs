@@ -372,9 +372,27 @@ try {
     const sales19950Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
     const sales19950DupWrapHidden = document.getElementById('wrap_dupok').hidden === true;
 
-    // Custom suggestion popover on f_truck when typing '10'
+    // Custom suggestion popover on f_product (searchable combobox with UoM/ton-factor metadata badges) & f_truck
     const nativeListCount = document.querySelectorAll('#modalBody input[list]').length;
+    const unwiredSelectCount = document.querySelectorAll('#modalBody select:not([data-select-wired="1"])').length;
     const suggestWrapCount = document.querySelectorAll('#modalBody .pa-suggest-wrap').length;
+
+    const prodEl = document.getElementById('f_product');
+    const prodIsInputCombobox = prodEl && prodEl.tagName === 'INPUT' && prodEl.dataset.suggestList === 'dl_sales_prods' && !!prodEl.closest('.pa-suggest-wrap');
+    prodEl.value = '';
+    prodEl.click();
+    const prodMenu = prodEl.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
+    const prodMenuOpen = prodMenu && !prodMenu.hidden;
+    const prodMetaBadges = prodMenu ? prodMenu.querySelectorAll('.pa-suggest-meta').length : 0;
+    const firstProdItem = prodMenu ? prodMenu.querySelector('.pa-suggest-item') : null;
+    if (firstProdItem) firstProdItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const pickedProd = prodEl.value;
+    const prodClosedAfterPick = prodMenu ? prodMenu.hidden === true : false;
+    // Clicking an already-selected grade must re-open the full list with .is-selected highlighted
+    prodEl.click();
+    const prodReopensWhenFilled = prodMenu && !prodMenu.hidden && prodMenu.querySelectorAll('.pa-suggest-item').length > 1 && !!prodMenu.querySelector('.pa-suggest-item.is-selected');
+    prodMenu.hidden = true;
+
     const trk = document.getElementById('f_truck');
     trk.value = '10';
     trk.dispatchEvent(new Event('input', { bubbles: true }));
@@ -406,7 +424,14 @@ try {
       sales19950Hint,
       sales19950DupWrapHidden,
       nativeListCount,
+      unwiredSelectCount,
       suggestWrapCount,
+      prodIsInputCombobox,
+      prodMenuOpen,
+      prodMetaBadges,
+      pickedProd,
+      prodClosedAfterPick,
+      prodReopensWhenFilled,
       menuOpen,
       menuItems,
       menuOverflowY,
@@ -423,8 +448,8 @@ try {
   /Number is free/i.test(ticketAndSuggestProbe.sales19950Hint) && ticketAndSuggestProbe.sales19950DupWrapHidden && /Already used on Raw Material Ticket 19950/i.test(ticketAndSuggestProbe.raw19950Hint) && ticketAndSuggestProbe.raw19950DupWrapVisible
     ? pass('entry desk · duplicate ticket check isolated per table (Sales 19950 free vs Raw 19950 flagged)', `${ticketAndSuggestProbe.sales19950Hint} | ${ticketAndSuggestProbe.raw19950Hint}`)
     : fail('entry desk per-table duplicate check', JSON.stringify(ticketAndSuggestProbe));
-  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 4 && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^10/.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
-    ? pass('entry desk · Rev 10 custom suggestion popover (0 native <datalist> popups, 0 scrollbars)', `${ticketAndSuggestProbe.menuItems} items · picked ${ticketAndSuggestProbe.pickedTruck}`)
+  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^10/.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
+    ? pass('entry desk · Rev 10 unified combobox & select popover (Product/Grade with UoM·Ton badges, 0 native popups, 0 scrollbars)', `grade="${ticketAndSuggestProbe.pickedProd}" (${ticketAndSuggestProbe.prodMetaBadges} badges) · truck=${ticketAndSuggestProbe.pickedTruck}`)
     : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
 
   // 6c. Intuitive Ticket Entry v7.0: Ordering, Conditional Column Hiding, Reporting Date & Policy Lock + Admin Unlock Process

@@ -828,7 +828,8 @@
   }
 
   function getKPI(coOverride) {
-    const coKey = coOverride || STATE.company;
+    const rawKey = coOverride || STATE.company;
+    const coKey = resolveEffectiveModelKey(rawKey);
     const m = SEED.models[coKey] || SEED.models['manufacturing-group'] || {};
     const periods = m.periods || {};
     const range = periodRange(STATE.period);
@@ -838,7 +839,7 @@
     if ((STATE.basis === 'tx' || (!range && !(STATE.customRecords.sales_tickets || []).length)) && anchor) return Object.assign({}, anchor, { sales_rep_date: anchor.sales_ttc, raw_rep_date: anchor.raw_cost, exp_rep_date: anchor.expenses, op_profit_rep_date: anchor.operating_profit, basis: STATE.basis });
     const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : MAX_DATE;
-    const cacheKey = `${coKey}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
+    const cacheKey = `${coKey}|${allowedCompanyNames().join(',')}|${STATE.basis}|${STATE.period}|${f}|${t}|${(STATE.customRecords.sales_tickets || []).length}`;
     if (!coOverride && _kpiRangeCacheKey === cacheKey && _kpiRangeCacheVal) return _kpiRangeCacheVal;
 
     const txRaw = computeLocalKPI(m, range, 'tx', coKey);

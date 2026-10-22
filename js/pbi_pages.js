@@ -2118,10 +2118,13 @@
     else if (activePageId === 'p07_ap') {
       const byCat = new Map();
       expRows.forEach(x => {
+        const m = String(x.method || '').trim();
+        const sgn = (m === 'C Return' || m === 'CR Return') ? -1 : ((m === 'Config' || m === 'VATConfig' || m === 'Free' || m === 'Remove' || m === 'Adjusted' || m === 'JV Adjusted') ? 0 : 1);
+        if (sgn === 0) return;
         const c = x.category || 'Uncategorized';
         const cur = byCat.get(c) || { Category: c, costClass: catClassMap.get(norm(c)) || 'Operating Expense', count: 0, amount: 0 };
         cur.count += 1;
-        cur.amount += Number(x.amount || 0);
+        cur.amount += sgn * Number(x.amount || 0);
         byCat.set(c, cur);
       });
       const catList = Array.from(byCat.values()).sort((a, b) => b.amount - a.amount);
@@ -2848,12 +2851,13 @@
     // PAGE 13: VAT & INVOICES (m18c_report.py Page 13 — 2 bands + 4 charts + 5 tables)
     // =========================================================================
     else if (activePageId === 'p13_vat') {
+      const isVatMethod = m => m === 'VAT' || m === 'VATConfig' || m === 'VAT Dis' || m === 'Cash VAT Dis';
       const vatInvRows = filterRecords(rec.vat_invoices, { ignorePeriod: true, ignoreSearch: true }).filter(matchCommon);
       const vatCusts = custRows.filter(c => c['VAT Registered'] === 'Yes' || Number(c.sales_vat || 0) > 0 || Number(c.vat_receivable || 0) > 0);
       const vatSupps = suppRows.filter(s => s.IVA === 'Yes');
-      const vatRecs = recRows.filter(r => /VAT/i.test(String(r.kind || '')) || r.vat_invoice);
+      const vatRecs = recRows.filter(r => isVatMethod(String(r.method || '').trim()) || /VAT/i.test(String(r.kind || '')) || r.vat_invoice);
       const vatCollected = Math.max(0, Number(k.sales_vat || 0) - Number(k.vat_receivable || 0));
-      const inputVat = expRows.reduce((a, r) => a + Number(r.vat || 0), 0);
+      const inputVat = setRows.reduce((a, s) => isVatMethod(String(s.method || '').trim()) ? a + Number(s.amount || 0) + Number(s.discount || 0) : a, 0);
 
       // Quarterly VAT summary
       const qtrMap = new Map();

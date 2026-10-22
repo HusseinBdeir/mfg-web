@@ -308,10 +308,11 @@
       });
 
       const salesAll = rawSales.map(r => {
-        const totTtc = Number(r.total_ttc !== undefined ? r.total_ttc : (r.total_usd !== undefined ? r.total_usd : (r.total || 0)));
-        const vat = Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
+        const sign = r.return ? -1 : 1;
+        const totTtc = sign * Number(r.total_ttc !== undefined ? r.total_ttc : (r.total_usd !== undefined ? r.total_usd : (r.total || 0)));
+        const vat = sign * Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
         const isCash = String(r.method || '').toLowerCase() === 'cash';
-        const paid = r.paid_usd !== undefined ? Number(r.paid_usd) : (isCash ? totTtc : 0);
+        const paid = r.paid_usd !== undefined ? sign * Number(r.paid_usd) : (isCash ? totTtc : 0);
         let vatInv = String(r.vat_invoice || r.vat_inv || '');
         if (!vatInv && vat > 0 && vatInvByCust.has(r.customer)) {
           const d = rowDate(r, basis);
@@ -331,21 +332,23 @@
           product: r.product || 'Aggregate / Concrete',
           truck: r.truck || '',
           driver: r.driver || r.truck_owner || '',
-          qty: Number(r.qty || 0),
+          qty: sign * Number(r.qty || 0),
           unit_price: Number(r.unit_price || 0),
           vat_usd: vat,
           total_usd: totTtc,
           paid_usd: paid,
           balance_usd: totTtc - paid,
-          pay_method: r.method || 'Credit'
+          pay_method: r.method || 'Credit',
+          is_return: Boolean(r.return)
         };
       });
 
-      // Add customer receipts as negative AR / positive paid entries for SOA & Aging
+      // Separate customer receipt ledger entries for SOA, Aging, Cash Flow & Journal (never mixed into salesAll ticket register)
+      const receiptLedgerAll = [];
       rawReceipts.forEach(rc => {
-        const amt = Number(rc.usd_amount !== undefined ? rc.usd_amount : (rc.amount || 0));
-        if (amt <= 0) return;
-        salesAll.push({
+        const amt = Number(rc.usd_amount !== undefined ? rc.usd_amount : (rc.amount || 0)) + Number(rc.discount || 0);
+        if (Math.abs(amt) < 0.005) return;
+        receiptLedgerAll.push({
           id: rc.id,
           date: rc.date,
           rep_date: rc.rep_date || rc.date,
@@ -368,11 +371,14 @@
           is_receipt_row: true
         });
       });
+      const arLedgerAll = [...salesAll, ...receiptLedgerAll];
 
       const expAll = rawExp.map(r => {
-        const amt = Number(r.usd_amount !== undefined ? r.usd_amount : (r.amount !== undefined ? r.amount : (r.total_usd || 0)));
-        const vat = Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
-        const isCash = String(r.method || 'Cash').toLowerCase() !== 'credit';
+        const m = String(r.method || 'Cash').trim().toLowerCase();
+        const sign = (m === 'c return' || m === 'cr return' || r.return) ? -1 : 1;
+        const amt = sign * Number(r.usd_amount !== undefined ? r.usd_amount : (r.amount !== undefined ? r.amount : (r.total_usd || 0)));
+        const vat = sign * Number(r.vat !== undefined ? r.vat : (r.vat_usd || 0));
+        const isCash = m === 'cash' || m === 'c return';
         const paid = isCash ? amt : 0;
         return {
           id: r.id,
@@ -385,10 +391,12 @@
           category: r.category || 'Operating Expense',
           supplier: r.supplier || r.subcategory || 'General Vendor',
           description: `${r.subcategory || r.category || ''}${r.equipment ? ' · ' + r.equipment : ''}`.trim(),
+          method: r.method || 'Cash',
           vat_usd: vat,
           total_usd: amt,
           paid_usd: paid,
-          balance_usd: amt - paid
+          balance_usd: amt - paid,
+          is_return: sign < 0
         };
       });
 
@@ -435,18 +443,37 @@
         };
       });
 
-      // Add supplier settlements as paid_usd on rmAll for Supplier Balances & Supplier SOA
+      // Separate supplier settlements for Supplier Balances, SOA, Cash Flow & VAT (never mixed into rmAll intake register)
+      const settlementLedgerAll = [];
+      const vatPaidAll = [];
       rawSettlements.forEach(s => {
-        const amt = Number(s.usd_amount !== undefined ? s.usd_amount : (s.amount || 0));
-        if (amt <= 0) return;
-        rmAll.push({
+        const m = String(s.method || '').trim().toLowerCase();
+        const usd = Number(s.usd_amount !== undefined ? s.usd_amount : (s.amount || 0));
+        const diff = Number(s.diff !== undefined ? s.diff : (s.discount || 0));
+        const amt = usd + diff;
+        if (m === 'vat paid') {
+          if (Math.abs(usd) >= 0.005) {
+            vatPaidAll.push({
+              id: s.id,
+              date: s.date,
+              rep_date: s.rep_date || s.date,
+              co: s.company || co,
+              voucher: s.name || s.id,
+              supplier: s.supplier || 'Supplier',
+              vat_usd: usd,
+              total_usd: usd
+            });
+          }
+        }
+        if (Math.abs(amt) < 0.005) return;
+        settlementLedgerAll.push({
           id: s.id,
           date: s.date,
           rep_date: s.rep_date || s.date,
           co: s.company || co,
           voucher: s.name || s.id,
           name: s.name || '',
-          material: s.notes || 'Supplier Settlement',
+          material: s.notes || `Supplier Settlement (${s.method || 'Payment'})`,
           supplier: s.supplier || 'Quarry Supplier',
           driver: '',
           plate: '',
@@ -454,9 +481,11 @@
           unit: 'USD',
           unit_price: 0,
           total_usd: 0,
-          paid_usd: amt
+          paid_usd: amt,
+          is_settlement_row: true
         });
       });
+      const apRmLedgerAll = [...rmAll, ...settlementLedgerAll];
 
       const eqMap = new Map();
       ((recs.equipment || [])).forEach(e => { if (e && e.name) eqMap.set(e.name, e.type || 'Heavy Equipment'); });

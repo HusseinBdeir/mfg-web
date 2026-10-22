@@ -108,6 +108,8 @@ def ensure_auth_schema():
         cur.execute("ALTER TABLE users ADD COLUMN face_required INTEGER DEFAULT 0")
     if "face_updated_at" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN face_updated_at TEXT DEFAULT ''")
+    if "seat_updated_at" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN seat_updated_at TEXT DEFAULT ''")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -142,7 +144,7 @@ def ensure_auth_schema():
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     for u in DEFAULT_USERS:
         uid, fname, email, pin, role, comps, pbi, stmts, status, llogin = u
-        cur.execute("SELECT id, pin_code, last_login_at FROM users WHERE LOWER(email) = LOWER(?)", (email,))
+        cur.execute("SELECT id, pin_code, last_login_at FROM users WHERE id = ? OR LOWER(email) = LOWER(?)", (uid, email))
         existing = cur.fetchone()
         if existing:
             # Never overwrite a seat the owner has edited in the web app (PIN / role / scope / suspension) on a
@@ -151,7 +153,7 @@ def ensure_auth_schema():
             cur_pin = (existing[1] or "").strip()
             never_logged = not (existing[2] or "").strip()
             if not cur_pin or (cur_pin == "1111" and pin != "1111" and never_logged):
-                cur.execute("UPDATE users SET pin_code=? WHERE LOWER(email)=LOWER(?)", (pin, email))
+                cur.execute("UPDATE users SET pin_code=? WHERE id=?", (pin, existing[0]))
         else:
             cur.execute(
                 "INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -309,10 +311,19 @@ class MfgHandler(SimpleHTTPRequestHandler):
             if not u.get("email") or not u.get("full_name"):
                 return self._send_json({"ok": False, "error": "Name and email are required."}, 400)
             uid = u.get("id") or f"u-{int(dt.datetime.now().timestamp())}"
+            email_clean = u.get("email").strip().lower()
             conn = sqlite3.connect(str(DB_PATH))
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            existing = cur.execute("SELECT face_samples, face_thumbs, face_required, face_updated_at FROM users WHERE lower(email) = lower(?)", (u.get("email").strip(),)).fetchone()
+            ucols = {r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()}
+            if "seat_updated_at" not in ucols:
+                cur.execute("ALTER TABLE users ADD COLUMN seat_updated_at TEXT DEFAULT ''")
+            existing = cur.execute(
+                "SELECT id, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at FROM users WHERE id = ? OR lower(email) = lower(?)",
+                (uid, email_clean),
+            ).fetchone()
+            if existing:
+                uid = existing["id"]
             if "face_samples" in u and isinstance(u.get("face_samples"), list):
                 fs_json = json.dumps(u["face_samples"], ensure_ascii=False)
                 ft_json = json.dumps(u.get("face_thumbs") if isinstance(u.get("face_thumbs"), list) else [], ensure_ascii=False)
@@ -328,40 +339,67 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 ft_json = "[]"
                 f_req = 1 if u.get("face_required") else 0
                 f_upd = ""
-            cur.execute(
-                """
-                INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_thumbs, face_required, face_updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(email) DO UPDATE SET
-                    full_name = excluded.full_name,
-                    pin_code = excluded.pin_code,
-                    role = excluded.role,
-                    companies = excluded.companies,
-                    pbi_access = excluded.pbi_access,
-                    statements_access = excluded.statements_access,
-                    status = excluded.status,
-                    face_samples = excluded.face_samples,
-                    face_thumbs = excluded.face_thumbs,
-                    face_required = excluded.face_required,
-                    face_updated_at = excluded.face_updated_at
-                """,
-                (
-                    uid,
-                    u.get("full_name"),
-                    u.get("email").strip().lower(),
-                    str(u.get("pin_code") or "1111"),
-                    u.get("role") or "Entry",
-                    u.get("companies") or "WTC",
-                    u.get("pbi_access") or "partial",
-                    u.get("statements_access") or "partial",
-                    u.get("status") or "Active",
-                    u.get("last_login_at") or "",
-                    fs_json,
-                    ft_json,
-                    f_req,
-                    f_upd,
-                ),
-            )
+            seat_upd = str(u.get("seat_updated_at") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            if existing:
+                cur.execute(
+                    """
+                    UPDATE users SET
+                        full_name = ?,
+                        email = ?,
+                        pin_code = ?,
+                        role = ?,
+                        companies = ?,
+                        pbi_access = ?,
+                        statements_access = ?,
+                        status = ?,
+                        face_samples = ?,
+                        face_thumbs = ?,
+                        face_required = ?,
+                        face_updated_at = ?,
+                        seat_updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        u.get("full_name"),
+                        email_clean,
+                        str(u.get("pin_code") or "1111"),
+                        u.get("role") or "Entry",
+                        u.get("companies") or "WTC",
+                        u.get("pbi_access") or "partial",
+                        u.get("statements_access") or "partial",
+                        u.get("status") or "Active",
+                        fs_json,
+                        ft_json,
+                        f_req,
+                        f_upd,
+                        seat_upd,
+                        uid,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO users (id, full_name, email, pin_code, role, companies, pbi_access, statements_access, status, last_login_at, face_samples, face_thumbs, face_required, face_updated_at, seat_updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        uid,
+                        u.get("full_name"),
+                        email_clean,
+                        str(u.get("pin_code") or "1111"),
+                        u.get("role") or "Entry",
+                        u.get("companies") or "WTC",
+                        u.get("pbi_access") or "partial",
+                        u.get("statements_access") or "partial",
+                        u.get("status") or "Active",
+                        u.get("last_login_at") or "",
+                        fs_json,
+                        ft_json,
+                        f_req,
+                        f_upd,
+                        seat_upd,
+                    ),
+                )
             conn.commit()
             conn.close()
             return self._send_json({"ok": True, "id": uid})

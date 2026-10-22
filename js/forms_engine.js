@@ -419,6 +419,12 @@
   function dl(id, values) {
     return `<datalist id="${id}">${values.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
   }
+  function dlMeta(id, items) {
+    return `<datalist id="${id}">${items.map(it => {
+      const [v, m] = Array.isArray(it) ? it : [it, ''];
+      return `<option value="${esc(v)}"${m ? ` data-meta="${esc(m)}"` : ''}>`;
+    }).join('')}</datalist>`;
+  }
 
   function renderExtendedFormBody(fType, ctx, helpers) {
     const rec = getRecords(ctx);
@@ -428,12 +434,22 @@
     const companyField = fld('Company (BU) *', sel('f_company', comps, company));
     const uoms = uniqSorted((rec.uoms || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
     const prodNames = uniqSorted((rec.products || []).map(p => p.name));
+    const prodByName = {};
+    (rec.products || []).forEach(p => { if (p && p.name && !prodByName[p.name]) prodByName[p.name] = p; });
+    const prodMetaItems = prodNames.map(n => {
+      const p = prodByName[n];
+      const u = (p && p.uom) || 'm³';
+      const tf = p && Number(p.ton_factor) ? Number(p.ton_factor) : 0;
+      return [n, u + (tf && tf !== 1 ? ` · ×${tf} t` : '')];
+    });
     const custNames = helpers.customerNames();
     const supNames = helpers.supplierNames();
     const siteNames = helpers.siteNames();
     const equipNames = helpers.equipmentNames();
     const driverNames = helpers.driverNames();
     const staffNames = uniqSorted((rec.employments || []).map(e => e.staff || e.name).concat((rec.salaries || []).map(s => s.staff)));
+    const roleNames = uniqSorted(['Driver', 'Plant Operator', 'Crusher Operator', 'Loader Operator', 'Mechanic', 'Electrician', 'Weighbridge Clerk', 'Site Supervisor', 'Guard', 'General Labour'].concat((rec.employments || []).map(e => e.role)).concat((rec.freelance_sheets || []).map(f => f.role)));
+    const counterpartyNames = uniqSorted(['Bdeir Holding', 'WTC', 'BBConstruction', 'Lions Transport', 'Cash Till 5300', 'Bank Audi', 'Blom Bank'].concat((rec.loans || []).map(l => l.lender || l.counterparty || l.name)).concat((rec.external_movements || []).map(x => x.counterparty || x.name)).concat(supNames));
     const regNames = uniqSorted((rec.regions || []).map(r => r.name).concat(['Beirut', 'Mount Lebanon', 'South', 'Bekaa', 'North', 'Nabatieh']));
     const adminHeaderHtml = `<div id="paAdminLockBar"></div><div id="paAdminUnlockBox" hidden></div>`;
 
@@ -455,10 +471,10 @@
             ['Haulage (Customer Site)', 'Haulage (Customer Site) — 3P Delivery Hauler Rate']
           ], 'Sales (Delivery)'))}
           ${fld('Agreement Code / Name', inp('f_name', 'text', '', 'placeholder="Auto-named if blank"'))}
-          ${fld('Product / Grade *', inp('f_product', 'text', '', 'list="dl_pr_prods" placeholder="Select grade..."') + dl('dl_pr_prods', prodNames))}
-          ${fld('Customer (Sales Rules) *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Customer..."') + dl('dl_customers', custNames), { id: 'wrap_pr_customer' })}
-          ${fld('Supplier / Quarry / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
-          ${fld('Site / Destination', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Site..."') + dl('dl_sites', siteNames), { id: 'wrap_pr_site' })}
+          ${fld('Product / Grade *', inp('f_product', 'text', '', 'list="dl_pr_prods" placeholder="Select or type grade..."') + dlMeta('dl_pr_prods', prodMetaItems))}
+          ${fld('Customer (Sales Rules) *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames), { id: 'wrap_pr_customer' })}
+          ${fld('Supplier / Quarry / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
+          ${fld('Site / Destination', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames), { id: 'wrap_pr_site' })}
           ${secHdr('2. Unit Pricing & Tier 1 / Tier 2 Truck Sizes', 'Tier 2 unlocks once Tier 1 Truck Size is entered (m71/m73)')}
           ${fld('Priced Per Unit (bhf_unit) *', sel('f_uom', uoms, 'm³'))}
           ${fld('Material Unit Price ($) *', inp('f_unitprice', 'number', '0.00', 'step="0.01" min="0"'), { id: 'wrap_pr_matprice' })}
@@ -494,7 +510,7 @@
           ${fld('Invoice Serial No. *', inp('f_ticketno', 'text', '', 'placeholder="e.g. VAT-2026-0412"'))}
           ${fld('Invoice Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
           ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Invoice Date (m66)' })}
-          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers"') + dl('dl_customers', custNames))}
+          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Net Amount Ex-VAT ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0"'))}
           ${fld('VAT 11% ($)', inp('f_vat', 'number', '', 'step="0.01" min="0" readonly'), { id: 'wrap_f_vat', lockField: 'f_vat', lockReason: 'Locked to 11% Statutory Tax formula (Net HT × 11%)' })}
           ${fld('Payment Status', sel('f_status', [['Open', 'Open'], ['Settled', 'Settled'], ['Partial', 'Partial']], 'Open'))}
@@ -514,7 +530,7 @@
         <div class="rule-banner"><strong>Customer Credit Terms (bhf_creditterm):</strong> Sets the agreed payment window (days), credit limit ($), and grace period for AR aging &amp; DSO alerts.</div>
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers"') + dl('dl_customers', custNames))}
+          ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Effective Date *', inp('f_date', 'date', today))}
           ${fld('Payment Days (Net Days) *', inp('f_days', 'number', '30', 'step="1" min="0"'))}
           ${fld('Credit Limit ($)', inp('f_amount', 'number', '25000', 'step="100" min="0"'))}
@@ -533,7 +549,7 @@
           ${fld('VAT Registered (11%)', sel('f_vatreg', [['No', 'No'], ['Yes', 'Yes — 11% VAT Applies']], 'No'))}
           ${fld('MOF Tax Number', inp('f_mof', 'text', '', 'placeholder="Ministry of Finance # "'), { id: 'wrap_cust_mof', hidden: true })}
           ${fld('Phone / Contact', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
-          ${fld('Region / Address', inp('f_region', 'text', '', 'list="dl_regions"') + dl('dl_regions', regNames))}
+          ${fld('Region / Address', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
           <div class="form-field check-field"><input type="checkbox" id="f_declqty"><label for="f_declqty">Uses Customer-declared Qty on tickets (m60)</label></div>
           <div class="form-field check-field"><input type="checkbox" id="f_extinv"><label for="f_extinv">Requires External Invoice # on tickets (m60)</label></div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
@@ -580,9 +596,9 @@
         <div class="form-grid-3">
           ${companyField}
           ${fld('Site / Quarry Name *', inp('f_site', 'text', '', 'placeholder="Site or quarry name"'))}
-          ${fld('Region *', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Region..."') + dl('dl_regions', regNames))}
-          ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Auto-fills Raw Tickets"') + dl('dl_suppliers', supNames))}
-          ${fld('Associated Customer (if Delivery Site)', inp('f_customer', 'text', '', 'list="dl_customers"') + dl('dl_customers', custNames))}
+          ${fld('Region *', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
+          ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier (auto-fills Raw Tickets)..."') + dl('dl_suppliers', supNames))}
+          ${fld('Associated Customer (if Delivery Site)', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Latitude (GPS)', inp('f_lat', 'number', '', 'step="0.000001" placeholder="33.8938"'))}
           ${fld('Longitude (GPS)', inp('f_lng', 'number', '', 'step="0.000001" placeholder="35.5018"'))}
           <div class="form-field check-field"><input type="checkbox" id="f_isjv"><label for="f_isjv">Joint-Venture (JV) Quarry Site</label></div>
@@ -602,8 +618,8 @@
           ${fld('Equipment Category *', sel('f_category', [['Truck', 'Dump Truck / Tipper'], ['Mixer', 'Transit Mixer'], ['Loader', 'Wheel Loader'], ['Excavator', 'Excavator'], ['Bulldozer', 'Bulldozer'], ['Generator', 'Generator / Crusher'], ['Service Vehicle', 'Pickup / Service Vehicle']], 'Truck'))}
           ${fld('Capacity (m³) *', inp('f_capacity', 'number', '18', 'step="0.5" min="0"'), { id: 'wrap_eq_capacity' })}
           ${fld('Ownership *', sel('f_ownership', isCo ? [['Owned', 'Company Owned Fleet'], ['Rented', 'Long-Term Rented']] : [['Subcontractor', 'Third-Party Hauler / Subcontractor'], ['Owned', 'Company Owned Fleet'], ['Customer', 'Customer Truck']], isCo ? 'Owned' : 'Subcontractor'))}
-          ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers"') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo })}
-          ${fld('Default Driver', inp('f_driver', 'text', '', 'list="dl_drivers"') + dl('dl_drivers', driverNames))}
+          ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers" placeholder="Select or type truck owner..."') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo })}
+          ${fld('Default Driver', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames))}
           ${fld('Model / Make', inp('f_model', 'text', '', 'placeholder="Mercedes / Volvo / Shacman / CAT"'))}
         </div>
       `;
@@ -616,8 +632,8 @@
           ${companyField}
           ${fld('Driver Full Name *', inp('f_driver', 'text', '', 'placeholder="Driver name"'))}
           <div class="form-field check-field"><input type="checkbox" id="f_iscompanydriver"><label for="f_iscompanydriver">Company Fleet Driver (on BU payroll)</label></div>
-          ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Leave blank if Company Driver"') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
-          ${fld('Default Truck Plate', inp('f_truck', 'text', '', 'list="dl_equip"') + dl('dl_equip', equipNames))}
+          ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type hauler (leave blank if Company Driver)..."') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
+          ${fld('Default Truck Plate', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipNames))}
           ${fld('Phone Number', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
@@ -633,8 +649,8 @@
           ${fld('Payment Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
           ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Payment Date (m66)' })}
           ${fld('Payroll Month *', inp('f_paymonth', 'month', today.slice(0, 7)))}
-          ${fld('Staff / Driver Name *', inp('f_staff', 'text', '', 'list="dl_staff"') + dl('dl_staff', staffNames))}
-          ${fld('Allocated Equipment (if Driver)', inp('f_truck', 'text', '', 'list="dl_equip"') + dl('dl_equip', equipNames))}
+          ${fld('Staff / Driver Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff member..."') + dl('dl_staff', staffNames))}
+          ${fld('Allocated Equipment (if Driver)', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipNames))}
           ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash (Cr 5300 Till)'], ['Bank', 'Bank Transfer']], 'Cash'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0" placeholder="0.00"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0" placeholder="0"'))}
@@ -650,9 +666,9 @@
         <div class="form-grid-3">
           ${companyField}
           ${fld('Attendance Date *', inp('f_date', 'date', today))}
-          ${fld('Staff Member *', inp('f_staff', 'text', '', 'list="dl_staff"') + dl('dl_staff', staffNames))}
+          ${fld('Staff Member *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff member..."') + dl('dl_staff', staffNames))}
           ${fld('Status *', sel('f_status', [['Present', 'Present (Full Day)'], ['Half Day', 'Half Day'], ['Absent', 'Absent'], ['Paid Leave', 'Paid Leave'], ['Holiday', 'Public Holiday']], 'Present'))}
-          ${fld('Site Assignment', inp('f_site', 'text', '', 'list="dl_sites"') + dl('dl_sites', siteNames))}
+          ${fld('Site Assignment', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames))}
           ${fld('Overtime Hours', inp('f_hours', 'number', '0', 'step="0.5" min="0"'))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
@@ -665,12 +681,12 @@
         <div class="rule-banner"><strong>${isContract ? 'Employment Contract (bhf_employment)' : 'Freelance Work &amp; Day-Rate Entry (bhf_freelancework)'}:</strong> ${isContract ? 'Defines base salary and role so Sentinel S7 can audit salary payments against active contracts.' : 'Logs external/casual day-labour work and payment.'}</div>
         <div class="form-grid-3">
           ${companyField}
-          ${fld('Staff / Worker Name *', inp('f_staff', 'text', '', 'list="dl_staff"') + dl('dl_staff', staffNames))}
+          ${fld('Staff / Worker Name *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff / worker..."') + dl('dl_staff', staffNames))}
           ${fld(isContract ? 'Start Date *' : 'Work Date *', inp('f_date', 'date', today))}
-          ${fld('Role / Trade *', inp('f_role', 'text', '', 'placeholder="Driver / Plant Operator / Mechanic / Guard"'))}
+          ${fld('Role / Trade *', inp('f_role', 'text', '', 'list="dl_roles" placeholder="Select or type role / trade..."') + dl('dl_roles', roleNames))}
           ${fld('Pay Basis', sel('f_paytype', isContract ? [['Monthly', 'Monthly Salary'], ['Daily', 'Daily Wage']] : [['Daily', 'Daily Freelance Rate'], ['Lump Sum', 'Task Lump Sum']], isContract ? 'Monthly' : 'Daily'))}
           ${fld(isContract ? 'Agreed Base Salary ($) *' : 'Amount ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0"'))}
-          ${fld('Assigned Equipment / Site', inp('f_truck', 'text', '', 'list="dl_equip"') + dl('dl_equip', equipNames))}
+          ${fld('Assigned Equipment / Site', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipNames))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -684,8 +700,8 @@
           ${companyField}
           ${fld('Week Ending Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
           ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Week Ending Date (m66)' })}
-          ${fld('Staff / Driver *', inp('f_staff', 'text', '', 'list="dl_staff"') + dl('dl_staff', staffNames))}
-          ${fld('Site', inp('f_site', 'text', '', 'list="dl_sites"') + dl('dl_sites', siteNames))}
+          ${fld('Staff / Driver *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff / driver..."') + dl('dl_staff', staffNames))}
+          ${fld('Site', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames))}
           ${fld('USD Allowance ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
           ${fld('LBP Allowance (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
           ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000 · bhf_usdPreview.js)' })}
@@ -704,7 +720,7 @@
         <div class="form-grid-3">
           ${companyField}
           ${fld('Route / Rate Name *', inp('f_name', 'text', '', 'placeholder="e.g. WTC Quarry → Beirut Night Trip"'))}
-          ${fld('Site / Destination *', inp('f_site', 'text', '', 'list="dl_sites"') + dl('dl_sites', siteNames))}
+          ${fld('Site / Destination *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type destination site..."') + dl('dl_sites', siteNames))}
           ${fld('Equipment Category', sel('f_category', [['Truck', 'Dump Truck'], ['Mixer', 'Mixer'], ['All', 'All Fleet Units']], 'Truck'))}
           ${fld('Overtime Bonus per Trip ($) *', inp('f_amount', 'number', '10.00', 'step="0.50" min="0"'))}
           ${fld('Effective From *', inp('f_date', 'date', today))}
@@ -727,7 +743,7 @@
           ], 'loan'))}
           ${fld('Transaction Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
           ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Transaction Date (m66)' })}
-          ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'placeholder="Partner, bank, or entity name"'))}
+          ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'list="dl_counterparties" placeholder="Select or type partner, bank, or entity..."') + dl('dl_counterparties', counterpartyNames))}
           ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed (Dr 5300 Till)'], ['Outflow', 'Cash Outflow / Repaid (Cr 5300 Till)']], 'Inflow'))}
           ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
           ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
@@ -746,8 +762,8 @@
         ${fld('JV Entry Type *', sel('f_jvtype', [['distribution', 'JV Profit / Cash Distribution'], ['partnership', 'New JV Quarry Partnership Setup']], 'distribution'))}
         ${fld('Transaction Date *', inp('f_date', 'date', today), { hintId: 'hint_date', hint: '' })}
         ${fld('Reporting Date *', inp('f_repdate', 'date', today), { hintId: 'hint_repdate', hint: 'Auto-follows Transaction Date (m66)' })}
-        ${fld('JV Site *', inp('f_site', 'text', '', 'list="dl_sites"') + dl('dl_sites', siteNames))}
-        ${fld('JV Partner *', inp('f_counterparty', 'text', '', 'list="dl_suppliers"') + dl('dl_suppliers', supNames))}
+        ${fld('JV Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type JV site..."') + dl('dl_sites', siteNames))}
+        ${fld('JV Partner *', inp('f_counterparty', 'text', '', 'list="dl_suppliers" placeholder="Select or type JV partner..."') + dl('dl_suppliers', supNames))}
         ${fld('Partner Share (%)', inp('f_share', 'number', '50', 'step="0.5" min="0" max="100"'), { id: 'wrap_jv_share', hidden: true })}
         ${fld('Distribution Amount ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0"'), { id: 'wrap_jv_amount' })}
         ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
