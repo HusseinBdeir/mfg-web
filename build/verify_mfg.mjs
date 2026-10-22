@@ -2198,6 +2198,39 @@ try {
     ? pass('Command Center branding & Public Showcase navigation · .brand-sub="Command Center" + #railShowcaseLink & #authShowcaseLink', `${showcaseBrandProbe.brandSub} · href=${showcaseBrandProbe.railHref}`)
     : fail('Command Center branding & Public Showcase navigation', JSON.stringify(showcaseBrandProbe));
 
+  // 7h. Universal Record Void / Delete (inline row ✕ + 360° Record Inspector top Command Bar & footer + 1-click Undo restore)
+  const voidAnyRecordProbe = await evaluate(`(() => {
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    const countBefore = (window.MFG_SEED.records.equipment || []).length;
+    const firstRow = document.querySelector('#univRegPanel tbody tr.rrow[data-rid]');
+    const hasRowHoverVoidBtn = !!(firstRow && firstRow.querySelector('.void-btn[data-void="equipment"]'));
+    if (firstRow) firstRow.click();
+    const cmdVoidBtn = document.getElementById('inspCmdVoidBtn');
+    const footVoidBtn = document.getElementById('inspectorVoidBtn');
+    const hasBothInspectorVoidBtns = !!(cmdVoidBtn && footVoidBtn);
+    // Click 1: arm confirmation
+    if (cmdVoidBtn) cmdVoidBtn.click();
+    const armedOk = !!(cmdVoidBtn && cmdVoidBtn.dataset.armed === '1' && /Confirm/i.test(cmdVoidBtn.textContent));
+    // Click 2: execute void/delete
+    if (cmdVoidBtn) cmdVoidBtn.click();
+    const countAfterVoid = (window.MFG_SEED.records.equipment || []).length;
+    const voidDecremented = countAfterVoid === countBefore - 1;
+    // Click Undo in toast to restore cleanly
+    const undoBtn = document.getElementById('toastUndoBtn');
+    const hasUndoBtn = !!undoBtn;
+    if (undoBtn) undoBtn.click();
+    const countAfterUndo = (window.MFG_SEED.records.equipment || []).length;
+    const restoredOk = countAfterUndo === countBefore;
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    return {
+      ok: hasRowHoverVoidBtn && hasBothInspectorVoidBtns && armedOk && voidDecremented && hasUndoBtn && restoredOk,
+      countBefore, countAfterVoid, countAfterUndo, hasRowHoverVoidBtn, hasBothInspectorVoidBtns, armedOk, hasUndoBtn, restoredOk
+    };
+  })()`);
+  voidAnyRecordProbe && voidAnyRecordProbe.ok
+    ? pass('record void / delete & undo · inline row ✕ + 360° Record Inspector top/footer 🗑 Void / Delete + 1-click Undo across all registries & ledgers', `${voidAnyRecordProbe.countBefore} → ${voidAnyRecordProbe.countAfterVoid} → ${voidAnyRecordProbe.countAfterUndo}`)
+    : fail('record void / delete & undo', JSON.stringify(voidAnyRecordProbe));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

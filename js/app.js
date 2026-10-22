@@ -3708,7 +3708,7 @@
               <tbody>
                 ${shownEquip.map(e => `
                   <tr class="rrow" data-rkey="equipment" data-rid="${esc((equipInfo(e.Equipment) || {}).id || e.Equipment)}">
-                    <td class="mono">${relLink('equipment', e.Equipment, e.Equipment, true)}</td>
+                    <td class="mono">${relLink('equipment', e.Equipment, e.Equipment, true)}${appCell(equipInfo(e.Equipment) || { id: e.Equipment, name: e.Equipment }, 'equipment')}</td>
                     <td>${esc(e.Type || 'Truck')}</td>
                     <td><span class="badge ${e.Ownership === 'Owned' || e.Ownership === 'Own' ? 'badge-ok' : 'badge-info'}">${esc(e.Ownership || 'Transporter')}</span></td>
                     <td class="r">${fmtNum(e.trips)}</td>
@@ -3805,7 +3805,7 @@
               <tbody>
                 ${coEquipRows.slice(0, shownCount('coeq')).map(ce => `
                   <tr class="rrow" data-rkey="company_equipment" data-rid="${esc(ce.id || ce.equipment)}">
-                    <td class="mono">${relLink('equipment', ce.equipment, ce.equipment, true)}</td>
+                    <td class="mono">${relLink('equipment', ce.equipment, ce.equipment, true)}${appCell(ce, 'company_equipment')}</td>
                     <td>${coBadge(ce.company)}</td>
                     <td><span class="badge ${/^own/i.test(ce.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(ce.ownership || 'Owned')}</span></td>
                     <td><span class="badge ${/active/i.test(ce.status || 'Active') && !ce.end_date ? 'badge-ok' : 'badge-warn'}">${esc(ce.status || 'Active')}</span></td>
@@ -3942,7 +3942,7 @@
               <tbody>
                 ${sortRows((getModel().products || []), 'pbench', 'sales_ttc', 'desc').map(p => `
                   <tr class="rrow" data-rkey="products" data-rid="${esc((productByName(p.Product) || {}).id || p.Product)}">
-                    <td>${relLink('products', p.Product, p.Product, true)}</td>
+                    <td>${relLink('products', p.Product, p.Product, true)}${appCell(productByName(p.Product) || { id: p.Product, name: p.Product }, 'products')}</td>
                     <td class="mono">${esc(p.UoM || 'm³')}</td>
                     <td class="r">${fmtNum(p.loads)}</td>
                     <td class="r">${p.list_price != null ? fmtUSD(p.list_price, 2) : '—'}</td>
@@ -4062,7 +4062,7 @@
               <tbody>
                 ${shownCusts.map(c => `
                   <tr class="rrow" data-rkey="customers" data-rid="${esc((customerInfo(c.Customer) || {}).id || c.Customer)}">
-                    <td>${relLink('customers', c.Customer, c.Customer, true)}</td>
+                    <td>${relLink('customers', c.Customer, c.Customer, true)}${appCell(customerInfo(c.Customer) || { id: c.Customer, name: c.Customer }, 'customers')}</td>
                     <td>${c['VAT Registered'] === 'Yes' ? '<span class="badge badge-info">11% VAT</span>' : 'No'}</td>
                     <td class="r">${fmtNum(c.loads)}</td>
                     <td class="r">${fmtUSD(c.sales_ttc, 0)}</td>
@@ -4260,7 +4260,7 @@
               <tbody>
                 ${shownSups.map(s => `
                   <tr class="rrow" data-rkey="suppliers" data-rid="${esc((supplierInfo(s.Supplier) || {}).id || s.Supplier)}">
-                    <td>${relLink('suppliers', s.Supplier, s.Supplier, true)}</td>
+                    <td>${relLink('suppliers', s.Supplier, s.Supplier, true)}${appCell(supplierInfo(s.Supplier) || { id: s.Supplier, name: s.Supplier }, 'suppliers')}</td>
                     <td>${s.IVA === 'Yes' ? '<span class="badge badge-info">IVA</span>' : '—'}</td>
                     <td class="r">${fmtNum(s.raw_loads)}</td>
                     <td class="r">${fmtUSD(s.ap_material, 0)}</td>
@@ -9762,7 +9762,7 @@
                       const cellHtml = (lk && lk !== sg.targetKey && v != null && v !== '' && txt !== '—')
                         ? `<span class="rel-link" data-rel-key="${esc(lk)}" data-rel-val="${esc(v)}">${esc(txt)}<span class="rel-arr">↗</span></span>`
                         : esc(txt);
-                      return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|invoice|plate/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${cellHtml}</b>` : cellHtml}</td>`;
+                      return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|invoice|plate/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${cellHtml}</b>${appCell(r, sg.targetKey)}` : cellHtml}</td>`;
                     }).join('')}
                   </tr>
                 `).join('')}
@@ -10080,6 +10080,20 @@
     bodyEl.querySelectorAll('tr.rrow[data-rid]').forEach(tr => tr.addEventListener('click', e => {
       if (e.target.closest('[data-rel-key], button, a, input')) return;
       showRecordInspector(tr.getAttribute('data-rkey'), tr.getAttribute('data-rid'), { pushHistory: true });
+    }));
+
+    // Wire inline void buttons inside inspector subgrids
+    bodyEl.querySelectorAll('[data-void]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (btn.dataset.armed === '1') {
+        voidRecord(btn.getAttribute('data-void'), btn.getAttribute('data-void-id'));
+        showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
+        return;
+      }
+      btn.dataset.armed = '1';
+      btn.textContent = 'Void?';
+      btn.classList.add('armed');
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = '✕'; btn.classList.remove('armed'); } }, 4000);
     }));
 
     // Wire instant search filter inside each related subgrid
