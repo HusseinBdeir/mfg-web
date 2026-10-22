@@ -1205,9 +1205,10 @@
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
-    if (view === 'overview' || view === 'pbi' || view === 'expenses') return pbi !== 'none';
-    if (view === 'payroll') return pbi === 'full' || /Owner|Supervisor/i.test(role);
-    if (view === 'sentinels' || view === 'ledger' || view === 'gl') return pbi === 'full';
+    if (view === 'overview' || view === 'pbi') return pbi !== 'none';
+    if (view === 'expenses') return pbi !== 'none' && !/Sales/i.test(role);
+    if (view === 'raw' || view === 'fleet' || view === 'suppliers' || view === 'ap') return !/Sales/i.test(role);
+    if (view === 'payroll' || view === 'sentinels' || view === 'ledger' || view === 'gl') return (pbi === 'full' || isOwner(u)) && !/Sales/i.test(role);
     if (view === 'statements') return st !== 'none';
     return true;
   }
@@ -1218,7 +1219,10 @@
     const pbi = u.pbi_access || 'partial';
     if (pbi === 'none') return false;
     if (pageId === 'p02_companies' && allowedCompanyNames(u).length < 2) return false;
-    if (pbi === 'full' || /Owner|Supervisor/i.test(role)) return true;
+    if (pbi === 'full' || isOwner(u)) return true;
+    if (/Sales/i.test(role)) {
+      return ['p01_overview', 'p02_companies', 'p03_exceptions', 'p04_sales', 'p05_pricing', 'p06_ar', 'p13_vat', 'p18_tickets'].includes(pageId);
+    }
     return !['p12_payroll', 'p15_treasury', 'p16_financial', 'p17_jv'].includes(pageId);
   }
 
@@ -1226,7 +1230,10 @@
     u = u || activeUser();
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
-    if (pbi === 'full' || /Owner|Supervisor/i.test(role)) return true;
+    if (pbi === 'full' || isOwner(u)) return true;
+    if (/Sales/i.test(role)) {
+      return ['sales_tickets', 'receipts', 'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'products', 'sites', 'regions', 'uoms', 'product_types', 'daily_totals'].includes(tableKey);
+    }
     return ![
       'salaries', 'employments', 'freelance_entries', 'logistics_allowances', 'overtime_rates',
       'external_movements', 'loans', 'loan_settlements', 'conversions', 'jv_partnerships', 'jv_distributions'
@@ -1235,11 +1242,10 @@
 
   function canAccessRdlReport(report, u) {
     u = u || activeUser();
-    const role = String(u.role || '');
     const st = u.statements_access || 'partial';
     if (st === 'none') return false;
-    if (st === 'full' || /Owner|Supervisor/i.test(role)) return true;
-    const code = typeof report === 'string' ? report : (report && report.code);
+    if (st === 'full' || isOwner(u)) return true;
+    const code = typeof report === 'string' ? report : (report && (report.id || report.code));
     const cat = typeof report === 'object' && report ? String(report.cat || '') : '';
     if (cat) {
       return ['Digest', 'Registers', 'Counterparties', 'Documents'].includes(cat) && code !== '10';
@@ -9305,8 +9311,8 @@
     }
     if (window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG)) {
       const permittedRdl = window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, user));
-      if (permittedRdl.length && !permittedRdl.some(r => r.code === STATE.activeStatement)) {
-        STATE.activeStatement = permittedRdl[0].code;
+      if (permittedRdl.length && !permittedRdl.some(r => String(r.id || r.code) === String(STATE.activeStatement))) {
+        STATE.activeStatement = permittedRdl[0].id || permittedRdl[0].code;
       }
     }
 
@@ -9754,6 +9760,10 @@
     // Rail badges follow the active scope
     const setPill = (id, text) => { const el = $(id); if (el) el.textContent = text; };
     const sentinelsOpen = buildSentinelItems().filter(s => s.severity !== 'ok').length;
+    const pbiNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES)) ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length : 20;
+    const tblNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG)) ? window.MFG_PBI.TABLE_CATALOG.filter(t => canAccessTable(t.key, user)).length : 34;
+    setPill('navCountPbi', `${pbiNavCount} Pages`);
+    setPill('navCountTables', String(tblNavCount));
     setPill('navCountSales', k.loads != null ? fmtNum(k.loads) : '—');
     setPill('navCountRaw', k.raw_loads != null ? fmtNum(k.raw_loads) : '—');
     setPill('navCountFleet', k.active_equip != null ? fmtNum(k.active_equip) : fmtNum(SEED.records.equipment.length));

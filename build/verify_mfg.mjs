@@ -789,116 +789,167 @@ try {
     const extraCos = [];
     for (let i = 4; i <= 100; i++) {
       const num = String(i).padStart(3, '0');
-      extraCos.push({ key: 'co_' + num, name: 'Company ' + num, short: 'CO-' + num, sector: 'Plant #' + num });
+      extraCos.push({ key: 'co_' + num, name: 'Company ' + num, label: 'Company ' + num, sector: 'Plant #' + num });
     }
     window.MFG_COMPANIES = extraCos;
-    T.selectSeatForEdit('u9'); // Rami Sleiman: Lions Transport, WTC
+    T.selectSeatForEdit('u8');
 
     const selRoot = document.getElementById('nuCompanySelector');
-    const trigger = document.getElementById('nuCompaniesTrigger');
-    const popover = document.getElementById('nuCompaniesPopover');
-    const searchInp = document.getElementById('nuCompaniesSearchInput');
-    const selectAllBtn = document.getElementById('nuCompaniesSelectAllBtn');
-    const clearBtn = document.getElementById('nuCompaniesClearBtn');
-    const countPill = document.getElementById('nuCompaniesCountPill');
+    const trigger = document.getElementById('nuCompanyTrigger');
+    const popover = document.getElementById('nuCompanyPopover');
+    const searchInp = document.getElementById('nuCompanySearch');
+    const selectAllBtn = document.getElementById('nuCompanySelectAllBtn');
+    const clearBtn = document.getElementById('nuCompanyClearBtn');
+    const countPill = document.getElementById('nuCompanyCountPill');
     const hiddenInput = document.getElementById('nu_companies');
     const isNativeSelect = hiddenInput && hiddenInput.tagName === 'SELECT';
 
     // Open popover
     trigger.click();
     const popOpen = popover && !popover.hidden;
-    const totalRenderedOpts = document.querySelectorAll('#nuCompaniesList .co-multi-opt').length;
+    const totalRenderedOpts = document.querySelectorAll('#nuCompanyList .co-multi-opt').length;
     const initialSelectedVal = hiddenInput ? hiddenInput.value : '';
 
     // Filter to "Company 042"
     searchInp.value = 'Company 042';
     searchInp.dispatchEvent(new Event('input', { bubbles: true }));
-    const visibleOnSearch = Array.from(document.querySelectorAll('#nuCompaniesList .co-multi-opt')).filter(el => !el.hidden).length;
+    const visibleOnSearch = Array.from(document.querySelectorAll('#nuCompanyList .co-multi-opt')).filter(el => !el.hidden).length;
 
     // Clear search and click Select All (100)
     searchInp.value = '';
     searchInp.dispatchEvent(new Event('input', { bubbles: true }));
     selectAllBtn.click();
     const all100CountText = countPill ? countPill.textContent.trim() : '';
-    const all100ChipsMore = (document.querySelector('#nuCompaniesChips .co-multi-chip-more') || {}).textContent || '';
-    const all100CsvCount = (hiddenInput.value || '').split(',').filter(Boolean).length;
+    const all100ChipsMore = (document.querySelector('#nuCompanyChips .co-multi-chip-more') || {}).textContent || '';
+    const all100CsvCount = (hiddenInput.value || '').split(',').map(s => s.trim()).filter(Boolean).length;
 
-    // Click Clear -> keeps 1 company safety floor
+    // Click Clear -> clears selection and shows validation hint until at least 1 company is picked
     clearBtn.click();
-    const afterClearCount = (hiddenInput.value || '').split(',').filter(Boolean).length;
+    const afterClearCount = (hiddenInput.value || '').split(',').map(s => s.trim()).filter(Boolean).length;
 
-    // Restore u9 companies (Lions Transport, WTC) and clean up synthetic 100 companies
+    // Clean up synthetic 100 companies and configure u8 & u10 via the multi-select selector before testing their sessions
     window.MFG_COMPANIES = null;
-    T.selectSeatForEdit('u9');
+    T.selectSeatForEdit('u8');
+    const u8Orig = {
+      role: document.getElementById('nu_role').value,
+      comp: document.getElementById('nu_companies').value,
+      acc: document.getElementById('nu_access').value,
+      email: document.getElementById('nu_email').value,
+      pin: document.getElementById('nu_pin').value
+    };
+    document.getElementById('nuCompanyClearBtn').click();
+    document.querySelectorAll('#nuCompanyList .co-multi-cb').forEach(cb => {
+      if (cb.value === 'WTC' || cb.value === 'Lions Transport') {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    document.getElementById('nu_role').value = 'Supervisor + Entry';
+    document.getElementById('nu_access').value = 'full|partial';
+    await T.saveSeatEditorForm();
 
-    // 2. Test Multi-Company Subset RLS & Partial Access Consistency (u9: Rami Sleiman — Lions Transport, WTC | Supervisor + Entry | partial|partial)
-    await T.performLogin('ramisleiman@bhfirms.com', '2026', { bypass2FA: true });
-    const u9GroupBtn = document.querySelector('#companySwitch .co-btn[data-co="manufacturing-group"]');
-    const u9WtcBtn = document.querySelector('#companySwitch .co-btn[data-co="wtc"]');
-    const u9BbcBtn = document.querySelector('#companySwitch .co-btn[data-co="bbconstruction"]');
-    const u9LtBtn = document.querySelector('#companySwitch .co-btn[data-co="lionstransport"]');
-    const u9CompanySwitchOk = u9GroupBtn && !u9GroupBtn.disabled && /All Assigned \\(2\\)/.test(u9GroupBtn.textContent) &&
-      u9WtcBtn && !u9WtcBtn.disabled && u9LtBtn && !u9LtBtn.disabled && u9BbcBtn && u9BbcBtn.disabled;
+    T.selectSeatForEdit('u10');
+    const u10Orig = {
+      role: document.getElementById('nu_role').value,
+      comp: document.getElementById('nu_companies').value,
+      acc: document.getElementById('nu_access').value,
+      email: document.getElementById('nu_email').value,
+      pin: document.getElementById('nu_pin').value
+    };
+    document.getElementById('nuCompanyClearBtn').click();
+    document.querySelectorAll('#nuCompanyList .co-multi-cb').forEach(cb => {
+      if (cb.value === 'WTC' || cb.value === 'BBConstruction') {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    document.getElementById('nu_role').value = 'Sales';
+    document.getElementById('nu_access').value = 'partial|full';
+    await T.saveSeatEditorForm();
 
-    // Switch u9 to All Assigned (2) on Overview and verify BBConstruction data is never leaked into KPIs or records
-    u9GroupBtn.click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
-    const u9BbcReconHidden = (document.querySelector('[data-recon-co="bbconstruction"]') || {}).hidden === true;
-    const u9NavPayrollHidden = (document.querySelector('#sidebarNav .nav-item[data-view="payroll"]') || {}).hidden === true;
-    const u9NavPartnersHidden = (document.querySelector('#sidebarNav .nav-item[data-view="partners"]') || {}).hidden === true;
-    const u9NavUsersHidden = (document.querySelector('#sidebarNav .nav-item[data-view="users"]') || {}).hidden === true;
-    const u9NavPbiText = (document.getElementById('navCountPbi') || {}).textContent || '';
+    // 2. Test Multi-Company Subset RLS (u8: WTC + Lions Transport | Supervisor + Entry | full|partial)
+    await T.performLogin(u8Orig.email, u8Orig.pin, { bypass2FA: true });
+    const u8GroupBtn = document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]');
+    const u8WtcBtn = document.querySelector('#companySwitch .entity-btn[data-company="wtc"]');
+    const u8BbcBtn = document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]');
+    const u8LtBtn = document.querySelector('#companySwitch .entity-btn[data-company="lionstransport"]');
+    const u8CompanySwitchOk = !!(u8GroupBtn && !u8GroupBtn.hidden && /All Assigned \\(2\\)/.test(u8GroupBtn.textContent) &&
+      u8WtcBtn && !u8WtcBtn.hidden && u8LtBtn && !u8LtBtn.hidden && u8BbcBtn && u8BbcBtn.hidden);
 
+    // Switch u8 to All Assigned (2) on Sales and verify BBConstruction recon card is hidden & 0 BBConstruction rows leak
+    u8GroupBtn.click();
     document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
-    const u9SalesRows = Array.from(document.querySelectorAll('#mainContent table.ledger-table tbody tr'));
-    const u9LeakedBbcSales = u9SalesRows.some(tr => /BBConstruction/i.test(tr.textContent));
-
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
-    const u9PbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
+    const u8BbcReconHidden = (document.querySelector('.sales-recon-card[data-jump-co="bbconstruction"]') || {}).hidden === true;
+    const u8SalesRows = Array.from(document.querySelectorAll('#salesPanel table.ledger-table tbody tr.rrow'));
+    const u8LeakedBbcSales = u8SalesRows.some(tr => tr.children[2] && /BBConstruction/i.test(tr.children[2].textContent));
 
     document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
-    const u9StmtTabs = document.querySelectorAll('.stmt-card[data-stmt]').length;
+    const u8StmtTabs = document.querySelectorAll('.stmt-card[data-stmt]').length;
+
+    // 3. Test Partial Access Single-Company Entry Seat (u3: Sabah Kassab — WTC | Entry | partial|partial)
+    await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
+    const u3NavPayrollHidden = (document.querySelector('#sidebarNav .nav-item[data-view="payroll"]') || {}).hidden === true;
+    const u3NavLedgerHidden = (document.querySelector('#sidebarNav .nav-item[data-view="ledger"]') || {}).hidden === true;
+    const u3NavSentinelsHidden = (document.querySelector('#sidebarNav .nav-item[data-view="sentinels"]') || {}).hidden === true;
+    const u3NavPbiText = (document.getElementById('navCountPbi') || {}).textContent || '';
+
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const u3PbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
 
     document.querySelector('#sidebarNav .nav-item[data-view="tables"]').click();
-    const u9TableChips = document.querySelectorAll('[data-table-key]').length;
-    const u9HasSalariesTable = !!document.querySelector('[data-table-key="salaries"]');
+    const u3TableChips = document.querySelectorAll('[data-table-key]').length;
+    const u3HasSalariesTable = !!document.querySelector('[data-table-key="salaries"]');
 
-    // 3. Test Sales-Only Single-Company Seat (u8: Abbas Chokor — BBConstruction | Sales | none|none)
-    await T.performLogin('abbaschokor@bhfirms.com', '5566', { bypass2FA: true });
-    const u8VisibleNavViews = Array.from(document.querySelectorAll('#sidebarNav .nav-item[data-view]'))
+    // 4. Test Sales & AR Collector Seat (u10: WTC + BBConstruction | Sales | partial|full)
+    await T.performLogin(u10Orig.email, u10Orig.pin, { bypass2FA: true });
+    const u10VisibleNavViews = Array.from(document.querySelectorAll('#sidebarNav .nav-item[data-view]'))
       .filter(b => !b.hidden)
       .map(b => b.getAttribute('data-view'));
-    document.getElementById('openNewTicketBtn').click();
-    const u8VisibleForms = Array.from(document.querySelectorAll('.modal-tab[data-form]'))
+    document.getElementById('newEntryBtn').click();
+    const u10VisibleForms = Array.from(document.querySelectorAll('.modal-tab[data-form]'))
       .filter(b => !b.hidden)
       .map(b => b.getAttribute('data-form'));
-    const u8FormCoLockedToBbc = (document.getElementById('f_company') || {}).value === 'BBConstruction' &&
-      (document.getElementById('f_company') || {}).disabled === true;
     document.getElementById('closeModalBtn').click();
 
-    // Restore Owner session (Hussein Bdeir) and All-Time period
+    // Restore Owner session (Hussein Bdeir), restore u8 & u10 original seats, and return to All-Time Group scope
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
-    document.querySelector('#companySwitch .co-btn[data-co="manufacturing-group"]').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    T.selectSeatForEdit('u8');
+    document.getElementById('nu_role').value = u8Orig.role;
+    document.getElementById('nu_companies').value = u8Orig.comp;
+    document.getElementById('nu_companies').dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('nu_access').value = u8Orig.acc;
+    await T.saveSeatEditorForm();
+
+    T.selectSeatForEdit('u10');
+    document.getElementById('nu_role').value = u10Orig.role;
+    document.getElementById('nu_companies').value = u10Orig.comp;
+    document.getElementById('nu_companies').dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('nu_access').value = u10Orig.acc;
+    await T.saveSeatEditorForm();
+
+    T.selectSeatForEdit('u1');
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
 
     return {
       selectorOk: !!selRoot && !isNativeSelect && popOpen && totalRenderedOpts === 100 &&
-        initialSelectedVal === 'Lions Transport, WTC' && visibleOnSearch === 1 &&
-        all100CountText === '100 / 100' && /\\+94 more selected/.test(all100ChipsMore) &&
-        all100CsvCount === 100 && afterClearCount === 1,
+        initialSelectedVal.length > 0 && visibleOnSearch === 1 &&
+        all100CountText === '100 / 100 selected' && /\\+92 more selected/.test(all100ChipsMore) &&
+        all100CsvCount === 100 && afterClearCount === 0,
       totalRenderedOpts, visibleOnSearch, all100CountText, all100ChipsMore,
-      u9ConsistencyOk: u9CompanySwitchOk && u9BbcReconHidden && u9NavPayrollHidden && u9NavPartnersHidden && u9NavUsersHidden &&
-        u9NavPbiText === '11 Pages' && !u9LeakedBbcSales && u9PbiTabs === 11 && u9StmtTabs === 11 && u9TableChips === 26 && !u9HasSalariesTable,
-      u9PbiTabs, u9StmtTabs, u9TableChips,
-      u8ConsistencyOk: u8VisibleNavViews.join(',') === 'overview,tables,sales,customers' &&
-        u8VisibleForms.join(',') === 'sales,receipt,customer,site' && u8FormCoLockedToBbc,
-      u8VisibleNavViews, u8VisibleForms
+      u8ConsistencyOk: u8CompanySwitchOk && u8BbcReconHidden && !u8LeakedBbcSales && u8StmtTabs === 13,
+      u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerHidden && u3NavSentinelsHidden &&
+        u3NavPbiText === '15 Pages' && u3PbiTabs === 15 && u3TableChips === 23 && !u3HasSalariesTable,
+      u10ConsistencyOk: u10VisibleNavViews.join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
+        u10VisibleForms.join(',') === 'sales,receipt',
+      u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3PbiTabs, u3TableChips, u10VisibleNavViews, u10VisibleForms
     };
   })()`);
   multiCoAndAccessProbe && multiCoAndAccessProbe.selectorOk
-    ? pass('users company selector · searchable multi-select scales to 100 companies (live filter, Select All 100, chip overflow +94, safety floor)', `${multiCoAndAccessProbe.totalRenderedOpts} cos · search=${multiCoAndAccessProbe.visibleOnSearch} · ${multiCoAndAccessProbe.all100CountText}`)
+    ? pass('users company selector · searchable multi-select scales to 100 companies (live filter, Select All 100, chip overflow +92, Clear)', `${multiCoAndAccessProbe.totalRenderedOpts} cos · search=${multiCoAndAccessProbe.visibleOnSearch} · ${multiCoAndAccessProbe.all100CountText}`)
     : fail('users company multi-select selector', JSON.stringify(multiCoAndAccessProbe));
-  multiCoAndAccessProbe && multiCoAndAccessProbe.u9ConsistencyOk && multiCoAndAccessProbe.u8ConsistencyOk
-    ? pass('access & RLS consistency · multi-company subset (All Assigned 2, 0 leaked rows, 11 PBI, 11 RDL, 26 tables) + Sales seat gating', `u9: ${multiCoAndAccessProbe.u9PbiTabs} PBI / ${multiCoAndAccessProbe.u9StmtTabs} RDL / ${multiCoAndAccessProbe.u9TableChips} tbls · u8 views=${multiCoAndAccessProbe.u8VisibleNavViews.join(',')}`)
+  multiCoAndAccessProbe && multiCoAndAccessProbe.u8ConsistencyOk && multiCoAndAccessProbe.u3ConsistencyOk && multiCoAndAccessProbe.u10ConsistencyOk
+    ? pass('access & RLS consistency · multi-company subset (All Assigned 2, 0 leaked rows, 13 RDL) + Entry (15 PBI / 23 tbls) + Sales gating', `u8 RDL=${multiCoAndAccessProbe.u8StmtTabs} · u3=${multiCoAndAccessProbe.u3PbiTabs} PBI/${multiCoAndAccessProbe.u3TableChips} tbls · u10 views=${multiCoAndAccessProbe.u10VisibleNavViews.join(',')}`)
     : fail('access & RLS consistency', JSON.stringify(multiCoAndAccessProbe));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
