@@ -15,7 +15,7 @@
     { id: 'p02_companies', num: '02', label: 'Companies', title: 'Side-by-Side Entity Comparison (WTC · BBConstruction · Lions Transport)' },
     { id: 'p03_exceptions', num: '03', label: 'Action Items', title: 'Executive Exception Queue — AR, IVA, Pricing, Fleet & Recon (m284)' },
     { id: 'p04_sales', num: '04', label: 'Sales & Deliveries', title: 'Sales Revenue, Realised Price Trends, Top Grades & Customer Mix' },
-    { id: 'p05_pricing', num: '05', label: 'Pricing & Commission', title: 'Price Agreements, Spread, Below-Agreed Exceptions & Commissions' },
+    { id: 'p05_pricing', num: '05', label: 'Pricing & Commissions', title: 'Price Agreements, Spread, Below-Agreed Exceptions & Commissions' },
     { id: 'p06_ar', num: '06', label: 'Customers & Receivables', title: 'FIFO Customer Balances, 5-Bucket AR Aging & Running Statement' },
     { id: 'p07_ap', num: '07', label: 'Suppliers & Expenses', title: '3-Leg Accounts Payable (Material / Haulage / Expense) & Overhead' },
     { id: 'p08_stock', num: '08', label: 'Stock & Haulage', title: 'Quarry Material Intake, Unit Economics & Transport Cost Recovery' },
@@ -33,7 +33,7 @@
     { id: 'p20_recon', num: '20', label: 'Statement Recon', title: 'Counterparty Statement Reconciliation Bridge & 22 A4 PDF Statements' }
   ];
 
-  // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — enriched with live relational columns & connected tables
+  // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — Universal Registries grouped in Group 3 (consistent across all BUs)
   const TABLE_CATALOG = [
     { key: 'sales_tickets', group: '1 · Plant & Dispatch', label: 'Sales Tickets', dvn: 'bhf_salesticket', form: 'sales', cols: ['date', 'rep_date', 'ticket_no', 'company', 'sale_type', 'customer', 'product', 'site', 'truck', 'driver', 'qty', 'uom', 'unit_price', 'price', 'trans_price', 'vat', 'total_ttc', 'method'], relTables: ['customers', 'price_rules', 'products', 'sites', 'equipment', 'drivers', 'receipts', 'vat_invoices'], views: [{ id: 'all', label: 'All Sales Tickets' }, { id: 'delivery', label: 'Delivery Loads', fn: r => /deliv/i.test(r.sale_type) }, { id: 'pickup', label: 'Pick-up (Material Only)', fn: r => /pick/i.test(r.sale_type) }, { id: 'credit', label: 'Credit / Account', fn: r => !/cash/i.test(r.method) }, { id: 'iva', label: 'IVA / VAT 11%', fn: r => r.iva || Number(r.vat || 0) > 0 }] },
     { key: 'raw_purchases', group: '1 · Plant & Dispatch', label: 'Raw Material Purchases', dvn: 'bhf_rawpurchase', form: 'raw', cols: ['date', 'rep_date', 'ticket_no', 'company', 'site', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'driver', 'product', 'qty', 'uom', 'unit_cost', 'cost', 'trans_cost', 'total'], relTables: ['sites', 'suppliers', 'price_rules', 'equipment', 'drivers', 'products', 'settlements'], views: [{ id: 'all', label: 'All Raw Purchases' }, { id: 'supplier_haul', label: 'Third-Party Haulage', fn: r => Number(r.trans_cost || 0) > 0 }, { id: 'company_haul', label: 'Company Fleet Haul', fn: r => /company/i.test(r.transport_by) }] },
@@ -44,25 +44,25 @@
     { key: 'price_rules', group: '2 · Commercial & Pricing', label: 'Price & Commission Agreements', dvn: 'bhf_pricerule', form: 'pricerule', cols: ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'qty1', 'adj1', 'total1', 'qty2', 'adj2', 'total2', 'indiff_price', 'start_date', 'end_date', 'matched_tickets'], relTables: ['customers', 'suppliers', 'products', 'sites', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Price Agreements' }, { id: 'active', label: 'Active Agreements', fn: r => !r.end_date }, { id: 'sales', label: 'Customer Sales Rules', fn: r => /sale|pickup|deliv/i.test(r.rule_type || '') }, { id: 'transport', label: 'Transport & Raw Rules', fn: r => /trans|raw|purch/i.test(r.rule_type || '') }, { id: 'list', label: 'List Prices', fn: r => /list/i.test(r.rule_type || '') }] },
     { key: 'credit_terms', group: '2 · Commercial & Pricing', label: 'Customer Credit Terms', dvn: 'bhf_creditterm', form: 'creditterm', cols: ['name', 'company', 'customer', 'credit_days', 'credit_limit', 'ar_balance', 'start_date', 'end_date', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All Credit Terms' }, { id: 'active', label: 'Active Policies', fn: r => !r.end_date }] },
     { key: 'vat_invoices', group: '2 · Commercial & Pricing', label: 'VAT 11% Tax Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['invoice_no', 'date', 'company', 'customer', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc', 'tickets_count', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All VAT Invoices' }] },
-    { key: 'customers', group: '2 · Commercial & Pricing', label: 'Customers Master', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'official_name', 'vat_registered', 'mof_no', 'phone', 'address', 'method', 'credit_days', 'credit_limit', 'active_rules', 'sales_loads', 'ar_balance'], relTables: ['sales_tickets', 'receipts', 'price_rules', 'credit_terms', 'vat_invoices'], views: [{ id: 'all', label: 'All Customers' }, { id: 'open_ar', label: 'Open AR Balance > $0', fn: (r, rel) => ((rel.custByName[norm(r.name)] || {}).ar_balance || 0) > 1 }, { id: 'vat', label: 'VAT Registered (MOF)', fn: r => Boolean(r.vat_registered || r.mof_no) }] },
-    { key: 'suppliers', group: '2 · Commercial & Pricing', label: 'Suppliers & Haulers Master', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'official_name', 'category1', 'is_truck_owner', 'iva', 'financial_no', 'contact', 'location', 'trucks_count', 'active_rules', 'raw_loads', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Suppliers & Haulers' }, { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 }, { id: 'haulers', label: 'Truck Owners / Haulers', fn: r => Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0) }] },
-    { key: 'products', group: '3 · Master Data & Fleet', label: 'Products & Aggregate Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product', 'active_rules', 'sales_loads', 'revenue_account'], relTables: ['sales_tickets', 'raw_purchases', 'price_rules', 'fuel_intakes', 'product_types', 'uoms'], views: [{ id: 'all', label: 'All Products & Grades' }, { id: 'agg', label: 'Ticket / Aggregate Grades', fn: r => Boolean(r.ticket_product) }, { id: 'fuel', label: 'Fuel & Lube Items', fn: r => Boolean(r.fuel_item) }] },
-    { key: 'product_types', group: '3 · Master Data & Fleet', label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code', 'products_count', 'sales_loads'], relTables: ['products', 'sales_tickets'], views: [{ id: 'all', label: 'All Product Families' }] },
-    { key: 'uoms', group: '3 · Master Data & Fleet', label: 'Units of Measure (UoM)', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code', 'products_count', 'tickets_count'], relTables: ['products', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Units of Measure' }] },
-    { key: 'sites', group: '3 · Master Data & Fleet', label: 'Quarries & Customer Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Quarries & Sites' }, { id: 'jv', label: 'JV 50/50 Quarries', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
-    { key: 'regions', group: '3 · Master Data & Fleet', label: 'Regions & Delivery Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code', 'sites_count', 'overtime_rate', 'sales_loads'], relTables: ['sites', 'overtime_rates', 'sales_tickets'], views: [{ id: 'all', label: 'All Regions' }] },
-    { key: 'equipment', group: '3 · Master Data & Fleet', label: 'Equipment & Trucks Registry', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier', 'default_driver', 'companies_list', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'company', label: 'Company Fleet', fn: r => /company/i.test(r.ownership || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company/i.test(r.ownership || '') }] },
-    { key: 'company_equipment', group: '3 · Master Data & Fleet', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
-    { key: 'drivers', group: '3 · Master Data & Fleet', label: 'Drivers & Operators Registry', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'assigned_trucks', 'companies_list', 'phone', 'loads_hauled', 'fuel_fills'], relTables: ['company_drivers', 'equipment', 'suppliers', 'sales_tickets', 'raw_purchases', 'fuel_intakes'], views: [{ id: 'all', label: 'All Drivers & Operators' }] },
-    { key: 'company_drivers', group: '3 · Master Data & Fleet', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'assigned_trucks', 'loads_hauled', 'start_date', 'end_date', 'notes'], relTables: ['drivers', 'employments', 'equipment', 'sales_tickets'], views: [{ id: 'all', label: 'All Driver Assignments' }] },
-    { key: 'expense_categories', group: '3 · Master Data & Fleet', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [{ id: 'all', label: 'All Expense Categories' }] },
-    { key: 'expense_subcategories', group: '3 · Master Data & Fleet', label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
-    { key: 'salaries', group: '4 · Workforce & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'rep_date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], relTables: ['employments', 'attendance', 'logistics_allowances', 'freelance_entries'], views: [{ id: 'all', label: 'All Salary Payments' }] },
-    { key: 'employments', group: '4 · Workforce & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => /active/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
-    { key: 'attendance', group: '4 · Workforce & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Attendance Rows' }, { id: 'ot', label: 'With Overtime Hours', fn: r => Number(r.overtime_hours || 0) > 0 }] },
-    { key: 'freelance_entries', group: '4 · Workforce & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Freelance Entries' }] },
-    { key: 'logistics_allowances', group: '4 · Workforce & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'], relTables: ['employments', 'sites', 'equipment', 'salaries'], views: [{ id: 'all', label: 'All Site Allowances' }] },
-    { key: 'overtime_rates', group: '4 · Workforce & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'], relTables: ['regions', 'drivers', 'sales_tickets'], views: [{ id: 'all', label: 'All Trip & Overtime Rates' }] },
+    { key: 'equipment', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_equipment', label: 'Equipment & Trucks', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier', 'default_driver', 'companies_list', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'company', label: 'Company Fleet', fn: r => /company|own/i.test(r.ownership || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company|own/i.test(r.ownership || '') }] },
+    { key: 'drivers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_drivers', label: 'Drivers & Operators', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'assigned_trucks', 'companies_list', 'phone', 'loads_hauled', 'fuel_fills'], relTables: ['company_drivers', 'equipment', 'suppliers', 'sales_tickets', 'raw_purchases', 'fuel_intakes'], views: [{ id: 'all', label: 'All Drivers & Operators' }] },
+    { key: 'sites', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_sites', label: 'Quarries & Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Quarries & Sites' }, { id: 'jv', label: 'JV 50/50 Quarries', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
+    { key: 'regions', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_regions', label: 'Regions & Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code', 'sites_count', 'overtime_rate', 'sales_loads'], relTables: ['sites', 'overtime_rates', 'sales_tickets'], views: [{ id: 'all', label: 'All Regions & Zones' }] },
+    { key: 'products', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_products', label: 'Products & Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product', 'active_rules', 'sales_loads', 'revenue_account'], relTables: ['sales_tickets', 'raw_purchases', 'price_rules', 'fuel_intakes', 'product_types', 'uoms'], views: [{ id: 'all', label: 'All Products & Grades' }, { id: 'agg', label: 'Ticket / Aggregate Grades', fn: r => Boolean(r.ticket_product) }, { id: 'fuel', label: 'Fuel & Lube Items', fn: r => Boolean(r.fuel_item) }] },
+    { key: 'product_types', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code', 'products_count', 'sales_loads'], relTables: ['products', 'sales_tickets'], views: [{ id: 'all', label: 'All Product Families' }] },
+    { key: 'uoms', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Units of Measure (UoM)', dvn: 'bhf_uom', form: 'product', cols: ['name', 'code', 'products_count', 'tickets_count'], relTables: ['products', 'sales_tickets', 'raw_purchases'], views: [{ id: 'all', label: 'All Units of Measure' }] },
+    { key: 'customers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_customers', label: 'Customers Registry', dvn: 'bhf_customer', form: 'customer', cols: ['name', 'official_name', 'vat_registered', 'mof_no', 'phone', 'address', 'method', 'credit_days', 'credit_limit', 'active_rules', 'sales_loads', 'ar_balance'], relTables: ['sales_tickets', 'receipts', 'price_rules', 'credit_terms', 'vat_invoices'], views: [{ id: 'all', label: 'All Customers' }, { id: 'open_ar', label: 'Open AR Balance > $0', fn: (r, rel) => ((rel.custByName[norm(r.name)] || {}).ar_balance || 0) > 1 }, { id: 'vat', label: 'VAT Registered (MOF)', fn: r => Boolean(r.vat_registered || r.mof_no) }] },
+    { key: 'suppliers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_suppliers', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'official_name', 'category1', 'is_truck_owner', 'iva', 'financial_no', 'contact', 'location', 'trucks_count', 'active_rules', 'raw_loads', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Suppliers & Haulers' }, { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 }, { id: 'haulers', label: 'Truck Owners / Haulers', fn: r => Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0) }] },
+    { key: 'expense_categories', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_categories', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [{ id: 'all', label: 'All Expense Categories' }] },
+    { key: 'expense_subcategories', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
+    { key: 'company_equipment', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
+    { key: 'company_drivers', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'assigned_trucks', 'loads_hauled', 'start_date', 'end_date', 'notes'], relTables: ['drivers', 'employments', 'equipment', 'sales_tickets'], views: [{ id: 'all', label: 'All Driver Assignments' }] },
+    { key: 'salaries', group: '4 · Workforce, Fleet & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'rep_date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], relTables: ['employments', 'attendance', 'logistics_allowances', 'freelance_entries'], views: [{ id: 'all', label: 'All Salary Payments' }] },
+    { key: 'employments', group: '4 · Workforce, Fleet & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => /active/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
+    { key: 'attendance', group: '4 · Workforce, Fleet & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Attendance Rows' }, { id: 'ot', label: 'With Overtime Hours', fn: r => Number(r.overtime_hours || 0) > 0 }] },
+    { key: 'freelance_entries', group: '4 · Workforce, Fleet & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Freelance Entries' }] },
+    { key: 'logistics_allowances', group: '4 · Workforce, Fleet & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'], relTables: ['employments', 'sites', 'equipment', 'salaries'], views: [{ id: 'all', label: 'All Site Allowances' }] },
+    { key: 'overtime_rates', group: '4 · Workforce, Fleet & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'], relTables: ['regions', 'drivers', 'sales_tickets'], views: [{ id: 'all', label: 'All Trip & Overtime Rates' }] },
     { key: 'external_movements', group: '5 · Treasury, Loans & JV', label: 'External Treasury Movements', dvn: 'bhf_mfgexternal', form: 'treasury', cols: ['date', 'company', 'counterparty', 'direction', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'loan_settlements'], views: [{ id: 'all', label: 'All External Movements' }] },
     { key: 'loans', group: '5 · Treasury, Loans & JV', label: 'Loans & Partner Advances', dvn: 'bhf_mfgloan', form: 'treasury', cols: ['name', 'company', 'counterparty', 'direction', 'principal', 'settled_amount', 'interest_rate', 'start_date', 'notes'], relTables: ['loan_settlements', 'external_movements'], views: [{ id: 'all', label: 'All Loans & Advances' }] },
     { key: 'loan_settlements', group: '5 · Treasury, Loans & JV', label: 'Loan Repayments & Drawdowns', dvn: 'bhf_mfgloansettlement', form: 'treasury', cols: ['date', 'company', 'loan', 'type', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'external_movements'], views: [{ id: 'all', label: 'All Loan Settlements' }] },
@@ -738,8 +738,8 @@
   function buildAutoFoot(cols, list, opts = {}) {
     if (opts.noFoot || !list || !list.length || !cols || !cols.length) return null;
     let firstNumIdx = cols.findIndex((c, idx) => idx > 0 && c.r);
-    if (firstNumIdx < 0) firstNumIdx = 1;
-    const span = Math.min(Math.max(1, firstNumIdx), Math.min(4, cols.length));
+    if (firstNumIdx < 0) firstNumIdx = cols.length;
+    const span = Math.max(1, firstNumIdx);
     const footCells = [{
       v: `<b>TOTAL (${fmtNum(list.length)} ${esc(opts.unitLabel || 'rows')})</b>`,
       span
@@ -788,12 +788,19 @@
       const formatted = c.fmt ? c.fmt(val, {}, -1) : fmtNum(val, isAvgCol ? 2 : 0);
       const wrapped = /<[bB]|<strong/.test(String(formatted)) ? formatted : `<b>${formatted}</b>`;
       footCells.push({
-        v: isAvgCol ? `<span class="mu" style="font-weight:600;font-size:10px">Avg </span>${wrapped}` : wrapped,
+        v: isAvgCol ? `<span class="tfoot-col-lbl">AVG</span>${wrapped}` : wrapped,
         r: true,
         neg: (c.negRed || c.bar) && val < -0.0001
       });
     }
     return footCells;
+  }
+
+  function shortCoHtml(val) {
+    const raw = String(val == null ? '' : val).trim();
+    if (/^bbconstruction$/i.test(raw)) return `<span title="BBConstruction">BBC<span class="sr-only"> BBConstruction</span></span>`;
+    if (/^lions\s*transport$/i.test(raw)) return `<span title="Lions Transport">Lions<span class="sr-only"> Lions Transport</span></span>`;
+    return esc(raw || '—');
   }
 
   // 10. Power BI Table with Inline Data Bars, Red Negatives, Amber/Navy Row Highlights, Sticky Totals & Interactive Pagination
@@ -870,7 +877,8 @@
                   const bTone = numVal < 0 ? 'neg' : (c.bar === 'brass' ? 'brass' : 'pos');
                   barHtml = `<span class="pbi-bar-bg ${bTone}" style="width:${w}%"></span>`;
                 }
-                const formatted = c.fmt ? c.fmt(rawVal, r, absIdx) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal));
+                const isCoCol = !c.fmt && (c.key === 'company' || c.key === 'bu');
+                const formatted = c.fmt ? c.fmt(rawVal, r, absIdx) : (isCoCol ? shortCoHtml(rawVal) : (c.bold ? `<b>${esc(rawVal == null || rawVal === '' ? '—' : rawVal)}</b>` : esc(rawVal == null || rawVal === '' ? '—' : rawVal)));
                 return `<td class="${cls}">${barHtml}${formatted}</td>`;
               }).join('')}</tr>`;
             }).join('') || `<tr><td colspan="${cols.length}" class="empty-row" style="text-align:center;padding:18px;color:var(--muted)">${esc(opts.emptyMsg || 'No matching rows for the selected filters')}</td></tr>`}
@@ -1312,7 +1320,8 @@
         <div class="pbi-studio-top">
           <div>
             <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · ${pagePool.length} PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
-            <h2 class="pbi-studio-title">Page ${esc(activePage.num)} · ${esc(activePage.title)}</h2>
+            <h2 class="pbi-studio-title">Power BI Studio</h2>
+            <div class="cockpit-sub" style="color:var(--muted);margin-top:2px"><b>Page ${esc(activePage.num)} · ${esc(activePage.label)}</b> — ${esc(activePage.title)}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${activeSlicerCount ? `<span class="badge badge-warn">${activeSlicerCount} Active Slicer${activeSlicerCount > 1 ? 's' : ''}</span>` : '<span class="badge badge-ok">All Slicers Open</span>'}
@@ -3584,8 +3593,13 @@
     STATE.activeTableKey = meta.key;
     const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
-    const rlsScopedRaw = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true });
-    const baseFiltered = filterRecords(rawList, { ignorePeriod: !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key) });
+    const isUniv = Boolean(meta.universal);
+    const rlsScopedRaw = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true, ignoreCompany: isUniv, ignoreRls: isUniv });
+    const baseFiltered = filterRecords(rawList, {
+      ignoreCompany: isUniv,
+      ignoreRls: isUniv,
+      ignorePeriod: isUniv || !['sales_tickets', 'raw_purchases', 'receipts', 'settlements', 'fuel_intakes', 'expenses', 'salaries', 'attendance', 'external_movements', 'loan_settlements', 'conversions', 'jv_distributions', 'daily_totals'].includes(meta.key)
+    });
     const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
     const activeView = views.find(v => v.id === activeViewId) || views[0];
@@ -3601,12 +3615,13 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">${tablePool.length} OPERATIONAL &amp; MASTER TABLES</div>
-          <div class="cockpit-title">${esc(meta.label)}</div>
+          <div class="cockpit-eyebrow">${isUniv ? `UNIVERSAL REGISTRY (ALL BUSINESS UNITS) · ACTIVE TABLE: ${esc(meta.label.toUpperCase())}` : `${tablePool.length} OPERATIONAL &amp; MASTER TABLES · ACTIVE TABLE: ${esc(meta.label.toUpperCase())}`}</div>
+          <div class="cockpit-title">Tables &amp; Registers</div>
           <div class="cockpit-sub">Browse, search, sort, switch System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Table</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Scope</div><div class="cockpit-pill-val ${isUniv ? 'emerald' : ''}">${isUniv ? 'All BUs (Universal)' : 'BU Scoped'}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Connected Tables</div><div class="cockpit-pill-val">${fmtNum(relTablesMeta.length)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Scope</div><div class="cockpit-pill-val emerald">${fmtNum(rlsScopedRaw.length)}</div></div>
@@ -3620,7 +3635,8 @@
             <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px">${esc(g)}</div>
             <div class="chip-bar">
               ${tablePool.filter(t => t.group === g).map(t => {
-                const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true }).length;
+                const tUniv = Boolean(t.universal);
+                const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: tUniv, ignoreRls: tUniv }).length;
                 return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-table-key="${esc(t.key)}">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
               }).join('')}
             </div>
@@ -3642,7 +3658,8 @@
             <div class="pa-hub-conns">
               <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
               ${relTablesMeta.map(rt => {
-                const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true }).length;
+                const rtUniv = Boolean(rt.universal);
+                const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: rtUniv, ignoreRls: rtUniv }).length;
                 return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)}">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
               }).join('')}
             </div>
@@ -3682,7 +3699,7 @@
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : esc(cell);
+                      : (c === 'company' ? shortCoHtml(cell) : esc(cell));
                     return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
@@ -3691,26 +3708,186 @@
             </tbody>
             <tfoot>
               <tr>
-                ${meta.cols.map((c, ci) => {
-                  if (ci === 0) return `<td><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`;
-                  const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c);
-                  const isMoney = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
-                  const isNum = !isBoolCol && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(c);
-                  if (!isMoney && !isNum) return `<td></td>`;
-                  let sum = 0, cnt = 0;
-                  rows.forEach(r => {
+                ${(() => {
+                  const isColNumeric = col => {
+                    const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(col);
+                    const isM = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(col) && !/rate$/.test(col);
+                    const isN = !isBoolCol && !isM && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
+                    return { isM, isN, num: isM || isN };
+                  };
+                  let firstNum = meta.cols.findIndex((col, idx) => idx > 0 && isColNumeric(col).num);
+                  if (firstNum < 0) firstNum = meta.cols.length;
+                  const leadSpan = Math.max(1, firstNum);
+                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`];
+                  for (let ci = leadSpan; ci < meta.cols.length; ci++) {
+                    const c = meta.cols[ci];
+                    const { isM: isMoney, isN: isNum } = isColNumeric(c);
+                    if (!isMoney && !isNum) { out.push(`<td></td>`); continue; }
+                    let sum = 0, cnt = 0;
+                    rows.forEach(r => {
+                      const v = cellValue(r, c, meta.key, rel);
+                      if (v != null && v !== '' && typeof v !== 'boolean') {
+                        const n = Number(v);
+                        if (Number.isFinite(n)) { sum += n; cnt++; }
+                      }
+                    });
+                    if (!cnt) { out.push(`<td class="r">—</td>`); continue; }
+                    const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
+                    const val = isAvg ? (sum / cnt) : sum;
+                    const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
+                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-col-lbl">AVG</span>' : ''}<b>${txt}</b></td>`);
+                  }
+                  return out.join('');
+                })()}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==================== DEDICATED UNIVERSAL REGISTRIES WORKSPACE RENDERER ====================
+  function renderUniversalRegistriesView(ctx) {
+    const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle } = ctx;
+    const univPool = TABLE_CATALOG.filter(t => t.universal);
+    const activeKey = STATE.activeUnivRegKey || 'equipment';
+    const meta = univPool.find(t => t.key === activeKey) || univPool[0];
+    STATE.activeUnivRegKey = meta.key;
+    const rel = getHubRelIndex(SEED);
+    const rawList = (SEED.records && SEED.records[meta.key]) || [];
+    const totalAllBu = filterRecords(rawList, { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true });
+    const baseFiltered = filterRecords(rawList, { ignorePeriod: true, ignoreCompany: true, ignoreRls: true });
+    const views = meta.views || [{ id: 'all', label: 'All ' + meta.label }];
+    const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
+    const activeView = views.find(v => v.id === activeViewId) || views[0];
+    const filtered = activeView && activeView.fn ? baseFiltered.filter(r => activeView.fn(r, rel)) : baseFiltered;
+    const defSort = meta.cols[0] || 'name';
+    const rows = sortRows(filtered, 'ureg_' + meta.key, defSort, 'asc');
+    const shown = rows.slice(0, shownCount('ureg_' + meta.key));
+    const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
+    const bannerTitle = pageTitle || meta.label;
+
+    return `
+      <div class="cockpit-banner">
+        <div class="cockpit-title-block">
+          <div class="cockpit-eyebrow">UNIVERSAL MASTER REGISTRY · CONSISTENT ACROSS ALL BUSINESS UNITS (${esc(meta.dvn)})</div>
+          <div class="cockpit-title">${esc(bannerTitle)}</div>
+          <div class="cockpit-sub">Shared across WTC, BBConstruction &amp; Lions Transport — never filtered or split by Business Unit. Click any row to open its 360° Record Inspector or click any blue lookup pill to drill into connected records.</div>
+        </div>
+        <div class="cockpit-pills">
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Registry</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Scope</div><div class="cockpit-pill-val emerald">All BUs (Universal)</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Registry</div><div class="cockpit-pill-val emerald">${fmtNum(totalAllBu.length)}</div></div>
+        </div>
+      </div>
+
+      <!-- Dedicated 11-Tab Universal Registries Bar (All BUs) -->
+      <div class="panel-card" id="univRegTabBar" style="margin-bottom:12px;padding:10px 12px">
+        <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Universal Registries · Consistent Across All Business Units (${univPool.length} Master Tables)</div>
+        <div class="chip-bar">
+          ${univPool.map(t => {
+            const cnt = filterRecords((SEED.records && SEED.records[t.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true }).length;
+            return `<button type="button" class="filter-chip ${t.key === meta.key ? 'active' : ''}" data-univ-reg-key="${esc(t.key)}" data-univ-nav-view="${esc(t.navView || '')}" title="${esc(t.label)} (${esc(t.dvn)})">${esc(t.label)} <span class="mono" style="opacity:.75">(${fmtNum(cnt)})</span></button>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="panel-card" id="univRegPanel">
+        <div class="pa-hub-rel-strip">
+          <div class="pa-hub-views">
+            <span class="pa-hub-lbl">System Views:</span>
+            ${views.map(vw => {
+              const vCnt = vw.fn ? baseFiltered.filter(r => vw.fn(r, rel)).length : baseFiltered.length;
+              return `<button type="button" class="filter-chip ${vw.id === activeView.id ? 'active' : ''}" data-tbl-view="${esc(vw.id)}" data-tbl-key="${esc(meta.key)}">${esc(vw.label)} <span class="mono" style="opacity:.75">(${fmtNum(vCnt)})</span></button>`;
+            }).join('')}
+          </div>
+          ${relTablesMeta.length ? `
+            <div class="pa-hub-conns">
+              <span class="pa-hub-lbl">Connected Tables (1:N / N:1):</span>
+              ${relTablesMeta.map(rt => {
+                const rtUniv = Boolean(rt.universal);
+                const rCnt = filterRecords((SEED.records && SEED.records[rt.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: rtUniv, ignoreRls: rtUniv }).length;
+                return `<button type="button" class="filter-chip" data-conn-table-key="${esc(rt.key)}" title="Jump to related table ${esc(rt.label)}">⇄ ${esc(rt.label)} <span class="mono" style="opacity:.7">(${fmtNum(rCnt)})</span></button>`;
+              }).join('')}
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search ' + meta.label + ' (All BUs)...')}
+          </div>
+          <div style="display:flex;gap:6px">
+            ${exportBtn('univRegPanel', meta.key)}
+            ${canEnterForm(meta.form) ? `<button type="button" class="btn btn-primary" data-open-modal="${esc(meta.form)}">+ New ${esc(meta.label.replace(/s$/, ''))}</button>` : ''}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${meta.cols.map(c => th('ureg_' + meta.key, c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shown.map(r => `
+                <tr class="rrow" data-rkey="${esc(meta.key)}" data-rid="${esc(r.id)}">
+                  ${meta.cols.map((c, ci) => {
                     const v = cellValue(r, c, meta.key, rel);
-                    if (v != null && v !== '' && typeof v !== 'boolean') {
-                      const n = Number(v);
-                      if (Number.isFinite(n)) { sum += n; cnt++; }
-                    }
-                  });
-                  if (!cnt) return `<td class="r">—</td>`;
-                  const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
-                  const val = isAvg ? (sum / cnt) : sum;
-                  const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
-                  return `<td class="r">${isAvg ? '<span class="mu" style="font-size:10px">Avg </span>' : ''}<b>${txt}</b></td>`;
-                }).join('')}
+                    const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
+                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
+                    let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
+                    if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
+                    else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
+                    else if (/date/.test(c) && v) cell = String(v).slice(0, 10);
+
+                    const lkTarget = HUB_LOOKUP_TARGETS[c];
+                    const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
+                    const innerHtml = isLookup
+                      ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
+                      : (c === 'company' ? shortCoHtml(cell) : esc(cell));
+                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
+                  }).join('')}
+                </tr>
+              `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}
+              ${showMoreRow('ureg_' + meta.key, rows.length, meta.cols.length)}
+            </tbody>
+            <tfoot>
+              <tr>
+                ${(() => {
+                  const isColNumeric = col => {
+                    const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(col);
+                    const isM = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(col) && !/rate$/.test(col);
+                    const isN = !isBoolCol && !isM && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
+                    return { isM, isN, num: isM || isN };
+                  };
+                  let firstNum = meta.cols.findIndex((col, idx) => idx > 0 && isColNumeric(col).num);
+                  if (firstNum < 0) firstNum = meta.cols.length;
+                  const leadSpan = Math.max(1, firstNum);
+                  const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} ${esc(meta.label.toUpperCase())})</b></td>`];
+                  for (let ci = leadSpan; ci < meta.cols.length; ci++) {
+                    const c = meta.cols[ci];
+                    const { isM: isMoney, isN: isNum } = isColNumeric(c);
+                    if (!isMoney && !isNum) { out.push(`<td></td>`); continue; }
+                    let sum = 0, cnt = 0;
+                    rows.forEach(r => {
+                      const v = cellValue(r, c, meta.key, rel);
+                      if (v != null && v !== '' && typeof v !== 'boolean') {
+                        const n = Number(v);
+                        if (Number.isFinite(n)) { sum += n; cnt++; }
+                      }
+                    });
+                    if (!cnt) { out.push(`<td class="r">—</td>`); continue; }
+                    const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
+                    const val = isAvg ? (sum / cnt) : sum;
+                    const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
+                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-col-lbl">AVG</span>' : ''}<b>${txt}</b></td>`);
+                  }
+                  return out.join('');
+                })()}
               </tr>
             </tfoot>
           </table>
@@ -3725,6 +3902,7 @@
     getHubRelIndex,
     cellValue,
     renderPbiStudio,
-    renderTablesHub
+    renderTablesHub,
+    renderUniversalRegistriesView
   };
 })();

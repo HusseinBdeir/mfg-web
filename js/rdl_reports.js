@@ -2929,8 +2929,8 @@
     return `
       <div class="rdl-suite-wrap">
         <div class="rdl-suite-hdr no-print">
-          <span class="rdl-suite-pill">PAGINATED SUITE</span>
-          <h1 class="rdl-suite-title">${esc(L.short)} — Financial &amp; Operational Reports</h1>
+          <span class="rdl-suite-pill">${esc(L.short)} · ${catalog.length} A4 REPORTS</span>
+          <h1 class="rdl-suite-title">Statements &amp; Reports</h1>
           <div class="rdl-cats" role="tablist" aria-label="Report categories">
             ${visibleCats.map(c => `
               <button type="button" class="rdl-cat-btn ${cat === c ? 'active' : ''}" data-rdl-cat="${esc(c)}">

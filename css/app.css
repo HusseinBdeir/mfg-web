@@ -501,7 +501,7 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
 .rail-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 10px 12px;
+  padding: 8px 8px 12px;
   display: flex;
   flex-direction: column;
 }
@@ -513,7 +513,7 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 13px 10px 4px;
+  padding: 13px 8px 4px;
 }
 
 .rail-nav .grp:first-child {
@@ -526,16 +526,16 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   background: transparent;
   border: 0;
   border-left: 3px solid transparent;
-  padding: 7px 9px;
+  padding: 7px 7px;
   border-radius: 4px;
   color: var(--muted);
   margin: 1px 0;
-  font-size: 12.4px;
+  font-size: 12.2px;
   font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
   min-width: 0;
   transition: background 0.14s, color 0.14s, border-color 0.14s;
@@ -563,14 +563,39 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
 
 .nav-pill {
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  padding: 1.5px 6.5px;
+  padding: 1.5px 6px;
   border-radius: 999px;
   background: var(--m-chip);
   color: var(--muted);
   flex-shrink: 0;
+}
+
+/* Instant Zero-Delay Hover Tooltip for Truncated (...) Left Sidebar Names */
+.rail-hover-tooltip {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  background: #0B1730;
+  color: #F4F2EE;
+  border: 1px solid rgba(217, 165, 74, 0.55);
+  border-left: 3px solid #D9A54A;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: "Instrument Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(8, 17, 36, 0.32);
+}
+
+:root[data-theme="dark"] .rail-hover-tooltip {
+  background: #132342;
+  color: #F4F2EE;
+  border-color: rgba(217, 165, 74, 0.7);
 }
 
 .nav-pill.brass {
@@ -8292,14 +8317,14 @@ table.rdl-meta-box td.rdl-meta-val.bold {
   white-space: nowrap;
 }
 .pa-lock-pill.locked {
-  background: rgba(180, 83, 9, 0.12);
-  color: #B45309;
-  border-color: rgba(180, 83, 9, 0.35);
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: var(--line-strong);
 }
 :root[data-theme="dark"] .pa-lock-pill.locked {
-  background: rgba(245, 158, 11, 0.16);
-  color: #FBBF24;
-  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  border-color: var(--line-strong);
 }
 .pa-lock-pill.locked:hover {
   background: var(--brass);
@@ -8325,21 +8350,15 @@ table.rdl-meta-box td.rdl-meta-val.bold {
 
 .form-field.is-policy-locked input,
 .form-field.is-policy-locked select {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--surface-2),
-    var(--surface-2) 7px,
-    rgba(184, 136, 59, 0.05) 7px,
-    rgba(184, 136, 59, 0.05) 14px
-  ) !important;
+  background: var(--surface-2) !important;
   border-style: dashed !important;
-  border-color: rgba(180, 83, 9, 0.45) !important;
+  border-color: var(--line-strong) !important;
   color: var(--muted) !important;
   cursor: not-allowed;
 }
 :root[data-theme="dark"] .form-field.is-policy-locked input,
 :root[data-theme="dark"] .form-field.is-policy-locked select {
-  border-color: rgba(245, 158, 11, 0.42) !important;
+  border-color: var(--line-strong) !important;
 }
 .form-field.is-policy-locked .pa-suggest-caret {
   opacity: 0.4;
@@ -8349,6 +8368,55 @@ table.rdl-meta-box td.rdl-meta-val.bold {
 .form-field.is-admin-unlocked select {
   border-color: rgba(22, 163, 74, 0.65) !important;
   box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.12);
+}
+
+/* Neglected Field & Neglected Section Red Highlights (shown only on failed post attempt) */
+.form-field.field-neglected > label .pa-fld-lbl,
+.form-field.field-neglected > .field-lbl-with-btn > label {
+  color: var(--crit) !important;
+  font-weight: 700;
+}
+.form-field.field-neglected input:not([type="checkbox"]):not([type="radio"]):not(.pa-select-filter),
+.form-field.field-neglected select {
+  border-style: solid !important;
+  border-color: var(--crit) !important;
+  background: rgba(200, 51, 59, 0.05) !important;
+  box-shadow: 0 0 0 2.5px rgba(200, 51, 59, 0.16) !important;
+}
+.form-field.field-neglected > .hint:not(.field-err-msg) {
+  display: none;
+}
+.form-field.field-neglected > .field-err-msg {
+  color: var(--crit);
+  font-weight: 700;
+}
+.pa-form-sec-hdr.sec-neglected {
+  border-left-color: var(--crit);
+  border-top-color: rgba(200, 51, 59, 0.32);
+  border-bottom-color: rgba(200, 51, 59, 0.32);
+  background: linear-gradient(90deg, rgba(200, 51, 59, 0.14) 0%, rgba(200, 51, 59, 0.02) 100%);
+  color: var(--crit);
+}
+.pa-form-sec-hdr .sec-err-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--crit);
+  color: #FFFFFF;
+  font-family: "Archivo", sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.form-errors .err-jump-item {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.form-errors .err-jump-item:hover {
+  opacity: 0.85;
 }
 
 /* ============================================================================
@@ -10028,5 +10096,508 @@ html[data-theme="dark"] .overtime-toggle-btn.is-overtime:hover {
   background: rgba(245, 158, 11, 0.26);
   color: #FDE68A;
 }
+
+/* Truck Owner Drivers Inline Management Panel (Supplier / Truck Owner Form) */
+.pa-owner-drivers-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.pa-owner-drivers-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.pa-owner-drivers-btn-wrap button {
+  height: 36px;
+  white-space: nowrap;
+}
+.pa-owner-drivers-list {
+  margin-top: 10px;
+}
+.pa-owner-drivers-empty {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+}
+.pa-owner-drivers-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.pa-owner-drivers-hdr small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.pa-owner-drivers-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pa-owner-drv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+}
+.pa-owner-drv-chip.is-staged {
+  border-color: var(--brass-border);
+  background: var(--brass-tint);
+}
+.pa-owner-drv-main {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pa-owner-drv-rm {
+  border: 0;
+  background: transparent;
+  color: var(--crit);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pa-owner-drv-rm:hover {
+  background: var(--crit-bg);
+}
+@media (max-width: 860px) {
+  .pa-owner-drivers-add {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================================
+   v8.6 — FULL-VIEWPORT TABLE FIT (ZERO HORIZONTAL & VERTICAL CLIPPING ON LAPTOPS)
+   ============================================================================ */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Natural inline wrapping for relational lookup links inside table cells */
+table.ledger-table .rel-link {
+  display: inline;
+  padding: 0 1px;
+}
+table.ledger-table .rel-link .rel-arr {
+  display: inline;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+/* Compact company badge & stacked Truck / Driver cell */
+table.ledger-table .co-tbl-badge {
+  padding: 1.5px 5px;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+.td-truck-drv {
+  line-height: 1.22;
+}
+.td-truck-drv .drv-sub {
+  font-size: 9.8px;
+  color: var(--muted);
+  margin-top: 1px;
+  line-height: 1.2;
+}
+
+/* Allow right-aligned table headers & colspan tfoot summary cells to wrap cleanly */
+table.ledger-table th.r,
+table.m-grid th.r {
+  white-space: normal;
+  line-height: 1.15;
+}
+table.ledger-table tfoot tr td:first-child,
+table.ledger-table tfoot tr td[colspan],
+table.m-grid tfoot tr td:first-child,
+table.m-grid tfoot tr td[colspan] {
+  white-space: normal;
+  line-height: 1.28;
+}
+.tfoot-col-lbl {
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  margin-bottom: 1px;
+  white-space: normal;
+}
+.tfoot-sub-split {
+  font-size: 9.8px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+/* Allow long agreement codes, vouchers & composite mono cells to wrap instead of forcing 300px+ columns */
+#pricingPanel table.ledger-table td:first-child,
+#soaPanel table.ledger-table td.mono:nth-child(3),
+#rcptPanel table.ledger-table td.mono:nth-child(2),
+#settlePanel table.ledger-table td.mono:nth-child(2),
+#pbiCanvasPanel table.ledger-table td.mono,
+#tablesHubPanel table.ledger-table td.mono,
+#univRegPanel table.ledger-table td.mono {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Stack Power BI & split grids full-width whenever they contain data tables (charts stay 2-up) */
+.split-grid-2:has(.table-wrap),
+.pbi-grid-2:has(.table-wrap),
+.pbi-grid-split:has(.table-wrap),
+.pbi-grid-62-38:has(.table-wrap) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.user-actions-cell {
+  white-space: normal;
+}
+.user-actions-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.5px;
+}
+table.ledger-table:has(#usersDirectoryTbody) th,
+table.ledger-table:has(#usersDirectoryTbody) td {
+  padding: 3.5px 2.5px !important;
+  font-size: 9.5px !important;
+}
+table.ledger-table:has(#usersDirectoryTbody) th {
+  font-size: 8px !important;
+}
+table.ledger-table:has(#usersDirectoryTbody) .badge {
+  white-space: normal;
+  padding: 1.5px 4px;
+  font-size: 8.8px;
+}
+table.ledger-table:has(#usersDirectoryTbody) td.mono {
+  overflow-wrap: anywhere;
+}
+table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
+  padding: 2px 4.5px !important;
+  font-size: 9px !important;
+}
+
+/* Column-count adaptive table density so 10–20 column registers fit 1280px+ screens with 0px horizontal overflow */
+@media (min-width: 861px) {
+  table.ledger-table {
+    width: 100%;
+  }
+  table.ledger-table:has(thead th:nth-child(10)) th,
+  table.ledger-table:has(thead th:nth-child(10)) td {
+    padding: 5.5px 5px;
+    font-size: 10.5px;
+  }
+  table.ledger-table:has(thead th:nth-child(10)) th {
+    font-size: 8.8px;
+    letter-spacing: 0.015em;
+    line-height: 1.15;
+  }
+  table.ledger-table:has(thead th:nth-child(10)) tfoot tr td {
+    padding: 6.5px 5px;
+    font-size: 10.4px;
+  }
+  table.ledger-table:has(thead th:nth-child(10)) th:first-child,
+  table.ledger-table:has(thead th:nth-child(10)) td:first-child {
+    padding-left: 8px;
+  }
+  table.ledger-table:has(thead th:nth-child(10)) th:last-child,
+  table.ledger-table:has(thead th:nth-child(10)) td:last-child {
+    padding-right: 8px;
+  }
+
+  /* 13–15 columns (#salesPanel, #payStaffRegPanel, P04 Sales, P05 Pricing, P10 Fleet) */
+  table.ledger-table:has(thead th:nth-child(13)) th,
+  table.ledger-table:has(thead th:nth-child(13)) td,
+  #salesPanel table.ledger-table th,
+  #salesPanel table.ledger-table td {
+    padding: 4px 2.6px;
+    font-size: 9.4px;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) th,
+  #salesPanel table.ledger-table th {
+    font-size: 8px;
+    letter-spacing: 0.005em;
+    line-height: 1.1;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) tfoot tr td,
+  #salesPanel table.ledger-table tfoot tr td {
+    padding: 5px 2.6px;
+    font-size: 9px;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) th:first-child,
+  table.ledger-table:has(thead th:nth-child(13)) td:first-child,
+  #salesPanel table.ledger-table th:first-child,
+  #salesPanel table.ledger-table td:first-child {
+    padding-left: 6px;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) th:last-child,
+  table.ledger-table:has(thead th:nth-child(13)) td:last-child,
+  #salesPanel table.ledger-table th:last-child,
+  #salesPanel table.ledger-table td:last-child {
+    padding-right: 6px;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) th.sortable i {
+    font-size: 7.2px;
+    margin-left: 1px;
+  }
+  table.ledger-table:has(thead th:nth-child(13)) .badge {
+    padding: 1.5px 4px;
+    font-size: 8.5px;
+  }
+
+  /* 16–20 columns (P06 AR 17-col, P12 Payroll 17-col, Tables Hub 16–20 col tables) */
+  table.ledger-table:has(thead th:nth-child(16)) th,
+  table.ledger-table:has(thead th:nth-child(16)) td {
+    padding: 3.5px 2px;
+    font-size: 8.5px;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) th {
+    font-size: 7.3px;
+    letter-spacing: 0;
+    line-height: 1.06;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) tfoot tr td {
+    padding: 4px 2px;
+    font-size: 8.3px;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) td:not(.r) {
+    overflow-wrap: anywhere;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) th:first-child,
+  table.ledger-table:has(thead th:nth-child(16)) td:first-child {
+    padding-left: 5px;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) th:last-child,
+  table.ledger-table:has(thead th:nth-child(16)) td:last-child {
+    padding-right: 5px;
+  }
+  table.ledger-table:has(thead th:nth-child(16)) th.sortable i {
+    font-size: 6.8px;
+    margin-left: 1px;
+  }
+  table.ledger-table:has(thead th:nth-child(19)) th,
+  table.ledger-table:has(thead th:nth-child(19)) td {
+    padding: 3px 1.5px;
+    font-size: 8px;
+  }
+  table.ledger-table:has(thead th:nth-child(19)) th {
+    font-size: 7px;
+  }
+  table.ledger-table:has(thead th:nth-child(19)) tfoot tr td {
+    padding: 3.5px 1.5px;
+    font-size: 7.9px;
+  }
+
+  /* Viewport-adaptive vertical table height + compact banner/recon so thead + rows + sticky tfoot fit on 1280×600 & 1366×768 laptops */
+  table.m-grid th,
+  table.m-grid td {
+    padding: 5.5px 6px;
+    font-size: 10.8px;
+  }
+  table.m-grid th:first-child,
+  table.m-grid td:first-child {
+    padding-left: 10px;
+  }
+  table.m-grid th:last-child,
+  table.m-grid td:last-child {
+    padding-right: 10px;
+  }
+  .workspace {
+    padding: 8px 16px 16px;
+  }
+  .cockpit-banner {
+    padding: 6px 12px;
+    margin-bottom: 6px;
+    gap: 4px 12px;
+  }
+  .cockpit-title-block {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 8px;
+    min-width: 100%;
+    overflow: hidden;
+  }
+  .cockpit-eyebrow {
+    font-size: 9px;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+  .cockpit-title {
+    font-size: 14.5px;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+  .cockpit-sub {
+    font-size: 10.2px;
+    margin-top: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .cockpit-pills {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+    gap: 5px;
+    width: 100%;
+  }
+  .cockpit-pill {
+    padding: 3px 7px;
+    min-width: 0;
+  }
+  .cockpit-pill-lbl {
+    font-size: 8px;
+    margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cockpit-pill-val {
+    font-size: 12.2px;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .table-toolbar {
+    padding: 5px 10px;
+    gap: 6px;
+  }
+  .table-toolbar .search-input {
+    min-width: 145px;
+    width: 168px;
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+  .table-toolbar .chip-bar {
+    gap: 3px;
+  }
+  .table-toolbar .filter-chip {
+    padding: 2.5px 6px;
+    font-size: 10px;
+  }
+  .table-toolbar .btn {
+    padding: 3.5px 8px;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .sales-entity-recon {
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .sales-entity-recon.single {
+    padding: 4px 10px;
+  }
+  .sales-recon-card {
+    padding: 3px 8px;
+  }
+  .sales-recon-head {
+    margin-bottom: 1px;
+    font-size: 10px;
+  }
+  .sales-recon-act {
+    font-size: 9.5px;
+  }
+  .sales-recon-metrics {
+    gap: 3px;
+  }
+  .sales-recon-metrics small {
+    font-size: 7.8px;
+  }
+  .sales-recon-metrics b {
+    font-size: 10.2px;
+  }
+  .table-wrap {
+    max-height: clamp(230px, calc(100dvh - 285px), 450px);
+  }
+  .panel-card:has(.sales-entity-recon) .table-wrap {
+    max-height: clamp(210px, calc(100dvh - 345px), 420px);
+  }
+}
+
+@media (min-width: 981px) and (max-height: 700px) {
+  .top {
+    min-height: 44px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .workspace {
+    padding: 6px 14px 12px;
+  }
+  .cockpit-banner {
+    padding: 4px 10px;
+    margin-bottom: 5px;
+    gap: 3px 10px;
+  }
+  .cockpit-sub {
+    display: none;
+  }
+  .cockpit-pill {
+    padding: 2px 6px;
+  }
+  .cockpit-pill-lbl {
+    font-size: 7.5px;
+  }
+  .cockpit-pill-val {
+    font-size: 11.5px;
+  }
+  .panel-head {
+    padding: 6px 12px;
+  }
+  .table-toolbar {
+    padding: 4px 10px;
+  }
+  .sales-entity-recon,
+  .sales-entity-recon.single {
+    padding: 3px 10px;
+    gap: 5px;
+  }
+  .sales-recon-card {
+    padding: 2px 7px;
+  }
+  .sales-recon-head {
+    margin-bottom: 0;
+    font-size: 9.5px;
+  }
+  .sales-recon-metrics small {
+    font-size: 7.2px;
+  }
+  .sales-recon-metrics b {
+    font-size: 9.6px;
+  }
+  .table-wrap {
+    max-height: clamp(220px, calc(100dvh - 282px), 318px);
+  }
+  .panel-card:has(.sales-entity-recon) .table-wrap {
+    max-height: clamp(210px, calc(100dvh - 315px), 285px);
+  }
+}
+
+
 
 

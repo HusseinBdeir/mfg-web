@@ -1093,11 +1093,11 @@
     const scopeKey = String(opts.company || STATE.company || 'manufacturing-group');
     const isIndustryScope = scopeKey.startsWith('industry:');
     const indTarget = isIndustryScope ? scopeKey.slice(9) : '';
-    const indCoSet = isIndustryScope
+    const indCoSet = (!opts.ignoreCompany && isIndustryScope)
       ? new Set(getCompanyCatalog().filter(c => (c.industry || 'Manufacturing') === indTarget).map(c => c.name))
       : null;
-    const bu = isIndustryScope ? null : COMPANY_BU_MATCH[scopeKey];
-    const allowedCos = opts.ignoreRls ? null : allowedCompanyNames(opts.user);
+    const bu = (opts.ignoreCompany || isIndustryScope) ? null : COMPANY_BU_MATCH[scopeKey];
+    const allowedCos = (opts.ignoreCompany || opts.ignoreRls) ? null : allowedCompanyNames(opts.user);
     const q = opts.ignoreSearch ? '' : STATE.search.trim().toLowerCase();
     const range = opts.ignorePeriod ? null : periodRange(STATE.period);
     const basis = opts.basis || STATE.basis;
@@ -1657,11 +1657,27 @@
     return !!(uk && p.unlocks[uk]);
   }
 
+  const UNIV_VIEW_TO_TABLE_KEY = {
+    reg_equipment: 'equipment',
+    reg_drivers: 'drivers',
+    reg_sites: 'sites',
+    reg_regions: 'regions',
+    reg_products: 'products',
+    reg_customers: 'customers',
+    reg_suppliers: 'suppliers',
+    reg_categories: 'expense_categories'
+  };
+
   function canViewView(view, u) {
     u = u || activeUser();
+    if (UNIV_VIEW_TO_TABLE_KEY[view]) return canAccessTable(UNIV_VIEW_TO_TABLE_KEY[view], u);
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
+    if (String(view || '').startsWith('reg_')) {
+      const tk = UNIV_VIEW_TO_TABLE_KEY[view];
+      if (tk) return canAccessTable(tk, u);
+    }
     if (/^Custom/i.test(role) || pbi === 'custom' || st === 'custom') {
       const p = getEffectivePermissions(u);
       const anyDash = Object.values(p.dashboards).some(Boolean);
@@ -1832,7 +1848,72 @@
 
   // ---- master-data lookups for the entry desk ---------------------------------
   function uniqSorted(arr) {
-    return Array.from(new Set(arr.map(x => String(x || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    const seen = new Set();
+    const out = [];
+    for (const x of (arr || [])) {
+      const s = String(x || '').trim();
+      const k = norm(s);
+      if (k && !seen.has(k)) {
+        seen.add(k);
+        out.push(s);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+  let _FLEET_IDX = null;
+  function getFleetIndex() {
+    const eqs = SEED.records.equipment || [];
+    const sales = SEED.records.sales_tickets || [];
+    const raws = SEED.records.raw_purchases || [];
+    const drvs = SEED.records.drivers || [];
+    const sups = SEED.records.suppliers || [];
+    const key = `${eqs.length}:${sales.length}:${raws.length}:${drvs.length}:${sups.length}`;
+    if (_FLEET_IDX && _FLEET_IDX.key === key) return _FLEET_IDX;
+    const eqByName = new Map();
+    eqs.forEach(e => {
+      if (!e || !e.name) return;
+      eqByName.set(norm(e.name), e);
+      if (e.plate_no) eqByName.set(norm(e.plate_no), e);
+    });
+    const txTrucksByOwner = new Map();
+    const txDriversByOwner = new Map();
+    const addMapItem = (map, ok, val) => {
+      if (!ok || !val) return;
+      let arr = map.get(ok);
+      if (!arr) { arr = []; map.set(ok, arr); }
+      arr.push(val);
+    };
+    raws.forEach(r => {
+      if (!r || !r.truck_owner) return;
+      const ok = norm(r.truck_owner);
+      if (r.truck) addMapItem(txTrucksByOwner, ok, r.truck);
+      if (r.driver) addMapItem(txDriversByOwner, ok, r.driver);
+    });
+    sales.forEach(r => {
+      if (!r || !r.truck_owner) return;
+      const ok = norm(r.truck_owner);
+      if (r.truck) addMapItem(txTrucksByOwner, ok, r.truck);
+      if (r.driver) addMapItem(txDriversByOwner, ok, r.driver);
+    });
+    _FLEET_IDX = { key, eqByName, txTrucksByOwner, txDriversByOwner, truckNamesList: null };
+    return _FLEET_IDX;
+  }
+  function isTruckUnit(eOrName) {
+    const obj = (eOrName && typeof eOrName === 'object') ? eOrName : null;
+    const nm = norm(obj ? (obj.equipment || obj.name || obj.plate_no) : eOrName);
+    const eq = obj && obj.type ? obj : (nm ? getFleetIndex().eqByName.get(nm) : null);
+    const t = String((obj && obj.type) || (eq && eq.type) || 'Truck').trim();
+    return /^(truck|mixer|dump|tipper|tractor|trailer)/i.test(t);
+  }
+  function companyFleetRow(name, company) {
+    const n = norm(name);
+    if (!n) return null;
+    return (SEED.records.company_equipment || []).find(e =>
+      e && !e.voided && e.status !== 'Sold / retired' &&
+      (!company || e.company === company) &&
+      (e.is_company_fleet === true || /^(own|rent)/i.test(e.ownership || '')) &&
+      norm(e.equipment || e.name) === n
+    ) || null;
   }
   function customerNames() {
     const out = [];
@@ -1863,27 +1944,47 @@
   }
   function trucksForOwner(ownerName, company, isCompanyFleet) {
     if (isCompanyFleet) {
-      const coUnits = (SEED.records.company_equipment || []).filter(e => !company || !e.company || e.company === company).map(e => e.equipment || e.name);
-      const ownUnits = (SEED.records.equipment || []).filter(e => /^own/i.test(e.ownership || '') || norm(e.supplier) === norm(company)).map(e => e.name);
+      const coUnits = (SEED.records.company_equipment || []).filter(e =>
+        e && !e.voided && e.status !== 'Sold / retired' &&
+        (!company || e.company === company) &&
+        (e.is_company_fleet === true || /^(own|rent)/i.test(e.ownership || '')) &&
+        isTruckUnit(e)
+      ).map(e => e.equipment || e.name);
+      const ownUnits = (SEED.records.equipment || []).filter(e =>
+        e && !e.voided && e.status !== 'Sold / retired' &&
+        ((e.company && (!company || e.company === company) && /^(own|rent)/i.test(e.ownership || '')) ||
+         (company && norm(e.supplier) === norm(company))) &&
+        isTruckUnit(e)
+      ).map(e => e.name);
       return uniqSorted(coUnits.concat(ownUnits));
     }
     const o = norm(ownerName);
     if (!o) return [];
-    const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o).map(e => e.name);
+    const idx = getFleetIndex();
+    const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o && isTruckUnit(e)).map(e => e.name);
     const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
-    const fromSup = (sup && Array.isArray(sup.trucks)) ? sup.trucks : [];
-    const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o).map(r => r.truck);
-    const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o).map(r => r.truck);
-    return uniqSorted(fromEq.concat(fromSup, fromRaw, fromSales));
+    const fromSup = (sup && Array.isArray(sup.trucks)) ? sup.trucks.filter(isTruckUnit) : [];
+    const fromTx = (idx.txTrucksByOwner.get(o) || []).filter(isTruckUnit);
+    return uniqSorted(fromEq.concat(fromSup, fromTx));
   }
   function driversForOwner(ownerName, company, isCompanyFleet, activeTruckRow) {
     let list = [];
     if (isCompanyFleet) {
-      const coDrv = (SEED.records.company_drivers || []).filter(d => !company || !d.company || d.company === company).map(d => d.driver || d.name);
-      const customCoDrv = (SEED.records.drivers || []).filter(d => d.is_company_driver && (!company || !d.company || d.company === company)).map(d => d.name || d.driver);
-      const eqDrv = (SEED.records.company_equipment || []).filter(e => (!company || !e.company || e.company === company) && (/^own/i.test(e.ownership || '') || !e.supplier)).map(e => e.default_driver).filter(Boolean);
-      const ownEqDrv = (SEED.records.equipment || []).filter(e => /^own/i.test(e.ownership || '') || (company && norm(e.supplier) === norm(company))).map(e => e.default_driver).filter(Boolean);
-      const defDrv = (activeTruckRow && activeTruckRow.default_driver) ? [activeTruckRow.default_driver] : [];
+      const coDrv = (SEED.records.company_drivers || []).filter(d => d && !d.voided && (!company || d.company === company)).map(d => d.driver || d.name);
+      const customCoDrv = (SEED.records.drivers || []).filter(d => d && !d.voided && d.is_company_driver && (!company || d.company === company)).map(d => d.name || d.driver);
+      const eqDrv = (SEED.records.company_equipment || []).filter(e =>
+        e && !e.voided && e.status !== 'Sold / retired' &&
+        (!company || e.company === company) &&
+        (e.is_company_fleet === true || /^(own|rent)/i.test(e.ownership || '')) &&
+        isTruckUnit(e)
+      ).map(e => e.default_driver).filter(Boolean);
+      const ownEqDrv = (SEED.records.equipment || []).filter(e =>
+        e && !e.voided && e.status !== 'Sold / retired' &&
+        ((e.company && (!company || e.company === company) && /^(own|rent)/i.test(e.ownership || '')) ||
+         (company && norm(e.supplier) === norm(company))) &&
+        isTruckUnit(e)
+      ).map(e => e.default_driver).filter(Boolean);
+      const defDrv = (activeTruckRow && activeTruckRow.default_driver && isOwnUnit(activeTruckRow, company)) ? [activeTruckRow.default_driver] : [];
       list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv));
     } else {
       const o = norm(ownerName);
@@ -1891,22 +1992,22 @@
         if (activeTruckRow && activeTruckRow.default_driver) return [activeTruckRow.default_driver];
         return [];
       }
+      const idx = getFleetIndex();
       const fromDrv = (SEED.records.drivers || []).filter(d => norm(d.truck_owner) === o).map(d => d.name || d.driver);
       const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
       const fromSup = (sup && Array.isArray(sup.drivers)) ? sup.drivers : [];
       const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
       const fromCoEq = (SEED.records.company_equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
-      const fromRaw = (SEED.records.raw_purchases || []).filter(r => norm(r.truck_owner) === o && r.driver).map(r => r.driver);
-      const fromSales = (SEED.records.sales_tickets || []).filter(r => norm(r.truck_owner) === o && r.driver).map(r => r.driver);
+      const fromTx = idx.txDriversByOwner.get(o) || [];
       // Owner-operators whose driver record matches the Truck Owner's own name
       const selfDrv = (SEED.records.drivers || []).filter(d => norm(d.name || d.driver) === o && (!d.truck_owner || norm(d.truck_owner) === o)).map(d => d.name || d.driver);
       const defDrv = (activeTruckRow && activeTruckRow.default_driver && (!activeTruckRow.supplier || norm(activeTruckRow.supplier) === o))
         ? [activeTruckRow.default_driver]
         : [];
-      list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromRaw, fromSales, selfDrv, defDrv));
+      list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromTx, selfDrv, defDrv));
     }
     // Always place the selected Truck's Default Driver first in the filtered list so it is chosen first
-    if (activeTruckRow && activeTruckRow.default_driver) {
+    if (activeTruckRow && activeTruckRow.default_driver && (!isCompanyFleet || isOwnUnit(activeTruckRow, company))) {
       const defNorm = norm(activeTruckRow.default_driver);
       const defMatch = list.find(d => norm(d) === defNorm) || activeTruckRow.default_driver;
       list = [defMatch].concat(list.filter(d => norm(d) !== defNorm));
@@ -1919,6 +2020,30 @@
   }
   function siteNames() { return uniqSorted(SEED.records.sites.map(s => s.name).concat(SEED.records.sales_tickets.map(r => r.site), SEED.records.raw_purchases.map(r => r.site))); }
   function equipmentNames() { return uniqSorted(SEED.records.equipment.map(e => e.name).concat(SEED.records.fuel_intakes.map(f => f.equipment), SEED.records.sales_tickets.map(r => r.truck))); }
+  function truckNames() {
+    const idx = getFleetIndex();
+    if (idx.truckNamesList) return idx.truckNamesList;
+    const raw = [];
+    (SEED.records.equipment || []).forEach(e => {
+      if (e && e.name) raw.push(e.name);
+    });
+    (SEED.records.sales_tickets || []).forEach(r => {
+      if (r && r.truck && r.transport_by !== 'Company fleet') raw.push(r.truck);
+    });
+    (SEED.records.raw_purchases || []).forEach(r => {
+      if (r && r.truck && r.transport_by !== 'Company fleet') raw.push(r.truck);
+    });
+    idx.truckNamesList = uniqSorted(raw).filter(nm => {
+      const eq = idx.eqByName.get(norm(nm));
+      if (eq) {
+        if (eq.voided || eq.status === 'Sold / retired') return false;
+        if (!/^(truck|mixer|dump|tipper|tractor|trailer)/i.test(String(eq.type || 'Truck').trim())) return false;
+        if (/^(own|rent)/i.test(eq.ownership || '') && !eq.supplier) return false;
+      }
+      return true;
+    });
+    return idx.truckNamesList;
+  }
   function driverNames() { return uniqSorted(SEED.records.drivers.map(d => d.name).concat(SEED.records.sales_tickets.map(r => r.driver), SEED.records.fuel_intakes.map(f => f.driver))); }
   function staffNames() { return uniqSorted(SEED.records.salaries.map(s => s.staff).concat((SEED.records.employments || []).map(e => e.staff || e.name))); }
   function expenseCategories() {
@@ -2007,22 +2132,51 @@
     const n = norm(name);
     return SEED.records.products.find(p => norm(p.name) === n) || null;
   }
-  function equipInfo(name) {
+  function equipInfo(name, company, isCoFleet) {
     const n = norm(name);
     if (!n) return null;
-    return (SEED.records.equipment || []).find(e => norm(e.name) === n || norm(e.plate_no) === n) || null;
+    const eq = getFleetIndex().eqByName.get(n) || null;
+    if (!company && !isCoFleet) return eq;
+    const ce = companyFleetRow(name, company);
+    if (isCoFleet) {
+      if (ce) {
+        return Object.assign({}, eq || {}, {
+          name: (eq && eq.name) || ce.equipment || ce.name || name,
+          company: ce.company || company,
+          ownership: ce.ownership || 'Own',
+          is_company_fleet: true,
+          supplier: '',
+          default_driver: ce.default_driver || ''
+        });
+      }
+      if (eq) {
+        const isAppOwn = (eq.company === company && /^(own|rent)/i.test(eq.ownership || '')) || (company && norm(eq.supplier) === norm(company));
+        if (isAppOwn) return eq;
+        return Object.assign({}, eq, { default_driver: '' });
+      }
+      return null;
+    }
+    return eq;
   }
   function driverInfo(name) {
     const n = norm(name);
     if (!n) return null;
     return (SEED.records.drivers || []).find(d => norm(d.name) === n || norm(d.driver) === n) || null;
   }
-  function truckOptionHtml(v) {
-    const info = equipInfo(v);
+  function truckOptionHtml(v, company, isCoFleet) {
+    if (typeof company !== 'string') company = '';
+    isCoFleet = Boolean(isCoFleet && typeof isCoFleet === 'boolean');
+    const info = equipInfo(v, company, isCoFleet);
     if (!info) return `<option value="${esc(v)}">`;
     const parts = [];
-    if (info.supplier) parts.push(info.supplier);
-    else if (/^own/i.test(info.ownership || '')) parts.push('Company Fleet');
+    if (isCoFleet) {
+      parts.push(company ? `${company} Fleet` : 'Company Fleet');
+      if (info.default_driver) parts.push(info.default_driver);
+    } else if (info.supplier) {
+      parts.push(info.supplier);
+    } else if (/^own/i.test(info.ownership || '')) {
+      parts.push('Company Fleet');
+    }
     if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
@@ -2056,6 +2210,14 @@
     const txt = esc(label || v);
     const inner = bold ? `<strong>${txt}</strong>` : txt;
     return `<span class="rel-link" data-rel-key="${esc(targetKey)}" data-rel-val="${esc(v)}" title="Open 360° Record &amp; Related Tables: ${esc(v)}">${inner}<span class="rel-arr">↗</span></span>`;
+  }
+  function coBadge(co) {
+    const raw = String(co || '').trim();
+    const short = /^bbconstruction$/i.test(raw) ? 'BBC' : (/^lions\s*transport$/i.test(raw) ? 'Lions' : (raw || 'WTC'));
+    const cls = /^bbconstruction$/i.test(raw) ? 'badge-info' : 'badge-brass';
+    return short !== raw
+      ? `<span class="badge ${cls} co-tbl-badge" title="${esc(raw)}">${esc(short)}<span class="sr-only"> ${esc(raw)}</span></span>`
+      : `<span class="badge ${cls} co-tbl-badge">${esc(raw)}</span>`;
   }
   function listPrice(name) {
     const n = norm(name);
@@ -2292,8 +2454,8 @@
       return `
         <div class="cockpit-banner">
           <div class="cockpit-title-block">
-            <div class="cockpit-eyebrow">${esc(COMPANY_LABELS[STATE.company])}</div>
-            <div class="cockpit-title">No ledger published for this entity yet</div>
+            <div class="cockpit-eyebrow">${esc(COMPANY_LABELS[STATE.company])} · NO PUBLISHED LEDGER YET</div>
+            <div class="cockpit-title">Executive Overview</div>
             <div class="cockpit-sub">The semantic snapshot carries no periods, customers or GL for ${esc(COMPANY_LABELS[STATE.company])}. Transactions keyed here still post to the cloud ledger and appear in the registers.</div>
           </div>
         </div>
@@ -2695,7 +2857,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">AUTONOMOUS AUDIT &amp; ANOMALY DETECTION · RUN ${esc(String(generated).slice(0, 16).replace('T', ' ') || '—')}</div>
-          <div class="cockpit-title">AI Sentinel Watchdogs</div>
+          <div class="cockpit-title">AI Sentinels &amp; Audit</div>
           <div class="cockpit-sub">Deterministic audit rules evaluated against the SQL ledger snapshot for ${esc(COMPANY_LABELS[STATE.company])} — no external BI license required.</div>
         </div>
         <div class="cockpit-pills">
@@ -2869,7 +3031,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">WEIGHBRIDGE &amp; DISPATCH LEDGER · ${isGroupScope ? 'ALL GROUP (WTC + BBCONSTRUCTION)' : esc((COMPANY_BU_MATCH[STATE.company] || STATE.company).toUpperCase()) + ' SCOPE'}</div>
-          <div class="cockpit-title">Sales &amp; Deliveries Register</div>
+          <div class="cockpit-title">Sales &amp; Deliveries</div>
           <div class="cockpit-sub">Automatic Price Agreement lookup · Delivery vs Pickup transport gating · 11% VAT invoice calculation · Overtime shift detection.</div>
         </div>
         <div class="cockpit-pills">
@@ -2961,12 +3123,12 @@
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDate(r))}${appCell(r, 'sales_tickets')}</td>
                   <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''}</td>
-                  <td><span class="badge badge-brass">${esc(r.company)}</span></td>
+                  <td>${coBadge(r.company)}</td>
                   <td>${esc(r.sale_type)}</td>
                   <td>${relLink('customers', r.customer, r.customer, true)}</td>
                   <td>${relLink('products', r.product)}</td>
                   <td>${r.site ? relLink('sites', r.site) : '—'}</td>
-                  <td class="mono">${r.truck ? relLink('equipment', r.truck) : esc(r.transport_by || '—')}${r.driver ? ` <span class="mu">· ${relLink('drivers', r.driver)}</span>` : ''}</td>
+                  <td class="td-truck-drv"><span class="mono">${r.truck ? relLink('equipment', r.truck) : esc(r.transport_by || '—')}</span>${r.driver ? `<div class="drv-sub">${relLink('drivers', r.driver)}</div>` : ''}</td>
                   <td class="r">${fmtNum(sgn * Number(r.qty || 0), 2)} ${esc(r.uom)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.price || 0), 2)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.trans_price || 0), 2)}</td>
@@ -2988,9 +3150,9 @@
                 <td class="r"><span class="tfoot-col-lbl">QTY</span><b>${fmtNum(sumQty, 1)}</b></td>
                 <td class="r"><span class="tfoot-col-lbl">MAT ($)</span><b>${fmtUSD(sumMat, 2)}</b></td>
                 <td class="r"><span class="tfoot-col-lbl">TRANS ($)</span><b>${fmtUSD(sumTr, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">SALES EX-VAT</span><b>${fmtUSD(sumNet, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">EX-VAT</span><b>${fmtUSD(sumNet, 2)}</b></td>
                 <td class="r"><span class="tfoot-col-lbl">VAT (11%)</span><b>${fmtUSD(sumVat, 2)}</b></td>
-                <td class="r"><span class="tfoot-col-lbl">SALES VAT INCL.</span><b>${fmtUSD(sumTtc, 2)}</b></td>
+                <td class="r"><span class="tfoot-col-lbl">VAT INCL.</span><b>${fmtUSD(sumTtc, 2)}</b></td>
                 <td></td>
               </tr>
             </tfoot>
@@ -3134,7 +3296,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">QUARRY INTAKE &amp; HAULAGE SPLIT · M192 TWO-LEG PAYABLE ENGINE</div>
-          <div class="cockpit-title">Raw Material &amp; Quarries</div>
+          <div class="cockpit-title">Quarries &amp; Raw Intake</div>
           <div class="cockpit-sub">Every raw load splits cleanly into Leg 1: Material Cost owed to Quarry Site Owner + Leg 2: Haulage owed to Truck Owner.</div>
         </div>
         <div class="cockpit-pills">
@@ -3202,7 +3364,7 @@
                   <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDate(r))}${appCell(r, 'raw_purchases')}</td>
                     <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong></td>
-                    <td><span class="badge badge-brass">${esc(r.company)}</span></td>
+                    <td>${coBadge(r.company)}</td>
                     <td>${relLink('sites', r.site, r.site || '—', true)}</td>
                     <td>${r.site_owner ? relLink('suppliers', r.site_owner) : '—'}</td>
                     <td>${r.truck_owner ? relLink('suppliers', r.truck_owner) : esc(r.transport_by === 'Company fleet' ? 'Company fleet' : (r.transport_by || '—'))}</td>
@@ -3352,22 +3514,20 @@
       return true;
     }), 'equip', 'total_cost', 'desc');
     const shownEquip = equipRows.slice(0, shownCount('equip'));
-    const eqRegBase = SEED.records.equipment.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
-    const eqRegRows = sortRows(eqRegBase.filter(e => {
-      if (STATE.chipFilter === 'own') return isOwnEquip(e);
-      if (STATE.chipFilter === 'transporter') return !isOwnEquip(e);
-      if (STATE.chipFilter === 'truck') return isTruckEquip(e);
-      if (STATE.chipFilter === 'machinery') return !isTruckEquip(e);
-      if (STATE.chipFilter === 'app') return isAppRecord(e);
+    const coEqBase = filterRecords(SEED.records.company_equipment || [], { ignorePeriod: true });
+    const coEquipRows = sortRows(coEqBase.filter(ce => {
+      if (STATE.chipFilter === 'own') return /^own/i.test(ce.ownership || '');
+      if (STATE.chipFilter === 'transporter') return !/^own/i.test(ce.ownership || '');
+      if (STATE.chipFilter === 'app') return isAppRecord(ce);
       return true;
-    }), 'eqreg', 'name', 'asc');
+    }), 'coeq', 'equipment', 'asc');
 
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">UNIVERSAL FLEET REGISTRY &amp; METER TOLERANCE GUARD</div>
-          <div class="cockpit-title">Equipment, Fleet &amp; Diesel Telemetry</div>
-          <div class="cockpit-sub">Tracks ${fmtNum(SEED.records.equipment.length)} trucks, loaders, excavators &amp; generators · Allocates running costs, driver wages &amp; diesel per ton hauled.</div>
+          <div class="cockpit-eyebrow">BU FLEET TELEMETRY, RUNNING COSTS &amp; METER TOLERANCE GUARD</div>
+          <div class="cockpit-title">Fleet &amp; Diesel Control</div>
+          <div class="cockpit-sub">Tracks ${fmtNum(k.active_equip)} active units for this operating scope · Allocates running costs, driver wages &amp; diesel per ton hauled.</div>
         </div>
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Fleet</div><div class="cockpit-pill-val brass">${fmtNum(k.active_equip)}</div></div>
@@ -3459,7 +3619,7 @@
                   <tr class="rrow" data-rkey="fuel_intakes" data-rid="${esc(f.id)}">
                     <td class="mono">${esc(recordDate(f))}${appCell(f, 'fuel_intakes')}</td>
                     <td class="mono">${esc(f.ticket_no || '—')}</td>
-                    <td><span class="badge badge-brass">${esc(f.company)}</span></td>
+                    <td>${coBadge(f.company)}</td>
                     <td class="mono">${relLink('equipment', f.equipment, f.equipment, true)}</td>
                     <td>${f.driver ? relLink('drivers', f.driver) : '—'}</td>
                     <td>${relLink('products', f.item || f.fuel_type || 'Diesel')}</td>
@@ -3483,38 +3643,38 @@
           </div>
         </div>
 
-        <div class="panel-card" id="driverPanel">
+        <div class="panel-card" id="coFleetAssignPanel">
           <div class="panel-head">
-            <div class="panel-title"><span>UNIVERSAL EQUIPMENT &amp; DRIVER REGISTRY (${fmtNum(SEED.records.equipment.length)} UNITS · ${fmtNum(SEED.records.drivers.length)} DRIVERS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">Universal Registry ${exportBtn('driverPanel', 'Equipment_Registry')}${canEnterForm('equipment') ? '<button class="btn btn-primary" data-open-modal="equipment">+ New Equipment</button>' : ''}</span>
+            <div class="panel-title"><span>BU COMPANY-EQUIPMENT ASSIGNMENTS (${fmtNum(coEquipRows.length)} ASSIGNMENTS)</span></div>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_equipment">Universal Equipment Registry →</button>${exportBtn('coFleetAssignPanel', 'BU_Company_Equipment')}${canEnterForm('companyequipment') ? '<button class="btn btn-primary" data-open-modal="companyequipment">+ New Company Fleet Unit</button>' : ''}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('eqreg', 'Unit / Plate', 'name')}${th('eqreg', 'Category', 'type')}${th('eqreg', 'Ownership', 'ownership')}${th('eqreg', 'Capacity', 'capacity', 'r')}
-                  ${th('eqreg', 'Truck Owner / Supplier', 'supplier')}${th('eqreg', 'Customer Link', 'customer')}${th('eqreg', 'Default Driver', 'default_driver')}
+                  ${th('coeq', 'Equipment / Plate', 'equipment')}${th('coeq', 'Co.', 'company')}${th('coeq', 'Ownership', 'ownership')}${th('coeq', 'Status', 'status')}
+                  ${th('coeq', 'Default Driver', 'default_driver')}${th('coeq', 'Day Operator', 'day_operator')}${th('coeq', 'Site', 'site')}${th('coeq', 'Start Date', 'start_date')}
                 </tr>
               </thead>
               <tbody>
-                ${eqRegRows.slice(0, shownCount('eqreg')).map(e => `
-                  <tr class="rrow" data-rkey="equipment" data-rid="${esc(e.id || e.name)}">
-                    <td class="mono">${relLink('equipment', e.name, e.name, true)}</td>
-                    <td>${esc(e.type || 'Truck')}</td>
-                    <td><span class="badge ${/^own/i.test(e.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(e.ownership || 'Transporter')}</span></td>
-                    <td class="r">${e.capacity ? fmtNum(e.capacity, 1) : '—'}</td>
-                    <td>${e.supplier ? relLink('suppliers', e.supplier) : '—'}</td>
-                    <td>${e.customer ? relLink('customers', e.customer) : '—'}</td>
-                    <td>${e.default_driver ? relLink('drivers', e.default_driver) : '—'}</td>
+                ${coEquipRows.slice(0, shownCount('coeq')).map(ce => `
+                  <tr class="rrow" data-rkey="company_equipment" data-rid="${esc(ce.id || ce.equipment)}">
+                    <td class="mono">${relLink('equipment', ce.equipment, ce.equipment, true)}</td>
+                    <td>${coBadge(ce.company)}</td>
+                    <td><span class="badge ${/^own/i.test(ce.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(ce.ownership || 'Owned')}</span></td>
+                    <td><span class="badge ${/active/i.test(ce.status || 'Active') && !ce.end_date ? 'badge-ok' : 'badge-warn'}">${esc(ce.status || 'Active')}</span></td>
+                    <td>${ce.default_driver ? relLink('drivers', ce.default_driver) : '—'}</td>
+                    <td>${ce.day_operator ? relLink('drivers', ce.day_operator) : '—'}</td>
+                    <td>${ce.site ? relLink('sites', ce.site) : '—'}</td>
+                    <td class="mono">${esc(String(ce.start_date || '—').slice(0, 10))}</td>
                   </tr>
-                `).join('') || emptyRow(7, 'No matching equipment units')}
-                ${showMoreRow('eqreg', eqRegRows.length, 7)}
+                `).join('') || emptyRow(8, 'No BU company-equipment assignments match the active filter')}
+                ${showMoreRow('coeq', coEquipRows.length, 8)}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3"><b>TOTAL (${fmtNum(eqRegRows.length)} UNITS IN REGISTRY)</b></td>
-                  <td class="r"><b>${fmtNum(eqRegRows.reduce((a, e) => a + Number(e.capacity || 0), 0), 0)}</b></td>
-                  <td colspan="3"></td>
+                  <td colspan="4"><b>TOTAL (${fmtNum(coEquipRows.length)} BU FLEET ASSIGNMENTS)</b></td>
+                  <td colspan="4"></td>
                 </tr>
               </tfoot>
             </table>
@@ -3558,7 +3718,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">CONTRACTUAL PRICE ENGINE</div>
-          <div class="cockpit-title">Price &amp; Commission Agreements</div>
+          <div class="cockpit-title">Pricing &amp; Commissions</div>
           <div class="cockpit-sub">Governs Sales (Delivery), Sales (Pickup), Quarry Purchase Price (Site), Hauler Transport Price (Site) &amp; Sales Commissions. The entry desk locks ticket prices to the matching active rule.</div>
         </div>
         <div class="cockpit-pills">
@@ -3592,7 +3752,7 @@
               ${shown.map(pr => `
                 <tr class="rrow" data-rkey="price_rules" data-rid="${esc(pr.id)}">
                   <td class="mono"><strong>${esc(pr.name)}</strong>${appCell(pr, 'price_rules')}</td>
-                  <td><span class="badge badge-brass">${esc(pr.company)}</span></td>
+                  <td>${coBadge(pr.company)}</td>
                   <td><span class="badge badge-info">${esc(pr.rule_type || '—')}</span></td>
                   <td>${pr.customer ? relLink('customers', pr.customer, pr.customer, true) : (pr.supplier ? relLink('suppliers', pr.supplier, pr.supplier, true) : (pr.site ? relLink('sites', pr.site, pr.site + ' (site)', true) : '<strong>Standard List</strong>'))}</td>
                   <td>${pr.product ? relLink('products', pr.product) : '(All Grades)'}</td>
@@ -3720,7 +3880,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">ACCOUNTS RECEIVABLE · M165 FIFO ALLOCATION + M249 VAT-INCLUSIVE BALANCE</div>
-          <div class="cockpit-title">Customers &amp; Receivables (AR)</div>
+          <div class="cockpit-title">Customers &amp; Receivables</div>
           <div class="cockpit-sub">Every receipt or credit note settles the customer's oldest open tickets first (FIFO) · Balances include 11% VAT for VAT-registered customers.</div>
         </div>
         <div class="cockpit-pills">
@@ -3832,7 +3992,7 @@
                   <tr class="rrow" data-rkey="receipts" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDate(r))}${appCell(r, 'receipts')}</td>
                     <td class="mono">${esc(r.name)}${r.reference ? ` <span class="mu">· ${esc(r.reference)}</span>` : ''}</td>
-                    <td><span class="badge badge-brass">${esc(r.company)}</span></td>
+                    <td>${coBadge(r.company)}</td>
                     <td>${relLink('customers', r.customer, r.customer, true)}</td>
                     <td>${esc(r.method)} <span class="mu" style="font-size:10px">(${esc(receiptKind(r))})</span></td>
                     <td class="r"><strong>${fmtUSD(r.amount, 2)}</strong></td>
@@ -3919,7 +4079,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">ACCOUNTS PAYABLE · THREE-LEG FIFO SETTLEMENT ENGINE</div>
-          <div class="cockpit-title">Suppliers, Quarries &amp; Haulers (AP)</div>
+          <div class="cockpit-title">Suppliers &amp; Payables</div>
           <div class="cockpit-sub">Tracks open payables across Material Legs (Quarry Owner), Haulage Legs (Truck Owner) &amp; Supplies/Services Legs (Credit Expenses).</div>
         </div>
         <div class="cockpit-pills">
@@ -4032,7 +4192,7 @@
                   <tr class="rrow" data-rkey="settlements" data-rid="${esc(sp.id)}">
                     <td class="mono">${esc(recordDate(sp))}${appCell(sp, 'settlements')}</td>
                     <td class="mono">${esc(sp.name)}${sp.reference ? ` <span class="mu">· ${esc(sp.reference)}</span>` : ''}</td>
-                    <td><span class="badge badge-brass">${esc(sp.company)}</span></td>
+                    <td>${coBadge(sp.company)}</td>
                     <td>${relLink('suppliers', sp.supplier, sp.supplier, true)}</td>
                     <td>${esc(sp.method)} <span class="mu" style="font-size:10px">(${esc(settlementKind(sp))})</span></td>
                     <td class="r"><strong>${fmtUSD(sp.amount, 2)}</strong></td>
@@ -4103,7 +4263,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">OPERATING COSTS, SPARE PARTS${showPayroll ? ' &amp; WORKFORCE PAYROLL' : ''}</div>
-          <div class="cockpit-title">Expenses${showPayroll ? ' &amp; Payroll' : ''} Ledger</div>
+          <div class="cockpit-title">Expenses &amp; Overhead</div>
           <div class="cockpit-sub">Categorized into Production Cost (Class 60/61), Operating Expenses (Class 62) &amp; Capital Expenditures (Class 2)${showPayroll ? ' + Staff Salaries &amp; Overtime' : ''}.</div>
         </div>
         <div class="cockpit-pills">
@@ -4169,7 +4329,7 @@
                   return `
                   <tr class="rrow" data-rkey="expenses" data-rid="${esc(x.id)}">
                     <td class="mono">${esc(recordDate(x))}${appCell(x, 'expenses')}</td>
-                    <td><span class="badge badge-brass">${esc(x.company)}</span></td>
+                    <td>${coBadge(x.company)}</td>
                     <td>${relLink('expense_categories', x.category, x.category, true)}</td>
                     <td>${x.subcategory ? relLink('expense_subcategories', x.subcategory) : '—'}${x.reference ? ` <span class="mu">· ${esc(x.reference)}</span>` : ''}</td>
                     <td>${x.supplier ? relLink('suppliers', x.supplier) : '—'}</td>
@@ -4215,7 +4375,7 @@
                   <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
                     <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
                     <td class="mono">${esc(s.payroll_month)}</td>
-                    <td><span class="badge badge-brass">${esc(s.company)}</span></td>
+                    <td>${coBadge(s.company)}</td>
                     <td>${relLink('employments', s.staff, s.staff, true)}</td>
                     <td>${esc(s.method || '—')}</td>
                     <td class="r"><strong>${fmtUSD(s.amount, 2)}</strong></td>
@@ -4314,7 +4474,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">WORKFORCE &amp; PAYROLL COMMAND</div>
-          <div class="cockpit-title">Payroll, Attendance, Site Allowances &amp; Contracts</div>
+          <div class="cockpit-title">Payroll &amp; Workforce</div>
           <div class="cockpit-sub">16-column staff earnings register (Base + Overtime + Site Allowances − Lateness &amp; Absence vs Paid), Employment &amp; Freelance Contracts, Mon–Sun Site Allowances, and Attendance.</div>
         </div>
         <div class="cockpit-pills">
@@ -4372,7 +4532,7 @@
               ${shownStaff.map(r => `
                 <tr class="rrow ${r.status === 'Ended' ? 'pbi-row-amber' : ''}" data-rkey="employments" data-rid="${esc(r.staff)}">
                   <td>${relLink('employments', r.staff, r.staff, true)}${!r.hasContract ? ' <span class="badge badge-warn" title="Salary payment without an employment contract">No contract</span>' : ''}</td>
-                  <td><span class="badge badge-brass">${esc(r.company)}</span></td>
+                  <td>${coBadge(r.company)}</td>
                   <td>${esc(r.type)}</td>
                   <td><span class="badge ${r.status === 'Ended' ? 'badge-warn' : 'badge-ok'}">${esc(r.status)}</span></td>
                   <td class="r">${fmtUSD(r.base, 2)}</td>
@@ -4425,7 +4585,7 @@
                   <tr class="rrow" data-rkey="salaries" data-rid="${esc(s.id)}">
                     <td class="mono">${esc(recordDate(s))}${appCell(s, 'salaries')}</td>
                     <td class="mono">${esc(s.payroll_month)}</td>
-                    <td><span class="badge badge-brass">${esc(s.company)}</span></td>
+                    <td>${coBadge(s.company)}</td>
                     <td><strong>${esc(s.staff)}</strong></td>
                     <td>${esc(s.method || 'Cash')}</td>
                     <td class="r"><strong>${fmtUSD(s.amount, 2)}</strong></td>
@@ -4460,7 +4620,7 @@
                   return `
                   <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="employments" data-rid="${esc(e.id)}">
                     <td><strong>${esc(e.staff)}</strong>${appCell(e, 'employments')}</td>
-                    <td><span class="badge badge-brass">${esc(e.company)}</span></td>
+                    <td>${coBadge(e.company)}</td>
                     <td>${esc(e.type || 'Regular')}</td>
                     <td class="mono">${esc(e.start_date || '—')}</td>
                     <td class="mono">${esc(e.end_date || 'Open')}</td>
@@ -4532,7 +4692,7 @@
                 ${shownAtt.map(a => `
                   <tr class="rrow" data-rkey="attendance" data-rid="${esc(a.id)}">
                     <td class="mono">${esc(a.date)}${appCell(a, 'attendance')}</td>
-                    <td><span class="badge badge-brass">${esc(a.company)}</span></td>
+                    <td>${coBadge(a.company)}</td>
                     <td><strong>${esc(a.staff)}</strong></td>
                     <td><span class="badge ${/Absent|Sick/i.test(a.status) ? 'badge-warn' : 'badge-ok'}">${esc(a.status || 'Present')}</span></td>
                     <td class="r">${fmtNum(a.regular_hours, 1)}</td>
@@ -4580,7 +4740,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">LEBANESE GENERAL CHART OF ACCOUNTS (PLAN COMPTABLE GÉNÉRAL)</div>
-          <div class="cockpit-title">General Ledger &amp; Trial Balance</div>
+          <div class="cockpit-title">General Ledger &amp; SOA</div>
           <div class="cockpit-sub">Every operational transaction posts balanced Debit &amp; Credit legs in real time · Classes 1 to 7 tied to ${tied ? '$0.00' : fmtUSD(diff, 2)} variance.</div>
         </div>
         <div class="cockpit-pills">
@@ -4644,7 +4804,7 @@
               ${sortRows((m.soa_stream || []).filter(r => !q || Object.values(r).join(' ').toLowerCase().includes(q)), 'soa', 'date', 'desc').map(r => `
                 <tr>
                   <td class="mono">${esc(String(r.date || '').slice(0, 10))}</td>
-                  <td><span class="badge badge-brass">${esc(r.company || 'WTC')}</span></td>
+                  <td>${coBadge(r.company || 'WTC')}</td>
                   <td class="mono">${esc(r.doc || '—')}</td>
                   <td class="mono"><strong>${esc(r.code)}</strong></td>
                   <td><strong>${esc(r.account)}</strong></td>
@@ -5654,15 +5814,17 @@
         <td><span class="badge ${accMeta.badgeCls}" title="${pm.pbiPageCount}/${pm.pbiPageTotal} PBI Pages · ${pm.stmtCount}/22 Printable Statements">${esc(accMeta.short)}</span></td>
         <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
         <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
-        <td style="white-space:nowrap">
-          ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 8px;font-size:10.5px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">✎ Edit</button>` : ''}
-          ${owner ? `<button type="button" class="btn ${isEditing && STATE.showRolePermMatrix ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-check-perms="${esc(u.id)}" title="Check & configure ${esc(u.full_name)}'s Role Permissions, Policy-Lock Unlocks & Executive Dashboards">🛡️ Perms</button>` : ''}
-          ${(owner || idx === STATE.activeUserIdx) ? `<button type="button" class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
-          ${owner ? `
-            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
-            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">Invite Link</button>
-            <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
-          ` : ''}
+        <td class="user-actions-cell">
+          <div class="user-actions-wrap">
+            ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 7px;font-size:10px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">✎ Edit</button>` : ''}
+            ${owner ? `<button type="button" class="btn ${isEditing && STATE.showRolePermMatrix ? 'btn-brass' : ''}" style="padding:3px 7px;font-size:10px" data-check-perms="${esc(u.id)}" title="Check & configure ${esc(u.full_name)}'s Role Permissions, Policy-Lock Unlocks & Executive Dashboards">🛡️ Perms</button>` : ''}
+            ${(owner || idx === STATE.activeUserIdx) ? `<button type="button" class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 7px;font-size:10px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
+            ${owner ? `
+              <button type="button" class="btn" style="padding:3px 6px;font-size:10px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
+              <button type="button" class="btn" style="padding:3px 6px;font-size:10px" data-invite-user="${idx}" title="Copy a 1-click login link for WhatsApp / Email (carries the PIN — share privately)">Invite Link</button>
+              <button type="button" class="btn" style="padding:3px 6px;font-size:10px" data-toggle-user="${idx}" title="${u.status === 'Suspended' ? 'Re-activate this seat' : 'Suspend this seat (cannot sign in)'}">${u.status === 'Suspended' ? 'Activate' : 'Suspend'}</button>
+            ` : ''}
+          </div>
         </td>
       </tr>`;
     }).join('');
@@ -5685,7 +5847,7 @@
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
           <div class="cockpit-eyebrow">MULTI-DEVICE TEAM AUTHENTICATION · FACE ID · BUSINESS-UNIT RLS</div>
-          <div class="cockpit-title">Users, Face ID &amp; Multi-Device Cloud Sync</div>
+          <div class="cockpit-title">Team Auth &amp; Users</div>
           <div class="cockpit-sub">Enrol Face ID, manage team seats and PINs, and sync access across phones, tablets &amp; laptops.</div>
         </div>
         <div class="cockpit-pills">
@@ -5815,97 +5977,95 @@
         </div>
       </div>
 
+      <div class="panel-card" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>TEAM LOGIN DIRECTORY &amp; ROW-LEVEL SECURITY (RLS) SCOPES</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn" style="padding:4px 10px;font-size:11px" id="syncCloudNowBtn">↻ Sync Cloud Now</button>
+            ${owner ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px" id="addWebUserBtn">+ New Team Login</button>` : ''}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>User Name</th>
+                <th>Login Email</th>
+                ${owner ? '<th>PIN</th>' : ''}
+                <th>Face ID (2FA)</th>
+                <th>Role</th>
+                <th>Allowed Companies (RLS)</th>
+                <th>Dashboards &amp; Statements</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersDirectoryTbody">
+              ${renderUsersDirectoryRowsHtml()}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="split-grid-2">
         <div class="panel-card">
           <div class="panel-head">
-            <div class="panel-title"><span>TEAM LOGIN DIRECTORY &amp; ROW-LEVEL SECURITY (RLS) SCOPES</span></div>
-            <div style="display:flex;gap:6px">
-              <button class="btn" style="padding:4px 10px;font-size:11px" id="syncCloudNowBtn">↻ Sync Cloud Now</button>
-              ${owner ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px" id="addWebUserBtn">+ New Team Login</button>` : ''}
-            </div>
+            <div class="panel-title"><span>LIVE MULTI-DEVICE SESSION AUDIT LOG</span></div>
+            <span class="badge ${/Live/.test(STATE.cloudStatus) ? 'badge-ok' : 'badge-warn'}">${/Live/.test(STATE.cloudStatus) ? 'CLOUD SYNCED' : 'LOCAL ONLY'}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>User Name</th>
-                  <th>Login Email</th>
-                  ${owner ? '<th>PIN</th>' : ''}
-                  <th>Face ID (2FA)</th>
-                  <th>Role</th>
-                  <th>Allowed Companies (RLS)</th>
-                  <th>Dashboards &amp; Statements</th>
-                  <th>Status</th>
-                  <th>Last Login</th>
-                  <th>Actions</th>
+                  <th>Timestamp</th>
+                  <th>Team Member</th>
+                  <th>Auth Method</th>
+                  <th>Role / Scope</th>
+                  <th>Device</th>
                 </tr>
               </thead>
-              <tbody id="usersDirectoryTbody">
-                ${renderUsersDirectoryRowsHtml()}
+              <tbody>
+                ${(STATE.sessions || []).slice(0, 10).map(s => {
+                  const sBadge = formatCompactCompaniesBadge(s.companies, 3);
+                  return `
+                  <tr>
+                    <td class="mono" style="font-size:10.5px">${esc(s.logged_in_at)}</td>
+                    <td><strong>${esc(s.full_name)}</strong></td>
+                    <td><span class="badge ${/Face/i.test(s.method || '') ? 'badge-ok' : 'badge-info'}">${esc(s.method || 'PIN')}${s.confidence ? ` · ${Math.round(Number(s.confidence))}%` : ''}</span></td>
+                    <td><span class="badge badge-brass" title="${esc(sBadge.fullTitle)}">${esc(sBadge.text)}</span></td>
+                    <td class="mono" style="font-size:10.5px">${esc(s.device)}</td>
+                  </tr>`;
+                }).join('') || emptyRow(5, 'No sign-ins recorded yet')}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="panel-card">
-            <div class="panel-head">
-              <div class="panel-title"><span>LIVE MULTI-DEVICE SESSION AUDIT LOG</span></div>
-              <span class="badge ${/Live/.test(STATE.cloudStatus) ? 'badge-ok' : 'badge-warn'}">${/Live/.test(STATE.cloudStatus) ? 'CLOUD SYNCED' : 'LOCAL ONLY'}</span>
-            </div>
-            <div class="table-wrap">
-              <table class="ledger-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Team Member</th>
-                    <th>Auth Method</th>
-                    <th>Role / Scope</th>
-                    <th>Device</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(STATE.sessions || []).slice(0, 10).map(s => {
-                    const sBadge = formatCompactCompaniesBadge(s.companies, 3);
-                    return `
-                    <tr>
-                      <td class="mono" style="font-size:10.5px">${esc(s.logged_in_at)}</td>
-                      <td><strong>${esc(s.full_name)}</strong></td>
-                      <td><span class="badge ${/Face/i.test(s.method || '') ? 'badge-ok' : 'badge-info'}">${esc(s.method || 'PIN')}${s.confidence ? ` · ${Math.round(Number(s.confidence))}%` : ''}</span></td>
-                      <td><span class="badge badge-brass" title="${esc(sBadge.fullTitle)}">${esc(sBadge.text)}</span></td>
-                      <td class="mono" style="font-size:10.5px">${esc(s.device)}</td>
-                    </tr>`;
-                  }).join('') || emptyRow(5, 'No sign-ins recorded yet')}
-                </tbody>
-              </table>
-            </div>
+        <div class="panel-card">
+          <div class="panel-head">
+            <div class="panel-title"><span>CLOUD DATABASE BACKENDS (DUAL-DRIVER)</span></div>
+            <span class="badge badge-ok">ACTIVE</span>
           </div>
-
-          <div class="panel-card">
-            <div class="panel-head">
-              <div class="panel-title"><span>CLOUD DATABASE BACKENDS (DUAL-DRIVER)</span></div>
-              <span class="badge badge-ok">ACTIVE</span>
+          <div style="font-size:12px;display:flex;flex-direction:column;gap:8px">
+            <div class="sentinel-item ${/Live/.test(STATE.cloudStatus) ? 'ok' : 'warn'}">
+              <div>
+                <div class="sentinel-title">Driver 1: BHFIRMS Multi-Device Cloud Relay + Local SQLite</div>
+                <div class="sentinel-detail">Active across phones, tablets &amp; laptops at <code class="mono">husseinbdeir.github.io/mfg-web</code>; on the LAN host <code class="mono">server.py</code> also writes every entry into <code class="mono">data/mfg.db</code>. Syncs seats, PINs, sessions and app entries with 0 licenses.</div>
+              </div>
+              <span class="badge ${/Live/.test(STATE.cloudStatus) ? 'badge-ok' : 'badge-warn'}">${/Live/.test(STATE.cloudStatus) ? 'CONNECTED' : esc(STATE.cloudStatus.replace('● ', '').toUpperCase())}</span>
             </div>
-            <div style="font-size:12px;display:flex;flex-direction:column;gap:8px">
-              <div class="sentinel-item ${/Live/.test(STATE.cloudStatus) ? 'ok' : 'warn'}">
-                <div>
-                  <div class="sentinel-title">Driver 1: BHFIRMS Multi-Device Cloud Relay + Local SQLite</div>
-                  <div class="sentinel-detail">Active across phones, tablets &amp; laptops at <code class="mono">husseinbdeir.github.io/mfg-web</code>; on the LAN host <code class="mono">server.py</code> also writes every entry into <code class="mono">data/mfg.db</code>. Syncs seats, PINs, sessions and app entries with 0 licenses.</div>
-                </div>
-                <span class="badge ${/Live/.test(STATE.cloudStatus) ? 'badge-ok' : 'badge-warn'}">${/Live/.test(STATE.cloudStatus) ? 'CONNECTED' : esc(STATE.cloudStatus.replace('● ', '').toUpperCase())}</span>
+            <div class="sentinel-item ${sbConfigured ? 'ok' : ''}">
+              <div style="width:100%">
+                <div class="sentinel-title">Driver 2: Dedicated Supabase / PostgreSQL Cloud (Optional)</div>
+                <div class="sentinel-detail" style="margin-bottom:6px">Run <code class="mono">data/schema_postgres.sql</code> in a Supabase project and paste the URL &amp; anon key. The keys are kept on this device only; the Postgres writer ships in a later build.</div>
+                ${owner ? `<div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <input type="url" id="sb_url" class="search-input" style="min-width:170px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.url)}" placeholder="https://xyz.supabase.co">
+                  <input type="text" id="sb_key" class="search-input" style="min-width:140px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.anonKey)}" placeholder="Supabase anon key...">
+                  <button class="btn" id="saveSbCfgBtn" style="padding:4px 9px;font-size:11px">Save</button>
+                </div>` : ''}
               </div>
-              <div class="sentinel-item ${sbConfigured ? 'ok' : ''}">
-                <div style="width:100%">
-                  <div class="sentinel-title">Driver 2: Dedicated Supabase / PostgreSQL Cloud (Optional)</div>
-                  <div class="sentinel-detail" style="margin-bottom:6px">Run <code class="mono">data/schema_postgres.sql</code> in a Supabase project and paste the URL &amp; anon key. The keys are kept on this device only; the Postgres writer ships in a later build.</div>
-                  ${owner ? `<div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <input type="url" id="sb_url" class="search-input" style="min-width:170px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.url)}" placeholder="https://xyz.supabase.co">
-                    <input type="text" id="sb_key" class="search-input" style="min-width:140px;flex:1;padding:4px 8px;font-size:11px" value="${esc(STATE.supabaseCfg.anonKey)}" placeholder="Supabase anon key...">
-                    <button class="btn" id="saveSbCfgBtn" style="padding:4px 9px;font-size:11px">Save</button>
-                  </div>` : ''}
-                </div>
-                <span class="badge ${sbConfigured ? 'badge-ok' : ''}">${sbConfigured ? 'KEYS SAVED' : 'NOT CONFIGURED'}</span>
-              </div>
+              <span class="badge ${sbConfigured ? 'badge-ok' : ''}">${sbConfigured ? 'KEYS SAVED' : 'NOT CONFIGURED'}</span>
             </div>
           </div>
         </div>
@@ -6019,8 +6179,8 @@
           ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { id: 'wrap_f_customer', hintId: 'hint_customer', hint: '' })}
           ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
-          ${fld('Truck / Equipment *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
-          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck / Equipment; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hidden: true, hintId: 'hint_driver', hint: '' })}
           ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
 
@@ -6074,9 +6234,9 @@
           ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
           ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
-          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck Plate..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck Plate; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
 
           ${secHdr('2. Quantities & Costs')}
           ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount' })}
@@ -6214,7 +6374,8 @@
   const FORM_UI = {
     priceManual: false, transManual: false, methodManual: false, uomManual: false,
     otManual: false, ticketManual: false, qtyManual: false, repDateManual: false, showRepDate: false,
-    ownerManuallyPicked: false, driverManual: false,
+    ownerManuallyPicked: false, driverManual: false, postAttempted: false,
+    stagedOwnerDrivers: [],
     lastCompany: '', lastDate: '', lastCategory: null, catCache: null,
     lastTruck: '', lastTruckOwner: '', lastSaleType: '', lastTransportBy: '',
     lastSite: '', lastProduct: '', lastCustomer: '', lastSupplier: '', lastRuleType: '',
@@ -6559,10 +6720,23 @@
   }
 
   function isOwnUnit(truckRow, company) {
-    return !!(truckRow && (/^own/i.test(truckRow.ownership || '') || norm(truckRow.supplier) === norm(company)));
+    if (!truckRow) return false;
+    const nm = truckRow.name || truckRow.equipment || '';
+    if (company) {
+      if (companyFleetRow(nm, company)) return true;
+      if (truckRow.company === company && /^(own|rent)/i.test(truckRow.ownership || '')) return true;
+      if (norm(truckRow.supplier) === norm(company)) return true;
+      return false;
+    }
+    return !!(/^(own|rent)/i.test(truckRow.ownership || ''));
   }
 
-  function syncFleetCascade(company, isCoFleet, is3P, isUnreg) {
+  function isPureOwnUnit(truckRow, company) {
+    if (!truckRow) return false;
+    return /^own/i.test(truckRow.ownership || '') && (!truckRow.supplier || (company && norm(truckRow.supplier) === norm(company)));
+  }
+
+  function syncFleetCascade(company, isCoFleet, is3P, isUnreg, needDriver = true) {
     const curTruck = val('f_truck');
     const curOwner = val('f_truckowner');
     const truckChanged = curTruck !== FORM_UI.lastTruck;
@@ -6572,16 +6746,18 @@
       FORM_UI.qtyManual = false;
       FORM_UI.ownerManuallyPicked = false;
       FORM_UI.driverManual = false;
-      const tRow = curTruck ? equipInfo(curTruck) : null;
+      const tRow = curTruck ? equipInfo(curTruck, company, isCoFleet) : null;
       if (is3P && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner')) {
-        $('f_truckowner').value = (tRow && tRow.supplier && !isOwnUnit(tRow, company)) ? tRow.supplier : '';
+        $('f_truckowner').value = (tRow && tRow.supplier && !isPureOwnUnit(tRow, company)) ? tRow.supplier : '';
       }
       if ($('f_driver')) {
-        if (tRow && tRow.default_driver) {
+        if (!needDriver) {
+          $('f_driver').value = '';
+        } else if (tRow && tRow.default_driver) {
           $('f_driver').value = tRow.default_driver;
         } else if (tRow && tRow.supplier && is3P) {
-          const oDrvs = driversForOwner(tRow.supplier, company, false);
-          $('f_driver').value = oDrvs.length === 1 ? oDrvs[0] : '';
+          const oDrvs = driversForOwner(tRow.supplier, company, false, tRow);
+          $('f_driver').value = oDrvs.length ? oDrvs[0] : '';
         } else {
           $('f_driver').value = '';
         }
@@ -6595,7 +6771,8 @@
       }
     } else if (ownerChanged && is3P) {
       FORM_UI.ownerManuallyPicked = !!curOwner;
-      const tRow = curTruck ? equipInfo(curTruck) : null;
+      FORM_UI.driverManual = false;
+      const tRow = curTruck ? equipInfo(curTruck, company, false) : null;
       const allowedTrucks = curOwner ? trucksForOwner(curOwner, company, false) : [];
       const truckMatches = !!(curOwner && curTruck && ((tRow && norm(tRow.supplier) === norm(curOwner)) || allowedTrucks.some(tn => norm(tn) === norm(curTruck))));
       if (curTruck && !truckMatches) {
@@ -6606,7 +6783,7 @@
       }
       const curDrv = val('f_driver');
       const dRow = curDrv ? driverInfo(curDrv) : null;
-      const allowedDrvs = curOwner ? driversForOwner(curOwner, company, false) : [];
+      const allowedDrvs = curOwner ? driversForOwner(curOwner, company, false, tRow) : [];
       const drvMatches = !!(curOwner && curDrv && ((dRow && norm(dRow.truck_owner) === norm(curOwner)) || allowedDrvs.some(dn => norm(dn) === norm(curDrv))));
       if (curDrv && !drvMatches) {
         if ($('f_driver')) $('f_driver').value = '';
@@ -6614,12 +6791,12 @@
     }
 
     let truckName = val('f_truck');
-    let truckRow = truckName ? equipInfo(truckName) : null;
-    if (is3P && truckRow && truckRow.supplier && !isOwnUnit(truckRow, company) && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
+    let truckRow = truckName ? equipInfo(truckName, company, isCoFleet) : null;
+    if (is3P && truckRow && truckRow.supplier && !isPureOwnUnit(truckRow, company) && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
       $('f_truckowner').value = truckRow.supplier;
     }
     const truckOwner = is3P ? val('f_truckowner') : company;
-    const ownerFromTruck = !!(is3P && truckRow && truckRow.supplier && !isOwnUnit(truckRow, company));
+    const ownerFromTruck = !!(is3P && truckRow && truckRow.supplier && !isPureOwnUnit(truckRow, company));
     applyFieldLockState('f_truckowner', ownerFromTruck, ownerFromTruck
       ? `Locked to ${truckRow.name} registered owner (${truckRow.supplier})`
       : 'Auto-populated when a Truck with a registered owner is selected; open when truck has no preset owner');
@@ -6627,26 +6804,62 @@
     const dlEq = $('dl_equip');
     const dlDrv = $('dl_drivers');
     if (dlEq) {
-      const allowedTrucks = isCoFleet
-        ? trucksForOwner('', company, true)
-        : ((FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? trucksForOwner(truckOwner, company, false) : []);
-      const pool = allowedTrucks.length ? allowedTrucks : equipmentNames();
-      dlEq.innerHTML = pool.map(truckOptionHtml).join('');
+      const eqPoolKey = `${isCoFleet ? 1 : 0}|${company}|${(FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? norm(truckOwner) : ''}|${getFleetIndex().key}`;
+      if (dlEq.dataset.poolKey !== eqPoolKey) {
+        dlEq.dataset.poolKey = eqPoolKey;
+        const allowedTrucks = isCoFleet
+          ? trucksForOwner('', company, true)
+          : ((FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? trucksForOwner(truckOwner, company, false) : []);
+        const pool = isCoFleet ? allowedTrucks : (allowedTrucks.length ? allowedTrucks : truckNames());
+        dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, isCoFleet)).join('');
+      }
     }
+    const allowedDrivers = !needDriver
+      ? []
+      : (isCoFleet
+          ? driversForOwner('', company, true, truckRow)
+          : (truckOwner
+              ? driversForOwner(truckOwner, company, false, truckRow)
+              : ((truckRow && truckRow.default_driver) ? [truckRow.default_driver] : [])));
     if (dlDrv) {
-      const allowedDrivers = isCoFleet
-        ? driversForOwner('', company, true)
-        : (truckOwner ? driversForOwner(truckOwner, company, false) : []);
-      const pool = allowedDrivers.length ? allowedDrivers : driverNames();
-      dlDrv.innerHTML = pool.map(driverOptionHtml).join('');
+      // Strictly display only drivers related to the selected Truck Owner (or Company Fleet); never dump all database drivers
+      const drvPoolKey = `${needDriver ? 1 : 0}|${isCoFleet ? 1 : 0}|${company}|${norm(truckOwner)}|${truckRow ? norm(truckRow.name) : ''}|${allowedDrivers.join(',')}`;
+      if (dlDrv.dataset.poolKey !== drvPoolKey) {
+        dlDrv.dataset.poolKey = drvPoolKey;
+        dlDrv.innerHTML = allowedDrivers.map(d => driverOptionHtml(d, truckRow, truckOwner)).join('');
+      }
     }
-    if (truckRow && truckRow.default_driver && $('f_driver') && !val('f_driver') && !FORM_UI.driverManual) {
-      $('f_driver').value = truckRow.default_driver;
+    if (!needDriver) {
+      if ($('f_driver') && $('f_driver').value) $('f_driver').value = '';
+      setHint('hint_driver', '', '');
+    } else {
+      if (!FORM_UI.driverManual && $('f_driver') && !val('f_driver') && truckRow) {
+        if (truckRow.default_driver) {
+          $('f_driver').value = truckRow.default_driver;
+        } else if (allowedDrivers.length === 1) {
+          $('f_driver').value = allowedDrivers[0];
+        }
+      }
+      const curDrvVal = val('f_driver');
+      const isDefaultChosen = !!(truckRow && truckRow.default_driver && norm(curDrvVal) === norm(truckRow.default_driver));
+      if (isCoFleet) {
+        setHint('hint_driver', isDefaultChosen
+          ? `Default driver for ${truckRow.name} (${allowedDrivers.length} company driver${allowedDrivers.length === 1 ? '' : 's'} — click to switch if off today)`
+          : `${allowedDrivers.length} company fleet driver${allowedDrivers.length === 1 ? '' : 's'} (${company})`, isDefaultChosen ? 'ok' : '');
+      } else if (truckOwner) {
+        setHint('hint_driver', isDefaultChosen
+          ? `Default driver for ${truckRow.name} · ${allowedDrivers.length} driver${allowedDrivers.length === 1 ? '' : 's'} under ${truckOwner} (changeable if off today)`
+          : (allowedDrivers.length
+              ? `${allowedDrivers.length} driver${allowedDrivers.length === 1 ? '' : 's'} registered to ${truckOwner}`
+              : `No drivers registered yet for ${truckOwner} — type driver name or add under Truck Owners`), isDefaultChosen ? 'ok' : (allowedDrivers.length ? '' : 'warn'));
+      } else {
+        setHint('hint_driver', 'Select Truck or Truck Owner first to load its drivers', '');
+      }
     }
 
     FORM_UI.lastTruck = val('f_truck');
     FORM_UI.lastTruckOwner = val('f_truckowner');
-    return { truckName, truckRow, truckOwner, ownerFromTruck };
+    return { truckName, truckRow, truckOwner, ownerFromTruck, allowedDrivers };
   }
 
   function recalcSales() {
@@ -6684,7 +6897,8 @@
     setFieldVisible('wrap_f_overtime', isCoFleet);
     setFieldVisible('wrap_f_truckowner', is3POrPickup);
     setFieldVisible('wrap_f_truck', !isUnreg);
-    setFieldVisible('wrap_f_driver', !isUnreg);
+    // Pick-up (Material Only) and Unregistered require NO driver; Driver is only needed on Delivery
+    setFieldVisible('wrap_f_driver', isDelivery);
     setFieldVisible('wrap_f_transunitprice', isDelivery);
     setFieldVisible('wrap_f_trans_total', isDelivery);
     setFieldVisible('wrap_f_total_usd', !isUnreg);
@@ -6692,6 +6906,7 @@
 
     if (!isDelivery) {
       if ($('f_site') && $('f_site').value) { $('f_site').value = ''; site = ''; }
+      if ($('f_driver') && $('f_driver').value) $('f_driver').value = '';
       if ($('f_transunitprice')) $('f_transunitprice').value = '0.00';
       if ($('f_trans_total')) $('f_trans_total').value = '0.00';
     }
@@ -6704,18 +6919,25 @@
       if ($('f_truckowner') && $('f_truckowner').value) $('f_truckowner').value = '';
       FORM_UI.ownerManuallyPicked = false;
       if (saleTypeChanged || transportByChanged || companyChanged) {
-        const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+        const curTruckVal = val('f_truck');
         const coUnits = trucksForOwner('', company, true);
-        if (curT && !isOwnUnit(curT, company) && (!coUnits.length || !coUnits.some(u => norm(u) === norm(val('f_truck'))))) {
+        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal))) {
           if ($('f_truck')) $('f_truck').value = '';
           if ($('f_driver')) $('f_driver').value = '';
           FORM_UI.qtyManual = false;
           if (qtyEl()) qtyEl().value = '';
         }
+        const curDrvVal = val('f_driver');
+        const activeTRow = val('f_truck') ? equipInfo(val('f_truck'), company, true) : null;
+        const coDrvs = driversForOwner('', company, true, activeTRow);
+        if (curDrvVal && (!coDrvs.some(d => norm(d) === norm(curDrvVal)) || (companyChanged && !FORM_UI.driverManual))) {
+          if ($('f_driver')) $('f_driver').value = (activeTRow && activeTRow.default_driver) ? activeTRow.default_driver : '';
+          FORM_UI.driverManual = false;
+        }
       }
     } else if (is3POrPickup && (saleTypeChanged || transportByChanged)) {
-      const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
-      if (curT && isOwnUnit(curT, company)) {
+      const curT = val('f_truck') ? equipInfo(val('f_truck'), company, false) : null;
+      if (curT && isPureOwnUnit(curT, company)) {
         if ($('f_truck')) $('f_truck').value = '';
         if ($('f_driver')) $('f_driver').value = '';
         FORM_UI.qtyManual = false;
@@ -6752,14 +6974,15 @@
     }
 
     // 4. Cascading Truck -> Truck Owner + Driver + Capacity
-    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg);
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg, isDelivery);
     setHint('hint_truckowner', is3POrPickup
       ? (ownerFromTruck
           ? `Provided by Truck ${truckRow.name} (${truckOwner})`
-          : (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Auto-provided when you select a Truck / Equipment'))
+          : (truckOwner ? `Filtering trucks${isDelivery ? ' & drivers' : ''} for ${truckOwner}` : 'Auto-provided when you select a Truck'))
       : '', '');
 
     const ownTruck = isOwnUnit(truckRow, company);
+    const pureOwnTruck = isPureOwnUnit(truckRow, company);
 
     // 5. Price Agreement & List Price Lock
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
@@ -6818,7 +7041,7 @@
         setHint('hint_trans', transportBy === 'Third-party truck' ? 'Hauler delivers — transport price billed to customer' : 'Company fleet delivery rate', '');
       }
     }
-    setHint('hint_site', isDelivery ? (site ? '' : 'Required on Delivery') : '', isDelivery && !site ? 'crit' : '');
+    setHint('hint_site', isDelivery ? (site ? '' : 'Required on Delivery') : '', (FORM_UI.postAttempted && isDelivery && !site) ? 'crit' : '');
 
     // 6. Quantity Lock & Tier 1/2 Truck Capacity Adjustment
     let tier = { tier: 0, adj: 0, transAdj: 0 };
@@ -6841,10 +7064,10 @@
       qtyEl().value = Number(truckRow.capacity).toFixed(2);
     }
 
-    if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', 'crit');
-    else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is a third-party unit (${truckRow.supplier || 'hauler'}) — switch Transported By or pick an own truck`, 'warn');
-    else if (truckName && transportBy === 'Third-party truck' && ownTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
+    if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', FORM_UI.postAttempted ? 'crit' : '');
+    else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} fleet — switch Transported By or pick a ${company} truck`, 'warn');
+    else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
+    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${isCoFleet ? ' · ' + company + ' Fleet' : (truckRow.supplier ? ' · Owner: ' + truckRow.supplier : '')}`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
@@ -6915,18 +7138,25 @@
       if ($('f_trans_total')) $('f_trans_total').value = '0.00';
       FORM_UI.ownerManuallyPicked = false;
       if (transportByChanged || companyChanged) {
-        const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
+        const curTruckVal = val('f_truck');
         const coUnits = trucksForOwner('', company, true);
-        if (curT && !isOwnUnit(curT, company) && (!coUnits.length || !coUnits.some(u => norm(u) === norm(val('f_truck'))))) {
+        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal))) {
           if ($('f_truck')) $('f_truck').value = '';
           if ($('f_driver')) $('f_driver').value = '';
           FORM_UI.qtyManual = false;
           if (qtyEl()) qtyEl().value = '';
         }
+        const curDrvVal = val('f_driver');
+        const activeTRow = val('f_truck') ? equipInfo(val('f_truck'), company, true) : null;
+        const coDrvs = driversForOwner('', company, true, activeTRow);
+        if (curDrvVal && (!coDrvs.some(d => norm(d) === norm(curDrvVal)) || (companyChanged && !FORM_UI.driverManual))) {
+          if ($('f_driver')) $('f_driver').value = (activeTRow && activeTRow.default_driver) ? activeTRow.default_driver : '';
+          FORM_UI.driverManual = false;
+        }
       }
     } else if (transportByChanged) {
-      const curT = val('f_truck') ? equipInfo(val('f_truck')) : null;
-      if (curT && isOwnUnit(curT, company)) {
+      const curT = val('f_truck') ? equipInfo(val('f_truck'), company, false) : null;
+      if (curT && isPureOwnUnit(curT, company)) {
         if ($('f_truck')) $('f_truck').value = '';
         if ($('f_driver')) $('f_driver').value = '';
         FORM_UI.qtyManual = false;
@@ -6950,7 +7180,7 @@
     const owner = val('f_siteowner');
 
     // 3. Cascading Truck Plate -> Truck Owner + Driver + Capacity
-    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false);
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false, true);
 
     const warnings = [];
 
@@ -7030,7 +7260,7 @@
     }
     setHint('hint_truckowner', !isCoFleet
       ? (ownerFromTruck ? `Provided by Truck ${truckRow.name} (${truckOwner})` : (truckOwner ? '' : 'Auto-provided by Truck Plate (required for third-party haulage)'))
-      : '', !isCoFleet && !truckOwner && truckName ? 'crit' : '');
+      : '', (FORM_UI.postAttempted && !isCoFleet && !truckOwner && truckName) ? 'crit' : '');
     const ap = openApBalance(owner);
     setHint('hint_owner', owner ? (ap != null ? `Open AP ${fmtUSD(ap, 2)}` : 'New payee — not in the AP book yet') : '', '');
 
@@ -7167,7 +7397,7 @@
     setText('calc_post', method === 'Cash' ? 'Cash' : 'Credit');
     const ap = openApBalance(supplier);
     setText('calc_before', ap == null ? '—' : fmtUSD(ap, 2));
-    setHint('hint_supplier', method === 'Credit' && !supplier ? 'Required for Credit' : '', method === 'Credit' && !supplier ? 'crit' : '');
+    setHint('hint_supplier', method === 'Credit' && !supplier ? 'Required for Credit' : '', (FORM_UI.postAttempted && method === 'Credit' && !supplier) ? 'crit' : '');
     setHint('hint_amount', amount <= 0 && val('f_amount') ? 'Must be above zero' : '', amount <= 0 && val('f_amount') ? 'crit' : '');
     const cat = val('f_category');
     setText('calc_gl', /fuel|oil/i.test(cat) ? '60 · Fuel & lubricants' : (/repair|spare|tool|minor/i.test(cat) ? '61 · Repairs & parts' : (/tip/i.test(cat) ? '64 · Staff' : '62 · Operating')));
@@ -7194,7 +7424,7 @@
     return { supplier, before, amount, disc };
   }
 
-  function recalcForm() {
+  function recalcFormInner() {
     try {
       if (['salary', 'logistics', 'treasury'].includes(STATE.modalForm)) {
         const usd = num('f_usd'), lbp = num('f_lbp');
@@ -7301,7 +7531,22 @@
         if (!isVat && $('f_mof') && $('f_mof').value) $('f_mof').value = '';
         return {};
       }
+      if (STATE.modalForm === 'supplier') {
+        const isTo = !!($('f_istruckowner') && $('f_istruckowner').checked);
+        setFieldVisible('wrap_sup_drivers', isTo);
+        const supName = val('f_supplier');
+        const company = val('f_company');
+        const dlEq = $('dl_equip');
+        if (dlEq && supName) {
+          const oTrucks = trucksForOwner(supName, company, false);
+          const pool = oTrucks.length ? oTrucks.concat(equipmentNames().filter(t => !oTrucks.some(ot => norm(ot) === norm(t)))) : equipmentNames();
+          dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, false)).join('');
+        }
+        renderSupplierDriversPanel();
+        return {};
+      }
       if (STATE.modalForm === 'equipment' || STATE.modalForm === 'companyequipment') {
+        const company = val('f_company');
         const cat = val('f_category') || 'Truck';
         const own = val('f_ownership') || 'Owned';
         const hasCap = cat === 'Truck' || cat === 'Mixer';
@@ -7310,6 +7555,45 @@
         setFieldVisible('wrap_eq_supplier', hasSup);
         if (!hasCap && $('f_capacity') && $('f_capacity').value !== '0') $('f_capacity').value = '0';
         if (!hasSup && $('f_supplier') && $('f_supplier').value) $('f_supplier').value = '';
+
+        const curTruck = val('f_truck');
+        const tRow = curTruck ? equipInfo(curTruck) : null;
+        if (curTruck !== FORM_UI.lastTruck) {
+          FORM_UI.lastTruck = curTruck;
+          if (tRow) {
+            if ($('f_plateno') && (!val('f_plateno') || val('f_plateno') === curTruck)) $('f_plateno').value = tRow.plate_no || tRow.name;
+            if (hasCap && tRow.capacity > 0 && $('f_capacity')) $('f_capacity').value = String(tRow.capacity);
+            if (hasSup && tRow.supplier && $('f_supplier') && !FORM_UI.ownerManuallyPicked) $('f_supplier').value = tRow.supplier;
+            if (tRow.default_driver && $('f_driver') && !FORM_UI.driverManual) $('f_driver').value = tRow.default_driver;
+          }
+        }
+        const curSup = hasSup ? val('f_supplier') : company;
+        if (curSup !== FORM_UI.lastSupplier) {
+          FORM_UI.lastSupplier = curSup;
+          if (!FORM_UI.driverManual && curSup && hasSup) {
+            const oDrvs = driversForOwner(curSup, company, false, tRow);
+            if ($('f_driver') && val('f_driver') && oDrvs.length && !oDrvs.some(d => norm(d) === norm(val('f_driver')))) {
+              $('f_driver').value = oDrvs[0] || '';
+            } else if ($('f_driver') && !val('f_driver') && oDrvs.length) {
+              $('f_driver').value = oDrvs[0];
+            }
+          }
+        }
+        const dlDrv = $('dl_drivers');
+        const ownerDrvs = hasSup
+          ? (curSup ? driversForOwner(curSup, company, false, tRow) : [])
+          : driversForOwner('', company, true, tRow);
+        if (dlDrv) {
+          const pool = ownerDrvs.length ? ownerDrvs : driverNames();
+          dlDrv.innerHTML = pool.map(d => driverOptionHtml(d, tRow, curSup)).join('');
+        }
+        setHint('hint_eq_driver', hasSup
+          ? (curSup
+              ? (ownerDrvs.length
+                  ? `${ownerDrvs.length} driver${ownerDrvs.length === 1 ? '' : 's'} registered to ${curSup} — default driver is chosen first when this truck is selected on a ticket (changeable if off today)`
+                  : `No drivers registered to ${curSup} yet — type a driver name here to set as default & link to ${curSup}`)
+              : 'Select Truck Owner first to filter its drivers, or type a default driver name')
+          : `${ownerDrvs.length} company fleet driver${ownerDrvs.length === 1 ? '' : 's'} — auto-selected first when this unit is dispatched`, ownerDrvs.length ? 'ok' : '');
         return {};
       }
       if (STATE.modalForm === 'driver') {
@@ -7361,6 +7645,111 @@
         default: return {};
       }
     } catch (e) { console.error('recalc', e); return {}; }
+  }
+
+  function recalcForm(skipPostSync = false) {
+    const res = recalcFormInner() || {};
+    if (!skipPostSync) {
+      if (FORM_UI.postAttempted) {
+        const v = validateAndBuild({ skipRecalc: true, calcResult: res });
+        syncFormValidationUI(v.fieldErrors, false);
+      } else {
+        syncFormValidationUI([], false);
+      }
+    }
+    return res;
+  }
+
+  function renderSupplierDriversPanel() {
+    const box = $('supOwnerDriversList');
+    if (!box) return;
+    const supName = val('f_supplier');
+    const company = val('f_company');
+    const staged = Array.isArray(FORM_UI.stagedOwnerDrivers) ? FORM_UI.stagedOwnerDrivers : [];
+    const existingNames = supName ? driversForOwner(supName, company, false) : [];
+    const rows = [];
+    const seen = new Set();
+    staged.forEach((sd, idx) => {
+      if (!sd || !sd.name) return;
+      const k = norm(sd.name);
+      if (seen.has(k)) return;
+      seen.add(k);
+      rows.push({ name: sd.name, phone: sd.phone || '', truck: sd.truck || '', staged: true, stagedIdx: idx });
+    });
+    existingNames.forEach(dn => {
+      const k = norm(dn);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      const dObj = driverInfo(dn);
+      const eqMatch = (SEED.records.equipment || []).find(e => norm(e.default_driver) === k && (!supName || norm(e.supplier) === norm(supName)));
+      rows.push({
+        name: dn,
+        phone: (dObj && dObj.phone) || '',
+        truck: (dObj && dObj.truck) || (eqMatch ? eqMatch.name : ''),
+        staged: false,
+        stagedIdx: -1
+      });
+    });
+
+    if (!rows.length) {
+      box.innerHTML = `<div class="pa-owner-drivers-empty">${supName ? `No drivers linked to <b>${esc(supName)}</b> yet — enter a driver name above and click <b>+ Add Driver to Owner</b> (or type a driver name above before saving).` : 'Enter the Truck Owner name above, then add one or more drivers for this hauler.'}</div>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="pa-owner-drivers-hdr">
+        <span><b>${rows.length}</b> Driver${rows.length === 1 ? '' : 's'} Linked to ${esc(supName || 'this Truck Owner')}</span>
+        <small>Shown in the Driver dropdown when ${esc(supName || 'this owner')} is selected on Delivery or Raw Material tickets</small>
+      </div>
+      <div class="pa-owner-drivers-chips">
+        ${rows.map(r => `
+          <div class="pa-owner-drv-chip ${r.staged ? 'is-staged' : ''}">
+            <div class="pa-owner-drv-main">
+              <b>👤 ${esc(r.name)}</b>
+              ${r.truck ? `<span class="badge badge-brass">Truck ${esc(r.truck)}</span>` : ''}
+              ${r.phone ? `<span class="muted">${esc(r.phone)}</span>` : ''}
+              ${r.staged ? `<span class="badge badge-ok">NEW</span>` : `<span class="badge">REGISTERED</span>`}
+            </div>
+            ${r.staged ? `<button type="button" class="pa-owner-drv-rm" data-rm-staged-drv="${r.stagedIdx}" title="Remove driver">✕</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    box.querySelectorAll('[data-rm-staged-drv]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.preventDefault();
+        const idx = Number(btn.getAttribute('data-rm-staged-drv'));
+        if (Array.isArray(FORM_UI.stagedOwnerDrivers) && idx >= 0 && idx < FORM_UI.stagedOwnerDrivers.length) {
+          FORM_UI.stagedOwnerDrivers.splice(idx, 1);
+          renderSupplierDriversPanel();
+        }
+      });
+    });
+  }
+
+  function addStagedSupplierDriver() {
+    const nm = val('f_sup_drv_name');
+    if (!nm) {
+      toast('Enter a Driver Full Name to add to this Truck Owner', 'err');
+      const el = $('f_sup_drv_name');
+      if (el) { try { el.focus(); } catch (_) {} }
+      return false;
+    }
+    const phone = val('f_sup_drv_phone');
+    const truck = val('f_sup_drv_truck');
+    if (!Array.isArray(FORM_UI.stagedOwnerDrivers)) FORM_UI.stagedOwnerDrivers = [];
+    const existingIdx = FORM_UI.stagedOwnerDrivers.findIndex(d => norm(d.name) === norm(nm));
+    if (existingIdx >= 0) {
+      FORM_UI.stagedOwnerDrivers[existingIdx] = { name: nm, phone: phone || FORM_UI.stagedOwnerDrivers[existingIdx].phone || '', truck: truck || FORM_UI.stagedOwnerDrivers[existingIdx].truck || '' };
+    } else {
+      FORM_UI.stagedOwnerDrivers.push({ name: nm, phone, truck });
+    }
+    if ($('f_sup_drv_name')) $('f_sup_drv_name').value = '';
+    if ($('f_sup_drv_phone')) $('f_sup_drv_phone').value = '';
+    if ($('f_sup_drv_truck')) $('f_sup_drv_truck').value = '';
+    renderSupplierDriversPanel();
+    toast(`Driver "${nm}" linked to Truck Owner`, 'ok');
+    return true;
   }
 
   function wireModalSuggestions(body) {
@@ -7779,13 +8168,34 @@
     wireModalSuggestions(body);
     FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false;
     FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false; FORM_UI.showRepDate = false;
-    FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false;
+    FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; FORM_UI.postAttempted = false;
+    FORM_UI.stagedOwnerDrivers = [];
     FORM_UI.adminUnlocked = {}; FORM_UI.unlockTargetField = ''; FORM_UI.unlockNote = '';
     FORM_UI.lastCompany = val('f_company'); FORM_UI.lastDate = val('f_date'); FORM_UI.lastCategory = null; FORM_UI.catCache = null;
     FORM_UI.lastTruck = val('f_truck'); FORM_UI.lastTruckOwner = val('f_truckowner');
     FORM_UI.lastSaleType = val('f_saletype'); FORM_UI.lastTransportBy = val('f_transportby');
     FORM_UI.lastSite = val('f_site'); FORM_UI.lastProduct = val('f_product');
     FORM_UI.lastCustomer = val('f_customer'); FORM_UI.lastSupplier = val('f_supplier');
+
+    const addSupDrvBtn = $('btnAddSupDriver');
+    if (addSupDrvBtn) {
+      addSupDrvBtn.addEventListener('click', ev => {
+        ev.preventDefault();
+        addStagedSupplierDriver();
+      });
+    }
+    ['f_sup_drv_name', 'f_sup_drv_phone', 'f_sup_drv_truck'].forEach(fid => {
+      const inpEl = $(fid);
+      if (inpEl) {
+        inpEl.addEventListener('keydown', ev => {
+          if (ev.key === 'Enter' && val('f_sup_drv_name')) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            addStagedSupplierDriver();
+          }
+        });
+      }
+    });
 
     const toggleRepBtn = $('toggleRepDateBtn');
     if (toggleRepBtn) {
@@ -7871,9 +8281,10 @@
         if (el.id === 'f_time') FORM_UI.otManual = false;
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
-        // Selecting or clearing a truck resets manual quantity so the truck's capacity populates Quantity
+        // Selecting or clearing a truck resets manual quantity & driver so the truck's capacity and default driver populate first
         if (el.id === 'f_truck') { FORM_UI.qtyManual = false; FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; }
-        if (el.id === 'f_driver') FORM_UI.driverManual = !!el.value;
+        if (el.id === 'f_truckowner' || el.id === 'f_saletype' || el.id === 'f_transportby') FORM_UI.driverManual = false;
+        if (el.id === 'f_driver') FORM_UI.driverManual = true;
         // Changing counterparty / product / site re-runs the agreement lookup unless Admin unlocked the price
         if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_truck', 'f_company', 'f_saletype', 'f_transportby'].includes(el.id)) {
           if (!isFieldAdminUnlocked('f_unitprice')) FORM_UI.priceManual = false;
@@ -7906,194 +8317,342 @@
   }
 
   // ---- validation + posting ---------------------------------------------------
-  function validateAndBuild() {
+  function validateAndBuild(opts = {}) {
     const f = STATE.modalForm;
     const errors = [];
-    const c = recalcForm();
+    const fieldErrors = [];
+    const addErr = (fieldId, msg) => {
+      errors.push(msg);
+      fieldErrors.push({ field: fieldId || '', msg });
+    };
+    const c = (opts && opts.skipRecalc && opts.calcResult) ? opts.calcResult : recalcForm(true);
     const company = val('f_company');
     const date = val('f_date') || todayISO();
     const repDate = val('f_repdate') || date;
     const today = todayISO();
     const notes = val('f_notes');
     const who = activeUser();
+    const isUniversalForm = ['customer', 'supplier', 'product', 'site', 'equipment', 'driver'].includes(f);
     const needsDate = !['customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver'].includes(f);
-    if (!allowedCompanyNames().includes(company)) errors.push('Your seat cannot post to ' + (company || 'that company') + '.');
+    if (!isUniversalForm && !allowedCompanyNames().includes(company)) addErr('f_company', 'Your seat cannot post to ' + (company || 'that company') + '.');
     if (needsDate) {
-      if (!val('f_date')) errors.push('Date is required.');
-      else if (date > today && f !== 'pricerule') errors.push('Future dates are not allowed.');
-      else if (date < MIN_DATE) errors.push('Date is before the books opened (' + MIN_DATE + ').');
-      else if (daysBetween(date, today) > 30 && !notes && ['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(f)) errors.push('Back-dated more than 30 days — add a note explaining why.');
-      if (val('f_repdate') && Math.abs(daysBetween(date, repDate)) > 60 && !notes) errors.push('Reporting Date is more than 60 days from Transaction Date — add a note explaining why.');
+      if (!val('f_date')) addErr('f_date', 'Date is required.');
+      else if (date > today && f !== 'pricerule') addErr('f_date', 'Future dates are not allowed.');
+      else if (date < MIN_DATE) addErr('f_date', 'Date is before the books opened (' + MIN_DATE + ').');
+      else if (daysBetween(date, today) > 30 && !notes && ['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(f)) addErr('f_notes', 'Back-dated more than 30 days — add a note explaining why.');
+      if (val('f_repdate') && Math.abs(daysBetween(date, repDate)) > 60 && !notes) addErr('f_notes', 'Reporting Date is more than 60 days from Transaction Date — add a note explaining why.');
     }
 
     const adminOverrides = Object.keys(FORM_UI.adminUnlocked || {}).filter(k => k !== '__all' && FORM_UI.adminUnlocked[k]);
-    const base = { id: uid(f.slice(0, 2)), date, rep_date: repDate, company, notes, source: 'app', entered_by: who.full_name, entered_by_email: who.email, entered_at: nowStamp(), voided: false, ...(adminOverrides.length ? { admin_overrides: adminOverrides } : {}) };
+    const base = { id: uid(f.slice(0, 2)), date, rep_date: repDate, company: isUniversalForm ? '' : company, notes, source: 'app', entered_by: who.full_name, entered_by_email: who.email, entered_at: nowStamp(), voided: false, ...(adminOverrides.length ? { admin_overrides: adminOverrides } : {}) };
     let record = null;
     let crKey = FORM_CR_KEY[f] || 'sales_tickets';
 
     if (f === 'sales') {
       const ticket = val('f_ticketno');
-      if (!ticket) errors.push('Ticket number is required.');
+      if (!ticket) addErr('f_ticketno', 'Ticket number is required.');
       const dup = ticketExists(company, ticket, 'sales', date);
-      if (dup && dup.blocked) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
-      if (!c.customer) errors.push('Customer is required.');
-      if (!c.product) errors.push('Product is required.');
-      if (!(c.qty > 0)) errors.push('Quantity must be above zero.');
-      if (c.up < 0) errors.push('Unit price cannot be negative.');
-      if (c.up === 0 && !notes) errors.push('A free ticket (unit price 0) needs a note.');
+      if (dup && dup.blocked) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
+      if (!c.product) addErr('f_product', 'Product is required.');
+      if (!c.customer) addErr('f_customer', 'Customer is required.');
       if (c.saleType === 'Delivery') {
-        if (!c.site) errors.push('Destination site is required on a Delivery.');
-        if (!val('f_truck')) errors.push('Truck is required on a Delivery.');
-        if (!val('f_driver')) errors.push('Driver is required on a Delivery.');
+        if (!c.site) addErr('f_site', 'Destination site is required on a Delivery.');
+        if (!val('f_truck')) addErr('f_truck', 'Truck is required on a Delivery.');
+        if (!val('f_driver')) addErr('f_driver', 'Driver is required on a Delivery.');
       }
+      if (!(c.qty > 0)) {
+        if (c.saleType === 'Pickup' && !val('f_truck') && $('f_qty') && $('f_qty').dataset.policyLockedNow === '1') {
+          addErr('f_truck', 'Truck is required to set load capacity (or unlock Quantity).');
+        }
+        addErr('f_qty', 'Quantity must be above zero.');
+      }
+      if (c.up < 0) addErr('f_unitprice', 'Unit price cannot be negative.');
+      else if (c.product && val('f_unitprice') === '') addErr('f_unitprice', 'Unit price is required.');
+      else if (c.product && val('f_unitprice') !== '' && c.up === 0 && !notes) addErr('f_notes', 'A free ticket (unit price 0) needs a note.');
       if (c.saleType !== 'Unregistered' && c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
         const tRow = equipInfo(val('f_truck'));
         if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
-          errors.push(`Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
+          addErr('f_truckowner', `Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
         }
       }
-      if (c.disc > c.mat && c.mat > 0) errors.push('Discount exceeds the material subtotal.');
-      if (c.mat > 0 && c.disc > c.mat * 0.2 && !notes) errors.push('Discount above 20% of material needs a note.');
-      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: repDate, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, external_qty: val('f_extqty') ? num('f_extqty') : null, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, tip: c.tip || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!(dup && dup.warn) };
+      if (c.disc > c.mat && c.mat > 0) addErr('f_discount', 'Discount exceeds the material subtotal.');
+      if (c.mat > 0 && c.disc > c.mat * 0.2 && !notes) addErr('f_notes', 'Discount above 20% of material needs a note.');
+      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: repDate, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: c.saleType === 'Delivery' ? val('f_driver') : '', uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, external_qty: val('f_extqty') ? num('f_extqty') : null, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, tip: c.tip || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!(dup && dup.warn) };
     } else if (f === 'raw') {
       const ticket = val('f_ticketno');
-      if (!ticket) errors.push('Ticket number is required.');
+      if (!ticket) addErr('f_ticketno', 'Ticket number is required.');
       const dup = ticketExists(company, ticket, 'raw', date);
-      if (dup && dup.blocked) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
-      if (!c.site) errors.push('Quarry site is required.');
-      if (!c.product) errors.push('Raw material is required.');
-      if (!(c.qty > 0)) errors.push('Quantity must be above zero.');
-      if (c.up > 0 && !c.owner) errors.push('Quarry site owner (material payee) is required when the material has a cost.');
-      if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) errors.push('Truck owner (haulage payee) is required for third-party haulage.');
+      if (dup && dup.blocked) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
+      if (!c.product) addErr('f_product', 'Raw material is required.');
+      if (!c.site) addErr('f_site', 'Quarry site is required.');
+      if (!(c.qty > 0)) {
+        if (!val('f_truck') && $('f_qty') && $('f_qty').dataset.policyLockedNow === '1') {
+          addErr('f_truck', 'Truck Plate is required to set load capacity (or unlock Quantity).');
+        }
+        addErr('f_qty', 'Quantity must be above zero.');
+      }
+      if (c.up > 0 && !c.owner) addErr('f_siteowner', 'Quarry site owner (material payee) is required when the material has a cost.');
+      if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) addErr('f_truckowner', 'Truck owner (haulage payee) is required for third-party haulage.');
       if (c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
         const tRow = equipInfo(val('f_truck'));
         if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
-          errors.push(`Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
+          addErr('f_truckowner', `Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
         }
       }
       record = { ...base, name: `RAW ${date} ${c.site} #${ticket}`, ticket_no: ticket, rep_date: repDate, product: c.product, site: c.site, site_owner: c.owner, transport_by: c.transportBy, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom || (c.prod ? c.prod.uom : 'm³'), qty: c.qty, discount: c.disc || 0, unit_cost: c.up, cost: c.mat, trans_unit_cost: c.tp, trans_cost: c.tr, total: round2(c.mat + c.tr), method: val('f_method'), external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : '', duplicate_confirmed: !!(dup && dup.warn) };
     } else if (f === 'receipt') {
-      if (!c.customer) errors.push('Customer is required.');
-      if (!(c.amount > 0)) errors.push('Amount must be above zero.');
-      if (c.disc < 0) errors.push('Discount cannot be negative.');
+      if (!c.customer) addErr('f_customer', 'Customer is required.');
+      if (!(c.amount > 0)) addErr('f_amount', 'Amount must be above zero.');
+      if (c.disc < 0) addErr('f_discount', 'Discount cannot be negative.');
       record = { ...base, name: `RCPT ${date} ${c.customer}`, rep_date: repDate, customer: c.customer, method: val('f_method'), amount: round2(c.amount), discount: round2(c.disc), reference: val('f_reference'), ar_before: c.before };
     } else if (f === 'fuel') {
-      if (!c.equipment) errors.push('Equipment is required.');
-      if (!(c.litres > 0)) errors.push('Litres must be above zero.');
-      if (c.bbcTankNegative) errors.push('BBConstruction diesel intakes are refused while the tank reconciliation is negative.');
-      if (c.type !== 'none' && c.reading == null) errors.push('Meter reading is required (or choose "No meter").');
-      if (!c.guard.ok) errors.push('Meter guard: ' + c.guard.label);
-      if (c.guard.cls === 'warn' && !notes) errors.push('Large meter jump — add a note to confirm the reading.');
+      if (!c.equipment) addErr('f_truck', 'Equipment is required.');
+      if (!(c.litres > 0)) addErr('f_qty', 'Litres must be above zero.');
+      if (c.bbcTankNegative) addErr('f_qty', 'BBConstruction diesel intakes are refused while the tank reconciliation is negative.');
+      if (c.type !== 'none' && c.reading == null) addErr('f_meter', 'Meter reading is required (or choose "No meter").');
+      if (!c.guard.ok) addErr('f_meter', 'Meter guard: ' + c.guard.label);
+      if (c.guard.cls === 'warn' && !notes) addErr('f_notes', 'Large meter jump — add a note to confirm the reading.');
       const ticket = val('f_ticketno');
       const dup = ticketExists(company, ticket, 'fuel', date);
-      if (dup && dup.blocked && ticket) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
+      if (dup && dup.blocked && ticket) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       const resolvedItem = c.fuelType === 'Lubricant' ? val('f_item') : c.fuelType;
       record = { ...base, name: `FUEL ${date} ${c.equipment}${ticket ? ' #' + ticket : ''}`, ticket_no: ticket, rep_date: repDate, fuel_type: c.fuelType, item: resolvedItem, equipment: c.equipment, driver: val('f_driver'), litres: round2(c.litres), odometer: c.type === 'odometer' ? c.reading : null, hours: c.type === 'hours' ? c.reading : null, location: val('f_location'), meter_delta: c.delta };
     } else if (f === 'expense') {
-      if (!val('f_category')) errors.push('Category is required.');
-      if (!(c.amount > 0)) errors.push('Amount must be above zero.');
-      if (c.method === 'Credit' && !c.supplier) errors.push('A credit expense needs the supplier it is owed to.');
+      if (!val('f_category')) addErr('f_category', 'Category is required.');
+      if (!(c.amount > 0)) addErr('f_amount', 'Amount must be above zero.');
+      if (c.method === 'Credit' && !c.supplier) addErr('f_supplier', 'A credit expense needs the supplier it is owed to.');
       record = { ...base, name: `EXP ${date} ${c.supplier || val('f_category')}`, rep_date: repDate, category: val('f_category'), subcategory: val('f_subcategory'), supplier: c.supplier, equipment: val('f_truck'), method: c.method, qty: num('f_qty') || 1, amount: round2(c.amount), reference: val('f_reference') };
     } else if (f === 'settlement') {
-      if (!c.supplier) errors.push('Supplier is required.');
-      if (!(c.amount > 0)) errors.push('Amount must be above zero.');
-      if (c.disc < 0) errors.push('Discount cannot be negative.');
+      if (!c.supplier) addErr('f_supplier', 'Supplier is required.');
+      if (!(c.amount > 0)) addErr('f_amount', 'Amount must be above zero.');
+      if (c.disc < 0) addErr('f_discount', 'Discount cannot be negative.');
       record = { ...base, name: `SETTLE ${date} ${c.supplier}`, rep_date: repDate, supplier: c.supplier, method: val('f_method'), amount: round2(c.amount), discount: round2(c.disc), reference: val('f_reference'), ap_before: c.before };
     } else if (f === 'pricerule') {
       const prod = val('f_product'), rt = val('f_ruletype') || 'Sales (Delivery)';
-      if (!prod) errors.push('Product / Grade is required.');
+      if (!prod) addErr('f_product', 'Product / Grade is required.');
       const up0 = round2(num('f_unitprice')), tp0 = round2(num('f_transunitprice'));
       const q1v = val('f_qty1') ? num('f_qty1') : null, q2v = val('f_qty2') ? num('f_qty2') : null;
-      if (val('f_enddate') && val('f_enddate') < date) errors.push('End Date cannot be before the Start Date.');
-      if (/Sales/.test(rt) && !val('f_customer')) errors.push('A Sales rule needs the Customer it is agreed with.');
-      if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) errors.push('A quarry Purchase / Transport rule needs the Supplier or the Site.');
+      if (val('f_enddate') && val('f_enddate') < date) addErr('f_enddate', 'End Date cannot be before the Start Date.');
+      if (/Sales/.test(rt) && !val('f_customer')) addErr('f_customer', 'A Sales rule needs the Customer it is agreed with.');
+      if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) addErr('f_supplier', 'A quarry Purchase / Transport rule needs the Supplier or the Site.');
       record = { ...base, name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod}`, rule_type: rt, customer: val('f_customer'), supplier: val('f_supplier'), site: val('f_site'), product: prod, unit: val('f_uom') || 'm³', rate_per: val('f_rateper') || 'm³', unit_price: up0, price: up0, trans_unit_price: tp0, indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null, qty1: q1v, adj1: round2(num('f_adj1')), total1: q1v != null ? round2(q1v * up0 + num('f_adj1')) : null, trans_adj1: round2(num('f_transadj1')), qty2: q2v, adj2: round2(num('f_adj2')), total2: q2v != null ? round2(q2v * up0 + num('f_adj2')) : null, trans_adj2: round2(num('f_transadj2')), start_date: date, end_date: val('f_enddate') || '' };
     } else if (f === 'vatinvoice') {
       const inv = val('f_ticketno'), cust = val('f_customer'), net = round2(num('f_amount')), vat = round2(num('f_vat'));
-      if (!inv || !cust || !(net > 0)) errors.push('Invoice Serial No., Customer, and Net Amount are required.');
+      if (!inv) addErr('f_ticketno', 'Invoice Serial No. is required.');
+      if (!cust) addErr('f_customer', 'Customer is required.');
+      if (!(net > 0)) addErr('f_amount', 'Net Amount is required.');
       record = { ...base, name: inv, invoice_no: inv, rep_date: repDate, start_date: date, end_date: date, customer: cust, net_amount: net, vat_amount: vat, total_ttc: round2(net + vat), status: val('f_status') || 'Open' };
     } else if (f === 'creditterm') {
       const cust = val('f_customer'), days = num('f_days');
-      if (!cust) errors.push('Customer is required.');
+      if (!cust) addErr('f_customer', 'Customer is required.');
       record = { ...base, name: `${cust} · Net ${days}d`, customer: cust, payment_days: days, credit_days: days, credit_limit: round2(num('f_amount')), start_date: date };
     } else if (f === 'customer') {
       const nm = val('f_customer');
-      if (!nm) errors.push('Customer Name is required.');
+      if (!nm) addErr('f_customer', 'Customer Name is required.');
       record = { ...base, name: nm, method: val('f_method') || 'Credit', vat_registered: val('f_vatreg') === 'Yes', mof_no: val('f_mof'), phone: val('f_phone'), region: val('f_region'), customer_declared_qty: !!($('f_declqty') && $('f_declqty').checked), external_invoice: !!($('f_extinv') && $('f_extinv').checked) };
     } else if (f === 'supplier') {
       const nm = val('f_supplier');
-      if (!nm) errors.push('Supplier Name is required.');
-      record = { ...base, name: nm, category: val('f_category'), phone: val('f_phone'), mof_no: val('f_mof'), is_truck_owner: !!($('f_istruckowner') && $('f_istruckowner').checked), iva: !!($('f_iva') && $('f_iva').checked), trucks_count: 0 };
+      if (!nm) addErr('f_supplier', 'Supplier Name is required.');
+      // Automatically capture any driver name typed in the inline input even if the user clicked Save directly
+      if (val('f_sup_drv_name')) {
+        addStagedSupplierDriver();
+      }
+      const stagedDrvs = Array.isArray(FORM_UI.stagedOwnerDrivers) ? FORM_UI.stagedOwnerDrivers.slice() : [];
+      const existingDrvs = nm ? driversForOwner(nm, company, false) : [];
+      const allDrvNames = uniqSorted(existingDrvs.concat(stagedDrvs.map(d => d.name)));
+      const existingTrucks = nm ? trucksForOwner(nm, company, false) : [];
+      const allTruckNames = uniqSorted(existingTrucks.concat(stagedDrvs.map(d => d.truck).filter(Boolean)));
+      record = {
+        ...base,
+        name: nm,
+        category: val('f_category'),
+        phone: val('f_phone'),
+        mof_no: val('f_mof'),
+        is_truck_owner: !!($('f_istruckowner') && $('f_istruckowner').checked) || allDrvNames.length > 0,
+        iva: !!($('f_iva') && $('f_iva').checked),
+        trucks_count: allTruckNames.length,
+        trucks: allTruckNames,
+        drivers: allDrvNames,
+        driver_rows: stagedDrvs
+      };
     } else if (f === 'product') {
       const nm = val('f_product');
-      if (!nm) errors.push('Product Name is required.');
+      if (!nm) addErr('f_product', 'Product Name is required.');
       record = { ...base, name: nm, uom: val('f_uom') || 'm³', type: val('f_prodtype') || 'Material', ton_factor: num('f_tonfactor') || 1, list_price: round2(num('f_unitprice')), ticket_product: !!($('f_ticketprod') && $('f_ticketprod').checked), fuel_item: !!($('f_fuelitem') && $('f_fuelitem').checked), input_product: !!($('f_inputprod') && $('f_inputprod').checked) };
     } else if (f === 'site') {
       const nm = val('f_site');
-      if (!nm) errors.push('Site Name is required.');
+      if (!nm) addErr('f_site', 'Site Name is required.');
       record = { ...base, name: nm, region: val('f_region'), supplier: val('f_supplier'), customer: val('f_customer'), latitude: val('f_lat') ? num('f_lat') : null, longitude: val('f_lng') ? num('f_lng') : null, is_jv: !!($('f_isjv') && $('f_isjv').checked) };
     } else if (f === 'equipment' || f === 'companyequipment') {
       const nm = val('f_truck');
-      if (!nm) errors.push('Unit Code / Plate Identifier is required.');
+      if (!nm) addErr('f_truck', 'Unit Code / Plate Identifier is required.');
       record = { ...base, name: nm, plate_no: val('f_plateno') || nm, type: val('f_category') || 'Truck', capacity: num('f_capacity') || 0, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model') };
     } else if (f === 'driver') {
       const nm = val('f_driver');
-      if (!nm) errors.push('Driver Name is required.');
+      if (!nm) addErr('f_driver', 'Driver Name is required.');
       record = { ...base, name: nm, driver: nm, truck_owner: val('f_supplier'), truck: val('f_truck'), phone: val('f_phone'), is_company_driver: !!($('f_iscompanydriver') && $('f_iscompanydriver').checked) };
     } else if (f === 'salary') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
-      if (!st || !(amt > 0)) errors.push('Staff Name and Amount > 0 are required.');
+      if (!st) addErr('f_staff', 'Staff Name is required.');
+      if (!(amt > 0)) addErr('f_usd', 'Salary Amount > 0 is required.');
       record = { ...base, name: `SAL ${val('f_paymonth') || date.slice(0, 7)} ${st}`, rep_date: repDate, payroll_month: val('f_paymonth') || date.slice(0, 7), staff: st, equipment: val('f_truck'), method: val('f_method') || 'Cash', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), amount: amt };
     } else if (f === 'attendance') {
       const st = val('f_staff');
-      if (!st) errors.push('Staff Member is required.');
+      if (!st) addErr('f_staff', 'Staff Member is required.');
       record = { ...base, name: `ATT ${date} ${st}`, staff: st, status: val('f_status') || 'Present', site: val('f_site'), overtime_hours: num('f_hours') || 0 };
     } else if (f === 'freelance' || f === 'employment') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
-      if (!st || !(amt > 0)) errors.push('Staff Name and Salary/Rate > 0 are required.');
+      if (!st) addErr('f_staff', 'Staff Name is required.');
+      if (!(amt > 0)) addErr('f_amount', 'Salary/Rate > 0 is required.');
       const payType = val('f_paytype');
       // seed / SQLite keys (type · salary_usd · daily_rate) beside the form keys so the registers and mfg.db read both
       record = { ...base, name: `${f === 'employment' ? 'EMP' : 'FRL'} ${st}`, staff: st, role: val('f_role'), pay_type: payType, type: f === 'employment' ? (payType === 'Daily' ? 'Daily' : 'Regular') : 'Freelance', salary_usd: /Monthly/i.test(payType) ? amt : 0, daily_rate: /Daily/i.test(payType) ? amt : 0, base_salary: amt, amount: amt, start_date: date, status: 'Active' };
     } else if (f === 'logistics') {
       const st = val('f_staff'), amt = round2(num('f_amount'));
-      if (!st || !(amt > 0)) errors.push('Staff Member and Allowance > 0 are required.');
+      if (!st) addErr('f_staff', 'Staff Member is required.');
+      if (!(amt > 0)) addErr('f_usd', 'Allowance > 0 is required.');
       const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
       const dayFlags = Object.fromEntries(dayKeys.map(d => [d, !!($('f_day_' + d) && $('f_day_' + d).checked)]));
       const days = dayKeys.filter(d => dayFlags[d]).length;
       record = { ...base, name: `ALLOW ${date} ${st}`, rep_date: repDate, staff: st, site: val('f_site'), equipment: '', days_count: days, working_days: dayKeys.filter(d => dayFlags[d]).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', '), ...dayFlags, start_date: date, end_date: date, usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), daily_usd: days ? round2(amt / days) : amt, amount: amt };
     } else if (f === 'triprate') {
       const nm = val('f_name') || val('f_site'), amt = round2(num('f_amount'));
-      if (!nm || !(amt > 0)) errors.push('Route/Site and Rate > 0 are required.');
+      if (!nm) addErr('f_name', 'Route/Site is required.');
+      if (!(amt > 0)) addErr('f_amount', 'Rate > 0 is required.');
       record = { ...base, name: nm, site: val('f_site'), region: val('f_site'), category: val('f_category') || 'Truck', rate_usd: amt, amount: amt, start_date: date };
     } else if (f === 'treasury') {
       const trt = val('f_trtype') || 'loan', cp = val('f_counterparty'), amt = round2(num('f_amount'));
-      if (!cp || !(amt > 0)) errors.push('Counterparty and Amount > 0 are required.');
+      if (!cp) addErr('f_counterparty', 'Counterparty is required.');
+      if (!(amt > 0)) addErr('f_usd', 'Amount > 0 is required.');
       crKey = trt === 'loan_settlement' ? 'loan_settlements' : (trt === 'external' ? 'external_movements' : (trt === 'conversion' ? 'conversions' : 'loans'));
       const dirn = val('f_direction') || 'Inflow';
       record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, rep_date: repDate, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: dirn, method: dirn, type: trt === 'loan_settlement' ? 'Repayment' : (trt === 'loan' ? 'Drawdown' : ''), from_currency: trt === 'conversion' ? 'LBP' : 'USD', to_currency: trt === 'conversion' ? 'USD' : '', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, exchange_rate: 90000, amount: amt, principal: amt, interest_rate: 0, balance: amt, start_date: date, reference: val('f_reference') };
     } else if (f === 'jv') {
       const jvt = val('f_jvtype') || 'distribution', st = val('f_site'), pt = val('f_counterparty');
-      if (!st || !pt) errors.push('JV Site and JV Partner are required.');
+      if (!st) addErr('f_site', 'JV Site is required.');
+      if (!pt) addErr('f_counterparty', 'JV Partner is required.');
       crKey = jvt === 'partnership' ? 'jv_partnerships' : 'jv_distributions';
       record = { ...base, name: `JV ${st} · ${pt}`, site: st, partner: pt, share_pct: num('f_share') || 50, percentage: num('f_share') || 50, basis: 'Revenue', amount: round2(num('f_amount')), difference: 0, total: round2(num('f_amount')), rep_date: repDate };
     }
-    return { errors, record, crKey };
+    return { errors, fieldErrors, record, crKey };
   }
 
-  function showFormErrors(errors) {
+  function findSectionHeaderForField(wrap) {
+    let node = wrap;
+    while (node && node.parentElement && !node.parentElement.classList.contains('form-grid-3') && !node.parentElement.classList.contains('form-grid')) {
+      node = node.parentElement;
+    }
+    let prev = node ? node.previousElementSibling : null;
+    while (prev) {
+      if (prev.classList && prev.classList.contains('pa-form-sec-hdr')) return prev;
+      prev = prev.previousElementSibling;
+    }
+    return null;
+  }
+
+  function syncFormValidationUI(fieldErrors = [], scrollOnFail = false) {
+    const body = $('modalBody');
+    if (!body) return;
+
+    // 1. Clear all previous field & section red highlights
+    body.querySelectorAll('.form-field.field-neglected').forEach(w => {
+      w.classList.remove('field-neglected');
+      w.querySelectorAll('.field-err-msg').forEach(el => el.remove());
+    });
+    body.querySelectorAll('.pa-form-sec-hdr').forEach(hdr => {
+      hdr.classList.remove('sec-neglected');
+      hdr.querySelectorAll('.sec-err-pill').forEach(el => el.remove());
+    });
+
     let box = $('formErrors');
+    if (!FORM_UI.postAttempted || !fieldErrors || !fieldErrors.length) {
+      if (box) {
+        box.hidden = true;
+        box.innerHTML = '';
+      }
+      return;
+    }
+
+    // 2. Highlight only the specific neglected fields and their parent section headers
+    const secCounts = new Map();
+    const byField = new Map();
+    const uniqueErrors = [];
+    const seenMsgs = new Set();
+
+    fieldErrors.forEach(item => {
+      const fId = typeof item === 'string' ? '' : (item.field || '');
+      const msg = typeof item === 'string' ? item : (item.msg || '');
+      if (!msg) return;
+      if (fId && !byField.has(fId)) byField.set(fId, msg);
+      const dedupKey = fId + '|' + msg;
+      if (!seenMsgs.has(dedupKey)) {
+        seenMsgs.add(dedupKey);
+        uniqueErrors.push({ field: fId, msg });
+      }
+    });
+
+    let firstNeglectedWrap = null;
+    byField.forEach((msg, fId) => {
+      const el = $(fId);
+      const wrap = (el && el.closest('.form-field')) || $('wrap_' + fId);
+      if (!wrap || wrap.hidden) return;
+      wrap.classList.add('field-neglected');
+      if (!firstNeglectedWrap) firstNeglectedWrap = wrap;
+      let errSpan = wrap.querySelector('.field-err-msg');
+      if (!errSpan) {
+        errSpan = document.createElement('span');
+        errSpan.className = 'hint crit field-err-msg';
+        wrap.appendChild(errSpan);
+      }
+      errSpan.textContent = msg;
+
+      const secHdr = findSectionHeaderForField(wrap);
+      if (secHdr) {
+        secCounts.set(secHdr, (secCounts.get(secHdr) || 0) + 1);
+      }
+    });
+
+    secCounts.forEach((count, secHdr) => {
+      if (count > 0) {
+        secHdr.classList.add('sec-neglected');
+        const pill = document.createElement('span');
+        pill.className = 'sec-err-pill';
+        pill.textContent = `${count} ${count === 1 ? 'field' : 'fields'} required`;
+        secHdr.appendChild(pill);
+      }
+    });
+
+    // 3. Render #formErrors ("Fix before posting:")
     if (!box) {
       box = document.createElement('div');
       box.id = 'formErrors';
       box.className = 'form-errors';
-      const body = $('modalBody');
-      const foot = body && body.querySelector('.modal-foot');
-      if (foot) body.insertBefore(box, foot); else if (body) body.appendChild(box);
+      const foot = body.querySelector('.modal-foot');
+      if (foot) body.insertBefore(box, foot); else body.appendChild(box);
     }
-    if (!errors.length) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = `<strong>Fix before posting:</strong><ul>${errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
-    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    box.innerHTML = `<strong>Fix before posting (${uniqueErrors.length}):</strong><ul>${uniqueErrors.map(e => `<li${e.field ? ` data-err-field="${esc(e.field)}" class="err-jump-item"` : ''}>${esc(e.msg)}</li>`).join('')}</ul>`;
+    box.querySelectorAll('[data-err-field]').forEach(li => {
+      li.addEventListener('click', () => {
+        const fid = li.getAttribute('data-err-field');
+        const targetEl = fid ? $(fid) : null;
+        if (targetEl) {
+          try { targetEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); targetEl.focus(); } catch (_) {}
+        }
+      });
+    });
+    if (scrollOnFail) {
+      try {
+        if (firstNeglectedWrap) firstNeglectedWrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        else box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } catch (_) {}
+    }
+  }
+
+  function showFormErrors(errors) {
+    FORM_UI.postAttempted = Boolean(errors && errors.length);
+    const normalized = (errors || []).map(e => typeof e === 'string' ? { field: '', msg: e } : e);
+    syncFormValidationUI(normalized, true);
   }
 
   async function postRecordToLocalApi(crKey, record) {
@@ -8109,15 +8668,81 @@
   async function saveModalEntry() {
     if (STATE.saving) return;
     if (!canEnterForm(STATE.modalForm)) { toast('Your seat cannot post this entry', 'err'); return; }
-    const { errors, record, crKey } = validateAndBuild();
-    showFormErrors(errors);
-    if (errors.length) return;
+    const { errors, fieldErrors, record, crKey } = validateAndBuild();
+    if (errors.length) {
+      FORM_UI.postAttempted = true;
+      recalcForm(true);
+      syncFormValidationUI(fieldErrors, true);
+      return;
+    }
+    FORM_UI.postAttempted = false;
+    syncFormValidationUI([], false);
 
     STATE.saving = true;
     const sBtn = $('dynSaveModalBtn');
     if (sBtn) { sBtn.disabled = true; sBtn.textContent = 'Posting…'; }
     try {
       STATE.customRecords[crKey].unshift(record);
+      // Cross-persist linked drivers & default drivers when saving Truck Owners (suppliers), Trucks (equipment), or Drivers
+      if (crKey === 'suppliers' && Array.isArray(record.driver_rows) && record.driver_rows.length) {
+        if (!Array.isArray(STATE.customRecords.drivers)) STATE.customRecords.drivers = [];
+        record.driver_rows.forEach(dr => {
+          if (!dr || !dr.name) return;
+          const existing = STATE.customRecords.drivers.find(x => !x.voided && norm(x.name || x.driver) === norm(dr.name));
+          if (existing) {
+            existing.truck_owner = record.name;
+            if (dr.phone) existing.phone = dr.phone;
+            if (dr.truck) existing.truck = dr.truck;
+          } else {
+            STATE.customRecords.drivers.unshift({
+              id: uid('dr'),
+              date: record.date,
+              rep_date: record.rep_date,
+              company: record.company,
+              name: dr.name,
+              driver: dr.name,
+              truck_owner: record.name,
+              truck: dr.truck || '',
+              phone: dr.phone || '',
+              is_company_driver: false,
+              source: 'app',
+              entered_by: record.entered_by,
+              entered_by_email: record.entered_by_email,
+              entered_at: record.entered_at,
+              voided: false
+            });
+          }
+        });
+      } else if ((crKey === 'equipment' || crKey === 'company_equipment') && record.default_driver) {
+        if (!Array.isArray(STATE.customRecords.drivers)) STATE.customRecords.drivers = [];
+        const isCo = /^own/i.test(record.ownership || '');
+        const existing = STATE.customRecords.drivers.find(x => !x.voided && norm(x.name || x.driver) === norm(record.default_driver));
+        if (existing) {
+          if (!isCo && record.supplier) existing.truck_owner = record.supplier;
+          existing.truck = record.name;
+        } else {
+          const seedDrv = driverInfo(record.default_driver);
+          if (!seedDrv || (!isCo && record.supplier && norm(seedDrv.truck_owner) !== norm(record.supplier))) {
+            STATE.customRecords.drivers.unshift({
+              id: uid('dr'),
+              date: record.date,
+              rep_date: record.rep_date,
+              company: record.company,
+              name: record.default_driver,
+              driver: record.default_driver,
+              truck_owner: isCo ? '' : (record.supplier || ''),
+              truck: record.name,
+              phone: (seedDrv && seedDrv.phone) || '',
+              is_company_driver: isCo,
+              source: 'app',
+              entered_by: record.entered_by,
+              entered_by_email: record.entered_by_email,
+              entered_at: record.entered_at,
+              voided: false
+            });
+          }
+        }
+      }
       applyCustomRecordsToSeed();
       saveLocalAuthAndRecords();           // write-ahead: local first, network after
       closeEntryModal(true);
@@ -8190,9 +8815,25 @@
       const sBtn = $('dynSaveModalBtn');
       if (cBtn) cBtn.addEventListener('click', () => closeEntryModal());
       if (sBtn) sBtn.addEventListener('click', saveModalEntry);
-      if (!body.dataset.enterWired) { // #modalBody persists across opens — bind once or Enter posts N times after N opens
+      if (!body.dataset.enterWired) { // #modalBody persists across opens — bind once; Enter advances to next editable field instead of prematurely posting
         body.dataset.enterWired = '1';
-        body.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.defaultPrevented && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list && !e.target.dataset.suggestList) { e.preventDefault(); saveModalEntry(); } });
+        body.addEventListener('keydown', e => {
+          if (e.key === 'Enter' && !e.defaultPrevented && e.target && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !e.target.list && !e.target.dataset.suggestList) {
+            e.preventDefault();
+            const controls = Array.from(body.querySelectorAll('.form-grid-3 input, .form-grid-3 select, .form-grid input, .form-grid select')).filter(el => {
+              if (el.disabled || el.readOnly || el.type === 'hidden' || el.type === 'checkbox') return false;
+              if (el.dataset.policyLockedNow === '1' && !isFieldAdminUnlocked(el.id)) return false;
+              if (el.classList.contains('pa-select-filter') || el.classList.contains('co-multi-search')) return false;
+              const wrap = el.closest('.form-field');
+              if (wrap && wrap.hidden) return false;
+              return el.offsetParent !== null;
+            });
+            const idx = controls.indexOf(e.target);
+            if (idx >= 0 && idx + 1 < controls.length) {
+              try { controls[idx + 1].focus(); } catch (_) {}
+            }
+          }
+        });
       }
       body.scrollTop = 0;
     }
@@ -8688,6 +9329,7 @@
       addGrid('sg_s_pay', `Supplier AP Settlements (${name})`, 'Settlements', '1:N bhf_mfgsupplierpayment', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference'], 'amount');
       addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', '1:N bhf_pricerule', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_s_eq', `Registered Trucks & Equipment (${name})`, 'Trucks', '1:N bhf_equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.supplier) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'default_driver'], 'capacity');
+      addGrid('sg_s_drv', `Registered Drivers (${name})`, 'Drivers', '1:N bhf_driver', 'drivers', (rec.drivers || []).filter(d => norm(d.truck_owner) === norm(name)), ['name', 'truck', 'phone', 'truck_owner', 'notes'], null);
     }
     else if (key === 'products' || key === 'product_types' || key === 'uoms') {
       const name = row.name || row.Product;
@@ -8960,13 +9602,13 @@
           <span class="badge badge-brass">MODIFY DATA PRIVILEGE VERIFIED</span>
         </div>
         <div class="form-grid-3" style="margin-top:8px">
-          ${['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6).map(f => {
-            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres'].includes(f);
+          ${['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference' || (key === 'equipment' && (f === 'default_driver' || f === 'supplier' || f === 'capacity'))).slice(0, 6).map(f => {
+            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity'].includes(f);
             const isDateField = f === 'date';
             return `
               <div class="form-field">
                 <label for="insp_edit_${esc(f)}">${esc(f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</label>
-                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" value="${esc(row[f] != null ? row[f] : '')}">
+                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" value="${esc(row[f] != null ? row[f] : '')}">
               </div>
             `;
           }).join('')}
@@ -9269,10 +9911,12 @@
     return changed;
   }
 
-  // Project the app entries onto the seed registers (voided rows drop out, new rows sort in by date)
+  // Project the app entries onto the seed registers (voided rows drop out, new rows sort in by date, and fleet owner/driver links stay synchronized)
   function applyCustomRecordsToSeed() {
+    const masterByNameKeys = new Set(['suppliers', 'equipment', 'company_equipment', 'drivers', 'customers', 'products', 'sites']);
     CR_KEYS.forEach(k => {
       const list = SEED.records[k];
+      if (!Array.isArray(list)) return;
       const seen = new Set(list.map(x => x.id));
       let touched = false;
       STATE.customRecords[k].forEach(r => {
@@ -9281,10 +9925,126 @@
           if (i >= 0) { list.splice(i, 1); touched = true; }
           return;
         }
+        if (masterByNameKeys.has(k) && r.name) {
+          const existingByName = list.find(x => x.id !== r.id && norm(x.name || x.equipment || x.driver) === norm(r.name));
+          if (existingByName) {
+            Object.assign(existingByName, r, { id: existingByName.id || r.id });
+          }
+        }
         if (!seen.has(r.id)) { list.push(r); seen.add(r.id); touched = true; }
       });
       if (touched) list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     });
+
+    // Cross-link Trucks (equipment / company_equipment) ↔ Drivers ↔ Truck Owners (suppliers)
+    const drvByName = new Map();
+    (SEED.records.drivers || []).forEach(d => {
+      const k = norm(d.name || d.driver);
+      if (k && !drvByName.has(k)) drvByName.set(k, d);
+    });
+    const supByName = new Map();
+    (SEED.records.suppliers || []).forEach(s => {
+      const k = norm(s.name);
+      if (k && !supByName.has(k)) supByName.set(k, s);
+    });
+    const eqByName = new Map();
+    (SEED.records.equipment || []).forEach(e => {
+      const k = norm(e.name);
+      if (k && !eqByName.has(k)) eqByName.set(k, e);
+    });
+
+    // 1. Backfill equipment.default_driver from company_equipment if missing, and propagate truck.supplier -> driver.truck_owner
+    (SEED.records.company_equipment || []).forEach(ce => {
+      const eq = eqByName.get(norm(ce.equipment || ce.name));
+      if (eq) {
+        if (!eq.default_driver && ce.default_driver) eq.default_driver = ce.default_driver;
+        if (!eq.supplier && ce.supplier && !/^own/i.test(ce.ownership || '')) eq.supplier = ce.supplier;
+      }
+    });
+
+    (SEED.records.equipment || []).forEach(e => {
+      const isOwn = /^own/i.test(e.ownership || '');
+      if (e.default_driver) {
+        let d = drvByName.get(norm(e.default_driver));
+        if (!d) {
+          d = { id: 'drv-' + norm(e.default_driver), name: e.default_driver, driver: e.default_driver, truck_owner: isOwn ? '' : (e.supplier || ''), truck: e.name, phone: '', notes: '' };
+          SEED.records.drivers.push(d);
+          drvByName.set(norm(e.default_driver), d);
+        } else {
+          if (!d.truck_owner && !isOwn && e.supplier) d.truck_owner = e.supplier;
+          if (!d.truck) d.truck = e.name;
+        }
+      }
+      if (!isOwn && e.supplier) {
+        const sup = supByName.get(norm(e.supplier));
+        if (sup) {
+          if (!Array.isArray(sup.trucks)) sup.trucks = [];
+          if (!sup.trucks.some(t => norm(t) === norm(e.name))) sup.trucks.push(e.name);
+          sup.trucks_count = sup.trucks.length;
+          if (e.default_driver) {
+            if (!Array.isArray(sup.drivers)) sup.drivers = [];
+            if (!sup.drivers.some(dn => norm(dn) === norm(e.default_driver))) sup.drivers.push(e.default_driver);
+          }
+        }
+      }
+    });
+
+    // 2. Propagate supplier.driver_rows / supplier.drivers -> drivers & equipment
+    (SEED.records.suppliers || []).forEach(sup => {
+      if (Array.isArray(sup.driver_rows)) {
+        sup.driver_rows.forEach(dr => {
+          if (!dr || !dr.name) return;
+          let d = drvByName.get(norm(dr.name));
+          if (!d) {
+            d = { id: 'drv-' + norm(dr.name), name: dr.name, driver: dr.name, truck_owner: sup.name, truck: dr.truck || '', phone: dr.phone || '', notes: '' };
+            SEED.records.drivers.push(d);
+            drvByName.set(norm(dr.name), d);
+          } else {
+            d.truck_owner = sup.name;
+            if (dr.phone) d.phone = dr.phone;
+            if (dr.truck) d.truck = dr.truck;
+          }
+          if (dr.truck) {
+            const eq = eqByName.get(norm(dr.truck));
+            if (eq) {
+              if (!eq.supplier) eq.supplier = sup.name;
+              eq.default_driver = dr.name;
+            }
+          }
+        });
+      }
+      if (Array.isArray(sup.drivers)) {
+        sup.drivers.forEach(dn => {
+          if (!dn) return;
+          let d = drvByName.get(norm(dn));
+          if (!d) {
+            d = { id: 'drv-' + norm(dn), name: dn, driver: dn, truck_owner: sup.name, truck: '', phone: '', notes: '' };
+            SEED.records.drivers.push(d);
+            drvByName.set(norm(dn), d);
+          } else if (!d.truck_owner) {
+            d.truck_owner = sup.name;
+          }
+        });
+      }
+    });
+
+    // 3. Propagate driver.truck_owner & driver.truck -> suppliers.drivers & equipment.default_driver
+    (SEED.records.drivers || []).forEach(d => {
+      const dName = d.name || d.driver;
+      if (!dName) return;
+      if (d.truck_owner) {
+        const sup = supByName.get(norm(d.truck_owner));
+        if (sup) {
+          if (!Array.isArray(sup.drivers)) sup.drivers = [];
+          if (!sup.drivers.some(dn => norm(dn) === norm(dName))) sup.drivers.push(dName);
+        }
+      }
+      if (d.truck) {
+        const eq = eqByName.get(norm(d.truck));
+        if (eq && !eq.default_driver) eq.default_driver = dName;
+      }
+    });
+    _FLEET_IDX = null;
   }
 
   function cloudPayload() {
@@ -11233,44 +11993,60 @@
   // TEAM SIGN-IN GATE (FAIL-CLOSED) + RLS
   // ==========================================================================
   const VIEW_TITLES = {
-    overview: 'Consolidated Command & Ledger Overview',
-    pbi: '20-Page Power BI Semantic Report Studio',
-    tables: 'All 34 Tables & Registers',
-    sentinels: 'AI Sentinel Watchdogs & Audit',
-    sales: 'Sales & Weighbridge Deliveries Register',
-    raw: 'Raw Material & Quarry Intake (2-Leg Payable Split)',
-    fleet: 'Equipment, Fleet Telemetry & Diesel Control',
-    pricing: 'Customer & Quarry Price Matrix & Commissions',
-    customers: 'Customers & FIFO Accounts Receivable Aging',
-    ar: 'Customers & FIFO Accounts Receivable Aging',
-    suppliers: 'Suppliers, Quarries & 3-Leg Accounts Payable',
-    ap: 'Suppliers, Quarries & 3-Leg Accounts Payable',
-    expenses: 'Operating Expenses, Spare Parts & Overhead',
-    payroll: 'Payroll, Attendance, Site Allowances & Contracts',
-    ledger: 'Lebanese CoA Trial Balance & SOA Journal Stream',
-    gl: 'Lebanese CoA Trial Balance & SOA Journal Stream',
-    statements: '22 Printable A4 Financial & Operational Statements',
-    users: 'Multi-Device Team Authentication, RLS & Cloud Sync'
-  };
-  const VIEW_MOBILE_TITLES = {
-    overview: 'Command & Ledger Overview',
-    pbi: 'Power BI Studio (20 Pages)',
-    tables: 'All 34 Tables & Setup',
-    sentinels: 'AI Sentinel Audit',
+    overview: 'Executive Overview',
+    pbi: 'Power BI Studio',
+    tables: 'Tables & Registers',
+    sentinels: 'AI Sentinels & Audit',
     sales: 'Sales & Deliveries',
-    raw: 'Quarry Intake (2-Leg AP)',
+    raw: 'Quarries & Raw Intake',
     fleet: 'Fleet & Diesel Control',
-    pricing: 'Price Matrix & Rules',
-    customers: 'Customers & AR Aging',
-    ar: 'Customers & AR Aging',
-    suppliers: 'Suppliers & 3-Leg AP',
-    ap: 'Suppliers & 3-Leg AP',
+    pricing: 'Pricing & Commissions',
+    customers: 'Customers & Receivables',
+    ar: 'Customers & Receivables',
+    suppliers: 'Suppliers & Payables',
+    ap: 'Suppliers & Payables',
     expenses: 'Expenses & Overhead',
     payroll: 'Payroll & Workforce',
-    ledger: 'Trial Balance & SOA GL',
-    gl: 'Trial Balance & SOA GL',
-    statements: '22 Financial Statements',
-    users: 'Team Auth & Cloud Sync'
+    ledger: 'General Ledger & SOA',
+    gl: 'General Ledger & SOA',
+    reg_equipment: 'Equipment & Trucks',
+    reg_drivers: 'Drivers & Operators',
+    reg_sites: 'Quarries & Sites',
+    reg_regions: 'Regions & Zones',
+    reg_products: 'Products & Grades',
+    reg_customers: 'Customers Registry',
+    reg_suppliers: 'Suppliers & Haulers',
+    reg_categories: 'Expense Categories',
+    statements: 'Statements & Reports',
+    users: 'Team Auth & Users'
+  };
+  const VIEW_MOBILE_TITLES = {
+    overview: 'Executive Overview',
+    pbi: 'Power BI Studio',
+    tables: 'Tables & Registers',
+    sentinels: 'AI Sentinels & Audit',
+    sales: 'Sales & Deliveries',
+    raw: 'Quarries & Raw Intake',
+    fleet: 'Fleet & Diesel Control',
+    pricing: 'Pricing & Commissions',
+    customers: 'Customers & Receivables',
+    ar: 'Customers & Receivables',
+    suppliers: 'Suppliers & Payables',
+    ap: 'Suppliers & Payables',
+    expenses: 'Expenses & Overhead',
+    payroll: 'Payroll & Workforce',
+    ledger: 'General Ledger & SOA',
+    gl: 'General Ledger & SOA',
+    reg_equipment: 'Equipment & Trucks',
+    reg_drivers: 'Drivers & Operators',
+    reg_sites: 'Quarries & Sites',
+    reg_regions: 'Regions & Zones',
+    reg_products: 'Products & Grades',
+    reg_customers: 'Customers Registry',
+    reg_suppliers: 'Suppliers & Haulers',
+    reg_categories: 'Expense Categories',
+    statements: 'Statements & Reports',
+    users: 'Team Auth & Users'
   };
   const COMPANY_MOBILE_LABELS = {
     'manufacturing-group': 'All Group (WTC · BBC · Lions)',
@@ -11444,8 +12220,8 @@
       trigInd = (coMeta && coMeta.industry) || COMPANY_INDUSTRY_BY_KEY[STATE.company] || 'Manufacturing';
       trigCo = (coMeta && coMeta.name) || COMPANY_BU_MATCH[STATE.company] || STATE.company;
     }
-    if (indTextEl) indTextEl.textContent = trigInd;
-    if (coTextEl) coTextEl.textContent = trigCo;
+    if (indTextEl) { indTextEl.textContent = trigInd; indTextEl.title = trigInd; }
+    if (coTextEl) { coTextEl.textContent = trigCo; coTextEl.title = trigCo; }
 
     const coHeadEl = $('companySwitchCoHead');
     if (coHeadEl) {
@@ -11598,13 +12374,15 @@
 
     const avEl = $('railUserAvatar'), nmEl = $('railUserName'), rlEl = $('activeRoleBadge'), scEl = $('railRlsScope');
     if (avEl) avEl.textContent = getInitials(user.full_name);
-    if (nmEl) nmEl.textContent = user.full_name;
-    if (rlEl) rlEl.textContent = user.role;
+    if (nmEl) { nmEl.textContent = user.full_name; nmEl.title = user.full_name; }
+    if (rlEl) { rlEl.textContent = user.role; rlEl.title = user.role; }
     if (scEl) {
       const shortNames = allowedNames.map(n => n.replace(/BBConstruction/g, 'BBC').replace(/Lions Transport/g, 'Lions'));
+      const fullScope = allowedNames.join(' · ');
       scEl.textContent = shortNames.length <= 3
         ? shortNames.join(', ')
         : `${shortNames.slice(0, 2).join(', ')} +${shortNames.length - 2} more`;
+      scEl.title = fullScope || scEl.textContent;
     }
   }
 
@@ -11906,10 +12684,13 @@
 
   function contextFormForView(view, user) {
     user = user || activeUser();
-    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule' };
+    const map = { sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
     let preferred = map[view] || 'sales';
     if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
       const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
+      if (meta && meta.form && FORM_TITLES[meta.form]) preferred = meta.form;
+    } else if (String(view || '').startsWith('reg_') && window.MFG_PBI) {
+      const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === (STATE.activeUnivRegKey || UNIV_VIEW_TO_TABLE_KEY[view]));
       if (meta && meta.form && FORM_TITLES[meta.form]) preferred = meta.form;
     }
     if (canEnterForm(preferred, user)) return preferred;
@@ -11938,32 +12719,32 @@
 
     const specs = {
       exec: [
-        { view: 'overview', label: 'Overview', pill: 'Live' },
-        { view: 'pbi', label: 'Power BI', pill: String(pbiCount) },
-        { view: 'tables', label: `${tblCount} Tables`, pill: String(tblCount) },
-        { view: 'sentinels', label: 'Sentinels', pill: String(sentinelsOpen) },
-        { view: 'statements', label: 'Statements', pill: String(stCount) },
-        { view: 'users', label: 'Team', pill: String(STATE.users.length) }
+        { view: 'overview', label: VIEW_TITLES.overview, pill: 'Live' },
+        { view: 'pbi', label: VIEW_TITLES.pbi, pill: String(pbiCount) },
+        { view: 'tables', label: VIEW_TITLES.tables, pill: String(tblCount) },
+        { view: 'sentinels', label: VIEW_TITLES.sentinels, pill: String(sentinelsOpen) },
+        { view: 'statements', label: VIEW_TITLES.statements, pill: String(stCount) },
+        { view: 'users', label: VIEW_TITLES.users, pill: String(STATE.users.length) }
       ],
       dispatch: [
-        { view: 'sales', label: 'Sales', pill: k.loads != null ? fmtNum(k.loads) : '' },
-        { view: 'raw', label: 'Quarries', pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
-        { view: 'fleet', label: 'Fleet', pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
-        { view: 'pricing', label: 'Pricing', pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
+        { view: 'sales', label: VIEW_TITLES.sales, pill: k.loads != null ? fmtNum(k.loads) : '' },
+        { view: 'raw', label: VIEW_TITLES.raw, pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
+        { view: 'fleet', label: VIEW_TITLES.fleet, pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
+        { view: 'pricing', label: VIEW_TITLES.pricing, pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
       ],
       books: [
-        { view: 'customers', match: ['customers', 'ar'], label: 'AR Aging', pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
-        { view: 'suppliers', match: ['suppliers', 'ap'], label: 'AP 3-Leg', pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
-        { view: 'expenses', label: 'Expenses', pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
-        { view: 'payroll', label: 'Payroll', pill: k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : '' },
-        { view: 'ledger', match: ['ledger', 'gl'], label: 'GL & SOA', pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
+        { view: 'customers', match: ['customers', 'ar'], label: VIEW_TITLES.customers, pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
+        { view: 'suppliers', match: ['suppliers', 'ap'], label: VIEW_TITLES.suppliers, pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
+        { view: 'expenses', label: VIEW_TITLES.expenses, pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
+        { view: 'payroll', label: VIEW_TITLES.payroll, pill: k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : '' },
+        { view: 'ledger', match: ['ledger', 'gl'], label: VIEW_TITLES.ledger, pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
       ]
     };
 
     const items = (specs[group] || specs.exec).filter(it => canViewView(it.view, user));
     el.innerHTML = items.map(it => {
       const on = (it.match || [it.view]).includes(v);
-      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}"><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
+      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}" title="${esc(it.label)}"><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
     }).join('');
     el.querySelectorAll('[data-subnav-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-subnav-view'))));
 
@@ -12045,17 +12826,28 @@
     const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 860;
     const coFullLbl = COMPANY_LABELS[STATE.company] || COMPANY_BU_MATCH[STATE.company] || STATE.company || 'Manufacturing Group';
     const coMobLbl = COMPANY_MOBILE_LABELS[STATE.company] || coFullLbl;
+    const isUnivView = Boolean(UNIV_VIEW_TO_TABLE_KEY[STATE.view]);
+    if (isUnivView && (!STATE.activeUnivRegKey || UNIV_VIEW_TO_TABLE_KEY[STATE.view])) {
+      const mappedKey = UNIV_VIEW_TO_TABLE_KEY[STATE.view];
+      if (!STATE.activeUnivRegKey || ['equipment', 'drivers', 'sites', 'regions', 'products', 'customers', 'suppliers', 'expense_categories'].includes(STATE.activeUnivRegKey)) {
+        STATE.activeUnivRegKey = mappedKey;
+      }
+    }
     if (eyeEl) {
-      eyeEl.textContent = isMobileViewport
-        ? `${coMobLbl} · ${STATE.basis === 'rep' ? 'Rep Date' : 'Tx Date'}`
-        : `${coFullLbl} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
+      const eyeTxt = isUnivView
+        ? (isMobileViewport ? 'All BUs · Universal Registry' : 'All Business Units (Universal Registry) · WTC · BBConstruction · Lions Transport')
+        : (isMobileViewport
+          ? `${coMobLbl} · ${STATE.basis === 'rep' ? 'Rep Date' : 'Tx Date'}`
+          : `${coFullLbl} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`);
+      eyeEl.textContent = eyeTxt;
+      eyeEl.title = eyeTxt;
     }
+    const canonicalViewTitle = VIEW_TITLES[STATE.view] || VIEW_TITLES.overview;
     if (titEl) {
-      titEl.textContent = isMobileViewport
-        ? (VIEW_MOBILE_TITLES[STATE.view] || VIEW_TITLES[STATE.view] || VIEW_MOBILE_TITLES.overview)
-        : (VIEW_TITLES[STATE.view] || VIEW_TITLES.overview);
+      titEl.textContent = canonicalViewTitle;
+      titEl.title = canonicalViewTitle;
     }
-    document.title = `${(VIEW_TITLES[STATE.view] || 'Overview').split('&')[0].trim()} · ISABI Mfg`;
+    document.title = `${canonicalViewTitle} · ISABI Mfg`;
 
     const aiScope = $('aiDrawerScope');
     if (aiScope) aiScope.textContent = `${String(coFullLbl).split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
@@ -12064,12 +12856,19 @@
       const v = btn.getAttribute('data-view');
       const isMatch = v === STATE.view || (v === 'customers' && STATE.view === 'ar') || (v === 'suppliers' && STATE.view === 'ap') || (v === 'ledger' && STATE.view === 'gl');
       btn.classList.toggle('on', isMatch);
+      const lblSpan = btn.querySelector('span');
+      const canonicalLbl = VIEW_TITLES[v] || (lblSpan ? lblSpan.textContent.trim() : '');
+      if (lblSpan && canonicalLbl) {
+        if (lblSpan.textContent !== canonicalLbl) lblSpan.textContent = canonicalLbl;
+        lblSpan.title = canonicalLbl;
+      }
+      if (canonicalLbl) btn.title = canonicalLbl;
     });
     syncCompanySwitchUi();
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis));
     syncTopbarDateControls();
 
-    // Rail badges follow the active scope
+    // Rail badges follow the active scope (Universal Registries always show All-BU counts)
     const setPill = (id, text) => { const el = $(id); if (el) el.textContent = text; };
     const sentinelsOpen = buildSentinelItems().filter(s => s.severity !== 'ok').length;
     const pbiNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES)) ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length : 20;
@@ -12086,6 +12885,15 @@
     setPill('navCountPayroll', k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : fmtNum(SEED.records.employments.length));
     setPill('navCountSentinels', String(sentinelsOpen));
     setPill('navCountUsers', `${STATE.users.length} Seats`);
+    const univCnt = tk => fmtNum(((SEED.records && SEED.records[tk]) || []).filter(r => r && !r.voided).length);
+    setPill('navCountRegEquip', univCnt('equipment'));
+    setPill('navCountRegDrivers', univCnt('drivers'));
+    setPill('navCountRegSites', univCnt('sites'));
+    setPill('navCountRegRegions', univCnt('regions'));
+    setPill('navCountRegProducts', univCnt('products'));
+    setPill('navCountRegCustomers', univCnt('customers'));
+    setPill('navCountRegSuppliers', univCnt('suppliers'));
+    setPill('navCountRegCategories', univCnt('expense_categories'));
     const tbPill = $('navCountTB');
     if (tbPill) { const tb = Number(k.tb_check); tbPill.textContent = k.tb_check == null ? 'TB —' : (Math.abs(tb) < 0.005 ? 'TB $0' : 'TB ' + fmtUSDk(tb)); tbPill.className = 'nav-pill ' + (k.tb_check == null ? '' : (Math.abs(tb) < 0.005 ? 'good' : 'brass')); }
     const snPill = $('navCountSentinels');
@@ -12113,6 +12921,16 @@
       case 'payroll': container.innerHTML = renderPayroll(); break;
       case 'ledger':
       case 'gl': container.innerHTML = renderGL(); break;
+      case 'reg_equipment':
+      case 'reg_drivers':
+      case 'reg_sites':
+      case 'reg_regions':
+      case 'reg_products':
+      case 'reg_customers':
+      case 'reg_suppliers':
+      case 'reg_categories':
+        container.innerHTML = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
+        break;
       case 'statements': container.innerHTML = renderStatements(); break;
       case 'users': container.innerHTML = renderUsers(); break;
       default: container.innerHTML = renderOverview();
@@ -12247,7 +13065,24 @@
       });
     }
     container.querySelectorAll('[data-table-key], [data-conn-table-key]').forEach(btn => btn.addEventListener('click', () => {
-      STATE.activeTableKey = btn.getAttribute('data-table-key') || btn.getAttribute('data-conn-table-key');
+      const targetKey = btn.getAttribute('data-table-key') || btn.getAttribute('data-conn-table-key');
+      const targetMeta = window.MFG_PBI && (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === targetKey);
+      if (UNIV_VIEW_TO_TABLE_KEY[STATE.view] && targetMeta && targetMeta.universal) {
+        STATE.activeUnivRegKey = targetKey;
+        if (targetMeta.navView && VIEW_TITLES[targetMeta.navView]) STATE.view = targetMeta.navView;
+      } else {
+        STATE.activeTableKey = targetKey;
+        if (UNIV_VIEW_TO_TABLE_KEY[STATE.view]) STATE.view = 'tables';
+      }
+      STATE.search = '';
+      STATE.shown = {};
+      renderApp();
+    }));
+    container.querySelectorAll('[data-univ-reg-key]').forEach(btn => btn.addEventListener('click', () => {
+      const uk = btn.getAttribute('data-univ-reg-key');
+      const nv = btn.getAttribute('data-univ-nav-view');
+      STATE.activeUnivRegKey = uk || 'equipment';
+      if (nv && VIEW_TITLES[nv]) STATE.view = nv;
       STATE.search = '';
       STATE.shown = {};
       renderApp();
@@ -12603,6 +13438,9 @@
       stopFaceCamera();
     }
     STATE.view = view;
+    if (UNIV_VIEW_TO_TABLE_KEY[view]) {
+      STATE.activeUnivRegKey = UNIV_VIEW_TO_TABLE_KEY[view];
+    }
     if (opts.reset !== false) { STATE.search = ''; STATE.chipFilter = 'all'; STATE.shown = {}; }
     if (!opts.noPush) {
       const h = '#' + view;
@@ -12852,6 +13690,77 @@
     if (mobileDockMenuBtn) mobileDockMenuBtn.addEventListener('click', toggleMobileDrawer);
     if (backdrop) backdrop.addEventListener('click', closeRail);
 
+    // Instant zero-delay hover tooltip for any truncated (...) name in the left sidebar (#sidebar)
+    const railTipEl = $('railHoverTooltip');
+    const isElementTextTruncated = el => {
+      if (!el) return false;
+      if (el.scrollWidth > el.clientWidth + 0.5) return true;
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const rRect = range.getBoundingClientRect();
+        const eRect = el.getBoundingClientRect();
+        if (eRect.width > 0 && rRect.width > eRect.width + 0.5) return true;
+      } catch (_) {}
+      return false;
+    };
+    const hideRailHoverTooltip = () => {
+      if (railTipEl && !railTipEl.hidden) railTipEl.hidden = true;
+    };
+    const showRailHoverTooltipForTarget = rawTarget => {
+      if (!railTipEl || !sidebar || !rawTarget || typeof rawTarget.closest !== 'function') {
+        hideRailHoverTooltip();
+        return;
+      }
+      const navBtn = rawTarget.closest('#sidebarNav button.nav-item');
+      let textEl = null;
+      let anchorEl = null;
+      let fullText = '';
+      if (navBtn) {
+        textEl = navBtn.querySelector('span') || navBtn;
+        anchorEl = navBtn;
+        fullText = (textEl.textContent || navBtn.getAttribute('title') || '').trim();
+      } else {
+        const footTruncEl = rawTarget.closest('#railUserName, #activeRoleBadge, #railRlsScope, #sqlStatusText');
+        if (footTruncEl) {
+          textEl = footTruncEl;
+          anchorEl = footTruncEl;
+          fullText = (footTruncEl.textContent || footTruncEl.getAttribute('title') || '').trim();
+        }
+      }
+      if (!textEl || !fullText || !isElementTextTruncated(textEl)) {
+        hideRailHoverTooltip();
+        return;
+      }
+      railTipEl.textContent = fullText;
+      railTipEl.hidden = false;
+      const aRect = (anchorEl || textEl).getBoundingClientRect();
+      const sRect = sidebar.getBoundingClientRect();
+      const tRect = railTipEl.getBoundingClientRect();
+      const leftPx = Math.min(
+        window.innerWidth - tRect.width - 8,
+        Math.max(8, Math.round(Math.max(aRect.right, sRect.right) + 8))
+      );
+      const topPx = Math.min(
+        window.innerHeight - tRect.height - 8,
+        Math.max(8, Math.round(aRect.top + (aRect.height - tRect.height) / 2))
+      );
+      railTipEl.style.left = `${leftPx}px`;
+      railTipEl.style.top = `${topPx}px`;
+    };
+    if (sidebar) {
+      sidebar.addEventListener('mouseover', e => showRailHoverTooltipForTarget(e.target));
+      sidebar.addEventListener('pointerover', e => showRailHoverTooltipForTarget(e.target));
+      sidebar.addEventListener('mousemove', e => showRailHoverTooltipForTarget(e.target));
+      sidebar.addEventListener('focusin', e => showRailHoverTooltipForTarget(e.target));
+      sidebar.addEventListener('mouseleave', hideRailHoverTooltip);
+      sidebar.addEventListener('pointerleave', hideRailHoverTooltip);
+      sidebar.addEventListener('focusout', hideRailHoverTooltip);
+      sidebar.addEventListener('click', hideRailHoverTooltip);
+      const railNavEl = $('sidebarNav');
+      if (railNavEl) railNavEl.addEventListener('scroll', hideRailHoverTooltip, { passive: true });
+    }
+
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-view'))));
     document.querySelectorAll('#mobileBottomDock [data-dock-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-dock-view'))));
     const brand = $('brandHomeLink');
@@ -12958,11 +13867,17 @@
     if (HAS_LOCAL_API) {
       fetch('./api/status').then(r => r.json()).then(st => {
         const el = $('sqlStatusText');
-        if (el && st.ok) el.textContent = `Cloud + SQLite (${Number(st.db_size_kb || 0).toLocaleString()} KB)`;
-      }).catch(() => { const el = $('sqlStatusText'); if (el) el.textContent = 'Cloud relay (no local SQLite)'; });
+        if (el && st.ok) {
+          el.textContent = `Cloud + SQLite (${Number(st.db_size_kb || 0).toLocaleString()} KB)`;
+          el.title = el.textContent;
+        }
+      }).catch(() => {
+        const el = $('sqlStatusText');
+        if (el) { el.textContent = 'Cloud relay (no local SQLite)'; el.title = el.textContent; }
+      });
     } else {
       const el = $('sqlStatusText');
-      if (el) el.textContent = 'Cloud relay';
+      if (el) { el.textContent = 'Cloud relay'; el.title = el.textContent; }
     }
 
     // Cloud relay: on start, when the tab comes back, when the network returns

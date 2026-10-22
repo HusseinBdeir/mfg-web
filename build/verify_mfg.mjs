@@ -121,14 +121,106 @@ try {
     o === 0 ? pass(`overflow 0px · ${label}`) : fail(`overflow · ${label}`, `${o}px horizontal`);
   };
 
-  // 2. Every view
+  // 2. Every view + 1-to-1 Page Title Consistency (Left Sidebar == Topbar == Page Hero Heading == Browser Tab)
   const views = ['overview', 'pbi', 'tables', 'sentinels', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
+  const titleMismatches = [];
   for (const v of views) {
     await evaluate(`(() => { const b = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]'); b.click(); return 1; })()`);
     await sleep(350);
     const len = await evaluate(`document.getElementById('workspace').innerHTML.length`);
     len > 500 ? pass(`view ${v}`, `${len} chars`) : fail(`view ${v}`, 'empty workspace');
+    const titleProbe = await evaluate(`(() => {
+      const navBtn = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]');
+      const navSpan = navBtn ? navBtn.querySelector('span') : null;
+      const railLabel = navSpan ? navSpan.textContent.trim() : '';
+      const navTitleAttr = navBtn ? (navBtn.getAttribute('title') || '') : '';
+      const spanTitleAttr = navSpan ? (navSpan.getAttribute('title') || '') : '';
+      const topbarTitle = (document.getElementById('topbarTitle') || {}).textContent?.trim() || '';
+      const heroEl = document.querySelector('#workspace .cockpit-title, #workspace .pbi-studio-title, #workspace .rdl-suite-title');
+      const heroTitle = heroEl ? heroEl.textContent.trim() : railLabel;
+      const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
+      const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-view="${v}"] span');
+      const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
+      const allMatch = Boolean(
+        railLabel &&
+        railLabel === topbarTitle &&
+        railLabel === heroTitle &&
+        railLabel === docTitlePrefix &&
+        railLabel === subnavLabel &&
+        navTitleAttr === railLabel &&
+        spanTitleAttr === railLabel
+      );
+      return { allMatch, railLabel, topbarTitle, heroTitle, docTitlePrefix, subnavLabel, navTitleAttr, spanTitleAttr };
+    })()`);
+    if (!titleProbe.allMatch) titleMismatches.push(`${v}:${JSON.stringify(titleProbe)}`);
     await overflow(v);
+    if (!MOBILE) {
+      const tblFit = await evaluate(`(() => {
+        const wraps = Array.from(document.querySelectorAll('#workspace .table-wrap'));
+        const bad = wraps
+          .filter(w => w.clientWidth > 0 && (w.scrollWidth - w.clientWidth) > 1)
+          .map(w => ((w.closest('[id]') || {}).id || 'wrap') + ':' + (w.scrollWidth - w.clientWidth) + 'px');
+        return { total: wraps.length, bad };
+      })()`);
+      if (tblFit.total > 0) {
+        tblFit.bad.length === 0
+          ? pass(`table-wrap fit · ${v}`, `${tblFit.total} table(s) 0px horizontal clip`)
+          : fail(`table-wrap fit · ${v}`, tblFit.bad.join(', '));
+      }
+    }
+  }
+  titleMismatches.length === 0
+    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 15 views)')
+    : fail('page titles consistency', titleMismatches.join(' | '));
+
+  // 2a-2. Left sidebar truncated (...) hover tooltip (#railHoverTooltip + title attributes)
+  if (!MOBILE) {
+    const railHoverProbe = await evaluate(`(() => {
+      const sidebar = document.getElementById('sidebar');
+      const narrowBtn = document.getElementById('railNarrowBtn');
+      const resizer = document.getElementById('railResizer');
+      const tipEl = document.getElementById('railHoverTooltip');
+      // Narrow sidebar to minimum width (176px) so items truncate with ...
+      for (let i = 0; i < 4; i++) narrowBtn.click();
+      const navItems = Array.from(document.querySelectorAll('#sidebarNav button.nav-item'));
+      const allHaveTitles = navItems.every(b => {
+        const sp = b.querySelector('span');
+        const txt = sp ? sp.textContent.trim() : '';
+        return txt && b.getAttribute('title') === txt && sp.getAttribute('title') === txt;
+      });
+      const truncatedBtn = navItems.find(b => {
+        const sp = b.querySelector('span');
+        return sp && sp.scrollWidth > sp.clientWidth;
+      });
+      let hoverShown = false, hoverText = '', expectedText = '', tipRightOfRail = false;
+      if (truncatedBtn) {
+        const sp = truncatedBtn.querySelector('span');
+        expectedText = sp.textContent.trim();
+        sp.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        hoverShown = !!(tipEl && !tipEl.hidden);
+        hoverText = tipEl ? tipEl.textContent.trim() : '';
+        const tRect = tipEl.getBoundingClientRect();
+        const sRect = sidebar.getBoundingClientRect();
+        tipRightOfRail = tRect.left >= sRect.right;
+      }
+      sidebar.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+      const hiddenOnLeave = !!(tipEl && tipEl.hidden);
+      // Reset sidebar width back to default
+      resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return {
+        ok: allHaveTitles && !!truncatedBtn && hoverShown && hoverText === expectedText && tipRightOfRail && hiddenOnLeave,
+        allHaveTitles,
+        hasTruncated: !!truncatedBtn,
+        hoverShown,
+        hoverText,
+        expectedText,
+        tipRightOfRail,
+        hiddenOnLeave
+      };
+    })()`);
+    railHoverProbe.ok
+      ? pass('left sidebar hover tooltip · truncated (...) items show full name on hover (#railHoverTooltip + title)', `"${railHoverProbe.hoverText}"`)
+      : fail('left sidebar hover tooltip', JSON.stringify(railHoverProbe));
   }
 
   // 2b. Operational module toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll)
@@ -420,12 +512,12 @@ try {
     const prodReopensWhenFilled = prodMenu && !prodMenu.hidden && prodMenu.querySelectorAll('.pa-suggest-item').length > 1 && !!prodMenu.querySelector('.pa-suggest-item.is-selected');
     prodMenu.hidden = true;
 
-    // Sales form defaults to Pickup (so f_truck is policy-locked until Truck Owner is selected or Sale Type is Delivery)
+    // Sales form on Delivery + Company fleet filters f_truck strictly to the selected company's own fleet trucks
     const stEl = document.getElementById('f_saletype');
     stEl.value = 'Delivery';
     stEl.dispatchEvent(new Event('change', { bubbles: true }));
     const trk = document.getElementById('f_truck');
-    trk.value = '10';
+    trk.value = 'TB';
     trk.dispatchEvent(new Event('input', { bubbles: true }));
     const menu = trk.closest('.pa-suggest-wrap').querySelector('.pa-suggest-menu');
     const menuOpen = menu && !menu.hidden;
@@ -435,6 +527,7 @@ try {
     if (firstItem) firstItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     const pickedTruck = trk.value;
     const menuClosedAfterPick = menu ? menu.hidden === true : false;
+    trk.value = '';
     stEl.value = 'Pickup';
     stEl.dispatchEvent(new Event('change', { bubbles: true }));
 
@@ -511,7 +604,7 @@ try {
   /Not accepted/i.test(ticketAndSuggestProbe.rawDayBeforeHint) && /\bcrit\b/.test(ticketAndSuggestProbe.rawDayBeforeCls) && ticketAndSuggestProbe.rawDupWrapHidden
     ? pass('entry desk · 3-band duplicate ticket guard (<=1d blocked red · 2–30d yellow warning · >30d no warning)', `${ticketAndSuggestProbe.salesSameDayHint} | ${ticketAndSuggestProbe.salesWithinMonthHint}`)
     : fail('entry desk 3-band duplicate ticket guard', JSON.stringify(ticketAndSuggestProbe));
-  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^10/.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
+  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^TB/i.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
     ? pass('entry desk · Rev 10 unified combobox & select popover (Product/Grade with UoM·Ton badges, 0 native popups, 0 scrollbars)', `grade="${ticketAndSuggestProbe.pickedProd}" (${ticketAndSuggestProbe.prodMetaBadges} badges) · truck=${ticketAndSuggestProbe.pickedTruck}`)
     : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
 
@@ -622,22 +715,54 @@ try {
     upPill.click();
     const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
 
-    // (5) Check Truck Number -> Truck Owner + Driver + Quantity cascade & reverse Truck Owner mismatch clearing across Sales, Raw & other forms
+    // (5) Check Pick-up hides & clears Driver; Company fleet filters Truck & Driver strictly to the selected Company's own fleet trucks & drivers; label is 'Truck *'
+    const truckLabelIsTruckOnly = (document.querySelector('#wrap_f_truck .pa-fld-lbl')?.textContent || '').trim() === 'Truck *';
+    set('f_company', 'WTC');
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Company fleet');
+    const wtcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
+    const wtcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 15 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael');
+    set('f_truck', 'TB3');
+    const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael';
+    set('f_company', 'BBConstruction');
+    const bbcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
+    const bbcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'mohamad abo ali';
+    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 14 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && bbcCoFleetDrivers.length === 34 && bbcCoFleetDrivers.includes('mohamad abo ali');
+    set('f_truck', 'TB5');
+    set('f_company', 'WTC');
+    const coSwitchClearedMismatchedFleetTruck = document.getElementById('f_truck').value === '';
+
     set('f_saletype', 'Pickup');
+    const pickupDriverHidden = document.getElementById('wrap_f_driver').hidden === true;
     const truckUnlockedByDefault = document.getElementById('f_truck').readOnly === false;
+    set('f_truck', '355948');
+    const pickupNoDriverNeeded = document.getElementById('wrap_f_driver').hidden === true && document.getElementById('f_driver').value === '' && document.getElementById('f_truckowner').value === 'Ali Lakis';
+
+    // Switch to Delivery (Third-party truck): Driver becomes visible & required, filtered to Ali Lakis's drivers, with Default Driver chosen first
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Third-party truck');
+    const delivDriverVisible = document.getElementById('wrap_f_driver').hidden === false;
     set('f_truck', 'Aahed');
     const aahedPopulatedOwner = document.getElementById('f_truckowner').value === 'Aahed';
     const aahedOwnerLocked = document.getElementById('f_truckowner').readOnly === true;
     const aahedPopulatedDriver = document.getElementById('f_driver').value === 'Aahed';
     const aahedPopulatedQty = document.getElementById('f_qty').value === '20.00';
+    const aahedDrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const driverFilteredToOwnerOnly = aahedDrvOpts.length > 0 && aahedDrvOpts.length < 25 && aahedDrvOpts[0] === 'Aahed';
 
-    // Changing Truck Owner from 'Aahed' to 'Aawad' MUST immediately clear mismatched Truck ('Aahed'), Driver ('Aahed'), and Quantity ('20.00')
+    // Substitute driver test: if default driver is off on a specific day, clearing/changing Driver must NOT be overwritten back to default_driver
+    set('f_driver', 'Substitute Driver');
+    const substituteDriverKept = document.getElementById('f_driver').value === 'Substitute Driver';
+
+    // Changing Truck Owner from 'Aahed' to 'Aawad' MUST immediately clear mismatched Truck ('Aahed'), Driver, and Quantity ('20.00')
     set('f_truckowner', 'Aawad');
     const ownerChangeClearedTruck = document.getElementById('f_truck').value === '';
     const ownerChangeClearedDriver = document.getElementById('f_driver').value === '';
     const ownerChangeClearedQty = document.getElementById('f_qty').value === '';
 
-    // Picking 'Aahed' again and then switching to another truck updates/clears Owner, Driver, and Qty
+    // Picking 'Aahed' again and then clearing truck updates/clears Owner, Driver, and Qty
     set('f_truck', 'Aahed');
     set('f_truck', '');
     const truckClearClearedAll = document.getElementById('f_truckowner').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
@@ -651,6 +776,23 @@ try {
     const rawAahedCascadeOk = document.getElementById('f_truckowner').value === 'Aahed' && document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_qty').value === '20.00';
     set('f_truckowner', 'Aawad');
     const rawOwnerChangeClearedOk = document.getElementById('f_truck').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
+
+    // Check Truck Owner (Supplier) form: has dedicated section for adding Drivers to the Truck Owner
+    document.querySelector('[data-pa-group="hq"]').click();
+    document.querySelector('.modal-tab[data-form="supplier"]').click();
+    set('f_supplier', 'Ali Lakis');
+    const supDriversWrapVisible = document.getElementById('wrap_sup_drivers') && !document.getElementById('wrap_sup_drivers').hidden;
+    set('f_sup_drv_name', 'Karim Substitute');
+    document.getElementById('btnAddSupDriver')?.click();
+    const supDriverStagedOk = supDriversWrapVisible && /Karim Substitute/i.test(document.getElementById('supOwnerDriversList')?.textContent || '');
+
+    // Check Truck (Equipment) form: has Default Driver location filtered to the Truck Owner's drivers
+    document.querySelector('[data-pa-group="hq"]').click();
+    document.querySelector('.modal-tab[data-form="equipment"]').click();
+    set('f_truck', '339216');
+    const eqAutoFilledOwnerAndDefaultDrv = document.getElementById('f_supplier')?.value === 'Ibrahim Bdeir' && document.getElementById('f_driver')?.value === 'sharif al khodr';
+    const eqDrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const eqDriverFilteredToOwnerOk = eqAutoFilledOwnerAndDefaultDrv && eqDrvOpts.length > 0 && eqDrvOpts.length < 25 && eqDrvOpts[0] === 'sharif al khodr' && eqDrvOpts.includes('Ibrahim Barakat');
 
     // Check Price Rule form: switching Rule Type to List Price clears hidden Customer, Site, and Tier 1/2 fields
     document.querySelector('[data-pa-group="pricing"]').click();
@@ -667,10 +809,16 @@ try {
     document.querySelector('[data-pa-group="dispatch"]').click();
     document.querySelector('.modal-tab[data-form="sales"]').click();
 
-    const fleetCascadeAndStaleClearOk =
-      truckUnlockedByDefault && aahedPopulatedOwner && aahedOwnerLocked && aahedPopulatedDriver && aahedPopulatedQty &&
-      ownerChangeClearedTruck && ownerChangeClearedDriver && ownerChangeClearedQty && truckClearClearedAll &&
-      rawOrderingOk && rawAahedCascadeOk && rawOwnerChangeClearedOk && priceRuleClearedHiddenOk;
+    const cascadeDiag = {
+      truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
+      pickupDriverHidden, pickupNoDriverNeeded, delivDriverVisible,
+      truckUnlockedByDefault, aahedPopulatedOwner, aahedOwnerLocked, aahedPopulatedDriver, aahedPopulatedQty,
+      driverFilteredToOwnerOnly, substituteDriverKept,
+      ownerChangeClearedTruck, ownerChangeClearedDriver, ownerChangeClearedQty, truckClearClearedAll,
+      rawOrderingOk, rawAahedCascadeOk, rawOwnerChangeClearedOk,
+      supDriverStagedOk, eqDriverFilteredToOwnerOk, priceRuleClearedHiddenOk
+    };
+    const fleetCascadeAndStaleClearOk = Object.values(cascadeDiag).every(Boolean);
 
     return {
       orderingOk, saleTypeOrderOk, overtimeLinkedToTimeOk,
@@ -678,7 +826,8 @@ try {
       pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
       repSynced, noInternalCodes,
       startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow,
-      fleetCascadeAndStaleClearOk
+      fleetCascadeAndStaleClearOk,
+      failedCascadeKeys: Object.entries(cascadeDiag).filter(([, v]) => !v).map(([k]) => k)
     };
   })()`);
   intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.overtimeLinkedToTimeOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
@@ -736,6 +885,74 @@ try {
   colAlignmentProbe.ok
     ? pass('entry desk · multi-column input & search-box top/height alignment (0px offset across locked & unlocked columns)', `${colAlignmentProbe.rowsChecked} multi-col rows verified`)
     : fail('entry desk multi-column alignment', JSON.stringify(colAlignmentProbe));
+
+  // 6e. Post-Attempt Validation & Targeted Red Highlighting (Fix before posting appears only on failed post; only neglected fields & sections turn red)
+  const postValidationProbe = await evaluate(`(() => {
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // 1. Before clicking Post: #formErrors is hidden/absent, 0 .field-neglected, 0 .sec-neglected
+    const errBoxBefore = document.getElementById('formErrors');
+    const hiddenBeforePost = !errBoxBefore || errBoxBefore.hidden === true;
+    const neglectedBeforePost = document.querySelectorAll('#modalBody .field-neglected, #modalBody .sec-neglected').length;
+
+    // 2. Typing Ticket # and pressing Enter advances focus to Product instead of triggering Fix before posting
+    const tEl = document.getElementById('f_ticketno');
+    tEl.focus();
+    set('f_ticketno', '99401');
+    tEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    const errBoxAfterEnter = document.getElementById('formErrors');
+    const enterDidNotTriggerPost = (!errBoxAfterEnter || errBoxAfterEnter.hidden === true) && document.querySelectorAll('#modalBody .field-neglected').length === 0;
+    const enterFocusedNext = document.activeElement && document.activeElement.id === 'f_product';
+
+    // 3. Fill Product & Truck (so Quantity, Unit Price, Material Total & Total Ex-VAT are populated), leave Customer blank, then click Post
+    const firstProd = (window.MFG_SEED.records.products.find(p => p && p.name && Number(p.list_price) > 0) || window.MFG_SEED.records.products[0]).name;
+    set('f_product', firstProd);
+    set('f_truck', 'Aahed'); // capacity 20 m³
+    // Ensure unit price is populated (unlock if no list price on that grade)
+    if (!Number(document.getElementById('f_unitprice').value)) {
+      document.querySelector('[data-lock-pill="f_unitprice"]').click();
+      const cBtn = document.getElementById('paConfirmFieldUnlockBtn');
+      if (cBtn) cBtn.click();
+      set('f_unitprice', '21.00');
+    }
+    const matTotalVal = Number(document.getElementById('f_mat_total').value);
+    document.getElementById('dynSaveModalBtn').click();
+
+    const errBoxAfterFail = document.getElementById('formErrors');
+    const errShownOnFailedPost = !!(errBoxAfterFail && errBoxAfterFail.hidden === false);
+    const errText = errBoxAfterFail ? errBoxAfterFail.innerText : '';
+    const onlyCustomerErrorListed = /Customer is required/i.test(errText) && !/Product is required/i.test(errText) && !/Quantity must be above zero/i.test(errText) && !/free ticket/i.test(errText);
+    const neglectedFields = Array.from(document.querySelectorAll('#modalBody .form-field.field-neglected')).map(el => el.id);
+    const secHdrs = Array.from(document.querySelectorAll('#modalBody .pa-form-sec-hdr'));
+    const neglectedSecIndices = secHdrs.map((h, i) => h.classList.contains('sec-neglected') ? i + 1 : null).filter(Boolean);
+
+    // 4. Filling the neglected Customer field immediately clears red highlights and hides Fix before posting
+    set('f_customer', window.MFG_SEED.records.customers[0].Customer || window.MFG_SEED.records.customers[0].name);
+    const clearedAfterFix = errBoxAfterFail.hidden === true &&
+      document.querySelectorAll('#modalBody .field-neglected').length === 0 &&
+      document.querySelectorAll('#modalBody .sec-neglected').length === 0;
+
+    return {
+      ok: hiddenBeforePost && neglectedBeforePost === 0 && enterDidNotTriggerPost && enterFocusedNext &&
+          matTotalVal > 0 && errShownOnFailedPost && onlyCustomerErrorListed &&
+          neglectedFields.length === 1 && neglectedFields[0] === 'wrap_f_customer' &&
+          neglectedSecIndices.length === 1 && neglectedSecIndices[0] === 1 && clearedAfterFix,
+      hiddenBeforePost, neglectedBeforePost, enterDidNotTriggerPost, enterFocusedNext,
+      matTotalVal, errShownOnFailedPost, errText, onlyCustomerErrorListed,
+      neglectedFields, neglectedSecIndices, clearedAfterFix
+    };
+  })()`);
+  postValidationProbe.ok
+    ? pass('entry desk · Fix before posting appears only on failed post & highlights only neglected fields/sections in red', `neglected=${postValidationProbe.neglectedFields.join(',')} · sec=${postValidationProbe.neglectedSecIndices.join(',')} · autoCleared=${postValidationProbe.clearedAfterFix}`)
+    : fail('entry desk post-attempt validation & red highlights', JSON.stringify(postValidationProbe));
 
   await evaluate(`document.getElementById('closeModalBtn').click()`); await sleep(150);
 
@@ -1213,7 +1430,7 @@ try {
       u8ConsistencyOk: u8CompanySwitchOk && u8BbcReconHidden && !u8LeakedBbcSales && u8StmtTabs === 13,
       u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerHidden && u3NavSentinelsHidden &&
         u3NavPbiText === '15 Pages' && u3PbiTabs === 15 && u3TableChips === 23 && !u3HasSalariesTable,
-      u10ConsistencyOk: u10VisibleNavViews.join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
+      u10ConsistencyOk: u10VisibleNavViews.filter(v => !String(v || '').startsWith('reg_')).join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
         u10VisibleForms.join(',') === 'sales,receipt',
       u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3PbiTabs, u3TableChips, u10VisibleNavViews, u10VisibleForms
     };
@@ -1626,6 +1843,87 @@ try {
   themeParity && themeParity.allLightOk && themeParity.allDarkOk
     ? pass('theme parity · Light mode vs Dark mode across rail, PBI studio, slicers, module banners, RDL suite, AI drawer & auth card', `light minLum=${Math.round(Math.min(...Object.values(themeParity.lightVals)))} (>220) · dark maxLum=${Math.round(Math.max(...Object.values(themeParity.darkVals)))} (<50)`)
     : fail('theme parity · Light vs Dark', JSON.stringify(themeParity));
+
+  // 7c. Universal Registries dedicated section, tabs, All-BU consistency & form separation
+  const univProbe = await evaluate(`(() => {
+    // 1. Sidebar has dedicated "Universal Registries" section with 8 individual tabs
+    const navGrps = Array.from(document.querySelectorAll('#sidebarNav .grp')).map(g => g.textContent.trim());
+    const hasUnivSection = navGrps.includes('Universal Registries');
+    const regViews = ['reg_equipment', 'reg_drivers', 'reg_sites', 'reg_regions', 'reg_products', 'reg_customers', 'reg_suppliers', 'reg_categories'];
+    const allSidebarTabsExist = regViews.every(v => {
+      const btn = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
+      if (!btn) return false;
+      btn.click();
+      const railLabel = (btn.querySelector('span')?.textContent || '').trim();
+      const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
+      const heroTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
+      const subnavLabel = (document.querySelector('#mobileSubnav .subnav-pill[data-view="' + v + '"]')?.textContent || '').trim();
+      const docTitlePrefix = (document.title || '').split(' — ')[0].trim();
+      return railLabel && railLabel === topbarTitle && railLabel === heroTitle && railLabel === subnavLabel && railLabel === docTitlePrefix;
+    });
+
+    // 2. Fleet & Diesel Control (#fleet) no longer mixes Universal Equipment & Driver Registry onto a BU page
+    document.querySelector('#sidebarNav .nav-item[data-view="fleet"]').click();
+    const fleetHasOldUnivPanel = Boolean(document.getElementById('driverPanel')) || /UNIVERSAL EQUIPMENT & DRIVER REGISTRY/i.test(document.getElementById('workspace').innerText);
+    const fleetHasBuAssignPanel = Boolean(document.getElementById('coFleetAssignPanel'));
+
+    // 3. TABLE_CATALOG groups all 11 universal registries in "3 · Universal Registries (All BUs)" and separates BU-specific company_equipment / company_drivers
+    const cat = window.MFG_PBI.TABLE_CATALOG;
+    const univGroupTables = cat.filter(t => t.group === '3 · Universal Registries (All BUs)').map(t => t.key);
+    const expectedUniv = ['equipment', 'drivers', 'sites', 'regions', 'products', 'product_types', 'uoms', 'customers', 'suppliers', 'expense_categories', 'expense_subcategories'];
+    const catalogGroupedCleanly = univGroupTables.length === 11 && expectedUniv.every(k => univGroupTables.includes(k)) &&
+      !univGroupTables.includes('company_equipment') && !univGroupTables.includes('company_drivers');
+
+    // 4. Universal Registries stay 100% consistent across BU switches (WTC vs BBConstruction vs All Group)
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    const tabButtonsCount = document.querySelectorAll('#univRegTabBar [data-univ-reg-key]').length;
+    document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
+    const wtcCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    const wtcTitle = document.getElementById('topbarTitle')?.textContent?.trim();
+    const wtcBannerTitle = document.querySelector('#workspace .cockpit-title')?.textContent?.trim();
+    document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
+    const bbcCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
+    const allCountTxt = document.querySelector('#univRegTabBar [data-univ-reg-key="equipment"]')?.textContent || '';
+    const consistentAcrossBUs = Boolean(wtcCountTxt && wtcCountTxt === bbcCountTxt && bbcCountTxt === allCountTxt && wtcTitle === 'Equipment & Trucks' && wtcBannerTitle === 'Equipment & Trucks');
+
+    // 5. Entry Desk Group 3 ("3. Universal Registries (6)") has only Universal Registries without Company (BU) * (#f_company), while companyequipment is in Group 4 (ops) with #f_company
+    document.getElementById('newEntryBtn').click();
+    const hqGrp = window.MFG_FORMS.FORM_GROUPS.find(g => g.id === 'hq');
+    const opsGrp = window.MFG_FORMS.FORM_GROUPS.find(g => g.id === 'ops');
+    const hqForms = (hqGrp?.forms || []).map(f => f.id);
+    const opsForms = (opsGrp?.forms || []).map(f => f.id);
+    const hqSeparatedCleanly = /Universal Registries/i.test(hqGrp?.label || '') &&
+      hqForms.length === 6 && !hqForms.includes('companyequipment') && opsForms.includes('companyequipment');
+    document.querySelector('[data-pa-group="hq"]').click();
+    const hqHasNoCompanyField = hqForms.every(fid => {
+      document.querySelector('.modal-tab[data-form="' + fid + '"]').click();
+      return !document.getElementById('f_company');
+    });
+    document.querySelector('[data-pa-group="ops"]').click();
+    document.querySelector('.modal-tab[data-form="companyequipment"]').click();
+    const coEquipHasCompanyField = Boolean(document.getElementById('f_company'));
+    document.getElementById('closeModalBtn').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+
+    return {
+      hasUnivSection,
+      allSidebarTabsExist,
+      fleetHasOldUnivPanel,
+      fleetHasBuAssignPanel,
+      catalogGroupedCleanly,
+      tabButtonsCount,
+      consistentAcrossBUs,
+      hqSeparatedCleanly,
+      hqHasNoCompanyField,
+      coEquipHasCompanyField
+    };
+  })()`);
+  univProbe.hasUnivSection && univProbe.allSidebarTabsExist && !univProbe.fleetHasOldUnivPanel && univProbe.fleetHasBuAssignPanel &&
+  univProbe.catalogGroupedCleanly && univProbe.tabButtonsCount === 11 && univProbe.consistentAcrossBUs &&
+  univProbe.hqSeparatedCleanly && univProbe.hqHasNoCompanyField && univProbe.coEquipHasCompanyField
+    ? pass('universal registries · dedicated sidebar section (8 tabs) + 11-tab studio + removed from BU Fleet page + All-BU consistency + Group 3 forms without BU field')
+    : fail('universal registries separation', JSON.stringify(univProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

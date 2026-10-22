@@ -49,21 +49,21 @@
     },
     {
       id: 'hq',
-      label: '3. HQ Master Data (7)',
+      label: '3. Universal Registries (6)',
       forms: [
-        { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer' },
-        { id: 'supplier', label: 'Supplier / Hauler', badge: 'bhf_supplier', crKey: 'suppliers', title: 'New Supplier / Hauler' },
-        { id: 'product', label: 'Product / Grade', badge: 'bhf_product', crKey: 'products', title: 'New Product / Aggregate Grade' },
-        { id: 'site', label: 'Site & Quarry GPS', badge: 'bhf_site', crKey: 'sites', title: 'New Site / Quarry' },
-        { id: 'equipment', label: 'Equipment (All / 3P)', badge: 'bhf_equipment', crKey: 'equipment', title: 'New Equipment / Third-Party Truck' },
-        { id: 'companyequipment', label: 'Company Fleet Unit', badge: 'bhf_companyequipment', crKey: 'company_equipment', title: 'New Company Fleet Unit' },
-        { id: 'driver', label: 'Driver', badge: 'bhf_driver', crKey: 'drivers', title: 'New Driver' }
+        { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer (Universal Registry)', universal: true },
+        { id: 'supplier', label: 'Supplier / Hauler', badge: 'bhf_supplier', crKey: 'suppliers', title: 'New Supplier / Hauler (Universal Registry)', universal: true },
+        { id: 'product', label: 'Product / Grade', badge: 'bhf_product', crKey: 'products', title: 'New Product / Aggregate Grade (Universal Registry)', universal: true },
+        { id: 'site', label: 'Site & Quarry GPS', badge: 'bhf_site', crKey: 'sites', title: 'New Site / Quarry (Universal Registry)', universal: true },
+        { id: 'equipment', label: 'Equipment / Truck', badge: 'bhf_equipment', crKey: 'equipment', title: 'New Equipment / Truck (Universal Registry)', universal: true },
+        { id: 'driver', label: 'Driver / Operator', badge: 'bhf_driver', crKey: 'drivers', title: 'New Driver / Operator (Universal Registry)', universal: true }
       ]
     },
     {
       id: 'ops',
-      label: '4. Payroll, Logistics & Treasury (8)',
+      label: '4. Payroll, Fleet & Treasury (9)',
       forms: [
+        { id: 'companyequipment', label: 'Company Fleet Unit', badge: 'bhf_companyequipment', crKey: 'company_equipment', title: 'New Company Fleet Unit (BU Assignment)' },
         { id: 'salary', label: 'Salary Payment', badge: 'bhf_salarypayment', crKey: 'salaries', title: 'New Salary Payment' },
         { id: 'attendance', label: 'Attendance', badge: 'bhf_attendance', crKey: 'attendance', title: 'New Staff Attendance' },
         { id: 'freelance', label: 'Freelance Work', badge: 'bhf_freelancework', crKey: 'employments', title: 'New Freelance Work' },
@@ -530,7 +530,6 @@
     if (fType === 'customer') {
       return `
         <div class="form-grid-3">
-          ${companyField}
           ${fld('Customer Name *', inp('f_customer', 'text', '', 'placeholder="Full legal / trade name"'))}
           ${fld('Default Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'))}
           ${fld('VAT Registered (11%)', sel('f_vatreg', [['No', 'No'], ['Yes', 'Yes — 11% VAT Applies']], 'No'))}
@@ -547,8 +546,7 @@
     if (fType === 'supplier') {
       return `
         <div class="form-grid-3">
-          ${secHdr('1. Supplier / Truck Owner Identity')}
-          ${companyField}
+          ${secHdr('1. Supplier / Truck Owner Identity (Universal Registry · All BUs)')}
           ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Quarry, hauler, or truck owner name"') + dl('dl_suppliers', supNames))}
           ${fld('Category', sel('f_category', [['Quarry / Raw Material', 'Quarry / Raw Material'], ['Hauler / Truck Owner', 'Hauler / Truck Owner'], ['Fuel & Lubricants', 'Fuel & Lubricants'], ['Spare Parts & Garage', 'Spare Parts & Garage'], ['General Vendor', 'General Vendor']], 'Hauler / Truck Owner'))}
           ${fld('Phone / Contact', inp('f_phone', 'text', ''))}
@@ -589,7 +587,6 @@
     if (fType === 'product') {
       return `
         <div class="form-grid-3">
-          ${companyField}
           ${fld('Product / Grade Name *', inp('f_product', 'text', '', 'placeholder="e.g. Sand 0-4mm, Gravel 10-20mm"'))}
           ${fld('Default Unit (UoM) *', sel('f_uom', uoms, 'm³'))}
           ${fld('Product Type *', sel('f_prodtype', [['Material', 'Material (Aggregate / Concrete / Block)'], ['Fuel', 'Fuel (Diesel)'], ['Lubricant', 'Lubricant / Oil'], ['Service', 'Service / Transport'], ['Part', 'Spare Part']], 'Material'))}
@@ -605,7 +602,6 @@
     if (fType === 'site') {
       return `
         <div class="form-grid-3">
-          ${companyField}
           ${fld('Site / Quarry Name *', inp('f_site', 'text', '', 'placeholder="Site or quarry name"'))}
           ${fld('Region *', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
           ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames))}
@@ -622,8 +618,8 @@
       const isCo = fType === 'companyequipment';
       return `
         <div class="form-grid-3">
-          ${secHdr('1. Truck / Equipment Identity & Capacity')}
-          ${companyField}
+          ${secHdr(isCo ? '1. Company Fleet Unit Assignment (BU-Specific)' : '1. Truck / Equipment Identity & Capacity (Universal Registry · All BUs)')}
+          ${isCo ? companyField : ''}
           ${fld('Unit Code / Plate Identifier *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="e.g. B-123456 or SHACMAN-04"') + dl('dl_equip', equipNames))}
           ${fld('License Plate No.', inp('f_plateno', 'text', '', 'placeholder="Plate number"'))}
           ${fld('Equipment Category *', sel('f_category', [['Truck', 'Dump Truck / Tipper'], ['Mixer', 'Transit Mixer'], ['Loader', 'Wheel Loader'], ['Excavator', 'Excavator'], ['Bulldozer', 'Bulldozer'], ['Generator', 'Generator / Crusher'], ['Service Vehicle', 'Pickup / Service Vehicle']], 'Truck'))}
@@ -640,9 +636,7 @@
     if (fType === 'driver') {
       return `
         <div class="form-grid-3">
-          ${companyField}
           ${fld('Driver Full Name *', inp('f_driver', 'text', '', 'placeholder="Driver name"'))}
-          <div class="form-field check-field"><input type="checkbox" id="f_iscompanydriver"><label for="f_iscompanydriver">Company Fleet Driver (on BU payroll)</label></div>
           ${fld('Default Truck Plate', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', equipNames))}
           ${fld('Truck Owner (Hauler Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Auto-filled from Truck Plate (or select hauler)..."') + dl('dl_suppliers', supNames), { id: 'wrap_drv_supplier' })}
           ${fld('Phone Number', inp('f_phone', 'text', '', 'placeholder="+961 ..."'))}
