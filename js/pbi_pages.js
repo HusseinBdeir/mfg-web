@@ -141,10 +141,20 @@
       if (e) { e.raw_loads = Number(s.raw_loads || 0); e.ap_balance = Number(s.ap_balance || 0); }
     });
 
+    const eqLabelMap = {};
+    (rec.equipment || []).forEach(eq => {
+      if (eq && eq.name && eq.plate_no && norm(eq.plate_no) !== norm(eq.name)) {
+        const lbl = `${eq.name} (${eq.plate_no})`;
+        eqLabelMap[norm(eq.name)] = lbl;
+        eqLabelMap[norm(eq.plate_no)] = lbl;
+      }
+    });
+    const fmtTruckRef = t => eqLabelMap[norm(t)] || t;
+
     (rec.suppliers || []).forEach(s => {
       const e = ensure(rel.suppByName, s.name, initSupp);
       if (!e) return;
-      if (Array.isArray(s.trucks)) s.trucks.forEach(t => { if (t) e.trucks.add(t); });
+      if (Array.isArray(s.trucks)) s.trucks.forEach(t => { if (t) e.trucks.add(fmtTruckRef(t)); });
       if (Array.isArray(s.drivers)) s.drivers.forEach(d => { if (d) e.drivers.add(d); });
       if (s.is_truck_owner || Number(s.trucks_count || 0) > 0 || e.trucks.size > 0 || /hauler|truck owner/i.test(s.category || '')) e.is_hauler = true;
       if (/quarry|raw material/i.test(s.category || s.category1 || '')) e.is_quarry = true;
@@ -206,19 +216,23 @@
       if (ee && ce.company) ee.companies.add(ce.company);
       if (ce.default_driver) {
         const de = ensure(rel.drvByName, ce.default_driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
-        if (de && ce.equipment) de.trucks.add(ce.equipment);
+        if (de && ce.equipment) de.trucks.add(fmtTruckRef(ce.equipment));
       }
     });
     (rec.equipment || []).forEach(eq => {
+      const ee = ensure(rel.equipByName, eq.name, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee && eq.plate_no && norm(eq.plate_no) !== norm(eq.name)) {
+        rel.equipByName[norm(eq.plate_no)] = ee;
+      }
       if (eq.default_driver) {
         const de = ensure(rel.drvByName, eq.default_driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
-        if (de && eq.name) de.trucks.add(eq.name);
+        if (de && eq.name) de.trucks.add(fmtTruckRef(eq.name));
       }
       if (eq.supplier) {
         const se = ensure(rel.suppByName, eq.supplier, initSupp);
         if (se) {
           se.is_hauler = true;
-          if (eq.name) se.trucks.add(eq.name);
+          if (eq.name) se.trucks.add(fmtTruckRef(eq.name));
           if (eq.default_driver) se.drivers.add(eq.default_driver);
         }
       }
@@ -229,7 +243,7 @@
         if (se) {
           se.is_hauler = true;
           if (drv.name || drv.driver) se.drivers.add(drv.name || drv.driver);
-          if (drv.truck) se.trucks.add(drv.truck);
+          if (drv.truck) se.trucks.add(fmtTruckRef(drv.truck));
         }
       }
     });
@@ -248,13 +262,13 @@
       const ee = ensure(rel.equipByName, t.truck, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
       const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
-      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(fmtTruckRef(t.truck)); if (t.company) de.companies.add(t.company); }
       if (t.truck_owner) {
         const he = ensure(rel.suppByName, t.truck_owner, initSupp);
         if (he) {
           he.is_hauler = true;
           he.haul_loads++;
-          if (t.truck) he.trucks.add(t.truck);
+          if (t.truck) he.trucks.add(fmtTruckRef(t.truck));
           if (t.driver) he.drivers.add(t.driver);
         }
       }
@@ -269,7 +283,7 @@
       const ee = ensure(rel.equipByName, t.truck, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
       const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
-      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(t.truck); if (t.company) de.companies.add(t.company); }
+      if (de) { de.loads_hauled++; if (t.truck) de.trucks.add(fmtTruckRef(t.truck)); if (t.company) de.companies.add(t.company); }
       if (t.site_owner) {
         const qe = ensure(rel.suppByName, t.site_owner, initSupp);
         if (qe) {
@@ -284,7 +298,7 @@
         if (he) {
           he.is_hauler = true;
           he.haul_loads++;
-          if (t.truck) he.trucks.add(t.truck);
+          if (t.truck) he.trucks.add(fmtTruckRef(t.truck));
           if (t.driver) he.drivers.add(t.driver);
         }
       }

@@ -642,8 +642,10 @@ def fetch_dataverse_records():
             "notes": ce.get("bhf_notes") or "",
         }
         company_equipment.append(ce_item)
-        if eid and eid not in ce_map:
-            ce_map[eid] = ce_item
+        if eid:
+            prev = ce_map.get(eid)
+            if not prev or (bu == "WTC" and prev.get("company") != "WTC") or (not prev.get("default_driver") and drv_lbl):
+                ce_map[eid] = ce_item
 
     equip_raw = safe_get_fmt(
         "bhf_equipment",

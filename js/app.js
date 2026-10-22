@@ -2850,6 +2850,10 @@
         if (baseDigits.length >= 5 && !eqByName.has(baseDigits)) eqByName.set(baseDigits, e);
       }
     });
+    const tb1 = eqByName.get('tb1');
+    if (tb1) ['360676', '360676l', '360676ll', '360676h', '360676jv'].forEach(a => { if (!eqByName.has(a)) eqByName.set(a, tb1); });
+    const tb2 = eqByName.get('tb2');
+    if (tb2 && !eqByName.has('3650622')) eqByName.set('3650622', tb2);
     const txTrucksByOwner = new Map();
     const txDriversByOwner = new Map();
     const addMapItem = (map, ok, val) => {
@@ -2880,14 +2884,21 @@
     const t = String((obj && obj.type) || (eq && eq.type) || 'Truck').trim();
     return /^(truck|mixer|dump|tipper|tractor|trailer)/i.test(t);
   }
+  function normOwnerName(s) {
+    const n = norm(s);
+    if (n === 'kareem bdeir') return 'karim bdeir';
+    return n;
+  }
   function companyFleetRow(name, company) {
     const n = norm(name);
     if (!n) return null;
+    const eq = getFleetIndex().eqByName.get(n);
+    const eqName = eq ? norm(eq.name) : n;
     return (SEED.records.company_equipment || []).find(e =>
       e && !e.voided && e.status !== 'Sold / retired' &&
       (!company || e.company === company) &&
       (e.is_company_fleet === true || /^(own|rent)/i.test(e.ownership || '')) &&
-      norm(e.equipment || e.name) === n
+      (norm(e.equipment || e.name) === n || norm(e.equipment || e.name) === eqName)
     ) || null;
   }
   function customerNames() {
@@ -2936,11 +2947,11 @@
       ).map(e => e.name);
       return uniqSorted(coUnits.concat(ownUnits));
     }
-    const o = norm(ownerName);
+    const o = normOwnerName(ownerName);
     if (!o) return [];
     const idx = getFleetIndex();
-    const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o && isTruckUnit(e)).map(e => e.name);
-    const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
+    const fromEq = (SEED.records.equipment || []).filter(e => normOwnerName(e.supplier) === o && isTruckUnit(e)).map(e => e.name);
+    const sup = (SEED.records.suppliers || []).find(s => normOwnerName(s.name) === o);
     const fromSup = (sup && Array.isArray(sup.trucks)) ? sup.trucks.filter(isTruckUnit) : [];
     const fromTx = (idx.txTrucksByOwner.get(o) || []).filter(isTruckUnit);
     return uniqSorted(fromEq.concat(fromSup, fromTx));
@@ -2965,21 +2976,21 @@
       const defDrv = (activeTruckRow && activeTruckRow.default_driver && isOwnUnit(activeTruckRow, company)) ? [activeTruckRow.default_driver] : [];
       list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv));
     } else {
-      const o = norm(ownerName);
+      const o = normOwnerName(ownerName);
       if (!o) {
         if (activeTruckRow && activeTruckRow.default_driver) return [activeTruckRow.default_driver];
         return [];
       }
       const idx = getFleetIndex();
-      const fromDrv = (SEED.records.drivers || []).filter(d => norm(d.truck_owner) === o).map(d => d.name || d.driver);
-      const sup = (SEED.records.suppliers || []).find(s => norm(s.name) === o);
+      const fromDrv = (SEED.records.drivers || []).filter(d => normOwnerName(d.truck_owner) === o).map(d => d.name || d.driver);
+      const sup = (SEED.records.suppliers || []).find(s => normOwnerName(s.name) === o);
       const fromSup = (sup && Array.isArray(sup.drivers)) ? sup.drivers : [];
-      const fromEq = (SEED.records.equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
-      const fromCoEq = (SEED.records.company_equipment || []).filter(e => norm(e.supplier) === o && e.default_driver).map(e => e.default_driver);
+      const fromEq = (SEED.records.equipment || []).filter(e => normOwnerName(e.supplier) === o && e.default_driver).map(e => e.default_driver);
+      const fromCoEq = (SEED.records.company_equipment || []).filter(e => normOwnerName(e.supplier) === o && e.default_driver).map(e => e.default_driver);
       const fromTx = idx.txDriversByOwner.get(o) || [];
       // Owner-operators whose driver record matches the Truck Owner's own name
-      const selfDrv = (SEED.records.drivers || []).filter(d => norm(d.name || d.driver) === o && (!d.truck_owner || norm(d.truck_owner) === o)).map(d => d.name || d.driver);
-      const defDrv = (activeTruckRow && activeTruckRow.default_driver && (!activeTruckRow.supplier || norm(activeTruckRow.supplier) === o))
+      const selfDrv = (SEED.records.drivers || []).filter(d => normOwnerName(d.name || d.driver) === o && (!d.truck_owner || normOwnerName(d.truck_owner) === o)).map(d => d.name || d.driver);
+      const defDrv = (activeTruckRow && activeTruckRow.default_driver && (!activeTruckRow.supplier || normOwnerName(activeTruckRow.supplier) === o))
         ? [activeTruckRow.default_driver]
         : [];
       list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromTx, selfDrv, defDrv));
@@ -3089,12 +3100,12 @@
     });
   }
   function supplierInfo(name) {
-    const n = norm(name);
+    const n = normOwnerName(name);
     if (!n) return null;
-    const dvn = (SEED.records.suppliers || []).find(x => norm(x.name) === n) || null;
+    const dvn = (SEED.records.suppliers || []).find(x => normOwnerName(x.name) === n) || null;
     let mdl = null;
     for (const m of Object.values(SEED.models)) {
-      const s = (m.suppliers || []).find(x => norm(x.Supplier) === n);
+      const s = (m.suppliers || []).find(x => normOwnerName(x.Supplier) === n);
       if (s) { mdl = s; break; }
     }
     if (!dvn && !mdl) return null;
@@ -3131,11 +3142,12 @@
       if (ce) {
         return Object.assign({}, eq || {}, {
           name: (eq && eq.name) || ce.equipment || ce.name || name,
+          plate_no: (eq && eq.plate_no) || ce.equipment || ce.name || name,
           company: ce.company || company,
           ownership: ce.ownership || 'Own',
           is_company_fleet: true,
-          supplier: '',
-          default_driver: ce.default_driver || ''
+          supplier: (eq && eq.supplier) || ce.supplier || '',
+          default_driver: ce.default_driver || (eq && eq.default_driver) || ''
         });
       }
       if (eq) {
@@ -3158,12 +3170,14 @@
     const info = equipInfo(v, company, isCoFleet);
     if (!info) return `<option value="${esc(v)}">`;
     const parts = [];
+    if (info.plate_no && norm(info.plate_no) !== norm(info.name || v)) {
+      parts.push(info.plate_no);
+    }
     if (isCoFleet) {
       if (info.default_driver) parts.push(info.default_driver);
-    } else if (info.supplier) {
-      parts.push(info.supplier);
-    } else if (/^own/i.test(info.ownership || '')) {
-      parts.push('Company Fleet');
+    } else {
+      if (info.supplier) parts.push(info.supplier);
+      if (info.default_driver && norm(info.default_driver) !== norm(info.supplier)) parts.push(info.default_driver);
     }
     if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
@@ -7723,7 +7737,7 @@
 
   function isPureOwnUnit(truckRow, company) {
     if (!truckRow) return false;
-    return /^own/i.test(truckRow.ownership || '') && (!truckRow.supplier || (company && norm(truckRow.supplier) === norm(company)));
+    return /^own/i.test(truckRow.ownership || '') && !truckRow.supplier;
   }
 
   function syncFleetCascade(company, isCoFleet, is3P, isUnreg, needDriver = true) {
@@ -7764,7 +7778,7 @@
       FORM_UI.driverManual = false;
       const tRow = curTruck ? equipInfo(curTruck, company, false) : null;
       const allowedTrucks = curOwner ? trucksForOwner(curOwner, company, false) : [];
-      const truckMatches = !!(curOwner && curTruck && ((tRow && norm(tRow.supplier) === norm(curOwner)) || allowedTrucks.some(tn => norm(tn) === norm(curTruck))));
+      const truckMatches = !!(curOwner && curTruck && ((tRow && normOwnerName(tRow.supplier) === normOwnerName(curOwner)) || allowedTrucks.some(tn => norm(tn) === norm(curTruck) || (tRow && norm(tn) === norm(tRow.name)))));
       if (curTruck && !truckMatches) {
         if ($('f_truck')) $('f_truck').value = '';
         if ($('f_driver')) $('f_driver').value = '';
@@ -7774,7 +7788,7 @@
       const curDrv = val('f_driver');
       const dRow = curDrv ? driverInfo(curDrv) : null;
       const allowedDrvs = curOwner ? driversForOwner(curOwner, company, false, tRow) : [];
-      const drvMatches = !!(curOwner && curDrv && ((dRow && norm(dRow.truck_owner) === norm(curOwner)) || allowedDrvs.some(dn => norm(dn) === norm(curDrv))));
+      const drvMatches = !!(curOwner && curDrv && ((dRow && normOwnerName(dRow.truck_owner) === normOwnerName(curOwner)) || allowedDrvs.some(dn => norm(dn) === norm(curDrv))));
       if (curDrv && !drvMatches) {
         if ($('f_driver')) $('f_driver').value = '';
       }
@@ -7910,8 +7924,9 @@
       FORM_UI.ownerManuallyPicked = false;
       if (saleTypeChanged || transportByChanged || companyChanged) {
         const curTruckVal = val('f_truck');
+        const curEq = curTruckVal ? equipInfo(curTruckVal, company, true) : null;
         const coUnits = trucksForOwner('', company, true);
-        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal))) {
+        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal) || (curEq && norm(u) === norm(curEq.name)))) {
           if ($('f_truck')) $('f_truck').value = '';
           if ($('f_driver')) $('f_driver').value = '';
           FORM_UI.qtyManual = false;
@@ -7974,10 +7989,17 @@
     const ownTruck = isOwnUnit(truckRow, company);
     const pureOwnTruck = isPureOwnUnit(truckRow, company);
 
-    // 5. Price Agreement & List Price Lock
+    // 5. Price Agreement & List Price Lock (with m73 product-less Sales (Delivery) transport rule fallback)
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
     const wantType = isPickup ? 'Sales (Pickup)' : 'Sales (Delivery)';
-    let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType] }) : null;
+    let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType], requireProduct: true }) : null;
+    if (!rule && !isUnreg && customer && product) {
+      const anyRule = findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType] });
+      if (anyRule && Number(anyRule.unit_price) > 0) rule = anyRule;
+    }
+    const transRule = (isDelivery && !isUnreg && customer && (!rule || !(Number(rule.trans_unit_price) > 0)))
+      ? findRule({ company, customer, product: '', site, date, types: ['Sales (Delivery)'] })
+      : null;
     const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
 
     if ((customerChanged || productChanged || siteChanged || saleTypeChanged) && !isFieldAdminUnlocked('f_uom')) {
@@ -7998,15 +8020,18 @@
 
     const priceLocked = applyFieldLockState('f_unitprice', !isUnreg, 'Locked to active Price Agreement or List Price on Pickup & Delivery');
     const transLocked = applyFieldLockState('f_transunitprice', isDelivery, 'Locked to Price Agreement transport rate on Delivery');
+    const agreedTransRate = (rule && Number(rule.trans_unit_price) > 0)
+      ? Number(rule.trans_unit_price)
+      : ((transRule && Number(transRule.trans_unit_price) > 0) ? Number(transRule.trans_unit_price) : (rule ? Number(rule.trans_unit_price || 0) : 0));
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
       if (rule) {
         upEl.value = Number(rule.unit_price || 0).toFixed(2);
-        if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = Number(rule.trans_unit_price || 0).toFixed(2);
+        if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = agreedTransRate.toFixed(2);
         setText('lbl_pricelock', 'AGREEMENT');
         setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${rule.unit && rule.unit !== baseUom ? ' · priced per ' + rule.unit : ''}`, 'ok');
       } else {
-        if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = '0.00';
+        if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = agreedTransRate.toFixed(2);
         const lpRule = product ? listPriceRule(company, product, date) : null;
         const lp = lpRule ? Number(lpRule.unit_price || 0) : (product ? listPrice(product) : null);
         if (lp != null) {
@@ -8027,6 +8052,8 @@
     if (tpEl) {
       if (!isDelivery) {
         tpEl.value = '0.00';
+      } else if (transRule && Number(transRule.trans_unit_price) > 0 && (!rule || !(Number(rule.trans_unit_price) > 0))) {
+        setHint('hint_trans', `Site transport agreement · ${transRule.name}${transRule.site ? ' · ' + transRule.site : ''}`, 'ok');
       } else {
         setHint('hint_trans', transportBy === 'Third-party truck' ? 'Hauler delivers — transport price billed to customer' : 'Company fleet delivery rate', '');
       }
@@ -8037,6 +8064,10 @@
     let tier = { tier: 0, adj: 0, transAdj: 0 };
     if (rule && truckRow && truckRow.capacity && window.MFG_FORMS) tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
     else if (rule && !truckRow && window.MFG_FORMS && rule.qty1 != null && !isPickup) tier = window.MFG_FORMS.matchTier(rule, null);
+    if (!tier.transAdj && transRule && truckRow && truckRow.capacity && window.MFG_FORMS) {
+      const trTier = window.MFG_FORMS.matchTier(transRule, Number(truckRow.capacity));
+      if (trTier && trTier.transAdj) tier = Object.assign({}, tier, { transAdj: trTier.transAdj });
+    }
 
     const truckHasNoCap = !!(truckRow && !(Number(truckRow.capacity) > 0));
     const unitOverridden = uom !== baseUom && !/truck/i.test(uom);
@@ -8055,9 +8086,9 @@
     }
 
     if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', FORM_UI.postAttempted ? 'crit' : '');
-    else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} fleet — switch Transported By or pick a ${company} truck`, 'warn');
-    else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own-fleet unit — Transported By should be Company fleet`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
+    else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} — switch Transported By or pick a ${company} truck`, 'warn');
+    else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own unit — switch Transported By`, 'warn');
+    else if (truckRow && truckRow.capacity) setHint('hint_truck', `${truckRow.plate_no && norm(truckRow.plate_no) !== norm(truckRow.name) ? 'Plate ' + truckRow.plate_no + ' · ' : ''}Capacity ${fmtNum(truckRow.capacity, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
@@ -8129,8 +8160,9 @@
       FORM_UI.ownerManuallyPicked = false;
       if (transportByChanged || companyChanged) {
         const curTruckVal = val('f_truck');
+        const curEq = curTruckVal ? equipInfo(curTruckVal, company, true) : null;
         const coUnits = trucksForOwner('', company, true);
-        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal))) {
+        if (curTruckVal && !coUnits.some(u => norm(u) === norm(curTruckVal) || (curEq && norm(u) === norm(curEq.name)))) {
           if ($('f_truck')) $('f_truck').value = '';
           if ($('f_driver')) $('f_driver').value = '';
           FORM_UI.qtyManual = false;
@@ -8801,11 +8833,12 @@
       if (!k || seen.has(k)) return;
       seen.add(k);
       const dObj = driverInfo(dn);
-      const eqMatch = (SEED.records.equipment || []).find(e => norm(e.default_driver) === k && (!supName || norm(e.supplier) === norm(supName)));
+      const eqMatch = (SEED.records.equipment || []).find(e => norm(e.default_driver) === k && (!supName || normOwnerName(e.supplier) === normOwnerName(supName)));
+      const trkDisplay = (dObj && dObj.truck) || (eqMatch ? `${eqMatch.name}${eqMatch.plate_no && norm(eqMatch.plate_no) !== norm(eqMatch.name) ? ' · ' + eqMatch.plate_no : ''}` : '');
       rows.push({
         name: dn,
         phone: (dObj && dObj.phone) || '',
-        truck: (dObj && dObj.truck) || (eqMatch ? eqMatch.name : ''),
+        truck: trkDisplay,
         staged: false,
         stagedIdx: -1
       });
@@ -8815,7 +8848,13 @@
       <div class="pa-owner-trucks-strip">
         <span class="pa-owner-trucks-lbl">🚚 <b>${ownerTrucks.length}</b> Registered Truck${ownerTrucks.length === 1 ? '' : 's'} under ${esc(supName)}:</span>
         <div class="pa-owner-trucks-badges">
-          ${ownerTrucks.slice(0, 14).map(t => `<span class="badge badge-brass mono">${esc(t)}</span>`).join('')}
+          ${ownerTrucks.slice(0, 14).map(t => {
+            const eq = equipInfo(t);
+            const lbl = eq && eq.plate_no && norm(eq.plate_no) !== norm(t)
+              ? `${t} · ${eq.plate_no}${eq.capacity ? ' (' + Number(eq.capacity) + 'm³)' : ''}`
+              : `${t}${eq && eq.capacity ? ' (' + Number(eq.capacity) + 'm³)' : ''}`;
+            return `<span class="badge badge-brass mono">${esc(lbl)}</span>`;
+          }).join('')}
           ${ownerTrucks.length > 14 ? `<span class="badge">+${ownerTrucks.length - 14} more</span>` : ''}
         </div>
       </div>
@@ -9030,7 +9069,8 @@
           for (const item of all) {
             const il = item.value.toLowerCase();
             const ml = (item.meta || '').toLowerCase();
-            if (il.startsWith(ql)) starts.push(item);
+            const metaToks = ml.split(' · ').map(s => s.trim());
+            if (il.startsWith(ql) || metaToks.some(t => t.startsWith(ql))) starts.push(item);
             else if (il.includes(ql) || ml.includes(ql)) contains.push(item);
           }
           filtered = starts.concat(contains);
@@ -9053,7 +9093,7 @@
           return `
             <div class="pa-suggest-item${i === activeIdx ? ' active' : ''}${isSel ? ' is-selected' : ''}" role="option" data-suggest-idx="${i}">
               <span class="pa-suggest-label">${highlightMatch(item.value, highlightQuery)}</span>
-              ${item.meta ? `<span class="pa-suggest-meta">${esc(item.meta)}</span>` : (isSel ? '<span class="pa-suggest-check">✓</span>' : '')}
+              ${item.meta ? `<span class="pa-suggest-meta">${highlightMatch(item.meta, highlightQuery)}</span>` : (isSel ? '<span class="pa-suggest-check">✓</span>' : '')}
             </div>
           `;
         }).join('') + (filtered.length > MAX_SHOW
@@ -10744,6 +10784,26 @@
       });
     };
 
+    const addDriverQv = (drvName, roleLbl) => {
+      if (!drvName) return;
+      const di = driverInfo(drvName) || {};
+      const dEqs = (SEED.records.equipment || []).filter(e => norm(e.default_driver) === norm(drvName));
+      const dCos = (SEED.records.company_drivers || []).filter(cd => norm(cd.driver) === norm(drvName)).map(cd => cd.company);
+      const trkStr = dEqs.map(e => `${e.name}${e.plate_no && norm(e.plate_no) !== norm(e.name) ? ' (' + e.plate_no + ')' : ''}`).join(', ') || di.truck || '—';
+      cards.push({
+        tag: `QUICK VIEW · ${roleLbl || 'DRIVER'}`,
+        targetKey: 'drivers',
+        targetVal: drvName,
+        title: drvName,
+        kvs: [
+          ['Truck Owner', di.truck_owner || (dEqs[0] && dEqs[0].supplier) || 'Company Fleet'],
+          ['Assigned Truck(s)', trkStr],
+          ['Assigned BUs', dCos.length ? dCos.join(', ') : 'Shared'],
+          ['Phone / Contact', di.phone || '—']
+        ]
+      });
+    };
+
     if (key === 'sales_tickets') {
       addCustomerQv(row.customer);
       addProductQv(row.product);
@@ -10769,10 +10829,24 @@
     } else if (key === 'expenses') {
       if (row.supplier) addSupplierQv(row.supplier, 'VENDOR');
       if (row.equipment) addTruckQv(row.equipment, null);
+    } else if (key === 'equipment') {
+      if (row.supplier) addSupplierQv(row.supplier, 'TRUCK OWNER');
+      if (row.default_driver) addDriverQv(row.default_driver, 'DEFAULT DRIVER');
     } else if (key === 'company_equipment') {
       addTruckQv(row.equipment, row.default_driver);
       if (row.supplier) addSupplierQv(row.supplier, 'OWNER');
+      if (row.default_driver) addDriverQv(row.default_driver, 'DEFAULT DRIVER');
       if (row.site) addSiteQv(row.site);
+    } else if (key === 'drivers' || key === 'company_drivers') {
+      const drvName = row.driver || row.name;
+      const dObj = driverInfo(drvName) || row;
+      if (dObj.truck_owner) addSupplierQv(dObj.truck_owner, 'TRUCK OWNER');
+      const dEqs = (SEED.records.equipment || []).filter(e => norm(e.default_driver) === norm(drvName));
+      dEqs.slice(0, 2).forEach(eq => addTruckQv(eq.name, drvName));
+    } else if (key === 'suppliers') {
+      const sName = row.name || row.Supplier;
+      const sEqs = (SEED.records.equipment || []).filter(e => normOwnerName(e.supplier) === normOwnerName(sName));
+      sEqs.slice(0, 2).forEach(eq => addTruckQv(eq.name, eq.default_driver));
     }
     return cards;
   }
@@ -10867,8 +10941,9 @@
     }
     else if (key === 'drivers' || key === 'company_drivers') {
       const name = row.driver || row.name;
+      const coEqNames = new Set((rec.company_equipment || []).filter(ce => norm(ce.default_driver) === norm(name)).map(ce => norm(ce.equipment)));
       addGrid('sg_d_co', `Company-Driver Assignments (${name})`, 'BU Assignments', 'BU Assignments', 'company_drivers', (rec.company_drivers || []).filter(cd => norm(cd.driver) === norm(name)), ['company', 'driver', 'staff', 'start_date', 'end_date', 'notes'], null);
-      addGrid('sg_d_eq', `Assigned Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.default_driver) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier'], 'capacity');
+      addGrid('sg_d_eq', `Assigned Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.default_driver) === norm(name) || coEqNames.has(norm(e.name))), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier'], 'capacity');
       addGrid('sg_d_sales', `Sales Deliveries Driven by ${name}`, 'Sales Trips', 'Sales Trips', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'truck', 'qty', 'total_ttc'], 'total_ttc');
       addGrid('sg_d_raw', `Quarry Raw Loads Driven by ${name}`, 'Raw Trips', 'Raw Trips', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'truck', 'product', 'qty', 'total'], 'total');
       addGrid('sg_d_fuel', `Fuel Intakes Signed by ${name}`, 'Fuel Log', 'Fuel Log', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.driver) === norm(name)), ['date', 'ticket_no', 'company', 'equipment', 'item', 'litres', 'odometer'], 'litres');

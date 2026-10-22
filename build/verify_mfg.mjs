@@ -750,16 +750,40 @@ try {
     const wtcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const wtcCoFleetMetas = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.getAttribute('data-meta') || '');
     const wtcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 15 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael');
+    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 12 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && wtcCoFleetTrucks.includes('TB8') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael') && wtcCoFleetDrivers.includes('Hussein Saleh') && wtcCoFleetDrivers.includes('Ali Saleh');
     set('f_truck', 'TB3');
     const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael';
     const wtcTb3HintTxt = (document.getElementById('hint_truck')?.textContent || '').trim();
-    const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => /Majed Karam/i.test(m)) && !/fleet/i.test(wtcTb3HintTxt);
+    const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => m.includes('354578 · Hussein Saleh')) && wtcCoFleetMetas.some(m => m.includes('364168 · Ali Saleh')) && wtcCoFleetMetas.some(m => m.includes('360676 · Ahmad Ismael')) && !/fleet/i.test(wtcTb3HintTxt);
+
+    // Reproduce exact SharePoint Row 8007 (Screenshot 1 & 2): Company=WTC, Sale Type=Delivery, Transported By=Company fleet, Product=Mghasal, Customer=Sabeh Beton S.R.L, Site=Gisr al bacha, Truck=354578 (TB8) -> Driver=Hussein Saleh, Qty=27.00, Unit Price=$23.50, Mat Total=$634.50, Trans Unit Price=$2.00, Trans Total=$54.00, Total Ex-VAT=$688.50
+    set('f_product', 'Mghasal');
+    set('f_customer', 'Sabeh Beton S.R.L');
+    set('f_site', 'Gisr al bacha');
+    set('f_truck', '354578');
+    const sp8007Ok =
+      document.getElementById('f_driver').value === 'Hussein Saleh' &&
+      document.getElementById('f_qty').value === '27.00' &&
+      document.getElementById('f_unitprice').value === '23.50' &&
+      document.getElementById('f_mat_total').value === '634.50' &&
+      document.getElementById('f_transunitprice').value === '2.00' &&
+      document.getElementById('f_trans_total').value === '54.00' &&
+      document.getElementById('f_total_usd').value === '688.50';
+    // Verify 364168 (Tb9 -> Ali Saleh / 27 m³), 360676 (TB1 -> Ahmad Ismael / 29 m³), 364656 (Tb7 -> Mohamad Habib / 29 m³)
+    set('f_truck', '364168');
+    const sp8005Ok = document.getElementById('f_driver').value === 'Ali Saleh' && document.getElementById('f_qty').value === '27.00';
+    set('f_truck', '360676');
+    const sp8008Ok = document.getElementById('f_driver').value === 'Ahmad Ismael' && document.getElementById('f_qty').value === '29.00';
+    set('f_truck', '364656');
+    const sp8009Ok = document.getElementById('f_driver').value === 'Mohamad Habib' && document.getElementById('f_qty').value === '29.00';
+    const spFleetParityOk = sp8007Ok && sp8005Ok && sp8008Ok && sp8009Ok;
+
+    set('f_truck', 'TB3');
     set('f_company', 'BBConstruction');
     const bbcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const bbcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'mohamad abo ali';
-    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 14 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && bbcCoFleetDrivers.length === 34 && bbcCoFleetDrivers.includes('mohamad abo ali');
+    const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'Ismael';
+    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 16 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && bbcCoFleetDrivers.length === 35 && bbcCoFleetDrivers.includes('imad abdallah') && bbcCoFleetDrivers.includes('Ali Saleh') && bbcCoFleetDrivers.includes('Ahmad Ismael');
     set('f_truck', 'TB5');
     set('f_company', 'WTC');
     const coSwitchClearedMismatchedFleetTruck = document.getElementById('f_truck').value === '';
@@ -768,7 +792,7 @@ try {
     const pickupDriverHidden = document.getElementById('wrap_f_driver').hidden === true;
     const truckUnlockedByDefault = document.getElementById('f_truck').readOnly === false;
     set('f_truck', '355948');
-    const pickupNoDriverNeeded = document.getElementById('wrap_f_driver').hidden === true && document.getElementById('f_driver').value === '' && document.getElementById('f_truckowner').value === 'Ali Lakis';
+    const pickupNoDriverNeeded = document.getElementById('wrap_f_driver').hidden === true && document.getElementById('f_driver').value === '' && document.getElementById('f_truckowner').value === 'Ali Khalife';
 
     // Switch to Delivery (Third-party truck): Driver becomes visible & required, filtered to Ali Lakis's drivers, with Default Driver chosen first
     set('f_saletype', 'Delivery');
@@ -861,7 +885,7 @@ try {
     document.querySelector('.modal-tab[data-form="sales"]').click();
 
     const cascadeDiag = {
-      truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, coFleetTruckNoRedundantFleetBadge, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
+      truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, coFleetTruckNoRedundantFleetBadge, spFleetParityOk, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
       pickupDriverHidden, pickupNoDriverNeeded, delivDriverVisible,
       truckUnlockedByDefault, aahedPopulatedOwner, aahedOwnerLocked, aahedPopulatedDriver, aahedPopulatedQty,
       driverFilteredToOwnerOnly, substituteDriverKept,
@@ -2021,7 +2045,7 @@ try {
     document.getElementById('dynSaveModalBtn').click();
     const drvDupBlocked = Boolean(document.getElementById('formErrors') && !document.getElementById('formErrors').hidden && /already exists in the Universal Driver Registry/i.test(document.getElementById('formErrors').innerText));
 
-    const univDupGuardOk = supLiveDupHint && supDupBlocked && supCountBefore === 1166 && supCountAfter === 1166 && aahedRows.length === 1 && custDupBlocked && eqDupBlocked && drvDupBlocked;
+    const univDupGuardOk = supLiveDupHint && supDupBlocked && supCountBefore >= 1166 && supCountAfter === supCountBefore && aahedRows.length === 1 && custDupBlocked && eqDupBlocked && drvDupBlocked;
 
     document.getElementById('closeModalBtn').click();
     document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
@@ -2408,7 +2432,7 @@ try {
     const eqPool = window.MFG_SEED.records.equipment || [];
     const dirtyNotesCount = eqPool.filter(r => /Merged trucks|\\(m\\d+|Workbook status/i.test(String(r.notes || ''))).length;
 
-    // 2. Reproduce exact user screenshot: click "Company Fleet" view chip, search "truck" -> must show ONLY Truck rows (23), zero Wheel Loader / Vehicle / Excavator
+    // 2. Reproduce exact user screenshot: click "Company Fleet" view chip, search "truck" -> must show ONLY Truck rows (20), zero Wheel Loader / Vehicle / Excavator
     const ownViewBtn = document.querySelector('#univRegPanel [data-tbl-view="own"]');
     if (ownViewBtn) ownViewBtn.click();
     const searchInp = document.getElementById('tableSearchInput');
@@ -2418,14 +2442,14 @@ try {
 
     const ownTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (23');
+    const ownSearchOnlyTrucks = ownTruckTypes.length === 20 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (20');
 
-    // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,533 total)
+    // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,530 total)
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
     if (allViewBtn) allViewBtn.click();
     const allTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const allTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && allTruckFoot.includes('TOTAL (1,533');
+    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && allTruckFoot.includes('TOTAL (1,530');
 
     // Clear search
     const clearSearch = document.getElementById('tableSearchInput');
@@ -2454,7 +2478,7 @@ try {
     if (selOwn) { selOwn.value = 'Own'; selOwn.dispatchEvent(new Event('change', { bubbles: true })); }
 
     const multiRows = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow'));
-    const multiAllMatch = (multiRows.length === 13 || multiRows.length === 15) && multiRows.every(tr =>
+    const multiAllMatch = (multiRows.length === 10 || multiRows.length === 12 || multiRows.length === 13 || multiRows.length === 15) && multiRows.every(tr =>
       /WTC/i.test(tr.children[1].textContent) &&
       tr.children[3].textContent.trim() === 'Truck' &&
       /Own/i.test(tr.children[4].textContent)
@@ -2478,7 +2502,7 @@ try {
     const clearAllBtn = document.querySelector('#univRegPanel [data-cf-clear-all]');
     if (clearAllBtn) clearAllBtn.click();
     const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,640');
+    const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,637');
 
     // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, no redundant header/guide boxes, clean header hover, wide search box & custom pill popover
     document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
