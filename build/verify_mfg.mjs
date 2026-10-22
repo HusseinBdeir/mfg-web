@@ -2367,14 +2367,14 @@ try {
 
     const ownTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && /TOTAL\s*\(\s*23\b/i.test(ownTruckFoot);
+    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (23');
 
     // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,533 total)
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
     if (allViewBtn) allViewBtn.click();
     const allTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const allTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && /TOTAL\s*\(\s*1,533\b/i.test(allTruckFoot);
+    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && allTruckFoot.includes('TOTAL (1,533');
 
     // Clear search
     const clearSearch = document.getElementById('tableSearchInput');
@@ -2427,7 +2427,7 @@ try {
     const clearAllBtn = document.querySelector('#univRegPanel [data-cf-clear-all]');
     if (clearAllBtn) clearAllBtn.click();
     const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const resetRestoredAll = /1,(?:640|562) RECORDS/i.test(restoredAllFoot);
+    const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,640');
 
     // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views & 3-card Fleet/Counterparty Guide Strip
     document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();

@@ -2004,13 +2004,7 @@ def main():
             line = raw_line.strip()
             if not line:
                 continue
-            if _re.match(r"^Merged trucks\s*\(m89", line, _re.I):
-                continue
-            if _re.search(r"\((?:column\s+|text,\s*)?retired\s+m\d+\)", line, _re.I):
-                continue
-            if _re.match(r"^Workbook status\s+\w+\s+from\s+[\d-]+\s*\(m\d+\)", line, _re.I):
-                continue
-            if _re.match(r"^\[m\d+[^\]]*\]$", line, _re.I):
+            if _re.search(r"Merged trucks|\(m\d+|\[m\d+|Workbook status|\((?:column\s+|text,\s*)?retired\s+m\d+\)|Earlier window\s+\d{4}|owner type\s+\d|their notes:", line, _re.I):
                 continue
             lines.append(line)
         return _MIG_TAG_RE.sub("", "\n".join(lines)).strip()
