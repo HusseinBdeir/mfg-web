@@ -109,7 +109,7 @@
       if (th.dataset.colCleanLabel) return th.dataset.colCleanLabel;
       const clone = th.cloneNode(true);
       clone.querySelectorAll('.tbl-col-resizer, .tbl-th-tools, .th-filter-btn, .sr-only, i').forEach(el => el.remove());
-      const raw = clone.textContent.replace(/[▲▼▾]/g, '').replace(/\s+/g, ' ').trim();
+      const raw = clone.textContent.replace(/[▲▼▾⧩]/g, '').replace(/\s+/g, ' ').trim();
       const label = raw || ('Column ' + (i + 1));
       th.dataset.colCleanLabel = label;
       return label;

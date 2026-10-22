@@ -2367,14 +2367,14 @@ try {
 
     const ownTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && /23 RECORDS/i.test(ownTruckFoot);
+    const ownSearchOnlyTrucks = ownTruckTypes.length === 23 && ownTruckTypes.every(t => t === 'Truck') && /TOTAL\s*\(\s*23\b/i.test(ownTruckFoot);
 
     // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,533 total)
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
     if (allViewBtn) allViewBtn.click();
     const allTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const allTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && /1,533 RECORDS/i.test(allTruckFoot);
+    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && /TOTAL\s*\(\s*1,533\b/i.test(allTruckFoot);
 
     // Clear search
     const clearSearch = document.getElementById('tableSearchInput');
