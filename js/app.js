@@ -6732,7 +6732,7 @@
     else setHint('hint_disc', '', '');
 
     commonDateChecks(warnings);
-    dupCheck(company);
+    dupCheck(company, 'sales', date);
     renderAdminLockBar();
     return { company, saleType, transportBy: isDelivery ? transportBy : (isPickup ? 'Customer truck' : 'Unregistered'), customer, product, site: isDelivery ? site : '', date, repDate: val('f_repdate') || date, prod, uom, cust, vatReg, rule, tier, tierAdj, tierTrAdj, qty, up, tp, disc, tip, mat: matGross, tr: finalTr, net, vat, ttc, method: val('f_method') };
   }
@@ -6843,7 +6843,7 @@
 
     setText('calc_mat', fmtUSD(mat, 2)); setText('calc_tr', fmtUSD(tr, 2)); setText('calc_qty', fmtNum(qty, 2) + ' ' + uom); setText('calc_total', fmtUSD(mat + tr, 2));
     commonDateChecks(warnings);
-    dupCheck(company);
+    dupCheck(company, 'raw', date);
     renderAdminLockBar();
     return { company, transportBy, site, owner, product, date, repDate: val('f_repdate') || date, prod, uom, rule, qty, up, tp, disc, mat, tr };
   }
@@ -6916,7 +6916,7 @@
     const bbcTankNegative = company === 'BBConstruction' && (fuelType === 'Diesel' || /diesel/i.test(val('f_item'))) && Number((((SEED.sentinels.fleet_fuel_overtime_auditor || {}).by_model || {}).BBConstruction || {}).diesel_stock_balance_l || 0) < 0;
     setHint('hint_qty', bbcTankNegative ? 'BBConstruction tank is negative — diesel intakes are refused until the history is corrected' : (litres <= 0 && val('f_qty') ? 'Must be above zero' : ''), bbcTankNegative || (litres <= 0 && val('f_qty')) ? 'crit' : '');
     commonDateChecks([]);
-    if (val('f_ticketno')) dupCheck(company); else setHint('hint_ticket', 'Optional — leave blank for an unnumbered intake', '');
+    if (val('f_ticketno')) dupCheck(company, 'fuel', date); else setHint('hint_ticket', 'Optional — leave blank for an unnumbered intake', '');
     renderAdminLockBar();
     return { company, equipment, date, repDate: val('f_repdate') || date, fuelType, type, reading, litres, prev, delta, guard, bbcTankNegative };
   }
@@ -7632,8 +7632,8 @@
     if (f === 'sales') {
       const ticket = val('f_ticketno');
       if (!ticket) errors.push('Ticket number is required.');
-      const dup = ticketExists(company, ticket, 'sales');
-      if (dup && !($('f_dupok') && $('f_dupok').checked)) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company} — tick "Post anyway" if the pad really repeats.`);
+      const dup = ticketExists(company, ticket, 'sales', date);
+      if (dup && dup.blocked) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       if (!c.customer) errors.push('Customer is required.');
       if (!c.product) errors.push('Product is required.');
       if (!(c.qty > 0)) errors.push('Quantity must be above zero.');
@@ -7646,18 +7646,18 @@
       }
       if (c.disc > c.mat && c.mat > 0) errors.push('Discount exceeds the material subtotal.');
       if (c.mat > 0 && c.disc > c.mat * 0.2 && !notes) errors.push('Discount above 20% of material needs a note.');
-      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: repDate, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, external_qty: val('f_extqty') ? num('f_extqty') : null, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, tip: c.tip || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!dup };
+      record = { ...base, name: `TKT ${date} ${c.customer} #${ticket}`, ticket_no: ticket, rep_date: repDate, sale_type: c.saleType, transport_by: c.transportBy, customer: c.customer, product: c.product, site: c.site, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom, ton_factor: c.prod ? Number(c.prod.ton_factor || 1) : 1, qty: c.qty, external_qty: val('f_extqty') ? num('f_extqty') : null, unit_price: c.up, price: c.mat, tier: c.tier ? c.tier.tier : 0, tier_adj: c.tierAdj || 0, trans_unit_price: c.tp, trans_price: c.tr, trans_tier_adj: c.tierTrAdj || 0, tip: c.tip || 0, discount: c.disc, total: c.net, vat: c.vat, total_ttc: c.ttc, method: val('f_method'), vat_invoice: c.vatReg ? val('f_vatinvoice') : '', external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : (c.up ? (FORM_UI.priceManual ? 'Manual' : 'List Price') : ''), duplicate_confirmed: !!(dup && dup.warn) };
     } else if (f === 'raw') {
       const ticket = val('f_ticketno');
       if (!ticket) errors.push('Ticket number is required.');
-      const dup = ticketExists(company, ticket, 'raw');
-      if (dup && !($('f_dupok') && $('f_dupok').checked)) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company} — tick "Post anyway" if the pad really repeats.`);
+      const dup = ticketExists(company, ticket, 'raw', date);
+      if (dup && dup.blocked) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       if (!c.site) errors.push('Quarry site is required.');
       if (!c.product) errors.push('Raw material is required.');
       if (!(c.qty > 0)) errors.push('Quantity must be above zero.');
       if (c.up > 0 && !c.owner) errors.push('Quarry site owner (material payee) is required when the material has a cost.');
       if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) errors.push('Truck owner (haulage payee) is required for third-party haulage.');
-      record = { ...base, name: `RAW ${date} ${c.site} #${ticket}`, ticket_no: ticket, rep_date: repDate, product: c.product, site: c.site, site_owner: c.owner, transport_by: c.transportBy, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom || (c.prod ? c.prod.uom : 'm³'), qty: c.qty, discount: c.disc || 0, unit_cost: c.up, cost: c.mat, trans_unit_cost: c.tp, trans_cost: c.tr, total: round2(c.mat + c.tr), method: val('f_method'), external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : '', duplicate_confirmed: !!dup };
+      record = { ...base, name: `RAW ${date} ${c.site} #${ticket}`, ticket_no: ticket, rep_date: repDate, product: c.product, site: c.site, site_owner: c.owner, transport_by: c.transportBy, truck_owner: c.transportBy === 'Company fleet' ? company : val('f_truckowner'), truck: val('f_truck'), driver: val('f_driver'), uom: c.uom || (c.prod ? c.prod.uom : 'm³'), qty: c.qty, discount: c.disc || 0, unit_cost: c.up, cost: c.mat, trans_unit_cost: c.tp, trans_cost: c.tr, total: round2(c.mat + c.tr), method: val('f_method'), external_invoice: val('f_extinvoice'), reference: val('f_reference'), time: val('f_time') || '12:00', overtime: !!($('f_overtime') && $('f_overtime').checked), price_rule: c.rule ? c.rule.name : '', duplicate_confirmed: !!(dup && dup.warn) };
     } else if (f === 'receipt') {
       if (!c.customer) errors.push('Customer is required.');
       if (!(c.amount > 0)) errors.push('Amount must be above zero.');
@@ -7671,8 +7671,8 @@
       if (!c.guard.ok) errors.push('Meter guard: ' + c.guard.label);
       if (c.guard.cls === 'warn' && !notes) errors.push('Large meter jump — add a note to confirm the reading.');
       const ticket = val('f_ticketno');
-      const dup = ticketExists(company, ticket, 'fuel');
-      if (dup && ticket) errors.push(`Ticket ${ticket} already exists on a ${dup.label} in ${company}.`);
+      const dup = ticketExists(company, ticket, 'fuel', date);
+      if (dup && dup.blocked && ticket) errors.push(`Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       const resolvedItem = c.fuelType === 'Lubricant' ? val('f_item') : c.fuelType;
       record = { ...base, name: `FUEL ${date} ${c.equipment}${ticket ? ' #' + ticket : ''}`, ticket_no: ticket, rep_date: repDate, fuel_type: c.fuelType, item: resolvedItem, equipment: c.equipment, driver: val('f_driver'), litres: round2(c.litres), odometer: c.type === 'odometer' ? c.reading : null, hours: c.type === 'hours' ? c.reading : null, location: val('f_location'), meter_delta: c.delta };
     } else if (f === 'expense') {

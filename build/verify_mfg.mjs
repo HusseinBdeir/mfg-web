@@ -365,8 +365,35 @@ try {
     coEl.value = 'WTC';
     coEl.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Ticket 19950 exists in WTC raw_purchases (2026-02-28) but NOT in WTC sales_tickets
+    // Duplicate ticket 3-band date rule (2026-10-22):
+    // 1) Same day / day before (<=1d): red 'crit' ("Not accepted"), wrap_dupok hidden
+    // 2) 2..30 days (up to a month before): yellow 'warn' ("days ago — accepted"), wrap_dupok hidden
+    // 3) >30 days (more than a month before) or another table: no warning needed ('')
+    const dEl = document.getElementById('f_date');
     const tEl = document.getElementById('f_ticketno');
+    dEl.value = '2026-10-21';
+    dEl.dispatchEvent(new Event('change', { bubbles: true }));
+    tEl.value = '19805'; // exists in WTC sales_tickets dated 2026-10-21
+    tEl.dispatchEvent(new Event('input', { bubbles: true }));
+    const salesSameDayHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const salesSameDayCls = (document.getElementById('hint_ticket') || {}).className || '';
+    const salesSameDayWrapHidden = document.getElementById('wrap_dupok').hidden === true;
+
+    dEl.value = '2026-10-22'; // 1 day after 2026-10-21 (day before -> still blocked)
+    dEl.dispatchEvent(new Event('change', { bubbles: true }));
+    const salesDayBeforeHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const salesDayBeforeCls = (document.getElementById('hint_ticket') || {}).className || '';
+
+    // Pick a ticket dated ~10-15 days before 2026-10-21 (e.g. 2026-10-08 in WTC sales_tickets)
+    const midRow = (window.MFG_SEED.records.sales_tickets || []).find(r => r && !r.voided && r.company === 'WTC' && r.ticket_no && String(r.date).slice(0, 10) === '2026-10-08');
+    dEl.value = '2026-10-21';
+    dEl.dispatchEvent(new Event('change', { bubbles: true }));
+    tEl.value = midRow ? String(midRow.ticket_no) : '19805';
+    tEl.dispatchEvent(new Event('input', { bubbles: true }));
+    const salesWithinMonthHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const salesWithinMonthCls = (document.getElementById('hint_ticket') || {}).className || '';
+
+    // Ticket 19950 exists in WTC raw_purchases (2026-02-28, > 30 days ago) and not in sales_tickets -> no warning
     tEl.value = '19950';
     tEl.dispatchEvent(new Event('input', { bubbles: true }));
     const sales19950Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
@@ -411,22 +438,41 @@ try {
     stEl.value = 'Pickup';
     stEl.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Now switch to Raw Quarry Purchase form: 1) f_ticketno starts blank; 2) typing 19950 DOES flag duplicate in raw_purchases
+    // Now switch to Raw Quarry Purchase form: 1) f_ticketno starts blank; 2) 19950 (2026-02-28) is >30d before 2026-10-22 so no warning; 3) setting date to 2026-03-01 (1d after 2026-02-28) blocks it; 4) setting date to 2026-03-15 (15d after) shows yellow warn
     document.querySelector('.modal-tab[data-form="raw"]').click();
     const rawBlankOnOpen = document.getElementById('f_ticketno').value === '';
     const rawCo = document.getElementById('f_company');
     rawCo.value = 'WTC';
     rawCo.dispatchEvent(new Event('change', { bubbles: true }));
+    const rawD = document.getElementById('f_date');
     const rawT = document.getElementById('f_ticketno');
+    rawD.value = '2026-10-22';
+    rawD.dispatchEvent(new Event('change', { bubbles: true }));
     rawT.value = '19950';
     rawT.dispatchEvent(new Event('input', { bubbles: true }));
-    const raw19950Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
-    const raw19950DupWrapVisible = document.getElementById('wrap_dupok').hidden === false;
+    const rawOverMonthHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const rawOverMonthCls = (document.getElementById('hint_ticket') || {}).className || '';
+    rawD.value = '2026-03-15';
+    rawD.dispatchEvent(new Event('change', { bubbles: true }));
+    const rawWithinMonthHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const rawWithinMonthCls = (document.getElementById('hint_ticket') || {}).className || '';
+    rawD.value = '2026-03-01';
+    rawD.dispatchEvent(new Event('change', { bubbles: true }));
+    const rawDayBeforeHint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const rawDayBeforeCls = (document.getElementById('hint_ticket') || {}).className || '';
+    const rawDupWrapHidden = document.getElementById('wrap_dupok').hidden === true;
 
     return {
       salesBlankOnOpen,
       salesHintOnOpen,
       salesBlankAfterCoChange,
+      salesSameDayHint,
+      salesSameDayCls,
+      salesSameDayWrapHidden,
+      salesDayBeforeHint,
+      salesDayBeforeCls,
+      salesWithinMonthHint,
+      salesWithinMonthCls,
       sales19950Hint,
       sales19950DupWrapHidden,
       nativeListCount,
@@ -444,16 +490,27 @@ try {
       pickedTruck,
       menuClosedAfterPick,
       rawBlankOnOpen,
-      raw19950Hint,
-      raw19950DupWrapVisible
+      rawOverMonthHint,
+      rawOverMonthCls,
+      rawWithinMonthHint,
+      rawWithinMonthCls,
+      rawDayBeforeHint,
+      rawDayBeforeCls,
+      rawDupWrapHidden
     };
   })()`);
   ticketAndSuggestProbe.salesBlankOnOpen && ticketAndSuggestProbe.rawBlankOnOpen && ticketAndSuggestProbe.salesBlankAfterCoChange && ticketAndSuggestProbe.salesHintOnOpen === ''
     ? pass('entry desk · Ticket Number starts blank on New Entry & stays blank on company switch')
     : fail('entry desk blank ticket number', JSON.stringify(ticketAndSuggestProbe));
-  /Number is free/i.test(ticketAndSuggestProbe.sales19950Hint) && ticketAndSuggestProbe.sales19950DupWrapHidden && /Already used on Raw Material Ticket 19950/i.test(ticketAndSuggestProbe.raw19950Hint) && ticketAndSuggestProbe.raw19950DupWrapVisible
-    ? pass('entry desk · duplicate ticket check isolated per table (Sales 19950 free vs Raw 19950 flagged)', `${ticketAndSuggestProbe.sales19950Hint} | ${ticketAndSuggestProbe.raw19950Hint}`)
-    : fail('entry desk per-table duplicate check', JSON.stringify(ticketAndSuggestProbe));
+  /Not accepted/i.test(ticketAndSuggestProbe.salesSameDayHint) && /\bcrit\b/.test(ticketAndSuggestProbe.salesSameDayCls) && ticketAndSuggestProbe.salesSameDayWrapHidden &&
+  /Not accepted/i.test(ticketAndSuggestProbe.salesDayBeforeHint) && /\bcrit\b/.test(ticketAndSuggestProbe.salesDayBeforeCls) &&
+  /days ago — accepted/i.test(ticketAndSuggestProbe.salesWithinMonthHint) && /\bwarn\b/.test(ticketAndSuggestProbe.salesWithinMonthCls) &&
+  ticketAndSuggestProbe.sales19950Hint === '' && ticketAndSuggestProbe.sales19950DupWrapHidden &&
+  ticketAndSuggestProbe.rawOverMonthHint === '' && !/\b(warn|crit)\b/.test(ticketAndSuggestProbe.rawOverMonthCls) &&
+  /days ago — accepted/i.test(ticketAndSuggestProbe.rawWithinMonthHint) && /\bwarn\b/.test(ticketAndSuggestProbe.rawWithinMonthCls) &&
+  /Not accepted/i.test(ticketAndSuggestProbe.rawDayBeforeHint) && /\bcrit\b/.test(ticketAndSuggestProbe.rawDayBeforeCls) && ticketAndSuggestProbe.rawDupWrapHidden
+    ? pass('entry desk · 3-band duplicate ticket guard (<=1d blocked red · 2–30d yellow warning · >30d no warning)', `${ticketAndSuggestProbe.salesSameDayHint} | ${ticketAndSuggestProbe.salesWithinMonthHint}`)
+    : fail('entry desk 3-band duplicate ticket guard', JSON.stringify(ticketAndSuggestProbe));
   ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^10/.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
     ? pass('entry desk · Rev 10 unified combobox & select popover (Product/Grade with UoM·Ton badges, 0 native popups, 0 scrollbars)', `grade="${ticketAndSuggestProbe.pickedProd}" (${ticketAndSuggestProbe.prodMetaBadges} badges) · truck=${ticketAndSuggestProbe.pickedTruck}`)
     : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
@@ -502,7 +559,19 @@ try {
     const pickupTransPriceHidden = document.getElementById('wrap_f_transunitprice').hidden === true;
     const pickupTransTotHidden = document.getElementById('wrap_f_trans_total').hidden === true;
     const pickupTruckOwnerVisible = document.getElementById('wrap_f_truckowner').hidden === false;
+    const stWrap = document.getElementById('wrap_f_saletype');
+    const stRectPickup = stWrap ? stWrap.getBoundingClientRect() : { left: 0, top: 0 };
+    const otInsideTimeField = !!document.querySelector('#wrap_f_time #wrap_f_overtime #toggleOvertimeBtn');
     set('f_saletype', 'Delivery');
+    const stRectDeliv = stWrap ? stWrap.getBoundingClientRect() : { left: 99, top: 99 };
+    const saleTypeRowStable = otInsideTimeField && Math.abs(stRectPickup.left - stRectDeliv.left) < 1 && Math.abs(stRectPickup.top - stRectDeliv.top) < 1;
+    set('f_time', '04:25');
+    const otAutoOnAtNight = document.getElementById('f_overtime')?.checked === true && /Overtime Registered/i.test(document.getElementById('toggleOvertimeBtn')?.textContent || '');
+    document.getElementById('toggleOvertimeBtn')?.click();
+    const otManualCleared = document.getElementById('f_overtime')?.checked === false && /No Overtime/i.test(document.getElementById('toggleOvertimeBtn')?.textContent || '');
+    set('f_time', '10:30');
+    const otAutoDayShift = document.getElementById('f_overtime')?.checked === false && /Day Shift/i.test(document.getElementById('toggleOvertimeBtn')?.textContent || '');
+    const overtimeLinkedToTimeOk = saleTypeRowStable && otAutoOnAtNight && otManualCleared && otAutoDayShift;
     const delivSiteVisible = !document.getElementById('wrap_f_site').hidden;
     const delivTransVisible = !document.getElementById('wrap_f_transunitprice').hidden;
     const delivOwnerHiddenOnCoFleet = document.getElementById('wrap_f_truckowner').hidden;
@@ -551,14 +620,14 @@ try {
     const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
 
     return {
-      orderingOk, saleTypeOrderOk,
+      orderingOk, saleTypeOrderOk, overtimeLinkedToTimeOk,
       delivSiteVisible, delivTransVisible, delivOwnerHiddenOnCoFleet,
       pickupSiteHidden, pickupTransByHidden, pickupOvertimeHidden, pickupTransPriceHidden, pickupTransTotHidden, pickupTruckOwnerVisible,
       repSynced, noInternalCodes,
       startsLocked, boxOpened, unlockedNow, manualPriceKept, relockedNow
     };
   })()`);
-  intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
+  intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.overtimeLinkedToTimeOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
   intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
   intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow
     ? pass('entry desk · v7.9 BU -> Locked Transaction Date -> On-Demand Reporting Date -> Time ordering, Pickup Gating, Clean UI & Admin Unlock')

@@ -9970,3 +9970,61 @@ tr.seat-editing-row td:first-child {
   border-style: solid;
 }
 
+/* Duplicate Ticket # guard: yellow warning (2–30 days prior) & red hard block (same day / day before) */
+#hint_ticket.warn {
+  color: #854D0E;
+  background: #FEF9C3;
+  border: 1px solid #FACC15;
+  border-radius: 5px;
+  padding: 2px 7px;
+  display: inline-block;
+  margin-top: 2px;
+}
+:root[data-theme="dark"] #hint_ticket.warn {
+  color: #FDE047;
+  background: rgba(250, 204, 21, 0.16);
+  border-color: rgba(250, 204, 21, 0.48);
+}
+#hint_ticket.crit {
+  color: var(--crit);
+  background: var(--crit-bg);
+  border: 1px solid rgba(200, 51, 59, 0.32);
+  border-radius: 5px;
+  padding: 2px 7px;
+  display: inline-block;
+  margin-top: 2px;
+}
+:root[data-theme="dark"] #hint_ticket.crit {
+  border-color: rgba(226, 90, 97, 0.42);
+}
+
+.ot-inline-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.ot-inline-wrap[hidden] {
+  display: none !important;
+}
+.overtime-toggle-btn.is-overtime {
+  border-style: solid;
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(245, 158, 11, 0.14);
+  color: #B45309;
+}
+.overtime-toggle-btn.is-overtime:hover {
+  border-color: #D97706;
+  background: rgba(245, 158, 11, 0.22);
+  color: #92400E;
+}
+html[data-theme="dark"] .overtime-toggle-btn.is-overtime {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(245, 158, 11, 0.18);
+  color: #FBBF24;
+}
+html[data-theme="dark"] .overtime-toggle-btn.is-overtime:hover {
+  border-color: #FBBF24;
+  background: rgba(245, 158, 11, 0.26);
+  color: #FDE68A;
+}
+
+
