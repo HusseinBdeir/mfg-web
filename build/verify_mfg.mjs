@@ -809,8 +809,18 @@ try {
       rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
       rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
     };
+    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    const usersLight = {
+      enrolViewport: lum(getComputedStyle(document.querySelector('.enrol-cam-viewport')).backgroundColor),
+      enrolPlaceholderTitle: lum(getComputedStyle(document.querySelector('.enrol-cam-placeholder-title')).color) < 60 ? 250 : 0
+    };
 
     if (btn) btn.click(); // switch to Dark mode
+    const usersDark = {
+      enrolViewport: lum(getComputedStyle(document.querySelector('.enrol-cam-viewport')).backgroundColor),
+      enrolPlaceholderTitle: lum(getComputedStyle(document.querySelector('.enrol-cam-placeholder-title')).color) > 200 ? 15 : 255
+    };
+    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
     const rdlDark = {
       rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
       rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
@@ -833,8 +843,8 @@ try {
     if (btn) btn.click(); // restore Light mode
     document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
 
-    const lightVals = { ...pbiLight, ...salesLight, ...rdlLight };
-    const darkVals = { ...pbiDark, ...salesDark, ...rdlDark };
+    const lightVals = { ...pbiLight, ...salesLight, ...rdlLight, ...usersLight };
+    const darkVals = { ...pbiDark, ...salesDark, ...rdlDark, ...usersDark };
     const allLightOk = Object.values(lightVals).every(v => v > 220);
     const allDarkOk = Object.values(darkVals).every(v => v < 50);
     return { allLightOk, allDarkOk, lightVals, darkVals };
