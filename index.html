@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=7.4">
+  <link rel="stylesheet" href="css/app.css?v=7.6">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -204,12 +204,45 @@
         </div>
 
         <div class="tools">
-          <!-- Entity / Business Unit Selector (Match ISABI Sandbox Bar) -->
-          <div class="entity-bar" id="companySwitch" role="group" aria-label="Operating Entity">
-            <button type="button" class="entity-btn active" data-company="manufacturing-group"><span class="co-full">All Group (3)</span><span class="co-short">All Group</span></button>
-            <button type="button" class="entity-btn" data-company="wtc">WTC</button>
-            <button type="button" class="entity-btn" data-company="bbconstruction"><span class="co-full">BBConstruction</span><span class="co-short">BBC</span></button>
-            <button type="button" class="entity-btn" data-company="lionstransport"><span class="co-full">Lions Transport</span><span class="co-short">Lions</span></button>
+          <!-- Scalable Multi-Industry & Multi-Company Selector Box (Fixed Footprint · 10 Industries × 200+ Companies) -->
+          <div class="entity-bar entity-picker-box" id="companySwitch" role="group" aria-label="Operating Industry &amp; Company">
+            <button type="button" class="entity-picker-trigger" id="companySwitchTrigger" aria-haspopup="listbox" aria-expanded="false" title="Switch Industry &amp; Operating Company (10 Industries · 200+ Companies Ready)">
+              <span class="ep-seg ep-seg-ind">
+                <small class="ep-seg-kicker">IND</small>
+                <strong id="companySwitchIndText">Manufacturing</strong>
+              </span>
+              <span class="ep-seg-div" aria-hidden="true"></span>
+              <span class="ep-seg ep-seg-co">
+                <small class="ep-seg-kicker">CO</small>
+                <strong id="companySwitchCoText">All Group (3)</strong>
+              </span>
+              <span class="ep-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="entity-picker-popover" id="companySwitchPopover" hidden>
+              <div class="entity-picker-toolbar">
+                <input type="search" id="companySwitchSearch" class="entity-picker-search" placeholder="Search industries or companies..." autocomplete="off" aria-label="Search industries or companies">
+                <div class="entity-picker-actions">
+                  <button type="button" class="entity-picker-act-btn" id="companySwitchSelectAllBtn" title="Switch to consolidated view across all permitted companies">All Assigned</button>
+                  <button type="button" class="entity-picker-act-btn entity-picker-demo-btn" id="companySwitchScalePreviewBtn" title="Toggle 10 Industries × 15 Companies (150 Companies) enterprise scale preview">⚡ Preview 10 Ind × 150 Co</button>
+                </div>
+              </div>
+              <div class="entity-picker-body">
+                <div class="entity-picker-ind-col" id="companySwitchIndustryList" role="tablist" aria-label="Industries"></div>
+                <div class="entity-picker-co-col">
+                  <div class="entity-picker-co-head" id="companySwitchCoHead">Operating Companies</div>
+                  <div class="entity-picker-list" id="companySwitchList" role="listbox" aria-label="Operating Companies">
+                    <button type="button" class="entity-btn active" data-company="manufacturing-group"><span class="co-full">All Group (3)</span><span class="co-short">All Group</span></button>
+                    <button type="button" class="entity-btn" data-company="wtc">WTC</button>
+                    <button type="button" class="entity-btn" data-company="bbconstruction"><span class="co-full">BBConstruction</span><span class="co-short">BBC</span></button>
+                    <button type="button" class="entity-btn" data-company="lionstransport"><span class="co-full">Lions Transport</span><span class="co-short">Lions</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="entity-picker-foot">
+                <span id="companySwitchFootStatus">1 Industry · 3 Companies Permitted (RLS)</span>
+                <button type="button" class="btn btn-brass" style="padding:2px 9px;font-size:10.5px" id="companySwitchDoneBtn">Done</button>
+              </div>
+            </div>
           </div>
 
           <div class="period-basis-row">
@@ -415,6 +448,15 @@
               <span id="authFaceStats">Face ID &amp; PIN Ready</span>
             </div>
             <div class="auth-face-actions">
+              <label class="auth-req-pill" for="authGateReqSelect" title="Select Sign-In Requirement: Either PIN or Face ID, Both (PIN + Face ID 2FA), Face ID Only, or Access PIN Only">
+                <span class="auth-req-lbl">Req:</span>
+                <select id="authGateReqSelect" class="auth-req-select" data-native-select="1" aria-label="Sign-In Requirement Mode">
+                  <option value="either">Either: PIN or Face ID</option>
+                  <option value="both">Both: PIN + Face ID (2FA)</option>
+                  <option value="face_only">Face ID Only (Live 3D)</option>
+                  <option value="pin_only">Access PIN Only</option>
+                </select>
+              </label>
               <button type="button" class="auth-hud-btn" id="authCamToggleBtn" title="Turn camera on or off">
                 Turn Off Camera
               </button>
@@ -457,7 +499,7 @@
               <div class="auth-hint-wrap">
                 <div id="authFaceHint" class="auth-face-hint">Loading Face ID…</div>
                 <div id="authStreakBar" class="auth-streak-bar"><div id="authStreakFill" class="auth-streak-fill"></div></div>
-                <small class="auth-cam-note">Camera turns off automatically on sign-in</small>
+                <small class="auth-cam-note" id="authCamNote">Anti-screenshot: 3+ frames + live blink or 3D head-turn required</small>
               </div>
             </div>
           </div>
@@ -510,14 +552,14 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=7.4"></script>
-  <script src="js/face.js?v=7.4"></script>
-  <script src="js/endpoints.js?v=7.4"></script>
-  <script src="js/seed_data.js?v=7.4"></script>
-  <script src="js/forms_engine.js?v=7.4"></script>
-  <script src="js/pbi_pages.js?v=7.4"></script>
-  <script src="js/rdl_reports.js?v=7.4"></script>
-  <script src="js/app.js?v=7.4"></script>
+  <script src="vendor/face-api.js?v=7.6"></script>
+  <script src="js/face.js?v=7.6"></script>
+  <script src="js/endpoints.js?v=7.6"></script>
+  <script src="js/seed_data.js?v=7.6"></script>
+  <script src="js/forms_engine.js?v=7.6"></script>
+  <script src="js/pbi_pages.js?v=7.6"></script>
+  <script src="js/rdl_reports.js?v=7.6"></script>
+  <script src="js/app.js?v=7.6"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       let refreshing = false;

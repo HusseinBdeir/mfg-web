@@ -654,7 +654,8 @@ try {
     const hintNoOverlap = hintRect.left >= vpRect.right - 2 || hintRect.top >= vpRect.bottom - 2;
     const noSoundBtn = !document.getElementById('authSoundBtn') && window.Face && window.Face.Sound && window.Face.Sound.enabled === false;
 
-    // 1. Entering PIN for an enrolled seat triggers Step-Up 2FA instead of unlocking immediately
+    // 1. Verify 'both' (PIN + Face ID 2FA) mode: entering PIN for an enrolled seat triggers Step-Up 2FA instead of unlocking immediately
+    T.setAuthMode('both');
     const pinStep = await T.performLogin('husseinbdeir@bhfirms.com', '1111');
     const bannerVisible = !document.getElementById('authFaceTargetBanner').hidden;
     const stillLockedAfterPin = !document.getElementById('authGate').hidden;
@@ -662,23 +663,61 @@ try {
     // 2. Feeding Zeinab's face during Hussein's 2FA step-up is refused
     const wrongPerson = await T.feedAuthFrame(T.makeSyntheticVector(2, 0.002));
 
-    // 3. Feeding 3 consecutive frames of Hussein's face completes 2FA and unlocks #authGate
-    const f1 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.002));
-    const f2 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.004));
-    const f3 = await T.feedAuthFrame(T.makeSyntheticVector(1, 0.003));
+    // 3. Anti-Screenshot Test A: Static 2D phone screenshot (constant EAR=0.29, yaw=0.01, parallax3d=0 across 4 frames) is REJECTED
+    T.resetLiveness();
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111');
+    const ss1 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.29, yaw: 0.01, parallax3d: 0.0 });
+    const ss2 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.003), { ear: 0.29, yaw: 0.01, parallax3d: 0.0 });
+    const ss3 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.29, yaw: 0.01, parallax3d: 0.0 });
+    const ss4 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.003), { ear: 0.29, yaw: 0.01, parallax3d: 0.0 });
+    const staticScreenshotBlocked = ss1.status === 'streak' && ss2.status === 'streak' && ss3.status === 'awaiting-blink' && ss4.status === 'awaiting-blink' && !document.getElementById('authGate').hidden;
+
+    // 4. Anti-Screenshot Test B: Rigid tilted 2D phone screenshot (2D yaw changes -0.06 -> +0.06, but 3D nose-vs-eye parallax=0 and EAR=0.29 stays flat) is REJECTED
+    T.resetLiveness();
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111');
+    await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.29, yaw: -0.06, parallax3d: 0.0 });
+    await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.003), { ear: 0.29, yaw: 0.00, parallax3d: 0.0 });
+    const tiltSS = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.29, yaw: 0.06, parallax3d: 0.0 });
+    const tiltedScreenshotBlocked = tiltSS.status === 'awaiting-blink' && !document.getElementById('authGate').hidden;
+
+    // 5. Option 1 (Live Blink Liveness + >=3 Consecutive Frames): Open (0.29) -> Blink Closed (0.17) -> Open (0.29) unlocks on Frame 3!
+    T.resetLiveness();
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111');
+    const f1 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.002), { ear: 0.29, yaw: 0.00, parallax3d: 0.0 });
+    const f2 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.004), { ear: 0.17, yaw: 0.00, parallax3d: 0.0 });
+    const f3 = await T.feedLiveAuthFrame(T.makeSyntheticVector(1, 0.003), { ear: 0.29, yaw: 0.00, parallax3d: 0.0 });
     const unlocked2FA = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
 
-    // 4. Sign out and test 1-Look Biometric Sign-In (no Email or PIN typed) for Zeinab
+    // 6. Option 2 (Live 3D Head-Turn Parallax + >=3 Consecutive Frames) + 'either' mode for Zeinab
     T.signOut();
-    await T.feedAuthFrame(T.makeSyntheticVector(2, 0.002));
-    await T.feedAuthFrame(T.makeSyntheticVector(2, 0.004));
-    const zLogin = await T.feedAuthFrame(T.makeSyntheticVector(2, 0.003));
+    T.setAuthMode('either');
+    const t1 = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.28, yaw: -0.05, parallax3d: -0.022 });
+    const t2 = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.004), { ear: 0.29, yaw: 0.00, parallax3d: 0.000 });
+    const zLogin = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.003), { ear: 0.305, yaw: 0.06, parallax3d: 0.024 });
     const unlockedDirect = document.getElementById('authGate').hidden === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
+
+    // 7. Test Sign-In Requirement Selection modes:
+    //    - 'face_only': blocks PIN-only login, allows Live Face ID
+    //    - 'pin_only': blocks Face ID camera login, allows PIN
+    //    - 'both' (Face first -> PIN second): scanning Live Face ID prompts for PIN Step 2, then PIN unlocks
+    T.signOut();
+    T.setAuthMode('face_only');
+    const faceOnlyPinBlocked = await T.performLogin('zeinabrkein@bhfirms.com', '2222');
+    T.setAuthMode('pin_only');
+    const pinOnlyFaceBlocked = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
+    T.setAuthMode('both');
+    T.resetLiveness();
+    await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
+    await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.003), { ear: 0.17, yaw: 0.0, parallax3d: 0.0 });
+    const faceFirstStep = await T.feedLiveAuthFrame(T.makeSyntheticVector(2, 0.002), { ear: 0.29, yaw: 0.0, parallax3d: 0.0 });
+    const pinSecondStep = await T.performLogin('zeinabrkein@bhfirms.com', '2222');
+    const bothFaceThenPinOk = faceFirstStep.status === '2fa-pin-pending' && pinSecondStep === true && T.state().activeEmail === 'zeinabrkein@bhfirms.com';
 
     // Clean up test enrolments and test blank-email + unique-PIN sign-in
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
     T.selectEnrolSeat('husseinbdeir@bhfirms.com'); await T.clearEnrolment();
     T.selectEnrolSeat('zeinabrkein@bhfirms.com'); await T.clearEnrolment();
+    T.setAuthMode('both');
     T.signOut();
     const pinOnlyLogin = await T.performLogin('', '1111');
     const unlockedPinOnly = pinOnlyLogin === true && document.getElementById('authGate').hidden === true && T.state().activeEmail === 'husseinbdeir@bhfirms.com';
@@ -699,14 +738,23 @@ try {
       bannerVisible,
       stillLockedAfterPin,
       wrongPerson: wrongPerson.status,
+      staticScreenshotBlocked,
+      tiltedScreenshotBlocked,
       f1: f1.status,
       f2: f2.status,
       f3: f3.status,
       f3Method: f3.method,
+      f3Liveness: f3.liveness,
       unlocked2FA,
+      t1: t1.status,
+      t2: t2.status,
       zLogin: zLogin.status,
       zMethod: zLogin.method,
+      zLiveness: zLogin.liveness,
       unlockedDirect,
+      faceOnlyPinBlocked,
+      pinOnlyFaceBlocked: pinOnlyFaceBlocked.status,
+      bothFaceThenPinOk,
       unlockedPinOnly
     };
   })()`);
@@ -719,12 +767,18 @@ try {
   authFaceFlow.pinStep === '2fa_pending' && authFaceFlow.bannerVisible && authFaceFlow.stillLockedAfterPin && authFaceFlow.wrongPerson === '2fa-mismatch'
     ? pass('authGate 2FA · enrolled seat requires Face ID after PIN & rejects wrong face')
     : fail('authGate 2FA enforcement', JSON.stringify(authFaceFlow));
-  authFaceFlow.f1 === 'streak' && authFaceFlow.f2 === 'streak' && authFaceFlow.f3 === 'verified' && authFaceFlow.unlocked2FA
-    ? pass('authGate 2FA · 3 consecutive matching frames unlock session', authFaceFlow.f3Method)
-    : fail('authGate 2FA unlock', JSON.stringify(authFaceFlow));
-  authFaceFlow.zLogin === 'verified' && authFaceFlow.unlockedDirect && authFaceFlow.zMethod === 'Face ID'
-    ? pass('authGate Face ID · 1-look biometric sign-in unlocks RLS session')
-    : fail('authGate 1-look Face ID', JSON.stringify(authFaceFlow));
+  authFaceFlow.staticScreenshotBlocked && authFaceFlow.tiltedScreenshotBlocked
+    ? pass('authGate anti-screenshot · rejects both static 2D phone screenshots and tilted rigid 2D screenshots')
+    : fail('authGate anti-screenshot rejection', JSON.stringify(authFaceFlow));
+  authFaceFlow.f1 === 'streak' && authFaceFlow.f2 === 'streak' && authFaceFlow.f3 === 'verified' && authFaceFlow.unlocked2FA && authFaceFlow.f3Liveness === 'blink'
+    ? pass('authGate Option 1 (Blink Liveness + >=3 frames) · 3 consecutive frames + live blink unlock session', authFaceFlow.f3Method)
+    : fail('authGate Option 1 Blink Liveness unlock', JSON.stringify(authFaceFlow));
+  authFaceFlow.t1 === 'streak' && authFaceFlow.t2 === 'streak' && authFaceFlow.zLogin === 'verified' && authFaceFlow.unlockedDirect && authFaceFlow.zLiveness === 'turn3d'
+    ? pass('authGate Option 2 (3D Head-Turn Parallax + >=3 frames) · 3 consecutive frames + 3D nose/eye parallax unlock session', authFaceFlow.zMethod)
+    : fail('authGate Option 2 3D Head-Turn Parallax', JSON.stringify(authFaceFlow));
+  authFaceFlow.faceOnlyPinBlocked === 'face_only_required' && authFaceFlow.pinOnlyFaceBlocked === 'face-disabled' && authFaceFlow.bothFaceThenPinOk
+    ? pass('authGate Sign-In Requirement modes · Either, Both (PIN->Face & Face->PIN), Face ID Only & PIN Only enforced')
+    : fail('authGate Sign-In Requirement modes', JSON.stringify(authFaceFlow));
   authFaceFlow.unlockedPinOnly
     ? pass('authGate PIN-only · blank email + unique 4-digit PIN resolves seat & signs in')
     : fail('authGate PIN-only sign-in', JSON.stringify(authFaceFlow));
@@ -951,6 +1005,39 @@ try {
   multiCoAndAccessProbe && multiCoAndAccessProbe.u8ConsistencyOk && multiCoAndAccessProbe.u3ConsistencyOk && multiCoAndAccessProbe.u10ConsistencyOk
     ? pass('access & RLS consistency · multi-company subset (All Assigned 2, 0 leaked rows, 13 RDL) + Entry (15 PBI / 23 tbls) + Sales gating', `u8 RDL=${multiCoAndAccessProbe.u8StmtTabs} · u3=${multiCoAndAccessProbe.u3PbiTabs} PBI/${multiCoAndAccessProbe.u3TableChips} tbls · u10 views=${multiCoAndAccessProbe.u10VisibleNavViews.join(',')}`)
     : fail('access & RLS consistency', JSON.stringify(multiCoAndAccessProbe));
+
+  // 7b-2. 10-Industry × 15–20 Company Enterprise Scale Test (Topbar #companySwitch + Seat Inspector #nuCompanySelector)
+  const tenIndustryProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    const swBox = document.getElementById('companySwitch');
+    const wBefore = swBox ? Math.round(swBox.getBoundingClientRect().width) : 0;
+    const demoBtn = document.getElementById('companySwitchScalePreviewBtn');
+    if (demoBtn) demoBtn.click();
+    const wAfter = swBox ? Math.round(swBox.getBoundingClientRect().width) : 0;
+    const topbarIndTabs = document.querySelectorAll('#companySwitchIndustryList .ep-ind-tab').length;
+    const topbarCoBtns = document.querySelectorAll('#companySwitchList .entity-btn').length;
+    // Filter topbar by Hospitality & Resorts industry
+    const hspTab = document.querySelector('#companySwitchIndustryList .ep-ind-tab[data-ep-ind="Hospitality & Resorts"]');
+    if (hspTab) hspTab.click();
+    const visibleHspBtns = Array.from(document.querySelectorAll('#companySwitchList .entity-btn')).filter(b => !b.hidden).length;
+    // Check Seat Inspector 2-column Industry -> Company grouping
+    const rlsIndTabs = document.querySelectorAll('#nuCompanyIndustryBar .co-multi-ind-tab').length;
+    const rlsIndHdrs = document.querySelectorAll('#nuCompanyList .co-multi-ind-hdr').length;
+    const trdToggle = document.querySelector('#nuCompanyList [data-toggle-industry="Automotive & Heavy Trading"]');
+    if (trdToggle) trdToggle.click();
+    const chipsH = Math.round(document.getElementById('nuCompanyChips').getBoundingClientRect().height);
+    // Reset preview back to 3 companies
+    if (demoBtn) demoBtn.click();
+    T.selectSeatForEdit('u1');
+    return {
+      ok: wBefore > 0 && Math.abs(wAfter - wBefore) <= 1 && topbarIndTabs === 11 && topbarCoBtns >= 150 &&
+          visibleHspBtns >= 15 && rlsIndTabs === 11 && rlsIndHdrs === 10 && chipsH <= 30,
+      wBefore, wAfter, topbarIndTabs, topbarCoBtns, visibleHspBtns, rlsIndTabs, rlsIndHdrs, chipsH
+    };
+  })()`);
+  tenIndustryProbe && tenIndustryProbe.ok
+    ? pass('10-industry × 150-company scale · fixed topbar box (0px width growth), 2-col industry→company popovers & 1-click industry toggle', `width=${tenIndustryProbe.wBefore}px→${tenIndustryProbe.wAfter}px · indTabs=${tenIndustryProbe.topbarIndTabs} · cos=${tenIndustryProbe.topbarCoBtns} · chipsH=${tenIndustryProbe.chipsH}px`)
+    : fail('10-industry × 150-company scale', JSON.stringify(tenIndustryProbe));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
   await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);

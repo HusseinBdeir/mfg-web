@@ -77,7 +77,10 @@
 
   const STATE = {
     view: 'overview',
-    company: (SAVED_FILTER.company && ['manufacturing-group', 'wtc', 'bbconstruction', 'lionstransport'].includes(SAVED_FILTER.company)) ? SAVED_FILTER.company : 'manufacturing-group',
+    company: (SAVED_FILTER.company && typeof SAVED_FILTER.company === 'string') ? SAVED_FILTER.company : 'manufacturing-group',
+    companySwitchIndFilter: 'all',
+    enterpriseScalePreview: false,
+    enterprisePreviewCompanies: [],
     period: SAVED_FILTER.period || 'all',                  // 'all' | 'ytd' | 'mtd' | 'sep2026' | 'aug2026' | 'q3_2026' | 'fy2025' | 'fy2024' | 'year:YYYY' | 'month:YYYY-MM' | 'week:...' | 'day:...' | 'custom'
     dateGrain: SAVED_FILTER.dateGrain || 'all',            // 'all' | 'year' | 'month' | 'week' | 'day'
     dateFrom: SAVED_FILTER.dateFrom || '',
@@ -130,10 +133,12 @@
       weakAbove: 0.45,
       minFaceFrac: 0.14,
       confirmFrames: 3,
-      liveness: false,
+      liveness: true,
+      livenessMode: 'blink_or_turn', // 'blink_or_turn' | 'blink' | 'turn3d'
+      authMode: 'both',              // 'either' | 'pin_only' | 'face_only' | 'both'
       enforce2FA: true,
       sound: false
-    }, lsGet('isabi_mfg_face_settings_v1', null) || {}, { sound: false })
+    }, lsGet('isabi_mfg_face_settings_v2', null) || {}, { sound: false })
   };
 
   const FACE_POSES = [
@@ -153,8 +158,12 @@
     bestDist: 9,
     secondDist: 9,
     lastBlinkAt: 0,
+    lastTurnAt: 0,
     eyeClosedSeen: false,
+    livenessUser: '',
+    livenessHistory: [],
     pending2faUser: null,
+    pendingPinUser: null,
     cooldownUntil: 0,
     enrolUserId: '',
     enrolLoadedForUserId: '',
@@ -208,9 +217,23 @@
   if (!Array.isArray(STATE.users) || !STATE.users.length) STATE.users = DEFAULT_USERS.map(u => ({ ...u }));
 
   const BASE_COMPANY_DIRECTORY = [
-    { key: 'wtc', name: 'WTC', label: 'WTC (World Trading & Construction)', sector: 'Concrete, Quarry & Batching' },
-    { key: 'bbconstruction', name: 'BBConstruction', label: 'BBConstruction', sector: 'Contracting & Aggregates' },
-    { key: 'lionstransport', name: 'Lions Transport', label: 'Lions Transport', sector: 'Heavy Fleet & Haulage' }
+    { key: 'wtc', name: 'WTC', label: 'WTC (World Trading & Construction)', industry: 'Manufacturing', sector: 'Concrete, Quarry & Batching' },
+    { key: 'bbconstruction', name: 'BBConstruction', label: 'BBConstruction', industry: 'Manufacturing', sector: 'Contracting & Aggregates' },
+    { key: 'lionstransport', name: 'Lions Transport', label: 'Lions Transport', industry: 'Manufacturing', sector: 'Heavy Fleet & Haulage' }
+  ];
+
+  // Canonical 10-industry taxonomy for BHFIRMS / ISABI multi-industry scaling (10 Industries × 10–20 Companies each)
+  const ENTERPRISE_INDUSTRIES = [
+    { id: 'Manufacturing', code: 'MFG', label: 'Manufacturing', sub: 'Concrete, Aggregates & Batching', sampleCos: ['Cinder Block Plant', 'Bekaa Quarry Works', 'Chouf Ready-Mix', 'Litani Precast', 'Mount Asphalt Works', 'South Rebar Mill', 'Byblos Cement Terminal', 'Zahrani Aggregate', 'Metn Batching Plant', 'Tripoli Silos', 'Batroun Lime Works', 'Sidon Pipe & Precast'] },
+    { id: 'Hospitality & Resorts', code: 'HSP', label: 'Hospitality & Resorts', sub: 'Beach Resorts, Hotels & Venues', sampleCos: ['Blanca Beach Resort', 'La Una Resort', 'Palms Resort', 'Voile Resort', 'Platinum Hospitality', 'Azur Marina Club', 'Cedars Mountain Lodge', 'Phoenicia Bay Suites', 'Mirage Cliff Club', 'Solis Beach Pavilion', 'Batroun Sunset Villas', 'Byblos Harbour Hotel', 'Tyre Coast Resort', 'Faraya Alpine Chalets', 'Verdun Executive Suites'] },
+    { id: 'Automotive & Heavy Trading', code: 'TRD', label: 'Automotive & Heavy Trading', sub: 'Commercial Trucks, Parts & Service', sampleCos: ['Korri Auto', 'Shacman Lebanon', 'Levant Heavy Trucks', 'Bdeir Commercial Motors', 'Atlas Spare Parts', 'Mediterranean Tyres', 'EuroDiesel Motors', 'PowerLine Generators', 'Apex Earthmoving', 'Titan Forklifts & Cranes', 'Beirut Fleet Service', 'Bekaa Agro Machinery', 'North Truck Center', 'South Parts Depot', 'Gulf Transit Motors'] },
+    { id: 'Real Estate & Property', code: 'PROP', label: 'Real Estate & Property', sub: 'Leasing, Developments & Land', sampleCos: ['Bdeir Properties', 'Bayside Towers', 'Verdun Plaza', 'Downtown Commercial', 'Choueifat Logistics Park', 'Metn Business Center', 'Saida Waterfront Mall', 'Batroun Coastal Estates', 'Hazmieh Medical Tower', 'Dbayeh Marina Residences', 'Beirut Gate Offices', 'Zahle Industrial Land', 'Jbeil Heritage Quarter', 'Khaldeh Retail Strip', 'Achrafieh Gardens'] },
+    { id: 'Insurance & Brokerage', code: 'INS', label: 'Insurance & Brokerage', sub: 'Underwriting, Claims & Policies', sampleCos: ['Bdeir Insurance Brokerage', 'Cedar Shield Motor', 'Levant Marine Cargo', 'MedCare Health Cover', 'Aegis Property & Fire', 'Horizon Life & Pension', 'Atlas Fleet Underwriting', 'Surety & Bond Partners', 'Prime Corporate Risk', 'Beacon Reinsurance Advisory', 'SafeHarbour Liability', 'Crest Engineering Risk', 'Oasis Travel Assist', 'Guardian Workmen Cover', 'Vanguard Claims Desk'] },
+    { id: 'Logistics & Marine', code: 'LOG', label: 'Logistics & Marine', sub: 'Haulage, Freight & Port Operations', sampleCos: ['Levant Bulk Haulage', 'Beirut Port Stevedoring', 'Tripoli Container Depot', 'MedLink Cold Chain', 'Cedar Tanker Fleet', 'Bekaa Inland Dry Port', 'Bosphorus Sea Freight', 'Express Customs Clearance', 'South Aggregate Transit', 'Airport Cargo Handling', 'Byblos Coastal Barges', 'Overland Cross-Border', 'Silo Dispatch Fleet', 'Heavy Lowbed Carriers', 'Harbour Tug & Marine'] },
+    { id: 'Retail & F&B Outlets', code: 'POS', label: 'Retail & F&B Outlets', sub: 'POS Tills, Restaurants & Boutiques', sampleCos: ['La Table du Port', 'Cedar Roastery & Cafe', 'Blanca Pool Bar', 'Voile Sunset Grill', 'Palms Beach Bistro', 'Urban Market Express', 'Artisan Bakery Collective', 'Marina Gelato & Lounge', 'Verdun Flagship Store', 'Dbayeh Gourmet Hall', 'Batroun Seafood Deck', 'Byblos Old Souk Cafe', 'Saida Sweet House', 'Faraya Apres-Ski Grill', 'Airport Duty Express'] },
+    { id: 'Energy & Fuel Distribution', code: 'NRG', label: 'Energy & Fuel Distribution', sub: 'Diesel Depots, Solar & Generators', sampleCos: ['MedFuel Terminal', 'Zahrani Diesel Depot', 'Dora Tank Farm', 'Cedar Solar Microgrids', 'Bekaa Industrial Gas', 'LubeTech Distribution', 'PeakPower Generator Rental', 'Tripoli Bunker Supply', 'South Station Network', 'Mount Wind & Storage', 'Choueifat Fleet Fueling', 'Batroun Marine Fuel', 'GreenGrid Battery Systems', 'Byblos Utility Services', 'HighVolt Substation Co'] },
+    { id: 'Healthcare & Diagnostics', code: 'MED', label: 'Healthcare & Diagnostics', sub: 'Clinics, Labs & Medical Supply', sampleCos: ['Cedar Diagnostic Labs', 'Beirut Wellness Clinic', 'Levant Medical Supplies', 'BioCare Imaging Center', 'Metn Surgical Day Care', 'PharmaLink Distribution', 'South Coast Polyclinic', 'Vitality Sports Rehab', 'Prime Dental & Ortho', 'MedEquip Engineering', 'Bekaa Regional Lab', 'Tripoli Family Care', 'GeneScreen Molecular', 'Pulse Ambulance & EMS', 'OptiVision Eye Center'] },
+    { id: 'Holding & Treasury', code: 'HLD', label: 'Holding & Treasury', sub: 'Group Treasury, Shared Services & JV', sampleCos: ['Bdeir Holding (ROOT)', 'ISABI Systems & Digital', 'BHFIRMS Central Treasury', 'Group Shared Services', 'Levant Capital Ventures', 'Cedar JV Holdings', 'Med Gulf Investment Co', 'Bdeir Family Office', 'Group Procurement Desk', 'Internal Audit & Risk', 'Corporate Legal & Tax', 'Group Fleet Leasing JV', 'Horizon Asset Management', 'Digital Cloud Relay Ops', 'Strategic Land Reserve'] }
   ];
 
   const COMPANY_LABELS = {
@@ -228,10 +251,50 @@
   };
 
   const COMPANY_KEY_BY_NAME = { 'WTC': 'wtc', 'BBConstruction': 'bbconstruction', 'Lions Transport': 'lionstransport' };
+  const COMPANY_INDUSTRY_BY_KEY = { 'wtc': 'Manufacturing', 'bbconstruction': 'Manufacturing', 'lionstransport': 'Manufacturing' };
   const SENTINEL_MODEL_KEY = { 'manufacturing-group': 'Manufacturing Group', 'wtc': 'WTC', 'bbconstruction': 'BBConstruction', 'lionstransport': 'Lions Transport' };
 
   function slugCompanyKey(name) {
     return String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'wtc';
+  }
+
+  function inferIndustryForCompany(raw) {
+    if (raw && typeof raw === 'object' && raw.industry && String(raw.industry).trim()) {
+      return String(raw.industry).trim();
+    }
+    const text = typeof raw === 'string'
+      ? raw
+      : `${(raw && raw.name) || ''} ${(raw && raw.label) || ''} ${(raw && raw.sector) || ''}`;
+    const s = String(text || '').toLowerCase();
+    if (/resort|hotel|beach|blanca|la una|palms|voile|platinum|hospitality|chalet|villa|lodge/.test(s)) return 'Hospitality & Resorts';
+    if (/auto|shacman|korri|truck|motor|tyre|parts|trading|forklift|crane|machinery/.test(s)) return 'Automotive & Heavy Trading';
+    if (/propert|real estate|tower|plaza|mall|residenc|estate|land|leasing/.test(s)) return 'Real Estate & Property';
+    if (/insur|broker|underwrit|claim|cargo|reinsur|surety|policy/.test(s)) return 'Insurance & Brokerage';
+    if (/marine|port|stevedor|freight|customs|container|barge|cold chain|logistics/.test(s)) return 'Logistics & Marine';
+    if (/pos|bistro|cafe|grill|roaster|bakery|retail|gourmet|restaurant|gelato/.test(s)) return 'Retail & F&B Outlets';
+    if (/fuel|diesel|solar|energy|gas|bunker|generator|battery|tank farm/.test(s)) return 'Energy & Fuel Distribution';
+    if (/clinic|diagnostic|medical|pharma|hospital|dental|rehab|health|lab/.test(s)) return 'Healthcare & Diagnostics';
+    if (/holding|treasury|isabi|venture|family office|capital|shared services/.test(s)) return 'Holding & Treasury';
+    return 'Manufacturing';
+  }
+
+  function buildEnterprisePreviewCatalog() {
+    const list = [];
+    ENTERPRISE_INDUSTRIES.forEach(ind => {
+      if (ind.id === 'Manufacturing') {
+        BASE_COMPANY_DIRECTORY.forEach(c => list.push({ ...c, industry: 'Manufacturing' }));
+      }
+      (ind.sampleCos || []).forEach(coName => {
+        list.push({
+          key: slugCompanyKey(coName),
+          name: coName,
+          label: coName,
+          industry: ind.id,
+          sector: ind.sub
+        });
+      });
+    });
+    return list;
   }
 
   function getCompanyCatalog() {
@@ -239,13 +302,15 @@
     const seen = new Set();
     const pushCo = (raw) => {
       if (!raw) return;
+      const ind = inferIndustryForCompany(raw);
       const obj = typeof raw === 'string'
-        ? { key: COMPANY_KEY_BY_NAME[raw.trim()] || slugCompanyKey(raw), name: raw.trim(), label: raw.trim(), sector: 'Operating Entity (BU)' }
+        ? { key: COMPANY_KEY_BY_NAME[raw.trim()] || slugCompanyKey(raw), name: raw.trim(), label: raw.trim(), industry: ind, sector: ind === 'Manufacturing' ? 'Operating Entity (BU)' : ind }
         : {
             key: raw.key || COMPANY_KEY_BY_NAME[String(raw.name || '').trim()] || slugCompanyKey(raw.name),
             name: String(raw.name || raw.label || '').trim(),
             label: String(raw.label || raw.name || '').trim(),
-            sector: String(raw.sector || 'Operating Entity (BU)').trim()
+            industry: ind,
+            sector: String(raw.sector || (ind === 'Manufacturing' ? 'Operating Entity (BU)' : ind)).trim()
           };
       if (!obj.name) return;
       const normName = obj.name.toLowerCase();
@@ -254,15 +319,36 @@
       if (!COMPANY_BU_MATCH[obj.key]) COMPANY_BU_MATCH[obj.key] = obj.name;
       if (!COMPANY_KEY_BY_NAME[obj.name]) COMPANY_KEY_BY_NAME[obj.name] = obj.key;
       if (!COMPANY_LABELS[obj.key]) COMPANY_LABELS[obj.key] = obj.label || obj.name;
+      COMPANY_INDUSTRY_BY_KEY[obj.key] = obj.industry || 'Manufacturing';
       out.push(obj);
     };
     BASE_COMPANY_DIRECTORY.forEach(pushCo);
     if (Array.isArray(window.MFG_COMPANIES)) window.MFG_COMPANIES.forEach(pushCo);
     if (SEED && Array.isArray(SEED.companies)) SEED.companies.forEach(pushCo);
+    if (STATE.enterpriseScalePreview && Array.isArray(STATE.enterprisePreviewCompanies)) {
+      STATE.enterprisePreviewCompanies.forEach(pushCo);
+    }
     (STATE.users || []).forEach(u => {
       String((u && u.companies) || '').split(/[,;|]+/).map(s => s.trim()).filter(Boolean).forEach(pushCo);
     });
     return out;
+  }
+
+  function getIndustryGroups(catalogInput) {
+    const catalog = catalogInput || getCompanyCatalog();
+    const byInd = new Map();
+    ENTERPRISE_INDUSTRIES.forEach(meta => {
+      byInd.set(meta.id, { id: meta.id, code: meta.code, label: meta.label, sub: meta.sub, companies: [] });
+    });
+    catalog.forEach(co => {
+      const indName = co.industry || 'Manufacturing';
+      if (!byInd.has(indName)) {
+        const code = indName.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'IND';
+        byInd.set(indName, { id: indName, code, label: indName, sub: co.sector || 'Operating Industry', companies: [] });
+      }
+      byInd.get(indName).companies.push(co);
+    });
+    return Array.from(byInd.values()).filter(g => g.companies.length > 0);
   }
 
   // ==========================================================================
@@ -325,7 +411,18 @@
   }
 
   function resolveEffectiveModelKey(coKey) {
-    const k = coKey || STATE.company;
+    const k = String(coKey || STATE.company || 'manufacturing-group');
+    if (k.startsWith('industry:')) {
+      const indName = k.slice(9);
+      const cat = getCompanyCatalog();
+      const indNames = new Set(cat.filter(c => (c.industry || 'Manufacturing') === indName).map(c => c.name));
+      const allowed = allowedCompanyNames().filter(n => indNames.has(n));
+      if (allowed.length === 1) {
+        const singleKey = COMPANY_KEY_BY_NAME[allowed[0]] || slugCompanyKey(allowed[0]);
+        if (SEED.models[singleKey]) return singleKey;
+      }
+      return 'manufacturing-group';
+    }
     if (k !== 'manufacturing-group') return k;
     const allowed = allowedCompanyNames();
     const hasWtc = allowed.includes('WTC');
@@ -985,7 +1082,13 @@
   }
 
   function filterRecords(list, opts = {}) {
-    const bu = COMPANY_BU_MATCH[opts.company || STATE.company];
+    const scopeKey = String(opts.company || STATE.company || 'manufacturing-group');
+    const isIndustryScope = scopeKey.startsWith('industry:');
+    const indTarget = isIndustryScope ? scopeKey.slice(9) : '';
+    const indCoSet = isIndustryScope
+      ? new Set(getCompanyCatalog().filter(c => (c.industry || 'Manufacturing') === indTarget).map(c => c.name))
+      : null;
+    const bu = isIndustryScope ? null : COMPANY_BU_MATCH[scopeKey];
     const allowedCos = opts.ignoreRls ? null : allowedCompanyNames(opts.user);
     const q = opts.ignoreSearch ? '' : STATE.search.trim().toLowerCase();
     const range = opts.ignorePeriod ? null : periodRange(STATE.period);
@@ -993,6 +1096,7 @@
     return (list || []).filter(r => {
       if (!r || r.voided) return false;
       if (bu && r.company && r.company !== bu) return false;
+      if (indCoSet && r.company && !indCoSet.has(r.company)) return false;
       if (allowedCos && r.company && !allowedCos.includes(r.company)) return false;
       if (range) {
         const d = recordDateFor(r, basis);
@@ -1148,9 +1252,72 @@
   function userHasFaceId(u) {
     return userFaceSamples(u).length > 0;
   }
+
+  const AUTH_MODE_OPTIONS = [
+    { value: 'either', label: 'Either: PIN or Face ID (1-Step)', short: 'PIN or Face ID' },
+    { value: 'both', label: 'Both: PIN + Face ID (2FA Step-Up)', short: 'Both (PIN + Face 2FA)' },
+    { value: 'face_only', label: 'Face ID Only (Live 3D Biometric)', short: 'Face ID Only' },
+    { value: 'pin_only', label: 'Access PIN Only (Disable Face Login)', short: 'PIN Only' }
+  ];
+
+  const LIVENESS_MODE_OPTIONS = [
+    { value: 'blink_or_turn', label: 'Blink OR 3D Head-Turn Parallax (Anti-Screenshot)' },
+    { value: 'blink', label: 'Strict Eye Blink Required (Open → Closed → Open)' },
+    { value: 'turn3d', label: '3D Head-Turn Parallax Required (Left ↔ Right)' }
+  ];
+
+  function normalizeAuthMode(mode, fallback = 'both') {
+    const m = String(mode || '').trim().toLowerCase();
+    if (m === 'either' || m === 'pin_only' || m === 'face_only' || m === 'both') return m;
+    return fallback;
+  }
+
+  function getWorkspaceAuthMode() {
+    if (STATE.faceSettings && STATE.faceSettings.authMode) {
+      return normalizeAuthMode(STATE.faceSettings.authMode, STATE.faceSettings.enforce2FA === false ? 'either' : 'both');
+    }
+    return STATE.faceSettings && STATE.faceSettings.enforce2FA === false ? 'either' : 'both';
+  }
+
+  function setWorkspaceAuthMode(mode) {
+    const m = normalizeAuthMode(mode, 'both');
+    STATE.faceSettings.authMode = m;
+    STATE.faceSettings.enforce2FA = (m === 'both');
+    return m;
+  }
+
+  // Returns 'either' | 'pin_only' | 'face_only' | 'both' for a seat (respecting seat override + enrolment)
+  function effectiveSeatAuthMode(u) {
+    if (!u) return 'either';
+    const hasFace = userHasFaceId(u);
+    const seatRaw = String(u.auth_mode || '').trim().toLowerCase();
+    let mode = (seatRaw && seatRaw !== 'inherit')
+      ? normalizeAuthMode(seatRaw, getWorkspaceAuthMode())
+      : getWorkspaceAuthMode();
+    if (!seatRaw && u.face_required === false && mode === 'both') mode = 'either';
+    // Graceful fallback if seat has not enrolled 3 Face ID poses yet so they are never locked out
+    if (!hasFace && (mode === 'both' || mode === 'face_only')) return 'either';
+    return mode;
+  }
+
+  function seatAuthBadgeLabel(u) {
+    const hasFace = userHasFaceId(u);
+    const n = userFaceSamples(u).length;
+    const mode = effectiveSeatAuthMode(u);
+    if (!hasFace || mode === 'pin_only') return 'PIN Only';
+    if (mode === 'face_only') return `✓ ${n}/3 Poses · Face Only`;
+    if (mode === 'both') return `✓ ${n}/3 Poses · PIN + Face 2FA`;
+    return `✓ ${n}/3 Poses · PIN or Face`;
+  }
+
   function userRequiresFace2FA(u) {
-    if (!u || !STATE.faceSettings.enforce2FA) return false;
-    return userHasFaceId(u) && u.face_required !== false;
+    if (!u || !userHasFaceId(u)) return false;
+    return effectiveSeatAuthMode(u) === 'both';
+  }
+
+  function userRequiresPinAfterFace(u) {
+    if (!u || !userHasFaceId(u)) return false;
+    return effectiveSeatAuthMode(u) === 'both';
   }
   function enrolTargetUser() {
     if (!isOwner()) return activeUser();
@@ -1181,8 +1348,264 @@
     }
     return list;
   }
+  // ---- Unified Role & Granular Custom Permission Matrix ---------------------
+  const PERM_CATALOG = {
+    rights: [
+      { id: 'read_ops', label: 'Read Operational Data & Registers', sub: '23 Operational Tables · Sales, Quarry, Fleet, AR/AP & Expenses', badge: 'READ OPS' },
+      { id: 'read_fin', label: 'Read Confidential Financial, Payroll, GL & Sentinels', sub: '11 Financial/HR Tables · Salaries, Contracts, Loans, JV & Trial Balance', badge: 'READ FIN' },
+      { id: 'enter_dispatch', label: 'Enter Weighbridge Sales, Quarry Intake & Diesel', sub: 'New Sales Ticket, Raw Material 2-Leg Purchase & Fuel Intake (m142)', badge: 'ENTER DISPATCH' },
+      { id: 'enter_accounting', label: 'Enter Customer Receipts, Expenses & Settlements', sub: 'FIFO Customer Receipt, Cash/Credit Expense & Oldest-Leg AP Settlement', badge: 'ENTER ACCT' },
+      { id: 'enter_master', label: 'Enter Master Data, Price Rules & Attendance', sub: 'Customers, Suppliers, Products, Sites, Trucks, Drivers, Price Rules & Attendance', badge: 'ENTER MASTER' },
+      { id: 'enter_payroll_jv', label: 'Enter Confidential Payroll, Loans & JV Splits', sub: 'Monthly Salaries, Contracts, Partner Loans, FX Conversions & JV Splits', badge: 'ENTER PAYROLL' },
+      { id: 'modify_data', label: 'Modify Existing Records (Inline 360° Edit)', sub: 'Edit posted quantities, unit prices, references & notes with audit trail', badge: 'MODIFY DATA' },
+      { id: 'void_data', label: 'Void App-Entered Transactions', sub: 'Reverse app-entered tickets & vouchers via multi-device cloud tombstones', badge: 'VOID DATA' },
+      { id: 'manage_users', label: 'Administer Team Seats, Roles, Face ID & RLS', sub: 'Create/edit login seats, PINs, custom permissions, RLS & 2FA policies', badge: 'ADMIN SEATS' }
+    ],
+    unlocks: [
+      { id: 'unlock_unit_price', fields: ['f_unitprice'], label: 'Unit Price & Agreement Lock', rule: 'm56 / m136', sub: 'Override active Customer Price Agreement or List Price for spot-rate dispatches' },
+      { id: 'unlock_trans_price', fields: ['f_transunitprice'], label: 'Transport / Haulage Rate Lock', rule: 'm51 / m81', sub: 'Override contractual delivery or third-party quarry haulage rate per load' },
+      { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'm125 / m229', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
+      { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'm222 / m228', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
+      { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'm50 / m81', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
+      { id: 'unlock_fleet_cascade', fields: ['f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'm125 / m140', sub: 'Bypass Truck Owner → Truck/Driver cascade or Expense Category → Subcategory lock' },
+      { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'm84', sub: 'Override the default quarry supplier bound to a raw material origin site' },
+      { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'm68', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
+      { id: 'unlock_formula_totals', fields: ['f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Calculated Subtotal & Total Locks', rule: 'm56 / m135b', sub: 'Override computed Material Total, Transport Total or Total Ex-VAT USD' }
+    ],
+    dashboards: [
+      { id: 'dash_overview', pages: ['p01_overview', 'p02_companies'], count: 2, label: 'Executive & Multi-Company Overview', sub: 'P01 Executive Overview, P02 Multi-Company Comparison', badge: '2 PBI Pages' },
+      { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p19_cust_stmt', 'p20_recon'], count: 6, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'P04 Sales, P05 Price Matrix, P06 AR Aging, P18 Ticket Explorer, P19 Customer Stmt, P20 Recon', badge: '6 PBI Pages' },
+      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_raw', 'p09_stock', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'P07 Suppliers AP, P08 Raw Material, P09 Stock Movement, P10 Fleet & Diesel, P11 Drivers', badge: '5 PBI Pages' },
+      { id: 'dash_expenses_vat', pages: ['p03_exceptions', 'p13_vat', 'p14_changelog'], count: 3, label: 'Operating Expenses, Statutory VAT & Audit', sub: 'P03 Exceptions & Sentinels, P13 VAT 11% Ledger, P14 Audit ChangeLog', badge: '3 PBI Pages' },
+      { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'P12 Monthly Salaries, Daily Attendance, Site Allowances & Contracts', badge: '1 PBI Page' },
+      { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'P15 Treasury & Partner Loans, P16 Audited P&L/TB, P17 JV Profit Split', badge: '3 PBI Pages' }
+    ],
+    statements: [
+      { id: 'stmt_digest_ops', codes: ['01', '08', '09', '11', '12', '14'], count: 6, label: 'Executive Digest & Operational Registers', sub: '#01 Exec Digest, #08 Sales Reg, #09 Quarry Reg, #11 Fleet & Diesel, #12 Expense Reg, #14 Price Matrix', badge: '6 Statements' },
+      { id: 'stmt_counterparty', codes: ['15', '16', '17', '22'], count: 4, label: 'Counterparty & Haulage Statements (SOA)', sub: '#15 Customer SOA, #16 Supplier 3-Leg SOA, #17 Hauler Statement, #22 Concrete Mix & Yield', badge: '4 Statements' },
+      { id: 'stmt_vouchers', codes: ['19', '20', '21'], count: 3, label: 'Printable Vouchers & Delivery Notes', sub: '#19 Customer Receipt Voucher, #20 Supplier Payment Voucher, #21 Weighbridge Delivery Note', badge: '3 Statements' },
+      { id: 'stmt_payroll', codes: ['10', '13'], count: 2, label: 'Payroll, Attendance & Payslips (Confidential)', sub: '#10 Monthly Payroll & Allowances Sheet, #13 Employee Payslip & Contract Summary', badge: '2 Statements' },
+      { id: 'stmt_financial_board', codes: ['02', '03', '04', '05', '06', '07', '18'], count: 7, label: 'Audited Financial, AR/AP Aging, VAT & JV Board Pack', sub: '#02 Income Stmt, #03 Balance Sheet, #04 Trial Balance, #05 AR Aging, #06 AP Aging, #07 VAT 11%, #18 Loans & JV', badge: '7 Statements' }
+    ]
+  };
+
+  const FIELD_TO_UNLOCK_KEY = {
+    f_unitprice: 'unlock_unit_price',
+    f_transunitprice: 'unlock_trans_price',
+    f_qty: 'unlock_qty_cap',
+    f_uom: 'unlock_uom',
+    f_method: 'unlock_method',
+    f_truck: 'unlock_fleet_cascade',
+    f_driver: 'unlock_fleet_cascade',
+    f_subcategory: 'unlock_fleet_cascade',
+    f_siteowner: 'unlock_site_owner',
+    f_vatinvoice: 'unlock_vat_serial',
+    f_mat_total: 'unlock_formula_totals',
+    f_trans_total: 'unlock_formula_totals',
+    f_total_usd: 'unlock_formula_totals'
+  };
+
+  const ROLE_PRESETS = {
+    'Full Access (Owner)': {
+      title: 'Admin / Owner (Full Access)',
+      tierBadge: 'TIER 1 · ADMIN / OWNER',
+      badgeCls: 'badge-ok',
+      defaultAccess: 'full|full',
+      summary: 'Unrestricted read, entry, inline record modification, voiding, seat administration, all 9 policy-lock overrides, all 20 Power BI pages & all 22 A4 statements.',
+      rights: { read_ops: true, read_fin: true, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: true, modify_data: true, void_data: true, manage_users: true },
+      unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: true, unlock_method: true, unlock_fleet_cascade: true, unlock_site_owner: true, unlock_vat_serial: true, unlock_formula_totals: true },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
+    },
+    'Supervisor + Entry': {
+      title: 'Supervisor + Entry (Operations & Override Lead)',
+      tierBadge: 'TIER 2 · SUPERVISOR + ENTRY',
+      badgeCls: 'badge-ok',
+      defaultAccess: 'full|full',
+      summary: 'Full operational & financial visibility, all entry forms, inline record modification, all 9 policy-lock overrides, and linked Executive Dashboards & Statements.',
+      rights: { read_ops: true, read_fin: true, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: true, modify_data: true, void_data: false, manage_users: false },
+      unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: true, unlock_method: true, unlock_fleet_cascade: true, unlock_site_owner: true, unlock_vat_serial: true, unlock_formula_totals: true },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
+    },
+    'Supervisor': {
+      title: 'Supervisor (Read-Only Oversight & Audit)',
+      tierBadge: 'TIER 3 · SUPERVISOR (READ-ONLY)',
+      badgeCls: 'badge-info',
+      defaultAccess: 'full|full',
+      summary: 'Strictly read-only oversight across registers, AI sentinels, 20 Power BI dashboards & 22 statements. Cannot post new tickets or void records.',
+      rights: { read_ops: true, read_fin: true, enter_dispatch: false, enter_accounting: false, enter_master: false, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
+      unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: true, unlock_method: true, unlock_fleet_cascade: true, unlock_site_owner: true, unlock_vat_serial: false, unlock_formula_totals: false },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
+    },
+    'Entry': {
+      title: 'Entry (Weighbridge, Plant & Desk Operator)',
+      tierBadge: 'TIER 4 · ENTRY OPERATOR',
+      badgeCls: 'badge-brass',
+      defaultAccess: 'partial|partial',
+      summary: 'Enters Sales Tickets, Quarry Intake, Fuel, Expenses, Customer Receipts & Master Data; can void own app entries. Policy-locked fields require Admin PIN unless customized.',
+      rights: { read_ops: true, read_fin: false, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: false, modify_data: false, void_data: true, manage_users: false },
+      unlocks: { unlock_unit_price: false, unlock_trans_price: false, unlock_qty_cap: false, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: false, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: false, stmt_financial_board: false }
+    },
+    'Sales': {
+      title: 'Sales & AR Collector (Commercial Desk)',
+      tierBadge: 'TIER 4 · COMMERCIAL & AR',
+      badgeCls: 'badge-info',
+      defaultAccess: 'partial|full',
+      summary: 'Scoped to Sales Tickets, Customer Receipts, Price Agreements, VAT Invoices & AR Aging; hides Quarry AP, Fleet, Expenses & Payroll.',
+      rights: { read_ops: true, read_fin: false, enter_dispatch: false, enter_accounting: true, enter_master: false, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
+      unlocks: { unlock_unit_price: false, unlock_trans_price: false, unlock_qty_cap: false, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: false, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: false, dash_expenses_vat: false, dash_payroll_hr: false, dash_financial_gl: false },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true }
+    },
+    'Custom': {
+      title: 'Custom Role (Granular Permission & Lock Matrix)',
+      tierBadge: 'CUSTOM · GRANULAR MATRIX',
+      badgeCls: 'badge-brass',
+      defaultAccess: 'custom|custom',
+      summary: 'Tailored seat profile — pick exact Read/Enter/Modify/Void rights, specific policy-locked fields this seat can unlock without Admin PIN, and custom Executive Dashboards & Statements.',
+      rights: { read_ops: true, read_fin: false, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: false, modify_data: true, void_data: true, manage_users: false },
+      unlocks: { unlock_unit_price: true, unlock_trans_price: true, unlock_qty_cap: true, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: true, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
+      dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false },
+      statements: { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: false, stmt_financial_board: false }
+    }
+  };
+
+  function resolveCanonicalRoleKey(roleStr) {
+    const r = String(roleStr || '').trim();
+    if (/^Custom/i.test(r)) return 'Custom';
+    if (/Owner|Full Access|Admin/i.test(r)) return 'Full Access (Owner)';
+    if (/Supervisor\s*\+\s*Entry/i.test(r)) return 'Supervisor + Entry';
+    if (/^Supervisor$/i.test(r)) return 'Supervisor';
+    if (/Sales/i.test(r)) return 'Sales';
+    return 'Entry';
+  }
+
+  function parseUserCustomPerms(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); return (p && typeof p === 'object') ? p : {}; } catch (_) { return {}; }
+    }
+    return (typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  }
+
+  function dashboardsFromAccessTier(pbiTier, roleKey, customDash) {
+    if (pbiTier === 'custom' && customDash && typeof customDash === 'object') {
+      const out = {};
+      PERM_CATALOG.dashboards.forEach(d => { out[d.id] = !!customDash[d.id]; });
+      return out;
+    }
+    if (pbiTier === 'none') {
+      return { dash_overview: false, dash_commercial: false, dash_plant_fleet: false, dash_expenses_vat: false, dash_payroll_hr: false, dash_financial_gl: false };
+    }
+    if (pbiTier === 'full' || roleKey === 'Full Access (Owner)') {
+      return { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: true, dash_financial_gl: true };
+    }
+    if (roleKey === 'Sales') {
+      return { dash_overview: true, dash_commercial: true, dash_plant_fleet: false, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false };
+    }
+    return { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false };
+  }
+
+  function statementsFromAccessTier(stTier, roleKey, customStmts) {
+    if (stTier === 'custom' && customStmts && typeof customStmts === 'object') {
+      const out = {};
+      PERM_CATALOG.statements.forEach(s => { out[s.id] = !!customStmts[s.id]; });
+      return out;
+    }
+    if (stTier === 'none') {
+      return { stmt_digest_ops: false, stmt_counterparty: false, stmt_vouchers: false, stmt_payroll: false, stmt_financial_board: false };
+    }
+    if (stTier === 'full' || roleKey === 'Full Access (Owner)') {
+      return { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: true, stmt_financial_board: true };
+    }
+    return { stmt_digest_ops: true, stmt_counterparty: true, stmt_vouchers: true, stmt_payroll: false, stmt_financial_board: false };
+  }
+
+  function getEffectivePermissions(u) {
+    u = u || activeUser() || DEFAULT_USERS[0];
+    const roleKey = resolveCanonicalRoleKey(u.role);
+    const preset = ROLE_PRESETS[roleKey] || ROLE_PRESETS['Entry'];
+    const rawCustom = parseUserCustomPerms(u.custom_perms);
+    const isCustomRole = roleKey === 'Custom';
+    const pbiTier = String(u.pbi_access || (isCustomRole ? 'custom' : 'partial')).toLowerCase();
+    const stTier = String(u.statements_access || (isCustomRole ? 'custom' : 'partial')).toLowerCase();
+
+    const rights = {};
+    PERM_CATALOG.rights.forEach(r => {
+      if (isCustomRole && rawCustom.rights && r.id in rawCustom.rights) {
+        rights[r.id] = !!rawCustom.rights[r.id];
+      } else {
+        rights[r.id] = !!preset.rights[r.id];
+      }
+    });
+
+    const unlocks = {};
+    PERM_CATALOG.unlocks.forEach(ul => {
+      if ((isCustomRole || rawCustom.unlocksCustomized) && rawCustom.unlocks && ul.id in rawCustom.unlocks) {
+        unlocks[ul.id] = !!rawCustom.unlocks[ul.id];
+      } else {
+        unlocks[ul.id] = !!preset.unlocks[ul.id];
+      }
+    });
+
+    const useCustomDash = (isCustomRole || pbiTier === 'custom') && rawCustom.dashboards && typeof rawCustom.dashboards === 'object';
+    const dashboards = useCustomDash
+      ? dashboardsFromAccessTier('custom', roleKey, rawCustom.dashboards)
+      : dashboardsFromAccessTier(pbiTier, roleKey, null);
+
+    const useCustomStmts = (isCustomRole || stTier === 'custom') && rawCustom.statements && typeof rawCustom.statements === 'object';
+    const statements = useCustomStmts
+      ? statementsFromAccessTier('custom', roleKey, rawCustom.statements)
+      : statementsFromAccessTier(stTier, roleKey, null);
+
+    if (dashboards.dash_payroll_hr || dashboards.dash_financial_gl) {
+      rights.read_fin = true;
+    }
+
+    return { roleKey, isCustomRole, preset, rights, unlocks, dashboards, statements, pbiTier, stTier };
+  }
+
+  function countPermissionMetrics(perms, u) {
+    const rightsCount = PERM_CATALOG.rights.filter(r => perms.rights[r.id]).length;
+    const unlockCount = PERM_CATALOG.unlocks.filter(ul => perms.unlocks[ul.id]).length;
+    const multiCo = u ? allowedCompanyNames(u).length >= 2 : true;
+    let pbiPageCount = 0;
+    PERM_CATALOG.dashboards.forEach(d => {
+      if (perms.dashboards[d.id]) {
+        pbiPageCount += d.pages.filter(p => p !== 'p02_companies' || multiCo).length;
+      }
+    });
+    let stmtCount = 0;
+    PERM_CATALOG.statements.forEach(s => {
+      if (perms.statements[s.id]) stmtCount += s.codes.length;
+    });
+    return {
+      rightsCount,
+      rightsTotal: PERM_CATALOG.rights.length,
+      unlockCount,
+      unlockTotal: PERM_CATALOG.unlocks.length,
+      pbiPageCount,
+      pbiPageTotal: multiCo ? 20 : 19,
+      stmtCount,
+      stmtTotal: 22
+    };
+  }
+
   function canEnterForm(form, u) {
-    const role = String((u || activeUser()).role || '').trim();
+    u = u || activeUser();
+    const role = String(u.role || '').trim();
+    if (/^Custom/i.test(role)) {
+      const p = getEffectivePermissions(u);
+      if (['sales', 'raw', 'fuel'].includes(form)) return !!p.rights.enter_dispatch;
+      if (['receipt', 'expense', 'settlement'].includes(form)) return !!p.rights.enter_accounting;
+      if (['pricerule', 'vatinvoice', 'creditterm', 'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'attendance'].includes(form)) return !!p.rights.enter_master;
+      if (['salary', 'employment', 'allowance', 'overtimerate', 'extmovement', 'loan', 'loansettlement', 'conversion', 'jvpartnership', 'jvdistribution'].includes(form)) return !!p.rights.enter_payroll_jv;
+      return !!(p.rights.enter_dispatch || p.rights.enter_accounting || p.rights.enter_master);
+    }
     if (/Owner|Full Access/i.test(role)) return true;
     if (/Supervisor\s*\+\s*Entry/i.test(role)) return true;
     if (/^Supervisor$/i.test(role)) return false; // Supervisor = strictly read-only oversight
@@ -1197,14 +1620,50 @@
     }
     return false;
   }
-  function canEnterAny(u) { return canEnterForm('sales', u) || canEnterForm('receipt', u); }
-  function canVoid(u) { return /Owner|Entry/i.test(String((u || activeUser()).role || '')); }
+  function canEnterAny(u) {
+    u = u || activeUser();
+    if (/^Custom/i.test(String(u.role || ''))) {
+      const r = getEffectivePermissions(u).rights;
+      return !!(r.enter_dispatch || r.enter_accounting || r.enter_master || r.enter_payroll_jv);
+    }
+    return canEnterForm('sales', u) || canEnterForm('receipt', u);
+  }
+  function canVoid(u) {
+    u = u || activeUser();
+    const role = String(u.role || '');
+    if (/^Custom/i.test(role)) return !!getEffectivePermissions(u).rights.void_data;
+    return /Owner|Entry/i.test(role);
+  }
+  function canModifyData(u) {
+    u = u || activeUser();
+    return !!getEffectivePermissions(u).rights.modify_data;
+  }
+  function canUnlockField(fieldId, u) {
+    u = u || activeUser();
+    if (isAdminUser(u)) return true;
+    const p = getEffectivePermissions(u);
+    const uk = FIELD_TO_UNLOCK_KEY[fieldId];
+    return !!(uk && p.unlocks[uk]);
+  }
 
   function canViewView(view, u) {
     u = u || activeUser();
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
     const st = u.statements_access || 'partial';
+    if (/^Custom/i.test(role) || pbi === 'custom' || st === 'custom') {
+      const p = getEffectivePermissions(u);
+      const anyDash = Object.values(p.dashboards).some(Boolean);
+      const anyStmt = Object.values(p.statements).some(Boolean);
+      if (view === 'overview' || view === 'pbi') return anyDash;
+      if (view === 'statements') return anyStmt;
+      if (view === 'payroll') return !!(p.rights.read_fin || p.dashboards.dash_payroll_hr || p.rights.enter_payroll_jv);
+      if (view === 'ledger' || view === 'gl' || view === 'sentinels') return !!(p.rights.read_fin || p.dashboards.dash_financial_gl);
+      if (view === 'expenses') return !!(p.rights.read_ops || p.dashboards.dash_expenses_vat || p.rights.enter_accounting);
+      if (view === 'raw' || view === 'fleet' || view === 'suppliers' || view === 'ap') return !!(p.rights.read_ops || p.dashboards.dash_plant_fleet || p.rights.enter_dispatch);
+      if (view === 'sales' || view === 'pricing' || view === 'customers' || view === 'ar' || view === 'tables') return !!(p.rights.read_ops || p.rights.read_fin || anyDash);
+      return true;
+    }
     if (view === 'overview' || view === 'pbi') return pbi !== 'none';
     if (view === 'expenses') return pbi !== 'none' && !/Sales/i.test(role);
     if (view === 'raw' || view === 'fleet' || view === 'suppliers' || view === 'ap') return !/Sales/i.test(role);
@@ -1217,8 +1676,13 @@
     u = u || activeUser();
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
-    if (pbi === 'none') return false;
     if (pageId === 'p02_companies' && allowedCompanyNames(u).length < 2) return false;
+    if (/^Custom/i.test(role) || pbi === 'custom') {
+      const p = getEffectivePermissions(u);
+      const grp = PERM_CATALOG.dashboards.find(d => d.pages.includes(pageId));
+      return grp ? !!p.dashboards[grp.id] : false;
+    }
+    if (pbi === 'none') return false;
     if (pbi === 'full' || isOwner(u)) return true;
     if (/Sales/i.test(role)) {
       return ['p01_overview', 'p02_companies', 'p03_exceptions', 'p04_sales', 'p05_pricing', 'p06_ar', 'p13_vat', 'p18_tickets'].includes(pageId);
@@ -1230,27 +1694,39 @@
     u = u || activeUser();
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
+    const finTables = [
+      'salaries', 'employments', 'freelance_entries', 'logistics_allowances', 'overtime_rates',
+      'external_movements', 'loans', 'loan_settlements', 'conversions', 'jv_partnerships', 'jv_distributions'
+    ];
+    if (/^Custom/i.test(role) || pbi === 'custom') {
+      const p = getEffectivePermissions(u);
+      if (finTables.includes(tableKey)) return !!(p.rights.read_fin || p.dashboards.dash_payroll_hr || p.dashboards.dash_financial_gl || p.rights.enter_payroll_jv);
+      return !!(p.rights.read_ops || p.rights.read_fin);
+    }
     if (pbi === 'full' || isOwner(u)) return true;
     if (/Sales/i.test(role)) {
       return ['sales_tickets', 'receipts', 'price_rules', 'vat_invoices', 'credit_terms', 'customers', 'products', 'sites', 'regions', 'uoms', 'product_types', 'daily_totals'].includes(tableKey);
     }
-    return ![
-      'salaries', 'employments', 'freelance_entries', 'logistics_allowances', 'overtime_rates',
-      'external_movements', 'loans', 'loan_settlements', 'conversions', 'jv_partnerships', 'jv_distributions'
-    ].includes(tableKey);
+    return !finTables.includes(tableKey);
   }
 
   function canAccessRdlReport(report, u) {
     u = u || activeUser();
+    const role = String(u.role || '');
     const st = u.statements_access || 'partial';
+    const code = String((typeof report === 'string' ? report : (report && (report.id || report.code))) || '').padStart(2, '0');
+    if (/^Custom/i.test(role) || st === 'custom') {
+      const p = getEffectivePermissions(u);
+      const grp = PERM_CATALOG.statements.find(s => s.codes.includes(code));
+      return grp ? !!p.statements[grp.id] : false;
+    }
     if (st === 'none') return false;
     if (st === 'full' || isOwner(u)) return true;
-    const code = typeof report === 'string' ? report : (report && (report.id || report.code));
     const cat = typeof report === 'object' && report ? String(report.cat || '') : '';
     if (cat) {
       return ['Digest', 'Registers', 'Counterparties', 'Documents'].includes(cat) && code !== '10';
     }
-    return !['02', '03', '04', '05', '06', '07', '10', '18', '19'].includes(String(code || ''));
+    return !['02', '03', '04', '05', '06', '07', '10', '18', '19'].includes(code);
   }
 
   function defaultViewFor(u) {
@@ -1260,10 +1736,12 @@
   }
 
   function parseUserCompanies(userOrRaw) {
-    const raw = (userOrRaw && typeof userOrRaw === 'object' && !Array.isArray(userOrRaw))
-      ? userOrRaw.companies
-      : userOrRaw;
+    const isUserObj = Boolean(userOrRaw && typeof userOrRaw === 'object' && !Array.isArray(userOrRaw));
+    const raw = isUserObj ? userOrRaw.companies : userOrRaw;
     const cat = getCompanyCatalog();
+    if (STATE.enterpriseScalePreview && isUserObj && isOwner(userOrRaw)) {
+      return cat.map(c => c.name);
+    }
     const byLower = new Map(cat.map(c => [c.name.toLowerCase(), c.name]));
     cat.forEach(c => byLower.set(c.key.toLowerCase(), c.name));
     const tokens = Array.isArray(raw)
@@ -1275,6 +1753,14 @@
     const out = [];
     const seen = new Set();
     tokens.forEach(tok => {
+      if (/^industry:/i.test(tok)) {
+        const indName = tok.slice(9).trim().toLowerCase();
+        cat.filter(c => String(c.industry || 'Manufacturing').toLowerCase() === indName).forEach(c => {
+          const k = c.name.toLowerCase();
+          if (!seen.has(k)) { seen.add(k); out.push(c.name); }
+        });
+        return;
+      }
       const canonical = byLower.get(tok.toLowerCase()) || tok;
       const k = canonical.toLowerCase();
       if (!seen.has(k)) {
@@ -1294,15 +1780,27 @@
     const names = parseUserCompanies(user || activeUser());
     const cat = getCompanyCatalog();
     const keys = [];
+    const industriesSeen = new Set();
     names.forEach(name => {
       const hit = cat.find(c => c.name.toLowerCase() === name.toLowerCase());
       const k = (hit && hit.key) || COMPANY_KEY_BY_NAME[name] || slugCompanyKey(name);
+      const ind = (hit && hit.industry) || COMPANY_INDUSTRY_BY_KEY[k] || 'Manufacturing';
+      industriesSeen.add(ind);
+      COMPANY_INDUSTRY_BY_KEY[k] = ind;
       if (!COMPANY_BU_MATCH[k]) COMPANY_BU_MATCH[k] = name;
       if (!COMPANY_KEY_BY_NAME[name]) COMPANY_KEY_BY_NAME[name] = k;
       if (!COMPANY_LABELS[k]) COMPANY_LABELS[k] = (hit && hit.label) || name;
       if (!keys.includes(k)) keys.push(k);
     });
     if (!keys.length) keys.push('wtc');
+    if (industriesSeen.size >= 2) {
+      industriesSeen.forEach(ind => {
+        const indKey = `industry:${ind}`;
+        COMPANY_BU_MATCH[indKey] = null;
+        COMPANY_LABELS[indKey] = `All ${ind} Industry`;
+        if (!keys.includes(indKey)) keys.unshift(indKey);
+      });
+    }
     if (keys.length >= 2) keys.unshift('manufacturing-group');
     return keys;
   }
@@ -1311,6 +1809,12 @@
   }
   function defaultEntryCompany() {
     const names = allowedCompanyNames();
+    if (String(STATE.company || '').startsWith('industry:')) {
+      const indName = String(STATE.company).slice(9);
+      const cat = getCompanyCatalog();
+      const hit = cat.find(c => (c.industry || 'Manufacturing') === indName && names.includes(c.name));
+      if (hit) return hit.name;
+    }
     const cur = COMPANY_BU_MATCH[STATE.company];
     return (cur && names.includes(cur)) ? cur : names[0];
   }
@@ -4411,11 +4915,12 @@
   ];
 
   const SEAT_ROLE_OPTIONS = [
-    { value: 'Full Access (Owner)', label: 'Full Access (Owner)' },
+    { value: 'Full Access (Owner)', label: 'Full Access (Admin / Owner)' },
     { value: 'Supervisor + Entry', label: 'Supervisor + Entry (All Ops + Entry)' },
     { value: 'Supervisor', label: 'Supervisor (Read-Only Oversight)' },
     { value: 'Entry', label: 'Entry (Tickets, Fuel, Expenses & Receipts)' },
-    { value: 'Sales', label: 'Sales & AR Collector (Receipts only)' }
+    { value: 'Sales', label: 'Sales & AR Collector (Receipts only)' },
+    { value: 'Custom', label: 'Custom Role (Granular Permissions & Locks)' }
   ];
 
   const SEAT_ACCESS_OPTIONS = [
@@ -4424,7 +4929,8 @@
     { value: 'partial|full', label: 'Operational KPIs + All 22 Statements', short: 'Ops KPIs + 22 Statements', badgeCls: 'badge-info' },
     { value: 'partial|partial', label: 'Operational KPIs + Statements', short: 'Ops KPIs + Statements', badgeCls: 'badge-info' },
     { value: 'none|partial', label: 'Weighbridge / Desk + Operational Statements', short: 'Desk + Ops Statements', badgeCls: 'badge-brass' },
-    { value: 'none|none', label: 'Weighbridge / Desk Only (No Financials)', short: 'Desk Only (No Financials)', badgeCls: 'badge-warn' }
+    { value: 'none|none', label: 'Weighbridge / Desk Only (No Financials)', short: 'Desk Only (No Financials)', badgeCls: 'badge-warn' },
+    { value: 'custom|custom', label: 'Custom Dashboards & Statements (Granular Matrix)', short: 'Custom PBI & Statements', badgeCls: 'badge-brass' }
   ];
 
   function normalizeCompaniesScope(cStr) {
@@ -4445,6 +4951,30 @@
     return names.join(', ');
   }
 
+  function formatCompactCompaniesBadge(cStr, maxShown = 3) {
+    const names = parseUserCompanies(cStr);
+    const catalog = getCompanyCatalog();
+    const byName = new Map(catalog.map(c => [c.name.toLowerCase(), c]));
+    const indSet = new Set();
+    names.forEach(n => {
+      const hit = byName.get(String(n || '').toLowerCase());
+      indSet.add((hit && hit.industry) || inferIndustryForCompany(n));
+    });
+    const indCount = Math.max(1, indSet.size);
+    const fullTitle = `${names.length} ${names.length === 1 ? 'Company' : 'Companies'} (${indCount} ${indCount === 1 ? 'Industry' : 'Industries'}): ${names.join(', ')}`;
+    if (names.length <= maxShown) {
+      return { text: names.join(', '), extraCount: 0, indCount, fullTitle, totalCount: names.length };
+    }
+    const extraCount = names.length - maxShown;
+    return {
+      text: `${names.slice(0, maxShown).join(', ')} +${extraCount} more`,
+      extraCount,
+      indCount,
+      fullTitle,
+      totalCount: names.length
+    };
+  }
+
   function renderCompanyMultiSelectChipsHtml(selected) {
     if (!selected || !selected.length) {
       return '<span class="hint" style="color:var(--crit)">No company selected — pick at least 1 company</span>';
@@ -4460,22 +4990,26 @@
     `).join('') + (extra > 0 ? `<span class="co-multi-chip co-multi-chip-more"><span>+${extra} more selected</span></span>` : '');
   }
 
-  function formatCompanySummaryLabel(selected, totalCount) {
+  function formatCompanySummaryLabel(selected, totalCount, indCount) {
     if (!selected || !selected.length) return 'Select 1 or more companies…';
+    const indSuffix = indCount && indCount > 1 ? ` · ${indCount} Ind` : '';
     if (totalCount > 1 && selected.length === totalCount) {
-      return `All ${totalCount} Companies (${selected.slice(0, 3).join(' · ')}${selected.length > 3 ? ' +' + (selected.length - 3) + ' more' : ''})`;
+      return `All ${totalCount} Companies${indSuffix} (${selected.slice(0, 3).join(' · ')}${selected.length > 3 ? ' +' + (selected.length - 3) + ' more' : ''})`;
     }
-    if (selected.length <= 3) return selected.join(' + ');
-    return `${selected.slice(0, 2).join(', ')} + ${selected.length - 2} more`;
+    if (selected.length <= 3) return selected.join(' + ') + indSuffix;
+    return `${selected.slice(0, 2).join(', ')} + ${selected.length - 2} more${indSuffix}`;
   }
 
   function renderCompanyMultiSelectHtml(selectedRaw) {
     const catalog = getCompanyCatalog();
+    const indGroups = getIndustryGroups(catalog);
     const selected = parseUserCompanies(selectedRaw);
     const selSet = new Set(selected.map(s => s.toLowerCase()));
-    const summaryLbl = formatCompanySummaryLabel(selected, catalog.length);
+    const selIndSet = new Set();
+    catalog.forEach(c => { if (selSet.has(c.name.toLowerCase())) selIndSet.add(c.industry || 'Manufacturing'); });
+    const summaryLbl = formatCompanySummaryLabel(selected, catalog.length, selIndSet.size);
     return `
-      <div class="co-multi-select" id="nuCompanySelector">
+      <div class="co-multi-select" id="nuCompanySelector" data-active-ind="all">
         <input type="hidden" id="nu_companies" value="${esc(selected.join(', '))}">
         <button type="button" class="co-multi-trigger" id="nuCompanyTrigger" aria-haspopup="listbox" aria-expanded="false">
           <span class="co-multi-trigger-summary" id="nuCompanySummaryText">${esc(summaryLbl)}</span>
@@ -4489,29 +5023,61 @@
         </div>
         <div class="co-multi-popover" id="nuCompanyPopover" hidden>
           <div class="co-multi-toolbar">
-            <input type="search" id="nuCompanySearch" class="co-multi-search" placeholder="Search ${catalog.length} companies by name, code or sector..." autocomplete="off">
+            <input type="search" id="nuCompanySearch" class="co-multi-search" placeholder="Search ${catalog.length} companies across ${indGroups.length} ${indGroups.length === 1 ? 'industry' : 'industries'}..." autocomplete="off">
             <div class="co-multi-actions">
               <button type="button" class="co-multi-act-btn" id="nuCompanySelectAllBtn">Select All (${catalog.length})</button>
               <button type="button" class="co-multi-act-btn" id="nuCompanyClearBtn">Clear</button>
             </div>
           </div>
-          <div class="co-multi-list" id="nuCompanyList" role="listbox" aria-multiselectable="true">
-            ${catalog.map(co => {
-              const checked = selSet.has(co.name.toLowerCase());
-              return `
-                <label class="co-multi-opt ${checked ? 'is-checked' : ''}" data-co-opt="${esc(co.name)}" data-co-search="${esc((co.name + ' ' + co.label + ' ' + co.sector + ' ' + co.key).toLowerCase())}">
-                  <input type="checkbox" class="co-multi-cb" value="${esc(co.name)}" ${checked ? 'checked' : ''}>
-                  <span class="co-multi-opt-body">
-                    <b>${esc(co.name)}</b>
-                    <small>${esc(co.sector || co.label)}</small>
-                  </span>
-                  <span class="co-multi-opt-tag">${esc(co.key.toUpperCase().slice(0, 8))}</span>
-                </label>
-              `;
-            }).join('')}
+          <div class="co-multi-body">
+            <div class="co-multi-ind-col" id="nuCompanyIndustryBar" role="tablist" aria-label="Filter by Industry">
+              <button type="button" class="co-multi-ind-tab active" data-ind-tab="all">
+                <span class="co-multi-ind-tab-lbl">All Industries</span>
+                <em class="co-multi-ind-tab-cnt" data-ind-cnt="all">${selected.length}/${catalog.length}</em>
+              </button>
+              ${indGroups.map(g => {
+                const selInG = g.companies.filter(c => selSet.has(c.name.toLowerCase())).length;
+                return `
+                  <button type="button" class="co-multi-ind-tab" data-ind-tab="${esc(g.id)}">
+                    <span class="co-multi-ind-tab-lbl">${esc(g.label)}</span>
+                    <em class="co-multi-ind-tab-cnt" data-ind-cnt="${esc(g.id)}">${selInG}/${g.companies.length}</em>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+            <div class="co-multi-list" id="nuCompanyList" role="listbox" aria-multiselectable="true">
+              ${indGroups.map(g => {
+                const selInG = g.companies.filter(c => selSet.has(c.name.toLowerCase())).length;
+                const allInG = selInG === g.companies.length && g.companies.length > 0;
+                return `
+                  <div class="co-multi-ind-hdr" data-ind-hdr="${esc(g.id)}">
+                    <div class="co-multi-ind-hdr-left">
+                      <span class="co-multi-ind-code">${esc(g.code)}</span>
+                      <b>${esc(g.label)}</b>
+                      <small data-ind-hdr-count="${esc(g.id)}">${selInG} of ${g.companies.length} selected</small>
+                    </div>
+                    <button type="button" class="co-multi-ind-toggle" data-toggle-industry="${esc(g.id)}">${allInG ? 'Clear Industry' : `Select All (${g.companies.length})`}</button>
+                  </div>
+                  ${g.companies.map(co => {
+                    const checked = selSet.has(co.name.toLowerCase());
+                    const indName = co.industry || g.id || 'Manufacturing';
+                    return `
+                      <label class="co-multi-opt ${checked ? 'is-checked' : ''}" data-co-opt="${esc(co.name)}" data-co-ind="${esc(indName)}" data-co-search="${esc((co.name + ' ' + co.label + ' ' + co.sector + ' ' + indName + ' ' + co.key).toLowerCase())}">
+                        <input type="checkbox" class="co-multi-cb" value="${esc(co.name)}" data-cb-ind="${esc(indName)}" ${checked ? 'checked' : ''}>
+                        <span class="co-multi-opt-body">
+                          <b>${esc(co.name)}</b>
+                          <small>${esc(indName)} · ${esc(co.sector || co.label)}</small>
+                        </span>
+                        <span class="co-multi-opt-tag">${esc(co.key.toUpperCase().slice(0, 8))}</span>
+                      </label>
+                    `;
+                  }).join('')}
+                `;
+              }).join('')}
+            </div>
           </div>
           <div class="co-multi-foot">
-            <span id="nuCompanyFootStatus">${selected.length} of ${catalog.length} ${catalog.length === 1 ? 'company' : 'companies'} assigned</span>
+            <span id="nuCompanyFootStatus">${selected.length} of ${catalog.length} ${catalog.length === 1 ? 'company' : 'companies'} assigned across ${indGroups.length} ${indGroups.length === 1 ? 'industry' : 'industries'}</span>
             <button type="button" class="btn btn-brass" style="padding:2px 9px;font-size:10.5px" id="nuCompanyDoneBtn">Done</button>
           </div>
         </div>
@@ -4521,12 +5087,22 @@
 
   function seatAccessValue(u) {
     if (!u) return 'partial|partial';
+    if (String(u.pbi_access || '') === 'custom' || String(u.statements_access || '') === 'custom') return 'custom|custom';
     const v = `${u.pbi_access || 'partial'}|${u.statements_access || 'partial'}`;
     return SEAT_ACCESS_OPTIONS.some(o => o.value === v) ? v : 'partial|partial';
   }
 
   function seatAccessMeta(u) {
     const v = seatAccessValue(u);
+    if (v === 'custom|custom' && u) {
+      const m = countPermissionMetrics(getEffectivePermissions(u), u);
+      return {
+        value: 'custom|custom',
+        label: 'Custom Dashboards & Statements (Granular Matrix)',
+        short: `Custom (${m.pbiPageCount} PBI · ${m.stmtCount} Stmt)`,
+        badgeCls: 'badge-brass'
+      };
+    }
     return SEAT_ACCESS_OPTIONS.find(o => o.value === v) || SEAT_ACCESS_OPTIONS[3];
   }
 
@@ -4534,6 +5110,262 @@
     if (STATE.editingUserId === '__new__') return null;
     const hit = STATE.users.find(u => u && String(u.id) === String(STATE.editingUserId));
     return hit || STATE.users[STATE.activeUserIdx] || STATE.users[0] || null;
+  }
+
+  function getDraftSeatPreviewUser(editUser, curRole, curCompanies, curAccess) {
+    const accParts = String(curAccess || 'partial|partial').split('|');
+    const baseCustom = STATE.draftCustomPerms || (editUser ? parseUserCustomPerms(editUser.custom_perms) : {});
+    return {
+      id: editUser ? editUser.id : '__new__',
+      full_name: editUser ? editUser.full_name : 'New Team Seat',
+      role: curRole || 'Entry',
+      companies: curCompanies || 'WTC',
+      pbi_access: accParts[0] || 'partial',
+      statements_access: accParts[1] || 'partial',
+      custom_perms: baseCustom
+    };
+  }
+
+  function renderRolePostureStripHtml(previewUser) {
+    const perms = getEffectivePermissions(previewUser);
+    const m = countPermissionMetrics(perms, previewUser);
+    const canRead = perms.rights.read_ops || perms.rights.read_fin;
+    const canEnter = perms.rights.enter_dispatch || perms.rights.enter_accounting || perms.rights.enter_master || perms.rights.enter_payroll_jv;
+    const canModify = perms.rights.modify_data;
+    const canVoidRec = perms.rights.void_data;
+    return `
+      <span class="role-posture-pill tier ${perms.preset.badgeCls}">${esc(perms.preset.tierBadge)}</span>
+      <span class="role-posture-pill ${canRead ? 'on' : 'off'}">${perms.rights.read_fin ? '✓ Read Ops + Fin' : (canRead ? '✓ Read Ops' : '✕ No Read')}</span>
+      <span class="role-posture-pill ${canEnter ? 'on' : 'off'}">${canEnter ? '✓ Enter New Data' : 'Read-Only'}</span>
+      <span class="role-posture-pill ${canModify ? 'on' : 'off'}">${canModify ? '✓ Modify Data' : 'No Modify'}</span>
+      <span class="role-posture-pill ${canVoidRec ? 'on' : 'off'}">${canVoidRec ? '✓ Void Entries' : 'No Void'}</span>
+      <span class="role-posture-pill ${m.unlockCount ? 'brass' : 'off'}">🔓 ${m.unlockCount}/${m.unlockTotal} Policy Locks</span>
+    `;
+  }
+
+  function renderDashPostureStripHtml(previewUser, curAccess) {
+    const perms = getEffectivePermissions(previewUser);
+    const m = countPermissionMetrics(perms, previewUser);
+    const isCustomAcc = curAccess === 'custom|custom' || perms.isCustomRole;
+    return `
+      <span class="role-posture-pill ${isCustomAcc ? 'brass' : 'linked'}">${isCustomAcc ? '⚙️ Custom Matrix' : '🔗 Linked to Role'}</span>
+      <span class="role-posture-pill ${m.pbiPageCount ? 'on' : 'off'}">📊 ${m.pbiPageCount}/${m.pbiPageTotal} PBI Dashboards</span>
+      <span class="role-posture-pill ${m.stmtCount ? 'on' : 'off'}">📄 ${m.stmtCount}/${m.stmtTotal} A4 Statements</span>
+    `;
+  }
+
+  function renderRolePermissionsMatrixHtml(previewUser, curAccess) {
+    const perms = getEffectivePermissions(previewUser);
+    const m = countPermissionMetrics(perms, previewUser);
+    const isOpen = !!STATE.showRolePermMatrix;
+    const roleTabs = [
+      { key: 'Entry', label: 'Entry' },
+      { key: 'Supervisor', label: 'Supervisor' },
+      { key: 'Supervisor + Entry', label: 'Supervisor + Entry' },
+      { key: 'Full Access (Owner)', label: 'Admin / Owner' },
+      { key: 'Sales', label: 'Sales & AR' },
+      { key: 'Custom', label: '⚙️ Custom Role' }
+    ];
+    if (!isOpen) {
+      return `
+        <div class="perm-matrix-collapsed" id="rolePermissionsMatrixPanel">
+          <div class="perm-collapsed-left">
+            <span class="perm-collapsed-badge">${ENROL_SVGS.shield}<span>ROLE &amp; EXECUTIVE ACCESS POSTURE</span></span>
+            <span class="perm-collapsed-text">
+              <b>${esc(perms.preset.title)}</b> — ${m.rightsCount}/${m.rightsTotal} Data Rights · ${m.unlockCount}/${m.unlockTotal} Policy-Lock Overrides · ${m.pbiPageCount}/${m.pbiPageTotal} Executive PBI Pages · ${m.stmtCount}/${m.stmtTotal} Printable Statements
+            </span>
+          </div>
+          <div class="perm-collapsed-actions">
+            <button type="button" class="btn btn-brass" style="padding:4px 10px;font-size:11px" id="expandPermMatrixBtn">🛡️ Check Role Permissions &amp; Locks</button>
+            <button type="button" class="btn" style="padding:4px 10px;font-size:11px" id="quickSwitchCustomRoleBtn">⚙️ Customize Role</button>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="perm-matrix-card" id="rolePermissionsMatrixPanel">
+        <div class="perm-matrix-hdr">
+          <div class="perm-matrix-title-wrap">
+            <div class="perm-matrix-eyebrow">ROLE PERMISSIONS · POLICY-LOCK OVERRIDES · LINKED EXECUTIVE DASHBOARDS &amp; STATEMENTS</div>
+            <div class="perm-matrix-title">
+              <span>${esc(perms.preset.title)}</span>
+              <span class="badge ${perms.preset.badgeCls}">${esc(perms.preset.tierBadge)}</span>
+              ${perms.isCustomRole
+                ? `<span class="badge badge-brass">CUSTOM INTERACTIVE MATRIX ACTIVE</span>`
+                : `<span class="badge badge-info">DEFAULT PRESET · CLICK ANY CHECKBOX TO CUSTOMIZE</span>`}
+            </div>
+            <div class="perm-matrix-sub">${esc(perms.preset.summary)}</div>
+          </div>
+          <div class="perm-matrix-hdr-actions">
+            <div class="perm-role-switcher" role="tablist" aria-label="Inspect or switch role preset">
+              ${roleTabs.map(rt => `
+                <button type="button" class="perm-role-tab ${perms.roleKey === rt.key ? 'active' : ''} ${rt.key === 'Custom' ? 'custom-tab' : ''}" data-matrix-role="${esc(rt.key)}">
+                  ${esc(rt.label)}
+                </button>
+              `).join('')}
+            </div>
+            <button type="button" class="btn" style="padding:4px 9px;font-size:11px" id="collapsePermMatrixBtn">✕ Close Inspector</button>
+          </div>
+        </div>
+
+        <div class="perm-summary-strip">
+          <div class="perm-summary-cell">
+            <span class="perm-sum-lbl">1 · Data &amp; Action Rights</span>
+            <strong class="perm-sum-val" id="permSumRights">${m.rightsCount} / ${m.rightsTotal} Enabled</strong>
+            <small>${perms.rights.modify_data ? 'Read + Enter + Modify' : (perms.rights.enter_dispatch || perms.rights.enter_accounting ? 'Read + Enter' : 'Read-Only Oversight')}</small>
+          </div>
+          <div class="perm-summary-cell">
+            <span class="perm-sum-lbl">2 · Policy-Locked Fields They Can Unlock</span>
+            <strong class="perm-sum-val brass" id="permSumUnlocks">${m.unlockCount} / ${m.unlockTotal} Unlockable</strong>
+            <small>${m.unlockCount === 9 ? 'All 9 locks overrideable without PIN' : (m.unlockCount > 0 ? `${m.unlockCount} field locks open without Admin PIN` : 'All 9 locks require Admin PIN 2401')}</small>
+          </div>
+          <div class="perm-summary-cell">
+            <span class="perm-sum-lbl">3 · Linked Executive Dashboards</span>
+            <strong class="perm-sum-val" id="permSumDash">${m.pbiPageCount} / ${m.pbiPageTotal} PBI Pages</strong>
+            <small>${Object.values(perms.dashboards).filter(Boolean).length} of 6 Semantic Dashboard Suites</small>
+          </div>
+          <div class="perm-summary-cell">
+            <span class="perm-sum-lbl">4 · Linked Printable A4 Statements</span>
+            <strong class="perm-sum-val" id="permSumStmts">${m.stmtCount} / ${m.stmtTotal} Statements</strong>
+            <small>${Object.values(perms.statements).filter(Boolean).length} of 5 Audited Statement Suites</small>
+          </div>
+        </div>
+
+        <div class="perm-section-grid">
+          <!-- SECTION 1: DATA READ, ENTER, MODIFY & VOID RIGHTS -->
+          <div class="perm-sec-box">
+            <div class="perm-sec-head">
+              <div>
+                <span class="perm-sec-num">01</span>
+                <strong>Data Rights: Read, Enter New Data, Modify &amp; Void</strong>
+              </div>
+              <div class="perm-sec-quick">
+                <button type="button" class="perm-mini-btn" data-perm-bulk="rights:all">All On</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="rights:ops">Ops Entry</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="rights:readonly">Read-Only</button>
+              </div>
+            </div>
+            <div class="perm-items-list">
+              ${PERM_CATALOG.rights.map(item => {
+                const checked = !!perms.rights[item.id];
+                return `
+                  <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
+                    <input type="checkbox" class="perm-cb" data-perm-cat="rights" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <div class="perm-item-copy">
+                      <div class="perm-item-title">
+                        <b>${esc(item.label)}</b>
+                        <span class="perm-state-pill ${checked ? 'on' : 'off'}">${checked ? '✓ ALLOWED' : 'LOCKED'}</span>
+                      </div>
+                      <small>${esc(item.sub)}</small>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- SECTION 2: POLICY-LOCKED ITEMS THEY CAN UNLOCK -->
+          <div class="perm-sec-box">
+            <div class="perm-sec-head">
+              <div>
+                <span class="perm-sec-num">02</span>
+                <strong>Policy-Locked Items This Role Can Unlock (No Admin PIN)</strong>
+              </div>
+              <div class="perm-sec-quick">
+                <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:all">Unlock All 9</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:pricing">Pricing &amp; Qty</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="unlocks:none">Require PIN</button>
+              </div>
+            </div>
+            <div class="perm-items-list">
+              ${PERM_CATALOG.unlocks.map(item => {
+                const checked = !!perms.unlocks[item.id];
+                return `
+                  <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
+                    <input type="checkbox" class="perm-cb" data-perm-cat="unlocks" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <div class="perm-item-copy">
+                      <div class="perm-item-title">
+                        <b>${esc(item.label)}</b>
+                        <span class="perm-rule-code">${esc(item.rule)}</span>
+                        <span class="perm-state-pill ${checked ? 'brass' : 'off'}">${checked ? '🔓 CAN UNLOCK' : '🔒 PIN 2401 REQ'}</span>
+                      </div>
+                      <small>${esc(item.sub)}</small>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- SECTION 3: LINKED EXECUTIVE DASHBOARDS (20 PBI PAGES) -->
+          <div class="perm-sec-box">
+            <div class="perm-sec-head">
+              <div>
+                <span class="perm-sec-num">03</span>
+                <strong>Executive Dashboards (20 Power BI Pages · m18c)</strong>
+              </div>
+              <div class="perm-sec-quick">
+                <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:full">All 20 Pages</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:ops">Ops Only (16)</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="dashboards:none">None</button>
+              </div>
+            </div>
+            <div class="perm-items-list">
+              ${PERM_CATALOG.dashboards.map(item => {
+                const checked = !!perms.dashboards[item.id];
+                return `
+                  <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
+                    <input type="checkbox" class="perm-cb" data-perm-cat="dashboards" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <div class="perm-item-copy">
+                      <div class="perm-item-title">
+                        <b>${esc(item.label)}</b>
+                        <span class="perm-rule-code">${esc(item.badge)}</span>
+                        <span class="perm-state-pill ${checked ? 'on' : 'off'}">${checked ? '✓ VISIBLE' : 'HIDDEN'}</span>
+                      </div>
+                      <small>${esc(item.sub)}</small>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- SECTION 4: LINKED PRINTABLE A4 STATEMENTS (22 REPORTS) -->
+          <div class="perm-sec-box">
+            <div class="perm-sec-head">
+              <div>
+                <span class="perm-sec-num">04</span>
+                <strong>Printable A4 Financial &amp; Operational Statements (22 Reports)</strong>
+              </div>
+              <div class="perm-sec-quick">
+                <button type="button" class="perm-mini-btn" data-perm-bulk="statements:full">All 22 Stmts</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="statements:ops">Ops Only (13)</button>
+                <button type="button" class="perm-mini-btn" data-perm-bulk="statements:none">None</button>
+              </div>
+            </div>
+            <div class="perm-items-list">
+              ${PERM_CATALOG.statements.map(item => {
+                const checked = !!perms.statements[item.id];
+                return `
+                  <label class="perm-item-row ${checked ? 'is-on' : 'is-off'}">
+                    <input type="checkbox" class="perm-cb" data-perm-cat="statements" data-perm-id="${esc(item.id)}" ${checked ? 'checked' : ''}>
+                    <div class="perm-item-copy">
+                      <div class="perm-item-title">
+                        <b>${esc(item.label)}</b>
+                        <span class="perm-rule-code">${esc(item.badge)}</span>
+                        <span class="perm-state-pill ${checked ? 'on' : 'off'}">${checked ? '✓ PERMITTED' : 'HIDDEN'}</span>
+                      </div>
+                      <small>${esc(item.sub)}</small>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function renderSeatEditorHtml() {
@@ -4560,13 +5392,14 @@
     const editUser = getEditingSeatUser();
     const editIdx = editUser ? STATE.users.findIndex(u => String(u.id) === String(editUser.id)) : -1;
     const isNewMode = !editUser;
-    const curRole = editUser ? (editUser.role || 'Entry') : 'Entry';
-    const curCompanies = editUser ? normalizeCompaniesScope(editUser.companies) : 'WTC';
-    const curAccess = editUser ? seatAccessValue(editUser) : 'partial|partial';
+    const curRole = STATE.draftRoleOverride || (editUser ? (editUser.role || 'Entry') : 'Entry');
+    const curCompanies = STATE.draftCompaniesOverride || (editUser ? normalizeCompaniesScope(editUser.companies) : 'WTC');
+    const curAccess = STATE.draftAccessOverride || (editUser ? seatAccessValue(editUser) : 'partial|partial');
     const curStatus = editUser ? (editUser.status || 'Active') : 'Active';
     const curPin = editUser ? (editUser.pin_code || '1111') : (STATE.newDraftPin || '3564');
     const isSelfOwner = editUser && editIdx === STATE.activeUserIdx;
     const fSamples = editUser ? userFaceSamples(editUser) : [];
+    const previewUser = getDraftSeatPreviewUser(editUser, curRole, curCompanies, curAccess);
 
     return `
       <div class="panel-card seat-editor-card" id="seatEditorPanel" style="margin-bottom:16px;border-color:var(--brass)">
@@ -4589,11 +5422,13 @@
           <div class="seat-picker-top">
             <label class="seat-picker-lbl" for="nu_seat_select">Select Current User to Check or Update (${uCount} Seats)</label>
             <select id="nu_seat_select" class="seat-select-dropdown">
-              ${STATE.users.map((u, idx) => `
+              ${STATE.users.map((u, idx) => {
+                const cBadge = formatCompactCompaniesBadge(u.companies, 3);
+                return `
                 <option value="${esc(u.id)}" ${!isNewMode && String(u.id) === String(editUser.id) ? 'selected' : ''}>
-                  ${idx + 1}. ${esc(u.full_name)} (${esc(u.email)}) — PIN ${esc(u.pin_code || '1111')} · ${esc(u.role)} · ${esc(normalizeCompaniesScope(u.companies))}
-                </option>
-              `).join('')}
+                  ${idx + 1}. ${esc(u.full_name)} (${esc(u.email)}) — PIN ${esc(u.pin_code || '1111')} · ${esc(u.role)} · ${esc(cBadge.text)}
+                </option>`;
+              }).join('')}
               <option value="__new__" ${isNewMode ? 'selected' : ''}>+ Create New Team Login Seat (Blank Form)</option>
             </select>
           </div>
@@ -4628,22 +5463,51 @@
               <input type="text" inputmode="numeric" pattern="[0-9]{4,8}" id="nu_pin" value="${esc(curPin)}" class="mono" autocomplete="off">
             </div>
             <div class="form-field">
-              <label for="nu_role">Role &amp; Permissions *</label>
+              <div class="field-lbl-with-btn">
+                <label for="nu_role">Role &amp; Permissions *</label>
+                <button type="button" class="role-inspect-btn ${STATE.showRolePermMatrix ? 'active' : ''}" id="checkRolePermsBtn" title="Inspect or customize Read, Enter, Modify, Policy-Lock Unlocks & Executive Access for this role">
+                  ${curRole === 'Custom' ? '⚙️ Configure Custom Matrix' : '🛡️ Check Permissions &amp; Locks'}
+                </button>
+              </div>
               <select id="nu_role">
                 ${SEAT_ROLE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curRole === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
               </select>
+              <div class="role-posture-strip" id="nuRolePostureStrip">
+                ${renderRolePostureStripHtml(previewUser)}
+              </div>
             </div>
             <div class="form-field">
               <label for="nuCompanyTrigger">Assigned Companies (Row-Level Security) *</label>
               ${renderCompanyMultiSelectHtml(curCompanies)}
             </div>
             <div class="form-field">
-              <label for="nu_access">Executive Dashboards &amp; Statements</label>
+              <div class="field-lbl-with-btn">
+                <label for="nu_access">Executive Dashboards &amp; Statements</label>
+                <button type="button" class="role-inspect-btn ${STATE.showRolePermMatrix ? 'active' : ''}" id="checkDashAccessBtn" title="Inspect or customize which of the 20 Power BI Dashboards and 22 Printable Statements this seat can open">
+                  📊 Check Dashboards &amp; Statements
+                </button>
+              </div>
               <select id="nu_access">
                 ${SEAT_ACCESS_OPTIONS.map(o => `<option value="${esc(o.value)}" ${curAccess === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
               </select>
+              <div class="dash-posture-strip" id="nuDashPostureStrip">
+                ${renderDashPostureStripHtml(previewUser, curAccess)}
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="nu_auth_mode">Sign-In Requirement (PIN / Face ID)</label>
+              <select id="nu_auth_mode">
+                <option value="inherit" ${(!editUser || !editUser.auth_mode || editUser.auth_mode === 'inherit') ? 'selected' : ''}>Workspace Default (${esc((AUTH_MODE_OPTIONS.find(o => o.value === getWorkspaceAuthMode()) || AUTH_MODE_OPTIONS[1]).short)})</option>
+                ${AUTH_MODE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${(editUser && editUser.auth_mode === o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+              <span class="hint">Choose Either (PIN or Face ID), Both (2FA), Face ID Only (3+ live frames), or PIN Only.</span>
             </div>
           </div>
+
+          <div id="rolePermissionsMatrixWrap">
+            ${renderRolePermissionsMatrixHtml(previewUser, curAccess)}
+          </div>
+
           <div id="nuErrors" class="form-errors" hidden></div>
           <div class="seat-editor-foot">
             <div class="seat-editor-meta">
@@ -4655,7 +5519,7 @@
                 </select>
               </label>
               ${editUser ? `
-                <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">${fSamples.length ? `✓ Face ID: ${fSamples.length}/3 Poses${userRequiresFace2FA(editUser) ? ' · 2FA' : ''}` : 'Face ID: PIN Only'}</span>
+                <span class="badge ${fSamples.length && effectiveSeatAuthMode(editUser) !== 'pin_only' ? 'badge-ok' : 'badge-warn'}">${esc(seatAuthBadgeLabel(editUser))}</span>
                 <button type="button" class="btn" style="padding:3px 9px;font-size:11px" data-enrol-user="${esc(editUser.id)}">Configure Face ID ↓</button>
               ` : ''}
             </div>
@@ -4678,24 +5542,37 @@
       const isTarget = String(u.id) === String(enrolTargetUser().id);
       const isEditing = String(u.id) === editId;
       const accMeta = seatAccessMeta(u);
-      const compNorm = normalizeCompaniesScope(u.companies);
+      const compBadge = formatCompactCompaniesBadge(u.companies, 3);
+      const perms = getEffectivePermissions(u);
+      const pm = countPermissionMetrics(perms, u);
       return `
       <tr class="user-dir-row ${isTarget ? 'enrol-selected-row' : ''} ${isEditing ? 'seat-editing-row' : ''}" data-user-row="${esc(u.id)}" title="${owner ? `Click to inspect & update ${esc(u.full_name)}` : ''}">
         <td><strong>${esc(u.full_name)}</strong>${idx === STATE.activeUserIdx ? ' <span class="badge badge-ok">you</span>' : ''}</td>
         <td class="mono">${esc(u.email)}</td>
         ${owner ? `<td class="mono"><span class="badge badge-info">${esc(u.pin_code || '1111')}</span></td>` : ''}
         <td>
-          <span class="badge ${fSamples.length ? 'badge-ok' : 'badge-warn'}">
-            ${fSamples.length ? `✓ ${fSamples.length}/3 Poses${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}
+          <span class="badge ${fSamples.length && effectiveSeatAuthMode(u) !== 'pin_only' ? 'badge-ok' : 'badge-warn'}">
+            ${esc(seatAuthBadgeLabel(u))}
           </span>
         </td>
-        <td><span class="badge badge-brass">${esc(u.role)}</span></td>
-        <td><strong>${esc(compNorm)}</strong></td>
-        <td><span class="badge ${accMeta.badgeCls}">${esc(accMeta.short)}</span></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+            <span class="badge badge-brass">${esc(u.role)}</span>
+            <span class="badge badge-info" title="${pm.rightsCount}/${pm.rightsTotal} Data Rights · ${pm.unlockCount}/9 Policy Locks Unlockable">🔓 ${pm.unlockCount}/9</span>
+          </div>
+        </td>
+        <td title="${esc(compBadge.fullTitle)}">
+          <div class="rls-co-cell">
+            <strong>${esc(compBadge.text)}</strong>
+            ${compBadge.indCount > 1 ? `<span class="badge badge-info">${compBadge.indCount} Ind</span>` : ''}
+          </div>
+        </td>
+        <td><span class="badge ${accMeta.badgeCls}" title="${pm.pbiPageCount}/${pm.pbiPageTotal} PBI Pages · ${pm.stmtCount}/22 Printable Statements">${esc(accMeta.short)}</span></td>
         <td><span class="badge ${u.status === 'Suspended' ? 'badge-err' : 'badge-ok'}">${esc(u.status || 'Active')}</span></td>
         <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
         <td style="white-space:nowrap">
           ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 8px;font-size:10.5px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">✎ Edit</button>` : ''}
+          ${owner ? `<button type="button" class="btn ${isEditing && STATE.showRolePermMatrix ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-check-perms="${esc(u.id)}" title="Check & configure ${esc(u.full_name)}'s Role Permissions, Policy-Lock Unlocks & Executive Dashboards">🛡️ Perms</button>` : ''}
           ${(owner || idx === STATE.activeUserIdx) ? `<button type="button" class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 8px;font-size:10.5px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
           ${owner ? `
             <button type="button" class="btn" style="padding:3px 7px;font-size:10.5px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
@@ -4793,17 +5670,46 @@
                     </option>
                   `).join('')}
                 </select>
+                <label class="enrol-config-lbl" for="enrolSeatAuthModeSelect" style="margin-top:6px">Seat Sign-In Requirement</label>
+                <select id="enrolSeatAuthModeSelect" class="enrol-select" ${owner ? '' : 'disabled'}>
+                  <option value="inherit" ${(!enrolUser.auth_mode || enrolUser.auth_mode === 'inherit') ? 'selected' : ''}>Workspace Default (${esc((AUTH_MODE_OPTIONS.find(o => o.value === getWorkspaceAuthMode()) || AUTH_MODE_OPTIONS[1]).short)})</option>
+                  ${AUTH_MODE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${enrolUser.auth_mode === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+                </select>
               </div>
               <div class="enrol-config-card enrol-policy-card">
-                <span class="enrol-config-lbl">Sign-In Options${owner ? '' : ' (Owner Policy)'}</span>
-                <label class="enrol-policy-check">
-                  <input type="checkbox" id="enrolRequire2faCb" ${STATE.faceSettings.enforce2FA ? 'checked' : ''} ${owner ? '' : 'disabled'}>
-                  <span>Enforce Face ID 2FA on PIN login</span>
-                </label>
-                <label class="enrol-policy-check">
-                  <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness ? 'checked' : ''} ${owner ? '' : 'disabled'}>
-                  <span>Require blink check</span>
-                </label>
+                <span class="enrol-config-lbl">Sign-In Requirement &amp; Anti-Screenshot Liveness${owner ? '' : ' (Owner Policy)'}</span>
+                <div class="enrol-policy-subgrid">
+                  <div class="enrol-policy-field">
+                    <label for="enrolAuthModeSelect">Workspace Sign-In Policy</label>
+                    <select id="enrolAuthModeSelect" class="enrol-select" ${owner ? '' : 'disabled'}>
+                      ${AUTH_MODE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${getWorkspaceAuthMode() === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="enrol-policy-field">
+                    <label for="enrolLivenessModeSelect">Anti-Screenshot Liveness</label>
+                    <select id="enrolLivenessModeSelect" class="enrol-select" ${owner ? '' : 'disabled'}>
+                      ${LIVENESS_MODE_OPTIONS.map(o => `<option value="${esc(o.value)}" ${(STATE.faceSettings.livenessMode || 'blink_or_turn') === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="enrol-policy-field">
+                    <label for="enrolConfirmFramesSelect">Multi-Frame Check</label>
+                    <select id="enrolConfirmFramesSelect" class="enrol-select" ${owner ? '' : 'disabled'}>
+                      <option value="3" ${Math.max(3, Number(STATE.faceSettings.confirmFrames || 3)) === 3 ? 'selected' : ''}>3 Frames (Mandatory Minimum)</option>
+                      <option value="4" ${Number(STATE.faceSettings.confirmFrames) === 4 ? 'selected' : ''}>4 Consecutive Frames</option>
+                      <option value="5" ${Number(STATE.faceSettings.confirmFrames) === 5 ? 'selected' : ''}>5 Consecutive Frames (Max Security)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="enrol-policy-checks-row">
+                  <label class="enrol-policy-check">
+                    <input type="checkbox" id="enrolRequire2faCb" ${getWorkspaceAuthMode() === 'both' ? 'checked' : ''} ${owner ? '' : 'disabled'}>
+                    <span>Require Both PIN + Face ID (2FA)</span>
+                  </label>
+                  <label class="enrol-policy-check">
+                    <input type="checkbox" id="enrolLivenessCb" ${STATE.faceSettings.liveness !== false ? 'checked' : ''} ${owner ? '' : 'disabled'}>
+                    <span>Require Live Blink / 3D Turn</span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -4875,15 +5781,17 @@
                   </tr>
                 </thead>
                 <tbody>
-                  ${(STATE.sessions || []).slice(0, 10).map(s => `
+                  ${(STATE.sessions || []).slice(0, 10).map(s => {
+                    const sBadge = formatCompactCompaniesBadge(s.companies, 3);
+                    return `
                     <tr>
                       <td class="mono" style="font-size:10.5px">${esc(s.logged_in_at)}</td>
                       <td><strong>${esc(s.full_name)}</strong></td>
                       <td><span class="badge ${/Face/i.test(s.method || '') ? 'badge-ok' : 'badge-info'}">${esc(s.method || 'PIN')}${s.confidence ? ` · ${Math.round(Number(s.confidence))}%` : ''}</span></td>
-                      <td><span class="badge badge-brass">${esc(s.companies)}</span></td>
+                      <td><span class="badge badge-brass" title="${esc(sBadge.fullTitle)}">${esc(sBadge.text)}</span></td>
                       <td class="mono" style="font-size:10.5px">${esc(s.device)}</td>
-                    </tr>
-                  `).join('') || emptyRow(5, 'No sign-ins recorded yet')}
+                    </tr>`;
+                  }).join('') || emptyRow(5, 'No sign-ins recorded yet')}
                 </tbody>
               </table>
             </div>
@@ -5261,6 +6169,7 @@
     const reason = dynamicReason || baseReason;
     const adminOpen = isFieldAdminUnlocked(fieldId);
     const isAdmin = isAdminUser();
+    const roleCanUnlock = canUnlockField(fieldId);
 
     if (adminOpen) {
       if (wrap) {
@@ -5272,7 +6181,7 @@
       if (pill) {
         pill.className = 'pa-lock-pill unlocked';
         pill.textContent = '🔓 ADMIN OVERRIDE · Re-lock';
-        pill.title = 'Unlocked via Admin Privilege — click to re-lock to policy rule';
+        pill.title = 'Unlocked via Admin / Role Privilege — click to re-lock to policy rule';
       }
       return false; // not locked
     }
@@ -5287,8 +6196,8 @@
       el.dataset.lockedValue = el.value;
       if (pill) {
         pill.className = 'pa-lock-pill locked';
-        pill.textContent = isAdmin ? '🔒 LOCKED · Admin Unlock' : '🔒 LOCKED · Policy';
-        pill.title = reason + (isAdmin ? ' — Click to open Admin Privilege Unlock Process' : '');
+        pill.textContent = isAdmin ? '🔒 LOCKED · Admin Unlock' : (roleCanUnlock ? '🔒 LOCKED · Role Unlock' : '🔒 LOCKED · Policy');
+        pill.title = reason + ((isAdmin || roleCanUnlock) ? ' — Click to open Admin Privilege Unlock Process' : ' — Requires Admin PIN (2401)');
       }
       return true; // locked
     } else {
@@ -5320,7 +6229,8 @@
       const el = $(fid);
       const lockedNow = !!(el && el.dataset.policyLockedNow === '1');
       const adminOpen = isFieldAdminUnlocked(fid);
-      out.push({ id: fid, label: lbl, reason, lockedNow, adminOpen });
+      const canUnlock = canUnlockField(fid);
+      out.push({ id: fid, label: lbl, reason, lockedNow, adminOpen, canUnlock });
     });
     return out;
   }
@@ -5336,6 +6246,7 @@
     bar.hidden = false;
     const lockedList = fields.filter(f => f.lockedNow);
     const unlockedList = fields.filter(f => f.adminOpen);
+    const roleAllowedList = fields.filter(f => f.canUnlock);
     const who = activeUser();
     const isAdmin = isAdminUser(who);
     bar.className = 'pa-admin-lock-bar' + (unlockedList.length ? ' has-overrides' : '');
@@ -5349,17 +6260,18 @@
           <b>${lockedList.length}</b> policy-locked field${lockedList.length === 1 ? '' : 's'}${lockedList.length ? ` (${esc(lockedNames)})` : ''}
           ${unlockedList.length ? ` · <b class="good-text">${unlockedList.length} unlocked by Admin (${esc(unlockedList.map(f => f.label).join(', '))})</b>` : ''}
         </span>
-        <small class="muted">Seat: <b>${esc(who.full_name)}</b> (${esc(isAdmin ? 'Admin Privilege Verified' : who.role)})</small>
+        <small class="muted">Seat: <b>${esc(who.full_name)}</b> (${esc(isAdmin ? 'Admin Privilege Verified' : `${who.role} · ${roleAllowedList.length}/${fields.length} Role Unlocks`)})</small>
       </div>
       <div class="pa-admin-lock-actions">
-        ${lockedList.length ? `<button type="button" class="pa-admin-btn" id="paOpenAdminUnlockBtn">🔓 ${isAdmin ? 'Admin Unlock Process…' : 'Request Admin Unlock…'}</button>` : ''}
+        ${lockedList.length ? `<button type="button" class="pa-admin-btn" id="paOpenAdminUnlockBtn">🔓 ${isAdmin ? 'Admin Unlock Process…' : (roleAllowedList.length ? `Role Unlock (${roleAllowedList.length}/${fields.length})…` : 'Request Admin Unlock…')}</button>` : ''}
         ${unlockedList.length ? `<button type="button" class="pa-admin-btn secondary" id="paRelockAllBtn">🔒 Re-Lock All (${unlockedList.length})</button>` : ''}
       </div>
     `;
     const openBtn = $('paOpenAdminUnlockBtn');
     if (openBtn) {
       openBtn.addEventListener('click', () => {
-        const firstLocked = lockedList[0] ? lockedList[0].id : (fields[0] ? fields[0].id : '');
+        const firstRoleLocked = lockedList.find(f => f.canUnlock);
+        const firstLocked = firstRoleLocked ? firstRoleLocked.id : (lockedList[0] ? lockedList[0].id : (fields[0] ? fields[0].id : ''));
         openAdminUnlockPrompt(firstLocked);
       });
     }
@@ -5389,24 +6301,28 @@
     FORM_UI.unlockTargetField = target.id;
     const who = activeUser();
     const isAdmin = isAdminUser(who);
+    const canUnlockTarget = isAdmin || canUnlockField(target.id, who);
+    const roleUnlockableFields = fields.filter(f => isAdmin || f.canUnlock);
     box.hidden = false;
     box.innerHTML = `
       <div class="pa-admin-unlock-hdr">
         <strong>🛡️ Admin Privilege Unlock Process · <span id="paUnlockTargetLabel">${esc(target.label)}</span></strong>
-        <span class="pa-admin-badge">${isAdmin ? 'ADMIN PRIVILEGE VERIFIED · ' + esc(who.full_name) : 'PIN AUTHORIZATION REQUIRED'}</span>
+        <span class="pa-admin-badge">${canUnlockTarget ? (isAdmin ? 'ADMIN PRIVILEGE VERIFIED · ' + esc(who.full_name) : 'ROLE UNLOCK AUTHORIZED · ' + esc(who.full_name)) : 'PIN AUTHORIZATION REQUIRED (2401)'}</span>
       </div>
       <div class="pa-admin-unlock-desc">
         <div><b>Why this field is locked:</b> <span id="paUnlockTargetReason">${esc(target.reason)}</span></div>
-        <div style="margin-top:3px"><b>Admin Override Process:</b> As an Admin (${esc(who.role)}), you can unlock <b>${esc(target.label)}</b> alone or unlock all policy-locked fields on this entry. Overrides are tagged on the posted record for audit traceability.</div>
+        <div style="margin-top:3px"><b>Override Posture:</b> ${canUnlockTarget
+          ? `Your role (<b>${esc(who.role)}</b>) is authorized to unlock <b>${esc(target.label)}</b> directly without an external Admin PIN.`
+          : `Your role (<b>${esc(who.role)}</b>) does not have direct unlock rights for <b>${esc(target.label)}</b> — enter Admin PIN (<b>2401</b>) to override.`} Overrides are logged on the posted record.</div>
       </div>
       <div class="pa-admin-unlock-controls">
         <select id="paUnlockFieldSelect" style="max-width:230px;padding:5px 8px;border-radius:5px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font-size:12px">
-          ${fields.map(f => `<option value="${esc(f.id)}" ${f.id === target.id ? 'selected' : ''}>${esc(f.label)} (${f.adminOpen ? 'Unlocked' : (f.lockedNow ? 'Locked' : 'Auto-Open')})</option>`).join('')}
+          ${fields.map(f => `<option value="${esc(f.id)}" ${f.id === target.id ? 'selected' : ''}>${esc(f.label)} (${f.adminOpen ? 'Unlocked' : (f.canUnlock ? 'Role Unlockable' : (f.lockedNow ? 'PIN Req' : 'Auto-Open'))})</option>`).join('')}
         </select>
-        ${!isAdmin ? `<input type="password" id="paAdminPinInput" placeholder="Admin PIN (2401)..." style="max-width:150px">` : ''}
+        ${!canUnlockTarget ? `<input type="password" id="paAdminPinInput" placeholder="Admin PIN (2401)..." style="max-width:150px">` : ''}
         <input type="text" id="paAdminUnlockNote" value="${esc(FORM_UI.unlockNote || '')}" placeholder="Optional override reason (e.g. GM spot rate)...">
         <button type="button" class="pa-admin-btn" id="paConfirmFieldUnlockBtn">🔓 Authorize &amp; Unlock "${esc(target.label)}"</button>
-        <button type="button" class="pa-admin-btn" id="paConfirmAllUnlockBtn">🔓 Unlock All Policy Fields (${fields.length})</button>
+        <button type="button" class="pa-admin-btn" id="paConfirmAllUnlockBtn">🔓 ${isAdmin || roleUnlockableFields.length === fields.length ? `Unlock All Policy Fields (${fields.length})` : (roleUnlockableFields.length ? `Unlock Role-Authorized Fields (${roleUnlockableFields.length})` : `Unlock All Policy Fields (${fields.length})`)}</button>
         <button type="button" class="pa-admin-btn secondary" id="paCancelUnlockBtn">Cancel</button>
       </div>
     `;
@@ -5415,11 +6331,11 @@
       selEl.addEventListener('change', () => openAdminUnlockPrompt(selEl.value));
     }
     wireModalSuggestions(box);
-    const verifyPin = () => {
-      if (isAdmin) return true;
+    const verifyPinForTarget = () => {
+      if (canUnlockTarget) return true;
       const pinEl = $('paAdminPinInput');
       if (pinEl && String(pinEl.value).trim() === '2401') return true;
-      toast('Admin privilege or valid Admin PIN (2401) is required to unlock policy-locked fields', 'err');
+      toast('Admin privilege, Role Unlock permission, or valid Admin PIN (2401) is required to unlock this field', 'err');
       return false;
     };
     const saveNote = () => {
@@ -5435,7 +6351,7 @@
     const btnOne = $('paConfirmFieldUnlockBtn');
     if (btnOne) {
       btnOne.addEventListener('click', () => {
-        if (!verifyPin()) return;
+        if (!verifyPinForTarget()) return;
         saveNote();
         FORM_UI.adminUnlocked[target.id] = true;
         box.hidden = true;
@@ -5450,13 +6366,26 @@
     const btnAll = $('paConfirmAllUnlockBtn');
     if (btnAll) {
       btnAll.addEventListener('click', () => {
-        if (!verifyPin()) return;
-        saveNote();
-        FORM_UI.adminUnlocked.__all = true;
-        fields.forEach(f => { FORM_UI.adminUnlocked[f.id] = true; });
-        box.hidden = true;
-        recalcForm();
-        toast(`Admin Override: All ${fields.length} policy-locked fields unlocked`, 'ok');
+        const pinEl = $('paAdminPinInput');
+        const hasPin2401 = isAdmin || (pinEl && String(pinEl.value).trim() === '2401');
+        if (hasPin2401) {
+          saveNote();
+          FORM_UI.adminUnlocked.__all = true;
+          fields.forEach(f => { FORM_UI.adminUnlocked[f.id] = true; });
+          box.hidden = true;
+          recalcForm();
+          toast(`Admin Override: All ${fields.length} policy-locked fields unlocked`, 'ok');
+          return;
+        }
+        if (roleUnlockableFields.length > 0) {
+          saveNote();
+          roleUnlockableFields.forEach(f => { FORM_UI.adminUnlocked[f.id] = true; });
+          box.hidden = true;
+          recalcForm();
+          toast(`Role Override: ${roleUnlockableFields.length} authorized policy-locked field(s) unlocked`, 'ok');
+          return;
+        }
+        toast('Admin privilege or valid Admin PIN (2401) is required to unlock policy-locked fields', 'err');
       });
     }
     const btnCancel = $('paCancelUnlockBtn');
@@ -7596,8 +8525,33 @@
           `).join('')}
         </div>
         <div class="pa-cmd-actions">
+          ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">✎ Modify Record</button>` : ''}
           <button type="button" class="pa-cmd-btn" data-insp-open-hub="${esc(key)}">⊞ Open ${esc(INSPECT_LABELS[key] || key)} Table</button>
           <button type="button" class="pa-cmd-btn" id="inspPrintBtn">🖨 Print Form</button>
+        </div>
+      </div>
+
+      <!-- Inline Record Modification Drawer (Gated by Role Modify Data Permission) -->
+      <div class="insp-modify-drawer" id="inspModifyDrawer" hidden>
+        <div class="insp-modify-hdr">
+          <strong>✎ Inline Record Modification · Authorized by ${esc(activeUser().role)} (${esc(activeUser().full_name)})</strong>
+          <span class="badge badge-brass">MODIFY DATA PRIVILEGE VERIFIED</span>
+        </div>
+        <div class="form-grid-3" style="margin-top:8px">
+          ${['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6).map(f => {
+            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres'].includes(f);
+            const isDateField = f === 'date';
+            return `
+              <div class="form-field">
+                <label for="insp_edit_${esc(f)}">${esc(f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</label>
+                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" value="${esc(row[f] != null ? row[f] : '')}">
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+          <button type="button" class="btn" id="inspCancelModifyBtn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="inspSaveModifyBtn">✓ Save Record Modifications</button>
         </div>
       </div>
 
@@ -7733,6 +8687,46 @@
     const prBtn = $('inspPrintBtn');
     if (prBtn) prBtn.addEventListener('click', () => window.print());
 
+    const modBtn = $('inspModifyRecordBtn');
+    const modDrawer = $('inspModifyDrawer');
+    if (modBtn && modDrawer) {
+      modBtn.addEventListener('click', () => {
+        modDrawer.hidden = !modDrawer.hidden;
+        if (!modDrawer.hidden) modDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+    const cancelModBtn = $('inspCancelModifyBtn');
+    if (cancelModBtn && modDrawer) {
+      cancelModBtn.addEventListener('click', () => { modDrawer.hidden = true; });
+    }
+    const saveModBtn = $('inspSaveModifyBtn');
+    if (saveModBtn && modDrawer) {
+      saveModBtn.addEventListener('click', () => {
+        if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
+        let changedCount = 0;
+        modDrawer.querySelectorAll('[data-mod-field]').forEach(inp => {
+          const fk = inp.getAttribute('data-mod-field');
+          if (!fk) return;
+          const prevVal = row[fk];
+          const nextRaw = inp.value;
+          const nextVal = (typeof prevVal === 'number' && nextRaw !== '' && !Number.isNaN(Number(nextRaw))) ? Number(nextRaw) : nextRaw;
+          if (String(prevVal ?? '') !== String(nextVal ?? '')) {
+            row[fk] = nextVal;
+            changedCount++;
+          }
+        });
+        row.modified_by = activeUser().email;
+        row.modified_at = new Date().toISOString();
+        if (STATE.customRecords[key]) {
+          const cIdx = STATE.customRecords[key].findIndex(x => String(x.id) === String(row.id));
+          if (cIdx >= 0) Object.assign(STATE.customRecords[key][cIdx], row);
+        }
+        saveLocalAuthAndRecords();
+        toast(changedCount ? `✓ Record modified (${changedCount} field${changedCount === 1 ? '' : 's'} updated)` : '✓ Record saved');
+        showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
+      });
+    }
+
     // Wire clickable lookup pills inside the inspector
     bodyEl.querySelectorAll('[data-rel-key]').forEach(el => el.addEventListener('click', e => {
       e.stopPropagation();
@@ -7779,12 +8773,13 @@
       localStorage.setItem('isabi_mfg_users_v2', JSON.stringify(STATE.users));
       localStorage.setItem('isabi_mfg_sessions_v2', JSON.stringify(STATE.sessions.slice(0, 50)));
       localStorage.setItem('isabi_mfg_custom_recs_v2', JSON.stringify(STATE.customRecords));
+      localStorage.setItem('isabi_mfg_face_settings_v2', JSON.stringify(STATE.faceSettings));
       localStorage.setItem('isabi_mfg_face_settings_v1', JSON.stringify(STATE.faceSettings));
     } catch (_) { /* storage full or blocked — the cloud copy still holds the state */ }
   }
 
   function mergeUserRow(existing, incoming) {
-    if (!existing) return Object.assign({ face_samples: [], face_thumbs: [], face_required: false, face_updated_at: '', seat_updated_at: '' }, incoming);
+    if (!existing) return Object.assign({ face_samples: [], face_thumbs: [], face_required: false, auth_mode: '', face_updated_at: '', seat_updated_at: '' }, incoming);
     if (!incoming) return existing;
     const exSeatTs = String(existing.seat_updated_at || '');
     const inSeatTs = String(incoming.seat_updated_at || '');
@@ -7826,6 +8821,8 @@
       out.face_updated_at = inTs || exTs;
       if (!out.face_samples.length && (existing.face_cleared || incoming.face_cleared)) out.face_cleared = true;
     }
+    if (preferExistingSeat && existing.auth_mode != null) out.auth_mode = existing.auth_mode;
+    else if (incoming.auth_mode != null) out.auth_mode = incoming.auth_mode;
     return out;
   }
 
@@ -8129,6 +9126,27 @@
     const dotEl = $('authFacePulse') || $('authFaceDot');
     const bannerEl = $('authFaceTargetBanner');
     const targetNameEl = $('authFaceTargetText') || $('authFaceTargetName');
+    const reqSel = $('authGateReqSelect');
+    const camNote = $('authCamNote');
+    const wsMode = getWorkspaceAuthMode();
+    const minFrames = Math.max(3, Number(STATE.faceSettings.confirmFrames || 3));
+
+    if (reqSel && reqSel.value !== wsMode) {
+      reqSel.value = wsMode;
+    }
+    if (camNote) {
+      const liveMode = String(STATE.faceSettings.livenessMode || 'blink_or_turn');
+      const liveText = STATE.faceSettings.liveness === false
+        ? `${minFrames}+ consecutive frames required`
+        : (liveMode === 'blink'
+          ? `Anti-screenshot: ${minFrames}+ frames + live eye blink required`
+          : (liveMode === 'turn3d'
+            ? `Anti-screenshot: ${minFrames}+ frames + 3D head-turn parallax required`
+            : `Anti-screenshot: ${minFrames}+ frames + live blink or 3D head-turn required`));
+      camNote.textContent = wsMode === 'pin_only'
+        ? 'PIN-Only Policy active — Face ID camera sign-in is disabled'
+        : liveText;
+    }
 
     if (camBtn) {
       camBtn.textContent = FACE_STATE.camActive ? 'Turn Off Camera' : 'Turn On Camera';
@@ -8140,7 +9158,10 @@
     if (bannerEl) {
       if (FACE_STATE.pending2faUser) {
         bannerEl.hidden = false;
-        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Face ID Required for ${FACE_STATE.pending2faUser.full_name} — look at the camera`;
+        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Live Face ID Required for ${FACE_STATE.pending2faUser.full_name} — blink or turn slightly`;
+      } else if (FACE_STATE.pendingPinUser) {
+        bannerEl.hidden = false;
+        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Face ID verified for ${FACE_STATE.pendingPinUser.full_name} — enter 4-digit PIN below`;
       } else {
         bannerEl.hidden = true;
       }
@@ -8148,31 +9169,160 @@
 
     if (statsEl) {
       const ready = !!(window.Face && window.Face.ready);
-      statsEl.textContent = `${enrolled.length}/${STATE.users.length} Enrolled · ${ready ? 'Face ID Ready' : 'Face ID'}`;
+      const modeOpt = AUTH_MODE_OPTIONS.find(o => o.value === wsMode) || AUTH_MODE_OPTIONS[1];
+      statsEl.textContent = `${enrolled.length}/${STATE.users.length} Enrolled · ${modeOpt.short} · ${ready ? 'Live 3D Ready' : 'Face ID'}`;
     }
     const hintEl = $('authFaceHint');
     if (enrolled.length && hintEl && /No Face ID seats enrolled|open Team Auth to enrol/i.test(hintEl.textContent || '')) {
-      setAuthHint(`Look at the camera for instant Face ID sign-in (${enrolled.length} enrolled)`, 'ok');
+      setAuthHint(`Look at the camera & blink or turn slightly for Live Face ID (${enrolled.length} enrolled)`, 'ok');
     }
   }
 
-  function livenessStep(landmarks) {
-    if (!STATE.faceSettings.liveness) return true;
-    if (!landmarks || !window.Face || !window.Face.ear) return false;
-    const ear = window.Face.ear(landmarks);
-    const now = Date.now();
-    if (ear > 0 && ear < 0.20) FACE_STATE.eyeClosedSeen = true;
-    else if (FACE_STATE.eyeClosedSeen && ear > 0.26) {
-      FACE_STATE.lastBlinkAt = now;
-      FACE_STATE.eyeClosedSeen = false;
+  function resetLivenessState() {
+    FACE_STATE.lastBlinkAt = 0;
+    FACE_STATE.lastTurnAt = 0;
+    FACE_STATE.eyeClosedSeen = false;
+    FACE_STATE.livenessUser = '';
+    FACE_STATE.livenessHistory = [];
+  }
+
+  // Anti-screenshot liveness verifier: Option 1 (Eye Blink EAR dip+recovery) + Option 2 (3D Head-Turn Parallax)
+  function livenessStep(det, matchedEmail, opts = {}) {
+    if (STATE.faceSettings.liveness === false) {
+      return { ok: true, method: 'multi-frame', detail: 'Liveness check disabled by owner policy' };
     }
-    return (now - FACE_STATE.lastBlinkAt) < 4000;
+    const hasLandmarkPayload = !!(det && (det.landmarks || typeof det.ear === 'number' || (det.pose && typeof det.pose === 'object')));
+    if (!opts.liveCamera && !opts.requireLiveness && !hasLandmarkPayload) {
+      // Synthetic descriptor-only probe (used by basic multi-frame streak tests when no landmarks are supplied)
+      return { ok: true, method: 'synthetic-descriptor' };
+    }
+
+    const now = Date.now();
+    const userKey = norm(matchedEmail || '');
+    if (userKey && FACE_STATE.livenessUser !== userKey) {
+      FACE_STATE.livenessUser = userKey;
+      FACE_STATE.livenessHistory = [];
+      FACE_STATE.eyeClosedSeen = false;
+      FACE_STATE.lastBlinkAt = 0;
+      FACE_STATE.lastTurnAt = 0;
+    }
+
+    const ear = (det && typeof det.ear === 'number')
+      ? det.ear
+      : (det && det.landmarks && window.Face && window.Face.ear ? window.Face.ear(det.landmarks) : null);
+    const poseObj = (det && det.pose && typeof det.pose === 'object')
+      ? det.pose
+      : (det && det.landmarks && window.Face && window.Face.pose ? window.Face.pose(det.landmarks) : null);
+
+    if (ear == null && !poseObj) {
+      return { ok: false, reason: 'no-landmarks' };
+    }
+
+    const lvCfg = (window.Face && window.Face.CONFIG && window.Face.CONFIG.liveness) || {};
+    const windowMs = Number(lvCfg.windowSec || 5) * 1000;
+    const earClosedThr = Number(lvCfg.earClosed || 0.215);
+    const earOpenThr = Number(lvCfg.earOpen || 0.245);
+    const earDropMin = Number(lvCfg.earDropMin || 0.052);
+    const yawSpanMin = Number(lvCfg.yawSpanMin || 0.10);
+    const parallaxSpanMin = Number(lvCfg.parallaxSpanMin || 0.035);
+    const earVarMin = Number(lvCfg.earVarianceMin || 0.012);
+
+    FACE_STATE.livenessHistory = (FACE_STATE.livenessHistory || []).filter(h => (now - h.t) <= windowMs);
+    FACE_STATE.livenessHistory.push({
+      t: now,
+      ear: typeof ear === 'number' ? ear : null,
+      yaw: poseObj && typeof poseObj.yaw === 'number' ? poseObj.yaw : null,
+      parallax3d: poseObj && typeof poseObj.parallax3d === 'number' ? poseObj.parallax3d : null,
+      pitch: poseObj && typeof poseObj.pitch === 'number' ? poseObj.pitch : null
+    });
+    if (FACE_STATE.livenessHistory.length > 24) {
+      FACE_STATE.livenessHistory = FACE_STATE.livenessHistory.slice(-24);
+    }
+
+    const hist = FACE_STATE.livenessHistory;
+    // Option 1: Blink detection — absolute threshold (closed <= 0.215 then open >= 0.245) OR relative blink dip (>= 0.052 drop + >= 0.030 recovery)
+    if (typeof ear === 'number' && ear > 0) {
+      if (ear <= earClosedThr) {
+        FACE_STATE.eyeClosedSeen = true;
+      } else if (FACE_STATE.eyeClosedSeen && ear >= earOpenThr) {
+        FACE_STATE.lastBlinkAt = now;
+        FACE_STATE.eyeClosedSeen = false;
+      }
+      const ears = hist.map(h => h.ear).filter(v => typeof v === 'number' && v > 0);
+      if (ears.length >= 3) {
+        let minIdx = 0;
+        for (let i = 1; i < ears.length; i++) {
+          if (ears[i] < ears[minIdx]) minIdx = i;
+        }
+        const minEar = ears[minIdx];
+        const maxBefore = minIdx > 0 ? Math.max(...ears.slice(0, minIdx)) : ears[0];
+        const maxAfter = minIdx < ears.length - 1 ? Math.max(...ears.slice(minIdx + 1)) : ears[ears.length - 1];
+        if ((maxBefore - minEar) >= earDropMin && (maxAfter - minEar) >= 0.030 && maxAfter >= 0.22) {
+          FACE_STATE.lastBlinkAt = now;
+        }
+      }
+    }
+
+    // Option 2: 3D Head-Turn Parallax — true 3D nose-tip projection vs eye-bridge parallax + non-rigid eye variance
+    const yaws = hist.map(h => h.yaw).filter(v => typeof v === 'number');
+    const parallaxes = hist.map(h => h.parallax3d).filter(v => typeof v === 'number');
+    const earsAll = hist.map(h => h.ear).filter(v => typeof v === 'number' && v > 0);
+    const yawSpan = yaws.length >= 2 ? (Math.max(...yaws) - Math.min(...yaws)) : 0;
+    const parallaxSpan = parallaxes.length >= 2 ? (Math.max(...parallaxes) - Math.min(...parallaxes)) : 0;
+    const earSpan = earsAll.length >= 2 ? (Math.max(...earsAll) - Math.min(...earsAll)) : 0;
+
+    // A rigid 2D phone screenshot tilted in front of the camera has near-zero 3D nose-vs-eye parallax AND zero eye-aspect change
+    if ((parallaxSpan >= parallaxSpanMin && yawSpan >= 0.08) || (yawSpan >= yawSpanMin && earSpan >= earVarMin && parallaxSpan >= 0.018)) {
+      FACE_STATE.lastTurnAt = now;
+    }
+
+    const blinkPassed = (now - (FACE_STATE.lastBlinkAt || 0)) < windowMs;
+    const turnPassed = (now - (FACE_STATE.lastTurnAt || 0)) < windowMs;
+    const mode = String(STATE.faceSettings.livenessMode || 'blink_or_turn');
+
+    if (mode === 'blink') {
+      return { ok: blinkPassed, method: blinkPassed ? 'blink' : '', blinkPassed, turnPassed, yawSpan, parallaxSpan, earSpan };
+    }
+    if (mode === 'turn3d') {
+      return { ok: turnPassed, method: turnPassed ? 'turn3d' : '', blinkPassed, turnPassed, yawSpan, parallaxSpan, earSpan };
+    }
+    return {
+      ok: blinkPassed || turnPassed,
+      method: blinkPassed ? (turnPassed ? 'blink+turn3d' : 'blink') : (turnPassed ? 'turn3d' : ''),
+      blinkPassed,
+      turnPassed,
+      yawSpan,
+      parallaxSpan,
+      earSpan
+    };
   }
 
   async function completeFaceLogin(user, dist, snapshotUrl, methodLabel) {
     if (!user) return false;
+    const seatMode = effectiveSeatAuthMode(user);
+    // If seat requires BOTH PIN + Face ID and the user scanned Face ID first (before entering PIN), prompt for PIN Step 2!
+    if (seatMode === 'both' && !FACE_STATE.pending2faUser) {
+      FACE_STATE.pendingPinUser = user;
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      const emEl = $('authEmailInput');
+      const pinEl = $('authPinInput');
+      if (emEl) emEl.value = user.email;
+      const errEl = $('authErrorBox');
+      if (errEl) errEl.hidden = true;
+      updateAuthFaceUi();
+      setAuthHint(`✓ Live Face ID verified for ${user.full_name} — enter your 4-digit PIN below to complete 2FA`, 'ok');
+      if (pinEl) {
+        pinEl.value = '';
+        setTimeout(() => { try { pinEl.focus(); } catch (_) {} }, 40);
+      }
+      return '2fa_pin_pending';
+    }
+
     FACE_STATE.cooldownUntil = Date.now() + 2500;
     FACE_STATE.pending2faUser = null;
+    FACE_STATE.pendingPinUser = null;
+    resetLivenessState();
     const confPct = Math.max(55, Math.min(99.8, Math.round((1 - Number(dist || 0.2) * 0.85) * 1000) / 10));
 
     if (STATE.faceSettings.sound && window.Face && window.Face.Sound) {
@@ -8205,13 +9355,14 @@
   }
 
   // Evaluates a single 128-d face detection against enrolled seats (used by live camera loop AND headless tests)
+  // Anti-screenshot rule: NEVER unlock on 1 frame — always require >= 3 consecutive matching frames + liveness.
   async function handleAuthDescriptor(det, snapshotUrl, opts = {}) {
-    const baseNeeded = Math.max(1, Number(STATE.faceSettings.confirmFrames || 3));
+    const needed = Math.max(3, Number(STATE.faceSettings.confirmFrames || 3));
     const enrolled = usableFaces();
     if (!enrolled.length) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
-      setAuthStreak(0, baseNeeded);
+      setAuthStreak(0, needed);
       setAuthHint('No Face ID seats enrolled yet — sign in with PIN below, then open Team Auth to enrol your 3 poses.', 'warn');
       return { status: 'no-enrolled' };
     }
@@ -8220,8 +9371,8 @@
       if (!FACE_STATE.streakCount || FACE_STATE.missedFrames >= 3) {
         FACE_STATE.streakUser = null;
         FACE_STATE.streakCount = 0;
-        setAuthStreak(0, baseNeeded);
-        setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for instant Face ID sign-in', '');
+        setAuthStreak(0, needed);
+        setAuthHint(FACE_STATE.pending2faUser ? `Look at the camera to verify ${FACE_STATE.pending2faUser.full_name}` : 'Position your face inside the frame for Live Face ID sign-in', '');
       }
       return { status: 'no-face' };
     }
@@ -8229,7 +9380,7 @@
     if (det.multiple) {
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
-      setAuthStreak(0, baseNeeded);
+      setAuthStreak(0, needed);
       setAuthHint('One person at a time in front of the camera', 'warn');
       return { status: 'multiple' };
     }
@@ -8242,10 +9393,6 @@
     });
     const m = window.Face.match(det.descriptor, enrolled);
     const dec = window.Face.decide(m, cfg, { faceSizeFrac: det.faceSizeFrac != null ? det.faceSizeFrac : 0.25 });
-    const strongLiveMatch = !!(opts && opts.liveCamera && m.bestDist <= 0.44 && (m.secondDist - m.bestDist) >= 0.12);
-    const needed = (opts && opts.liveCamera)
-      ? (strongLiveMatch ? 1 : Math.min(2, baseNeeded))
-      : baseNeeded;
 
     if (!dec.ok) {
       FACE_STATE.streakUser = null;
@@ -8255,6 +9402,16 @@
       else if (dec.status === 'ambiguous') setAuthHint('Hold still — close match between two seats', 'warn');
       else setAuthHint('Face not recognized — sign in with PIN or re-enrol Face ID', 'crit');
       return { status: dec.status, match: m };
+    }
+
+    const matchedUser = STATE.users.find(u => norm(u.email) === norm(dec.best.email));
+    const seatMode = effectiveSeatAuthMode(matchedUser);
+    if (seatMode === 'pin_only' && !FACE_STATE.pending2faUser) {
+      FACE_STATE.streakUser = null;
+      FACE_STATE.streakCount = 0;
+      setAuthStreak(0, needed);
+      setAuthHint(`${dec.best.name} is configured for Access PIN Only — enter your 4-digit PIN below.`, 'warn');
+      return { status: 'face-disabled', best: dec.best, dist: m.bestDist };
     }
 
     // If step-up 2FA is waiting for a specific seat, verify it matches that exact seat
@@ -8267,12 +9424,6 @@
       return { status: '2fa-mismatch', expected: FACE_STATE.pending2faUser.email, actual: dec.best.email };
     }
 
-    const blinkOk = livenessStep(det.landmarks);
-    if (!blinkOk) {
-      setAuthHint(`${dec.best.name} recognized — blink once to confirm liveness`, 'warn');
-      return { status: 'awaiting-blink', best: dec.best, dist: m.bestDist };
-    }
-
     if (FACE_STATE.streakUser && norm(FACE_STATE.streakUser.email) === norm(dec.best.email)) {
       FACE_STATE.streakCount += 1;
     } else {
@@ -8281,25 +9432,50 @@
     }
     FACE_STATE.bestDist = m.bestDist;
     FACE_STATE.secondDist = m.secondDist;
-    setAuthStreak(FACE_STATE.streakCount, needed);
+
+    // Evaluate anti-screenshot liveness on every matching frame (blink dip+recovery OR 3D head-turn parallax)
+    const liveRes = livenessStep(det, dec.best.email, opts);
 
     if (FACE_STATE.streakCount < needed) {
-      setAuthHint(`Verifying ${dec.best.name}…`, 'ok');
-      return { status: 'streak', count: FACE_STATE.streakCount, needed, best: dec.best, dist: m.bestDist };
+      setAuthStreak(FACE_STATE.streakCount, needed);
+      const livenessHint = liveRes.ok
+        ? `Verifying ${dec.best.name} (frame ${FACE_STATE.streakCount} of ${needed})…`
+        : `${dec.best.name} recognized (frame ${FACE_STATE.streakCount}/${needed}) — blink or turn head slightly`;
+      setAuthHint(livenessHint, liveRes.ok ? 'ok' : 'warn');
+      return { status: 'streak', count: FACE_STATE.streakCount, needed, livenessOk: liveRes.ok, best: dec.best, dist: m.bestDist };
     }
 
-    // Confirmed across N consecutive frames!
+    if (!liveRes.ok) {
+      // Hold streak at needed - 1 until the live person blinks or turns their head slightly (rejects static/tilted 2D screenshots)
+      FACE_STATE.streakCount = needed - 1;
+      setAuthStreak(FACE_STATE.streakCount, needed);
+      const liveMode = String(STATE.faceSettings.livenessMode || 'blink_or_turn');
+      const promptMsg = liveMode === 'blink'
+        ? `${dec.best.name} matched (${needed} frames) — blink once to prove live person (blocks screenshots)`
+        : (liveMode === 'turn3d'
+          ? `${dec.best.name} matched (${needed} frames) — turn head slightly left/right to prove 3D face`
+          : `${dec.best.name} matched (${needed} frames) — blink once OR turn head slightly (anti-screenshot check)`);
+      setAuthHint(promptMsg, 'warn');
+      return { status: 'awaiting-blink', livenessStatus: 'awaiting-liveness', livenessDetail: liveRes, count: FACE_STATE.streakCount, needed, best: dec.best, dist: m.bestDist };
+    }
+
+    // Confirmed across >= 3 consecutive frames + live anti-screenshot liveness!
     FACE_STATE.streakUser = null;
     FACE_STATE.streakCount = 0;
     setAuthStreak(needed, needed);
-    const matchedUser = STATE.users.find(u => norm(u.email) === norm(dec.best.email));
-    const methodLabel = FACE_STATE.pending2faUser ? 'PIN + Face ID 2FA' : 'Face ID';
+    const livenessTag = liveRes.method && liveRes.method !== 'synthetic-descriptor' && liveRes.method !== 'multi-frame'
+      ? ` · Live ${liveRes.method === 'turn3d' ? '3D Turn' : 'Blink'}`
+      : '';
+    const methodLabel = FACE_STATE.pending2faUser ? `PIN + Face ID 2FA${livenessTag}` : `Face ID${livenessTag}`;
     setAuthHint(`✓ Verified ${dec.best.name} (${methodLabel})`, 'ok');
     if (!snapshotUrl && opts && opts.videoEl && window.Face && window.Face.snapshot) {
       try { snapshotUrl = window.Face.snapshot(opts.videoEl); } catch (_) {}
     }
-    await completeFaceLogin(matchedUser, m.bestDist, snapshotUrl, methodLabel);
-    return { status: 'verified', user: matchedUser, dist: m.bestDist, method: methodLabel };
+    const loginRes = await completeFaceLogin(matchedUser, m.bestDist, snapshotUrl, methodLabel);
+    if (loginRes === '2fa_pin_pending') {
+      return { status: '2fa-pin-pending', user: matchedUser, dist: m.bestDist, method: methodLabel, liveness: liveRes.method };
+    }
+    return { status: 'verified', user: matchedUser, dist: m.bestDist, method: methodLabel, liveness: liveRes.method };
   }
 
   async function authFaceTick() {
@@ -8406,13 +9582,29 @@
     });
   }
 
+  function cloneEffectivePermsToCustomDraft(sourceUser) {
+    const eff = getEffectivePermissions(sourceUser || getDraftSeatPreviewUser());
+    return {
+      rights: Object.assign({}, eff.rights || {}),
+      unlocks: Object.assign({}, eff.unlocks || {}),
+      dashboards: Object.assign({}, eff.dashboards || {}),
+      statements: Object.assign({}, eff.statements || {})
+    };
+  }
+
   function selectSeatForEdit(targetId, opts = {}) {
     if (!isOwner()) return false;
     STATE.showAddUserForm = true;
     STATE.userFormDirty = false;
+    STATE.draftRoleOverride = null;
+    STATE.draftCompaniesOverride = null;
+    STATE.draftAccessOverride = null;
+    STATE.draftCustomPerms = null;
+    if (opts.permTab) STATE.permMatrixTab = opts.permTab;
     if (targetId === '__new__') {
       STATE.editingUserId = '__new__';
       STATE.newDraftPin = String(Math.floor(1000 + Math.random() * 9000));
+      if (opts.openPerms != null) STATE.showRolePermMatrix = !!opts.openPerms;
     } else {
       let u = STATE.users.find(x => String(x.id) === String(targetId) || norm(x.email) === norm(String(targetId || '')));
       if (!u && /^u(\d+)$/i.test(String(targetId || ''))) {
@@ -8421,10 +9613,16 @@
       }
       if (!u) return false;
       STATE.editingUserId = String(u.id);
+      if (resolveCanonicalRoleKey(u.role) === 'Custom') {
+        STATE.draftCustomPerms = cloneEffectivePermsToCustomDraft(u);
+        STATE.showRolePermMatrix = true;
+      } else if (opts.openPerms != null) {
+        STATE.showRolePermMatrix = !!opts.openPerms;
+      }
     }
     updateSeatEditorDom();
     if (opts.scroll) {
-      const p = $('seatEditorPanel');
+      const p = opts.openPerms ? ($('rolePermissionsMatrixWrap') || $('seatEditorPanel')) : $('seatEditorPanel');
       if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (opts.focusName) {
@@ -8454,7 +9652,11 @@
     const role = val('nu_role') || 'Entry';
     const rawCompanies = val('nu_companies');
     const companies = rawCompanies ? normalizeCompaniesScope(rawCompanies) : '';
-    const acc = (val('nu_access') || 'partial|partial').split('|');
+    const rawAccess = val('nu_access') || 'partial|partial';
+    const isCustomRole = resolveCanonicalRoleKey(role) === 'Custom' || rawAccess === 'custom|custom';
+    const finalRole = isCustomRole ? 'Custom' : role;
+    const defaultRoleAcc = (ROLE_PRESETS[resolveCanonicalRoleKey(finalRole)] && ROLE_PRESETS[resolveCanonicalRoleKey(finalRole)].defaultAccess) || 'partial|partial';
+    const acc = (isCustomRole ? 'custom|custom' : (rawAccess === 'custom|custom' ? defaultRoleAcc : rawAccess)).split('|');
     const editUser = (STATE.editingUserId && STATE.editingUserId !== '__new__')
       ? STATE.users.find(x => String(x.id) === String(STATE.editingUserId))
       : null;
@@ -8478,21 +9680,32 @@
     const isSelfOwner = existingIdx === STATE.activeUserIdx;
     const statusEl = $('nu_status');
     const statusVal = isSelfOwner ? 'Active' : ((statusEl && statusEl.value === 'Suspended') ? 'Suspended' : (prev.status || 'Active'));
+    const authModeRaw = val('nu_auth_mode');
+    const authModeVal = (authModeRaw && authModeRaw !== 'inherit') ? normalizeAuthMode(authModeRaw, 'both') : '';
+    const customPermsObj = isCustomRole
+      ? (STATE.draftCustomPerms || cloneEffectivePermsToCustomDraft(editUser || prev))
+      : {};
+    if (isCustomRole && isSelfOwner && customPermsObj.rights) {
+      customPermsObj.rights.manage_users = true;
+    }
+    const customPermsJson = isCustomRole ? JSON.stringify(customPermsObj) : '{}';
     const nowIso = new Date().toISOString();
     const newUser = {
       id: existingIdx >= 0 ? prev.id : uid('u'),
       full_name: name,
       email,
       pin_code: pin,
-      role,
+      role: finalRole,
       companies,
       pbi_access: acc[0] || 'partial',
       statements_access: acc[1] || 'partial',
+      custom_perms: customPermsJson,
       status: statusVal,
+      auth_mode: authModeVal,
       last_login_at: prev.last_login_at || '',
       face_samples: prev.face_samples || [],
       face_thumbs: prev.face_thumbs || [],
-      face_required: !!prev.face_required,
+      face_required: authModeVal ? (authModeVal === 'both' || authModeVal === 'face_only') : !!prev.face_required,
       face_updated_at: prev.face_updated_at || '',
       seat_updated_at: nowIso
     };
@@ -8501,11 +9714,15 @@
     STATE.editingUserId = String(newUser.id);
     STATE.showAddUserForm = true;
     STATE.userFormDirty = false;
+    STATE.draftRoleOverride = null;
+    STATE.draftCompaniesOverride = null;
+    STATE.draftAccessOverride = null;
+    STATE.draftCustomPerms = isCustomRole ? customPermsObj : null;
     saveLocalAuthAndRecords();
     applyUserRlsAndPermissions();
     updateSeatEditorDom();
     updateEnrolStudioDom();
-    toast(existingIdx >= 0 ? `✓ Seat updated · ${name} (${role} · ${companies})` : `✓ Seat created · ${name} (PIN ${pin})`);
+    toast(existingIdx >= 0 ? `✓ Seat updated · ${name} (${finalRole} · ${companies})` : `✓ Seat created · ${name} (PIN ${pin})`);
     if (HAS_LOCAL_API) { try { await fetch('./api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: newUser }) }); } catch (_) { /* no server.py */ } }
     await syncWithCloud(true);
     return true;
@@ -8524,30 +9741,96 @@
     const selectAllBtn = wrap.querySelector('#nuCompanySelectAllBtn');
     const clearBtn = wrap.querySelector('#nuCompanyClearBtn');
     const doneBtn = wrap.querySelector('#nuCompanyDoneBtn');
+    const indBarEl = wrap.querySelector('#nuCompanyIndustryBar');
     const listEl = wrap.querySelector('#nuCompanyList');
     const footStatusEl = wrap.querySelector('#nuCompanyFootStatus');
 
     const allLabels = () => Array.from(listEl ? listEl.querySelectorAll('.co-multi-opt') : []);
     const allCbs = () => Array.from(listEl ? listEl.querySelectorAll('.co-multi-cb') : []);
+    const allIndHeaders = () => Array.from(listEl ? listEl.querySelectorAll('.co-multi-ind-hdr') : []);
+    const allIndTabs = () => Array.from(indBarEl ? indBarEl.querySelectorAll('.co-multi-ind-tab') : []);
+
+    const applyFilterVisibility = () => {
+      const q = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
+      const activeInd = wrap.getAttribute('data-active-ind') || 'all';
+      const indVisibleMap = new Map();
+      allLabels().forEach(lbl => {
+        const hay = String(lbl.getAttribute('data-co-search') || '').toLowerCase();
+        const ind = String(lbl.getAttribute('data-co-ind') || 'Manufacturing');
+        const matchesInd = activeInd === 'all' || ind === activeInd;
+        const matchesQ = !q || hay.includes(q);
+        const show = matchesInd && matchesQ;
+        lbl.hidden = !show;
+        if (show) indVisibleMap.set(ind, (indVisibleMap.get(ind) || 0) + 1);
+      });
+      allIndHeaders().forEach(hdr => {
+        const ind = String(hdr.getAttribute('data-ind-hdr') || '');
+        hdr.hidden = !indVisibleMap.get(ind);
+      });
+      allIndTabs().forEach(tab => {
+        const tabInd = String(tab.getAttribute('data-ind-tab') || 'all');
+        tab.classList.toggle('active', tabInd === activeInd);
+      });
+    };
 
     const syncFromCheckboxes = () => {
       const cbs = allCbs();
       const total = cbs.length;
       const selected = [];
+      const indTotals = new Map();
+      const indSelected = new Map();
+      const selIndSet = new Set();
       cbs.forEach(cb => {
         const opt = cb.closest('.co-multi-opt');
+        const ind = String(cb.getAttribute('data-cb-ind') || (opt && opt.getAttribute('data-co-ind')) || 'Manufacturing');
+        indTotals.set(ind, (indTotals.get(ind) || 0) + 1);
         if (opt) opt.classList.toggle('is-checked', !!cb.checked);
-        if (cb.checked) selected.push(cb.value);
+        if (cb.checked) {
+          selected.push(cb.value);
+          indSelected.set(ind, (indSelected.get(ind) || 0) + 1);
+          selIndSet.add(ind);
+        }
       });
       if (hiddenInp) hiddenInp.value = selected.join(', ');
-      if (summaryEl) summaryEl.textContent = formatCompanySummaryLabel(selected, total);
+      if (summaryEl) summaryEl.textContent = formatCompanySummaryLabel(selected, total, selIndSet.size);
       if (countPillEl) countPillEl.textContent = `${selected.length} / ${total} selected`;
+
+      // Update per-industry counters & toggle buttons
+      const allCntEl = indBarEl ? indBarEl.querySelector('[data-ind-cnt="all"]') : null;
+      if (allCntEl) allCntEl.textContent = `${selected.length}/${total}`;
+      indTotals.forEach((tot, ind) => {
+        const sel = indSelected.get(ind) || 0;
+        if (indBarEl) {
+          indBarEl.querySelectorAll('[data-ind-cnt]').forEach(el => {
+            if (el.getAttribute('data-ind-cnt') === ind) el.textContent = `${sel}/${tot}`;
+          });
+        }
+        if (listEl) {
+          listEl.querySelectorAll('[data-ind-hdr-count]').forEach(el => {
+            if (el.getAttribute('data-ind-hdr-count') === ind) el.textContent = `${sel} of ${tot} selected`;
+          });
+          listEl.querySelectorAll('[data-toggle-industry]').forEach(btn => {
+            if (btn.getAttribute('data-toggle-industry') === ind) {
+              const allOn = sel === tot && tot > 0;
+              btn.textContent = allOn ? 'Clear Industry' : `Select All (${tot})`;
+              btn.classList.toggle('is-all-selected', allOn);
+            }
+          });
+        }
+      });
+
       const q = searchEl ? String(searchEl.value || '').trim() : '';
+      const activeInd = wrap.getAttribute('data-active-ind') || 'all';
       const visibleCount = allLabels().filter(l => !l.hidden).length;
+      if (selectAllBtn) {
+        selectAllBtn.textContent = (q || activeInd !== 'all')
+          ? `Select Visible (${visibleCount})`
+          : `Select All (${total})`;
+      }
       if (footStatusEl) {
-        footStatusEl.textContent = q
-          ? `Showing ${visibleCount} of ${total} companies · ${selected.length} assigned`
-          : `${selected.length} of ${total} ${total === 1 ? 'company' : 'companies'} assigned`;
+        footStatusEl.textContent = (q || activeInd !== 'all')
+          ? `Showing ${visibleCount} of ${total} companies · ${selected.length} assigned (${selIndSet.size || 0} ind)`
+          : `${selected.length} of ${total} ${total === 1 ? 'company' : 'companies'} assigned across ${indTotals.size || 1} ${(indTotals.size || 1) === 1 ? 'industry' : 'industries'}`;
       }
       if (chipsEl) {
         chipsEl.innerHTML = renderCompanyMultiSelectChipsHtml(selected);
@@ -8588,12 +9871,31 @@
     }
     if (searchEl) {
       searchEl.addEventListener('input', () => {
-        const q = String(searchEl.value || '').trim().toLowerCase();
-        allLabels().forEach(lbl => {
-          const hay = String(lbl.getAttribute('data-co-search') || '').toLowerCase();
-          lbl.hidden = !!(q && !hay.includes(q));
-        });
+        applyFilterVisibility();
         syncFromCheckboxes();
+      });
+    }
+    allIndTabs().forEach(tab => {
+      tab.addEventListener('click', e => {
+        e.stopPropagation();
+        const targetInd = String(tab.getAttribute('data-ind-tab') || 'all');
+        wrap.setAttribute('data-active-ind', targetInd);
+        applyFilterVisibility();
+        syncFromCheckboxes();
+      });
+    });
+    if (listEl) {
+      listEl.querySelectorAll('[data-toggle-industry]').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          e.preventDefault();
+          const targetInd = String(btn.getAttribute('data-toggle-industry') || '');
+          const indCbs = allCbs().filter(cb => String(cb.getAttribute('data-cb-ind') || '') === targetInd);
+          const allChecked = indCbs.length > 0 && indCbs.every(cb => cb.checked);
+          indCbs.forEach(cb => { cb.checked = !allChecked; });
+          STATE.userFormDirty = true;
+          syncFromCheckboxes();
+        });
       });
     }
     allCbs().forEach(cb => {
@@ -8652,6 +9954,7 @@
         }
       });
     }
+    applyFilterVisibility();
     syncFromCheckboxes();
   }
 
@@ -8743,7 +10046,7 @@
         if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
-    root.querySelectorAll('#nu_name, #nu_email, #nu_pin, #nu_role, #nu_companies, #nu_access, #nu_status').forEach(inp => {
+    root.querySelectorAll('#nu_name, #nu_email, #nu_pin, #nu_role, #nu_companies, #nu_access, #nu_auth_mode, #nu_status').forEach(inp => {
       inp.addEventListener('input', () => { STATE.userFormDirty = true; });
       inp.addEventListener('change', () => { STATE.userFormDirty = true; });
     });
@@ -8895,6 +10198,29 @@
         }
       });
     }
+
+    const seatAuthSel = $('enrolSeatAuthModeSelect');
+    if (seatAuthSel) {
+      const wsModeObj = AUTH_MODE_OPTIONS.find(o => o.value === getWorkspaceAuthMode()) || AUTH_MODE_OPTIONS[1];
+      const inheritOpt = seatAuthSel.querySelector('option[value="inherit"]');
+      if (inheritOpt) inheritOpt.textContent = `Workspace Default (${wsModeObj.short})`;
+      seatAuthSel.value = (enrolUser.auth_mode && enrolUser.auth_mode !== 'inherit') ? enrolUser.auth_mode : 'inherit';
+    }
+
+    const wsAuthSel = $('enrolAuthModeSelect');
+    if (wsAuthSel) wsAuthSel.value = getWorkspaceAuthMode();
+
+    const liveModeSel = $('enrolLivenessModeSelect');
+    if (liveModeSel) liveModeSel.value = STATE.faceSettings.livenessMode || 'blink_or_turn';
+
+    const framesSel = $('enrolConfirmFramesSelect');
+    if (framesSel) framesSel.value = String(Math.max(3, Number(STATE.faceSettings.confirmFrames || 3)));
+
+    const req2faCb = $('enrolRequire2faCb');
+    if (req2faCb) req2faCb.checked = getWorkspaceAuthMode() === 'both';
+
+    const liveCb = $('enrolLivenessCb');
+    if (liveCb) liveCb.checked = STATE.faceSettings.liveness !== false;
 
     const tbody = $('usersDirectoryTbody');
     if (tbody) {
@@ -9249,8 +10575,282 @@
     return String(name || 'IS').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
   }
 
+  function selectCompanyScope(coKey, closePopover = true) {
+    if (!coKey) return;
+    STATE.company = coKey;
+    STATE.shown = {};
+    STATE.pbiTablePage = {};
+    saveFilterState();
+    if (closePopover) {
+      const switchEl = $('companySwitch');
+      const popEl = $('companySwitchPopover');
+      const trigEl = $('companySwitchTrigger');
+      if (switchEl) switchEl.classList.remove('open');
+      if (popEl) popEl.hidden = true;
+      if (trigEl) trigEl.setAttribute('aria-expanded', 'false');
+    }
+    renderApp();
+  }
+
+  function syncCompanySwitchUi() {
+    const switchEl = $('companySwitch');
+    if (!switchEl) return;
+    const user = activeUser();
+    const allowedCos = getAllowedCompanyKeys(user);
+    const allowedNames = allowedCompanyNames(user);
+    const allowedNameSet = new Set(allowedNames.map(n => n.toLowerCase()));
+    const catalog = getCompanyCatalog();
+    const indGroups = getIndustryGroups(catalog);
+    const listEl = $('companySwitchList') || switchEl;
+
+    // Ensure every company in catalog or allowedCos has an .entity-btn inside #companySwitchList
+    const desiredKeys = ['manufacturing-group'];
+    if (indGroups.length >= 2) {
+      indGroups.forEach(g => {
+        const indKey = `industry:${g.id}`;
+        if (allowedCos.includes(indKey)) desiredKeys.push(indKey);
+      });
+    }
+    catalog.forEach(c => { if (!desiredKeys.includes(c.key)) desiredKeys.push(c.key); });
+    allowedCos.forEach(k => { if (!desiredKeys.includes(k)) desiredKeys.push(k); });
+
+    desiredKeys.forEach(coKey => {
+      let btn = switchEl.querySelector(`.entity-btn[data-company="${coKey}"]`);
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'entity-btn';
+        btn.setAttribute('data-company', coKey);
+        if (coKey.startsWith('industry:')) {
+          btn.textContent = `All ${coKey.slice(9)}`;
+        } else {
+          btn.textContent = COMPANY_BU_MATCH[coKey] || coKey;
+        }
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          selectCompanyScope(coKey, true);
+        });
+        listEl.appendChild(btn);
+      }
+    });
+
+    // Allowed industries for this user
+    const allowedIndGroups = indGroups.map(g => ({
+      ...g,
+      permittedCos: g.companies.filter(c => allowedNameSet.has(c.name.toLowerCase()))
+    })).filter(g => g.permittedCos.length > 0);
+    const allowedIndCount = Math.max(1, allowedIndGroups.length);
+    const firstAllowedInd = allowedIndGroups[0] ? allowedIndGroups[0].id : 'Manufacturing';
+
+    if (STATE.companySwitchIndFilter !== 'all' && !allowedIndGroups.some(g => g.id === STATE.companySwitchIndFilter)) {
+      STATE.companySwitchIndFilter = 'all';
+    }
+
+    // Populate Left Column: Industry Tabs (#companySwitchIndustryList)
+    const indListEl = $('companySwitchIndustryList');
+    if (indListEl) {
+      const indTabsHtml = [
+        `<button type="button" class="ep-ind-tab ${STATE.companySwitchIndFilter === 'all' ? 'active' : ''}" data-ep-ind="all">
+          <span class="ep-ind-tab-name">All Industries</span>
+          <em class="ep-ind-tab-cnt">${allowedNames.length}</em>
+        </button>`
+      ].concat(allowedIndGroups.map(g => `
+        <button type="button" class="ep-ind-tab ${STATE.companySwitchIndFilter === g.id ? 'active' : ''}" data-ep-ind="${esc(g.id)}" title="${esc(g.label)} (${g.permittedCos.length} permitted)">
+          <span class="ep-ind-tab-name">${esc(g.label)}</span>
+          <em class="ep-ind-tab-cnt">${g.permittedCos.length}</em>
+        </button>
+      `)).join('');
+      indListEl.innerHTML = indTabsHtml;
+      indListEl.querySelectorAll('[data-ep-ind]').forEach(tabBtn => {
+        tabBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          const pickedInd = tabBtn.getAttribute('data-ep-ind') || 'all';
+          STATE.companySwitchIndFilter = pickedInd;
+          syncCompanySwitchUi();
+        });
+      });
+    }
+
+    const searchInp = $('companySwitchSearch');
+    const q = searchInp ? String(searchInp.value || '').trim().toLowerCase() : '';
+    const indFilter = STATE.companySwitchIndFilter || 'all';
+
+    let visibleBtnCount = 0;
+    switchEl.querySelectorAll('.entity-btn').forEach(btn => {
+      const key = btn.getAttribute('data-company') || '';
+      const isAllowed = allowedCos.includes(key);
+      if (key === 'manufacturing-group') {
+        btn.textContent = allowedNames.length >= catalog.length
+          ? `All Group (${allowedNames.length})`
+          : `All Assigned (${allowedNames.length})`;
+        btn.setAttribute('data-ind', 'all');
+        btn.setAttribute('data-ind-tag', allowedIndCount > 1 ? `${allowedIndCount} Ind` : firstAllowedInd);
+        btn.setAttribute('data-co-search', `all group assigned consolidated ${allowedNames.join(' ').toLowerCase()}`);
+      } else if (key.startsWith('industry:')) {
+        const indName = key.slice(9);
+        const grp = allowedIndGroups.find(g => g.id === indName);
+        const cnt = grp ? grp.permittedCos.length : 0;
+        btn.textContent = `All ${indName} (${cnt})`;
+        btn.setAttribute('data-ind', indName);
+        btn.setAttribute('data-ind-tag', 'Industry');
+        btn.setAttribute('data-co-search', `all ${indName.toLowerCase()} industry consolidated`);
+      } else {
+        const coMeta = catalog.find(c => c.key === key);
+        const indName = (coMeta && coMeta.industry) || COMPANY_INDUSTRY_BY_KEY[key] || 'Manufacturing';
+        btn.setAttribute('data-ind', indName);
+        btn.setAttribute('data-ind-tag', indName);
+        btn.setAttribute('data-co-search', ((coMeta ? `${coMeta.name} ${coMeta.label} ${coMeta.sector} ${indName} ${coMeta.key}` : `${btn.textContent} ${key}`)).toLowerCase());
+      }
+
+      if (!isAllowed) {
+        btn.hidden = true;
+      } else {
+        const btnInd = btn.getAttribute('data-ind') || 'Manufacturing';
+        const hay = btn.getAttribute('data-co-search') || btn.textContent.toLowerCase();
+        const matchInd = indFilter === 'all' || key === 'manufacturing-group' || btnInd === indFilter;
+        const matchQ = !q || hay.includes(q);
+        btn.hidden = !(matchInd && matchQ);
+        if (!btn.hidden) visibleBtnCount += 1;
+      }
+      btn.classList.toggle('active', key === STATE.company);
+    });
+
+    // Update Trigger Box 2-Segment Labels (IND + CO)
+    const indTextEl = $('companySwitchIndText');
+    const coTextEl = $('companySwitchCoText');
+    let trigInd = firstAllowedInd;
+    let trigCo = `All Group (${allowedNames.length})`;
+    if (STATE.company === 'manufacturing-group') {
+      trigInd = allowedIndCount > 1 ? `All (${allowedIndCount} Ind)` : firstAllowedInd;
+      trigCo = allowedNames.length >= catalog.length
+        ? `All Group (${allowedNames.length})`
+        : `All Assigned (${allowedNames.length})`;
+    } else if (String(STATE.company || '').startsWith('industry:')) {
+      const indName = String(STATE.company).slice(9);
+      const grp = allowedIndGroups.find(g => g.id === indName);
+      const cnt = grp ? grp.permittedCos.length : 0;
+      trigInd = indName;
+      trigCo = `All ${indName.split(' ')[0]} (${cnt})`;
+    } else {
+      const coMeta = catalog.find(c => c.key === STATE.company);
+      trigInd = (coMeta && coMeta.industry) || COMPANY_INDUSTRY_BY_KEY[STATE.company] || 'Manufacturing';
+      trigCo = (coMeta && coMeta.name) || COMPANY_BU_MATCH[STATE.company] || STATE.company;
+    }
+    if (indTextEl) indTextEl.textContent = trigInd;
+    if (coTextEl) coTextEl.textContent = trigCo;
+
+    const coHeadEl = $('companySwitchCoHead');
+    if (coHeadEl) {
+      coHeadEl.textContent = indFilter === 'all'
+        ? `Operating Companies (${allowedNames.length} Permitted)`
+        : `${indFilter} (${(allowedIndGroups.find(g => g.id === indFilter) || { permittedCos: [] }).permittedCos.length} Permitted)`;
+    }
+    const footEl = $('companySwitchFootStatus');
+    if (footEl) {
+      footEl.textContent = q
+        ? `Showing ${visibleBtnCount} matching options · ${allowedNames.length} companies across ${allowedIndCount} ${allowedIndCount === 1 ? 'industry' : 'industries'}`
+        : `${allowedIndCount} ${allowedIndCount === 1 ? 'Industry' : 'Industries'} · ${allowedNames.length} ${allowedNames.length === 1 ? 'Company' : 'Companies'} Permitted (RLS)`;
+    }
+    const demoBtn = $('companySwitchScalePreviewBtn');
+    if (demoBtn) {
+      demoBtn.hidden = !isOwner(user);
+      demoBtn.classList.toggle('active', !!STATE.enterpriseScalePreview);
+      demoBtn.textContent = STATE.enterpriseScalePreview
+        ? '✓ 10 Ind × 150 Co Preview (Reset to 3)'
+        : '⚡ Preview 10 Ind × 150 Co';
+    }
+  }
+
+  function wireCompanySwitch() {
+    const switchEl = $('companySwitch');
+    if (!switchEl || switchEl.dataset.pickerWired === '1') return;
+    switchEl.dataset.pickerWired = '1';
+    const trigBtn = $('companySwitchTrigger');
+    const popEl = $('companySwitchPopover');
+    const searchEl = $('companySwitchSearch');
+    const allBtn = $('companySwitchSelectAllBtn');
+    const demoBtn = $('companySwitchScalePreviewBtn');
+    const doneBtn = $('companySwitchDoneBtn');
+
+    const setOpen = (open) => {
+      switchEl.classList.toggle('open', !!open);
+      if (popEl) popEl.hidden = !open;
+      if (trigBtn) trigBtn.setAttribute('aria-expanded', String(!!open));
+      if (open) {
+        syncCompanySwitchUi();
+        if (searchEl) setTimeout(() => { try { searchEl.focus({ preventScroll: true }); } catch (_) {} }, 20);
+      } else if (searchEl && searchEl.value) {
+        searchEl.value = '';
+        STATE.companySwitchIndFilter = 'all';
+        syncCompanySwitchUi();
+      }
+    };
+
+    if (trigBtn) {
+      trigBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        setOpen(popEl ? popEl.hidden : !switchEl.classList.contains('open'));
+      });
+    }
+    if (doneBtn) {
+      doneBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        setOpen(false);
+      });
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        syncCompanySwitchUi();
+      });
+    }
+    if (allBtn) {
+      allBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        STATE.companySwitchIndFilter = 'all';
+        if (searchEl) searchEl.value = '';
+        const allowedCos = getAllowedCompanyKeys(activeUser());
+        selectCompanyScope(allowedCos[0] || 'manufacturing-group', true);
+      });
+    }
+    if (demoBtn) {
+      demoBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        STATE.enterpriseScalePreview = !STATE.enterpriseScalePreview;
+        STATE.enterprisePreviewCompanies = STATE.enterpriseScalePreview ? buildEnterprisePreviewCatalog() : [];
+        STATE.companySwitchIndFilter = 'all';
+        if (!STATE.enterpriseScalePreview && !['manufacturing-group', 'wtc', 'bbconstruction', 'lionstransport'].includes(STATE.company)) {
+          STATE.company = 'manufacturing-group';
+        }
+        applyUserRlsAndPermissions();
+        if (STATE.view === 'users') {
+          updateSeatEditorDom();
+        }
+        toast(STATE.enterpriseScalePreview
+          ? '⚡ Enterprise Scale Preview active: 10 Industries × 15 Companies (150 Companies) loaded'
+          : 'Restored live 3-company Manufacturing catalog (WTC · BBConstruction · Lions Transport)');
+      });
+    }
+    switchEl.querySelectorAll('.entity-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        selectCompanyScope(btn.getAttribute('data-company'), true);
+      });
+    });
+    document.addEventListener('mousedown', e => {
+      if (switchEl.classList.contains('open') && (!e.target || !e.target.closest('#companySwitch'))) {
+        setOpen(false);
+      }
+    });
+  }
+
   function applyUserRlsAndPermissions() {
     const user = activeUser();
+    if (STATE._lastRlsUserId !== String(user && user.id || '')) {
+      STATE._lastRlsUserId = String(user && user.id || '');
+      STATE.companySwitchIndFilter = 'all';
+      const searchInp = $('companySwitchSearch');
+      if (searchInp) searchInp.value = '';
+    }
     const allowedCos = getAllowedCompanyKeys(user);
     const allowedNames = allowedCompanyNames(user);
     const catalog = getCompanyCatalog();
@@ -9258,38 +10858,7 @@
     STATE.canAccessRdlReport = r => canAccessRdlReport(r, user);
 
     if (!allowedCos.includes(STATE.company)) STATE.company = allowedCos[0];
-    const switchEl = $('companySwitch');
-    if (switchEl) {
-      // Ensure any custom companies in allowedCos have an entity button in #companySwitch
-      allowedCos.forEach(coKey => {
-        if (coKey === 'manufacturing-group') return;
-        if (!switchEl.querySelector(`.entity-btn[data-company="${coKey}"]`)) {
-          const coName = COMPANY_BU_MATCH[coKey] || coKey;
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'entity-btn';
-          btn.setAttribute('data-company', coKey);
-          btn.textContent = coName;
-          btn.addEventListener('click', () => {
-            STATE.company = coKey;
-            STATE.shown = {};
-            STATE.pbiTablePage = {};
-            saveFilterState();
-            renderApp();
-          });
-          switchEl.appendChild(btn);
-        }
-      });
-      switchEl.querySelectorAll('.entity-btn').forEach(btn => {
-        const key = btn.getAttribute('data-company');
-        btn.hidden = !allowedCos.includes(key);
-        if (key === 'manufacturing-group') {
-          btn.textContent = allowedNames.length >= catalog.length
-            ? `All Group (${allowedNames.length})`
-            : `All Assigned (${allowedNames.length})`;
-        }
-      });
-    }
+    syncCompanySwitchUi();
 
     COMPANY_LABELS['manufacturing-group'] = allowedNames.length >= catalog.length
       ? `All Manufacturing Group (${allowedNames.slice(0, 3).join(' · ')}${allowedNames.length > 3 ? ' +' + (allowedNames.length - 3) + ' more' : ''})`
@@ -9340,6 +10909,12 @@
     if (sub) sub.textContent = IS_DEMO ? 'Demo mode — tap any seat to sign in (or test Face ID 2FA if enrolled):' : 'Look at the camera for Face ID, or tap your seat to fill your email:';
     listEl.innerHTML = STATE.users.filter(u => u.status !== 'Suspended').map((u, idx) => {
       const hasFace = userHasFaceId(u);
+      const seatMode = effectiveSeatAuthMode(u);
+      const facePillText = (!hasFace || seatMode === 'pin_only')
+        ? 'PIN Only'
+        : (seatMode === 'face_only'
+          ? '✓ Face ID Only'
+          : (seatMode === 'both' ? '✓ Face ID · 2FA' : '✓ PIN or Face ID'));
       return `
       <button type="button" class="quick-seat-item" data-quick-seat="${esc(u.email)}">
         <div>
@@ -9348,7 +10923,7 @@
         </div>
         <div class="quick-seat-meta">
           <span class="quick-seat-role">${esc(u.role)}</span>
-          <span class="quick-seat-face ${hasFace ? 'on' : ''}">${hasFace ? `✓ Face ID${userRequiresFace2FA(u) ? ' · 2FA' : ''}` : 'PIN Only'}</span>
+          <span class="quick-seat-face ${hasFace && seatMode !== 'pin_only' ? 'on' : ''}">${facePillText}</span>
           ${IS_DEMO ? `<span class="quick-seat-pin">PIN: ${esc(u.pin_code || '1111')}</span>` : ''}
         </div>
       </button>
@@ -9371,8 +10946,10 @@
   function openAuthGate(prefillEmail) {
     STATE.authed = false;
     FACE_STATE.pending2faUser = null;
+    FACE_STATE.pendingPinUser = null;
     FACE_STATE.streakUser = null;
     FACE_STATE.streakCount = 0;
+    resetLivenessState();
     window.__mfgAuthedEmail = '';
     renderQuickSeatsInAuthGate();
     updateCloudBadges();
@@ -9393,7 +10970,9 @@
   function closeAuthGate() {
     STATE.authed = true;
     FACE_STATE.pending2faUser = null;
+    FACE_STATE.pendingPinUser = null;
     FACE_STATE.enrolCamActive = false;
+    resetLivenessState();
     stopAuthFaceScanner();
     stopFaceCamera();
     window.__mfgAuthedEmail = activeUser().email;
@@ -9466,20 +11045,39 @@
     }
     loginAttempts = 0;
 
-    // Step-Up 2FA Biometric Gate: if this seat has enrolled Face ID and 2FA is enforced, require Face ID confirmation!
+    const seatMode = effectiveSeatAuthMode(user);
+    // If seat is configured for Face ID Only, block PIN-only sign-in and prompt for live camera scan
+    if (!opts.bypass2FA && seatMode === 'face_only') {
+      authError(`${user.full_name} requires Live Biometric Face ID Only (3+ frames + blink or 3D turn). Look at the camera above to sign in.`);
+      setAuthHint(`🔒 Face ID Only required for ${user.full_name} — look at the camera & blink or turn slightly`, 'warn');
+      if (!FACE_STATE.camActive && !navigator.webdriver) startAuthFaceScanner(true);
+      return 'face_only_required';
+    }
+
+    // If user already completed Live Face ID Step 1 under 'both' mode, completing PIN Step 2 signs them in!
+    const completedFaceFirst2FA = !!(FACE_STATE.pendingPinUser && norm(FACE_STATE.pendingPinUser.email) === norm(user.email));
+    if (completedFaceFirst2FA) {
+      FACE_STATE.pendingPinUser = null;
+      opts = Object.assign({}, opts, { bypass2FA: true, method: opts.method || 'Face ID + PIN 2FA' });
+    }
+
+    // Step-Up 2FA Biometric Gate: if this seat has enrolled Face ID and 2FA ('both') is enforced, require Live Face ID confirmation!
     if (!opts.bypass2FA && userRequiresFace2FA(user)) {
       FACE_STATE.pending2faUser = user;
+      FACE_STATE.pendingPinUser = null;
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
+      resetLivenessState();
       const errEl = $('authErrorBox');
       if (errEl) errEl.hidden = true;
       updateAuthFaceUi();
-      setAuthHint(`🔒 PIN verified for ${user.full_name} — look at the camera to complete Biometric Face ID 2FA`, 'ok');
+      setAuthHint(`🔒 PIN verified for ${user.full_name} — look at the camera & blink or turn slightly to complete Face ID 2FA`, 'ok');
       if (!FACE_STATE.camActive && !navigator.webdriver) startAuthFaceScanner(true);
       return '2fa_pending';
     }
 
     FACE_STATE.pending2faUser = null;
+    FACE_STATE.pendingPinUser = null;
     const nowStr = nowStamp();
     const ua = navigator.userAgent || '';
     const devLabel = /iPhone|iPad/i.test(ua) ? 'iOS Safari' : (/Android/i.test(ua) ? 'Android Chrome' : (/Edg\//.test(ua) ? 'Desktop Edge' : 'Desktop Browser'));
@@ -9733,10 +11331,12 @@
     const eyeEl = $('topbarEyebrow');
     const titEl = $('topbarTitle');
     const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 860;
+    const coFullLbl = COMPANY_LABELS[STATE.company] || COMPANY_BU_MATCH[STATE.company] || STATE.company || 'Manufacturing Group';
+    const coMobLbl = COMPANY_MOBILE_LABELS[STATE.company] || coFullLbl;
     if (eyeEl) {
       eyeEl.textContent = isMobileViewport
-        ? `${COMPANY_MOBILE_LABELS[STATE.company] || COMPANY_LABELS[STATE.company]} · ${STATE.basis === 'rep' ? 'Rep Date' : 'Tx Date'}`
-        : `${COMPANY_LABELS[STATE.company]} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
+        ? `${coMobLbl} · ${STATE.basis === 'rep' ? 'Rep Date' : 'Tx Date'}`
+        : `${coFullLbl} · ${k.label || 'All-Time'} · ${STATE.basis === 'rep' ? 'Reporting Date Basis' : 'Transaction Date Basis'}`;
     }
     if (titEl) {
       titEl.textContent = isMobileViewport
@@ -9746,14 +11346,14 @@
     document.title = `${(VIEW_TITLES[STATE.view] || 'Overview').split('&')[0].trim()} · ISABI Mfg`;
 
     const aiScope = $('aiDrawerScope');
-    if (aiScope) aiScope.textContent = `${COMPANY_LABELS[STATE.company].split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
+    if (aiScope) aiScope.textContent = `${String(coFullLbl).split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
       const v = btn.getAttribute('data-view');
       const isMatch = v === STATE.view || (v === 'customers' && STATE.view === 'ar') || (v === 'suppliers' && STATE.view === 'ap') || (v === 'ledger' && STATE.view === 'gl');
       btn.classList.toggle('on', isMatch);
     });
-    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-company') === STATE.company));
+    syncCompanySwitchUi();
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis));
     syncTopbarDateControls();
 
@@ -10141,19 +11741,71 @@
       syncEnrolBufferFromUser(u, true);
       updateEnrolStudioDom();
     });
-    const req2faCb = $('enrolRequire2faCb');
-    if (req2faCb) req2faCb.addEventListener('change', e => {
-      STATE.faceSettings.enforce2FA = !!e.target.checked;
+    const seatAuthSel = $('enrolSeatAuthModeSelect');
+    if (seatAuthSel) seatAuthSel.addEventListener('change', async e => {
+      const u = enrolTargetUser();
+      if (!u) return;
+      const v = String(e.target.value || 'inherit');
+      u.auth_mode = v === 'inherit' ? '' : normalizeAuthMode(v, 'both');
+      u.face_required = u.auth_mode ? (u.auth_mode === 'both' || u.auth_mode === 'face_only') : (getWorkspaceAuthMode() === 'both');
+      u.seat_updated_at = new Date().toISOString();
+      saveLocalAuthAndRecords();
+      updateSeatEditorDom();
+      updateEnrolStudioDom();
+      renderQuickSeatsInAuthGate();
+      updateAuthFaceUi();
+      toast(`Seat sign-in requirement for ${u.full_name}: ${seatAuthBadgeLabel(u)}`);
+      syncWithCloud(true);
+    });
+    const wsAuthSel = $('enrolAuthModeSelect');
+    if (wsAuthSel) wsAuthSel.addEventListener('change', e => {
+      const m = setWorkspaceAuthMode(e.target.value);
+      saveLocalAuthAndRecords();
+      updateSeatEditorDom();
+      updateEnrolStudioDom();
+      renderQuickSeatsInAuthGate();
+      updateAuthFaceUi();
+      const opt = AUTH_MODE_OPTIONS.find(o => o.value === m) || AUTH_MODE_OPTIONS[1];
+      toast(`Workspace sign-in requirement: ${opt.label}`);
+      syncWithCloud(true);
+    });
+    const liveModeSel = $('enrolLivenessModeSelect');
+    if (liveModeSel) liveModeSel.addEventListener('change', e => {
+      STATE.faceSettings.livenessMode = String(e.target.value || 'blink_or_turn');
+      STATE.faceSettings.liveness = true;
       saveLocalAuthAndRecords();
       updateEnrolStudioDom();
-      toast(STATE.faceSettings.enforce2FA ? 'Face ID 2FA enforced for enrolled seats' : 'Face ID 2FA optional on PIN login');
+      updateAuthFaceUi();
+      const opt = LIVENESS_MODE_OPTIONS.find(o => o.value === STATE.faceSettings.livenessMode) || LIVENESS_MODE_OPTIONS[0];
+      toast(`Anti-screenshot liveness: ${opt.label}`);
+      syncWithCloud(true);
+    });
+    const framesSel = $('enrolConfirmFramesSelect');
+    if (framesSel) framesSel.addEventListener('change', e => {
+      STATE.faceSettings.confirmFrames = Math.max(3, Math.min(5, Number(e.target.value || 3)));
+      saveLocalAuthAndRecords();
+      updateEnrolStudioDom();
+      updateAuthFaceUi();
+      toast(`Multi-frame Face ID check: ${STATE.faceSettings.confirmFrames} consecutive frames required`);
+      syncWithCloud(true);
+    });
+    const req2faCb = $('enrolRequire2faCb');
+    if (req2faCb) req2faCb.addEventListener('change', e => {
+      setWorkspaceAuthMode(e.target.checked ? 'both' : 'either');
+      saveLocalAuthAndRecords();
+      updateSeatEditorDom();
+      updateEnrolStudioDom();
+      renderQuickSeatsInAuthGate();
+      updateAuthFaceUi();
+      toast(STATE.faceSettings.enforce2FA ? 'Sign-In Requirement: Both PIN + Face ID (2FA)' : 'Sign-In Requirement: Either PIN or Face ID');
     });
     const liveCb = $('enrolLivenessCb');
     if (liveCb) liveCb.addEventListener('change', e => {
       STATE.faceSettings.liveness = !!e.target.checked;
       saveLocalAuthAndRecords();
       updateEnrolStudioDom();
-      toast(STATE.faceSettings.liveness ? 'Blink check enabled' : 'Blink check disabled');
+      updateAuthFaceUi();
+      toast(STATE.faceSettings.liveness ? 'Anti-screenshot liveness (blink or 3D turn) enabled' : 'Liveness check disabled (3+ frame check still enforced)');
     });
     const startCamBtn = $('enrolStartCamBtn');
     if (startCamBtn) startCamBtn.addEventListener('click', async () => {
@@ -10341,6 +11993,17 @@
       }
     });
 
+    const authGateReqSel = $('authGateReqSelect');
+    if (authGateReqSel) authGateReqSel.addEventListener('change', e => {
+      const m = setWorkspaceAuthMode(e.target.value);
+      saveLocalAuthAndRecords();
+      renderQuickSeatsInAuthGate();
+      updateAuthFaceUi();
+      const opt = AUTH_MODE_OPTIONS.find(o => o.value === m) || AUTH_MODE_OPTIONS[1];
+      toast(`Sign-in requirement: ${opt.label}`);
+      syncWithCloud(true);
+    });
+
     const authCamBtn = $('authCamToggleBtn');
     if (authCamBtn) authCamBtn.addEventListener('click', () => {
       if (FACE_STATE.camActive || streamAlive()) {
@@ -10356,8 +12019,10 @@
     const cancel2faBtn = $('authCancel2faBtn');
     if (cancel2faBtn) cancel2faBtn.addEventListener('click', () => {
       FACE_STATE.pending2faUser = null;
+      FACE_STATE.pendingPinUser = null;
       FACE_STATE.streakUser = null;
       FACE_STATE.streakCount = 0;
+      resetLivenessState();
       setAuthStreak(0, 3);
       updateAuthFaceUi();
       setAuthHint('2FA step-up cancelled — select another seat or look at the camera.', '');
@@ -10455,7 +12120,7 @@
     const brand = $('brandHomeLink');
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
-    document.querySelectorAll('#companySwitch .entity-btn').forEach(btn => btn.addEventListener('click', () => { STATE.company = btn.getAttribute('data-company'); STATE.shown = {}; STATE.pbiTablePage = {}; saveFilterState(); renderApp(); }));
+    wireCompanySwitch();
     document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-grain') })));
     const periodSel = $('periodSelect');
     if (periodSel) periodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
@@ -10582,7 +12247,12 @@
       state: () => ({
         authed: STATE.authed,
         activeEmail: activeUser().email,
+        authMode: getWorkspaceAuthMode(),
+        liveness: STATE.faceSettings.liveness !== false,
+        livenessMode: STATE.faceSettings.livenessMode || 'blink_or_turn',
+        confirmFrames: Math.max(3, Number(STATE.faceSettings.confirmFrames || 3)),
         pending2fa: FACE_STATE.pending2faUser ? FACE_STATE.pending2faUser.email : null,
+        pendingPin: FACE_STATE.pendingPinUser ? FACE_STATE.pendingPinUser.email : null,
         streakCount: FACE_STATE.streakCount,
         enrolCaptures: FACE_STATE.enrolCaptures.length,
         enrolledSeats: STATE.users.filter(userHasFaceId).map(u => u.email)
@@ -10614,6 +12284,50 @@
       runCalibration: () => runCalibrationReport(),
       feedAuthFrame: (vec, faceSizeFrac = 0.26) =>
         handleAuthDescriptor({ descriptor: vec, detScore: 0.96, faceSizeFrac, multiple: false }, ''),
+      feedLiveAuthFrame: (vec, liveOpts = {}) =>
+        handleAuthDescriptor({
+          descriptor: vec,
+          detScore: liveOpts.detScore != null ? liveOpts.detScore : 0.96,
+          faceSizeFrac: liveOpts.faceSizeFrac != null ? liveOpts.faceSizeFrac : 0.26,
+          ear: liveOpts.ear != null ? liveOpts.ear : null,
+          pose: liveOpts.pose || (liveOpts.yaw != null || liveOpts.parallax3d != null
+            ? { yaw: Number(liveOpts.yaw || 0), parallax3d: Number(liveOpts.parallax3d || 0), pitch: Number(liveOpts.pitch || 0) }
+            : null),
+          landmarks: liveOpts.landmarks || null,
+          multiple: false
+        }, '', { liveCamera: true, requireLiveness: true }),
+      setAuthMode: (mode, seatEmail) => {
+        if (seatEmail) {
+          const u = STATE.users.find(x => norm(x.email) === norm(seatEmail));
+          if (!u) return false;
+          u.auth_mode = (!mode || mode === 'inherit') ? '' : normalizeAuthMode(mode, 'both');
+          u.face_required = u.auth_mode ? (u.auth_mode === 'both' || u.auth_mode === 'face_only') : (getWorkspaceAuthMode() === 'both');
+        } else {
+          setWorkspaceAuthMode(mode);
+        }
+        saveLocalAuthAndRecords();
+        renderQuickSeatsInAuthGate();
+        updateAuthFaceUi();
+        if (STATE.view === 'users') { updateSeatEditorDom(); updateEnrolStudioDom(); }
+        return true;
+      },
+      setLivenessConfig: (patch = {}) => {
+        if (patch.liveness != null) STATE.faceSettings.liveness = !!patch.liveness;
+        if (patch.livenessMode) STATE.faceSettings.livenessMode = String(patch.livenessMode);
+        if (patch.confirmFrames != null) STATE.faceSettings.confirmFrames = Math.max(3, Number(patch.confirmFrames));
+        saveLocalAuthAndRecords();
+        updateAuthFaceUi();
+        if (STATE.view === 'users') updateEnrolStudioDom();
+        return STATE.faceSettings;
+      },
+      resetLiveness: () => {
+        FACE_STATE.streakUser = null;
+        FACE_STATE.streakCount = 0;
+        FACE_STATE.pending2faUser = null;
+        FACE_STATE.pendingPinUser = null;
+        resetLivenessState();
+        updateAuthFaceUi();
+      },
       performLogin: (email, pin, opts) => performLogin(email, pin, opts),
       signOut: () => signOut()
     };

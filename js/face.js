@@ -30,10 +30,15 @@ const MFG_FACE_CONFIG = {
     poseIcons: ["straight", "left", "right"]
   },
   liveness: {
-    enabled: false,
-    earClosed: 0.20,
-    earOpen: 0.26,
-    windowSec: 4
+    enabled: true,
+    mode: "blink_or_turn",    // "blink_or_turn" | "blink_strict" | "multiframe_only"
+    earClosed: 0.215,
+    earOpen: 0.245,
+    earDropMin: 0.055,        // relative EAR drop from open baseline for fast webcam blinks
+    yawSpanMin: 0.10,         // 3D nose-to-jaw yaw span across frames (~6° head turn)
+    parallaxSpanMin: 0.04,    // 3D nose-over-cheek vs nose-over-eye differential parallax
+    earVarianceMin: 0.022,    // non-rigid eye variance required alongside head turn (rejects tilted 2D photos)
+    windowSec: 5
   },
   snapshotWidth: 240,
   snapshotQuality: 0.78
@@ -229,12 +234,38 @@ const Face = (() => {
   }
 
   // Eye aspect ratio (Soukupová & Čech 2016) from 68-point layout:
-  // left eye = 36..41, right eye = 42..47. Open ~0.30, closed < 0.20.
+  // left eye = 36..41, right eye = 42..47. Open ~0.30, closed < 0.215.
   function ear(pts) {
     if (!pts || pts.length < 48) return null;
     const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const one = i => (d(pts[i + 1], pts[i + 5]) + d(pts[i + 2], pts[i + 4])) / (2 * d(pts[i], pts[i + 3]) || 1);
     return (one(36) + one(42)) / 2;
+  }
+
+  // 3D Head-Turn Parallax (Anti-Screenshot Option 2):
+  // Compares protruding 3D nose-tip (30) projection across the jaw contour (2, 14) against
+  // the flat inter-ocular nose-bridge (27) between the outer eye corners (36, 45).
+  // A real 3D head turning slightly produces differential nose-tip parallax + non-rigid eye
+  // variation, whereas a flat 2D screenshot held on a phone moves as a rigid plane.
+  function pose(pts) {
+    if (!pts || pts.length < 68) return null;
+    const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const dLeftJaw = d(pts[30], pts[2]);
+    const dRightJaw = d(pts[30], pts[14]);
+    const yaw = (dLeftJaw - dRightJaw) / ((dLeftJaw + dRightJaw) || 1);
+    const dLeftEye = d(pts[27], pts[36]);
+    const dRightEye = d(pts[27], pts[45]);
+    const yawEye = (dLeftEye - dRightEye) / ((dLeftEye + dRightEye) || 1);
+    const parallax3d = yaw - yawEye;
+    const dBridgeNose = d(pts[27], pts[30]);
+    const dNoseChin = d(pts[30], pts[8]);
+    const pitch = (dBridgeNose - dNoseChin) / ((dBridgeNose + dNoseChin) || 1);
+    return {
+      yaw: Number(yaw.toFixed(4)),
+      yawEye: Number(yawEye.toFixed(4)),
+      parallax3d: Number(parallax3d.toFixed(4)),
+      pitch: Number(pitch.toFixed(4))
+    };
   }
 
   function pack(r, src, multiple = false) {
@@ -251,7 +282,8 @@ const Face = (() => {
       faceSizeFrac: fr,
       multiple: !!multiple,
       landmarks: lm,
-      ear: lm ? ear(lm) : null
+      ear: lm ? ear(lm) : null,
+      pose: lm ? pose(lm) : null
     };
   }
 
@@ -591,6 +623,7 @@ const Face = (() => {
     decide,
     calibration,
     ear,
+    pose,
     euclidean,
     frameToCanvas,
     snapshot,
