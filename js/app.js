@@ -3367,18 +3367,181 @@
   }
 
   // ---- master-data lookups for the entry desk ---------------------------------
-  function uniqSorted(arr) {
+  let _FREQ_IDX = null;
+  function getFreqIndex() {
+    const rec = (SEED && SEED.records) || {};
+    const sales = rec.sales_tickets || [];
+    const raws = rec.raw_purchases || [];
+    const exps = rec.expenses || [];
+    const rcpts = rec.receipts || [];
+    const settles = rec.settlements || [];
+    const fuels = rec.fuel_intakes || [];
+    const sals = rec.salaries || [];
+    const atts = rec.attendance || [];
+    const emps = rec.employments || [];
+    const fsh = rec.freelance_sheets || [];
+    const rules = rec.price_rules || [];
+    const loans = rec.loans || [];
+    const extMovs = rec.external_movements || [];
+    const overs = rec.overtime_rates || [];
+    const key = `${sales.length}:${raws.length}:${exps.length}:${rcpts.length}:${settles.length}:${fuels.length}:${sals.length}:${rules.length}`;
+    if (_FREQ_IDX && _FREQ_IDX.key === key) return _FREQ_IDX;
+
+    const inc = (map, val, w = 1) => {
+      if (!val) return;
+      const k = norm(val);
+      if (!k) return;
+      map.set(k, (map.get(k) || 0) + w);
+    };
+
+    const productSales = new Map();
+    const productRaw = new Map();
+    const product = new Map();
+    const customer = new Map();
+    const supplier = new Map();
+    const siteOwner = new Map();
+    const supplierExpense = new Map();
+    const truckOwner = new Map();
+    const siteSales = new Map();
+    const siteRaw = new Map();
+    const site = new Map();
+    const truck = new Map();
+    const driver = new Map();
+    const staff = new Map();
+    const category = new Map();
+    const subcategory = new Map();
+    const uom = new Map([['m³', 100], ['ton', 80], ['truck', 60], ['litre', 40], ['piece', 30], ['unit', 20], ['bag', 10]]);
+    const fuelLoc = new Map([['main plant tank', 50], ['wtc quarry tank', 40], ['bbconstruction tank', 30], ['mobile bowser', 20], ['external station', 10]]);
+    const role = new Map();
+    const counterparty = new Map();
+    const region = new Map();
+
+    const flIdx = getFleetIndex();
+    const incTruck = (val, w = 1) => {
+      if (!val) return;
+      inc(truck, val, w);
+      const eq = flIdx.eqByName.get(norm(val));
+      if (eq) {
+        if (eq.name && norm(eq.name) !== norm(val)) inc(truck, eq.name, w);
+        if (eq.plate_no && norm(eq.plate_no) !== norm(val) && norm(eq.plate_no) !== norm(eq.name)) inc(truck, eq.plate_no, w);
+      }
+    };
+
+    sales.forEach(r => {
+      if (!r || r.voided) return;
+      inc(productSales, r.product, 1);
+      inc(product, r.product, 1);
+      inc(customer, r.customer, 1);
+      inc(siteSales, r.site, 1);
+      inc(site, r.site, 1);
+      inc(truckOwner, r.truck_owner, 1);
+      inc(supplier, r.truck_owner, 1);
+      incTruck(r.truck, 1);
+      inc(driver, r.driver, 1);
+      inc(uom, r.uom || r.unit, 1);
+    });
+    raws.forEach(r => {
+      if (!r || r.voided) return;
+      inc(productRaw, r.product, 1);
+      inc(product, r.product, 1);
+      inc(siteRaw, r.site, 1);
+      inc(site, r.site, 1);
+      inc(siteOwner, r.site_owner, 2);
+      inc(supplier, r.site_owner, 1);
+      inc(supplier, r.truck_owner, 1);
+      inc(truckOwner, r.truck_owner, 1);
+      incTruck(r.truck, 1);
+      inc(driver, r.driver, 1);
+      inc(uom, r.uom || r.unit, 1);
+    });
+    exps.forEach(x => {
+      if (!x || x.voided) return;
+      inc(category, x.category, 1);
+      inc(subcategory, x.subcategory, 1);
+      inc(supplierExpense, x.supplier, 2);
+      inc(supplier, x.supplier, 1);
+      incTruck(x.equipment, 1);
+    });
+    rcpts.forEach(r => {
+      if (!r || r.voided) return;
+      inc(customer, r.customer, 1);
+    });
+    settles.forEach(r => {
+      if (!r || r.voided) return;
+      inc(supplier, r.supplier, 1);
+      inc(siteOwner, r.supplier, 1);
+    });
+    fuels.forEach(f => {
+      if (!f || f.voided) return;
+      incTruck(f.equipment, 1);
+      inc(driver, f.driver, 1);
+      inc(fuelLoc, f.location, 1);
+    });
+    sals.forEach(s => { if (s && !s.voided) inc(staff, s.staff, 1); });
+    atts.forEach(a => { if (a && !a.voided) inc(staff, a.staff, 1); });
+    emps.forEach(e => {
+      if (!e || e.voided) return;
+      inc(staff, e.staff || e.name, 1);
+      inc(role, e.role, 2);
+    });
+    fsh.forEach(f => { if (f && !f.voided) inc(role, f.role, 1); });
+    rules.forEach(r => {
+      if (!r || r.voided) return;
+      inc(product, r.product, 1);
+      if (/purchase|transport\s*price\s*\(site\)/i.test(r.rule_type || '')) inc(productRaw, r.product, 1);
+      else inc(productSales, r.product, 1);
+      inc(customer, r.customer, 1);
+      inc(supplier, r.supplier, 1);
+      inc(site, r.site, 1);
+      inc(uom, r.unit, 1);
+    });
+    loans.forEach(l => { if (l) inc(counterparty, l.lender || l.counterparty || l.name, 3); });
+    extMovs.forEach(x => { if (x) inc(counterparty, x.counterparty || x.name, 3); });
+    overs.forEach(o => { if (o) inc(region, o.region, 2); });
+    (rec.sites || []).forEach(s => { if (s && s.region) inc(region, s.region, 1); });
+
+    const any = new Map();
+    [product, customer, supplier, truckOwner, site, truck, driver, staff, category, subcategory, uom, fuelLoc, role, counterparty, region].forEach(m => {
+      m.forEach((v, k) => {
+        if (v > (any.get(k) || 0)) any.set(k, v);
+      });
+    });
+
+    _FREQ_IDX = {
+      key, productSales, productRaw, product, customer, supplier, siteOwner, supplierExpense,
+      truckOwner, siteSales, siteRaw, site, truck, driver, staff, category, subcategory,
+      uom, fuelLoc, role, counterparty, region, any
+    };
+    if (typeof window !== 'undefined') window.MFG_FREQ = getFreqIndex;
+    return _FREQ_IDX;
+  }
+  if (typeof window !== 'undefined') window.MFG_FREQ = getFreqIndex;
+
+  function uniqSorted(arr, freqMap) {
     const seen = new Set();
+    const localCounts = new Map();
     const out = [];
     for (const x of (arr || [])) {
       const s = String(x || '').trim();
       const k = norm(s);
-      if (k && !seen.has(k)) {
+      if (!k) continue;
+      localCounts.set(k, (localCounts.get(k) || 0) + 1);
+      if (!seen.has(k)) {
         seen.add(k);
         out.push(s);
       }
     }
-    return out.sort((a, b) => a.localeCompare(b));
+    const fMap = freqMap || (typeof getFreqIndex === 'function' ? getFreqIndex().any : null);
+    return out.sort((a, b) => {
+      const ka = norm(a), kb = norm(b);
+      const fa = fMap ? (fMap.get(ka) || 0) : 0;
+      const fb = fMap ? (fMap.get(kb) || 0) : 0;
+      if (fb !== fa) return fb - fa;
+      const la = localCounts.get(ka) || 0;
+      const lb = localCounts.get(kb) || 0;
+      if (lb !== la) return lb - la;
+      return a.localeCompare(b);
+    });
   }
   let _FLEET_IDX = null;
   function getFleetIndex() {
@@ -3804,7 +3967,7 @@
       const w = resolveTruckWindow(eq, company, winOpts.date, winOpts);
       if (w) {
         const effCap = Number(w.cap) > 0 ? Number(w.cap) : baseRow.capacity;
-        const winOwn = w.own && norm(w.own) !== 'wtc' && norm(w.own) !== 'bbconstruction' ? w.own : baseRow.supplier;
+        const winOwn = w.own ? (company && norm(w.own) === norm(company) ? '' : w.own) : baseRow.supplier;
         const winDrv = w.drv || baseRow.default_driver;
         return Object.assign({}, baseRow, {
           capacity: effCap,
@@ -7949,17 +8112,17 @@
           ${companyField}
           ${dateField}
           ${repDateField}
-          ${timeField(false)}
+          ${timeField(true)}
           ${fld('Ticket # *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Transported By *', sel('f_transportby', [
-            ['Third-party truck', 'Third-party truck (Hauler paid)'],
-            ['Company fleet', 'Company fleet (Own Truck — Haulage $0)']
-          ], 'Third-party truck'), { id: 'wrap_f_transportby' })}
+            ['Company fleet', 'Company fleet (Own Truck)'],
+            ['Third-party truck', 'Third-party truck (Hauler)']
+          ], 'Company fleet'), { id: 'wrap_f_transportby' })}
           ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
           ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
-          ${fld('Truck Plate *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck plate..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
-          ${fld('Truck Owner (Haulage Payee) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck Plate..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck Plate; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
+          ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
+          ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
 
           ${secHdr('2. Quantities & Costs')}
@@ -8867,7 +9030,7 @@
 
   function recalcRaw() {
     const company = val('f_company');
-    const transportBy = val('f_transportby') || 'Third-party truck';
+    const transportBy = val('f_transportby') || 'Company fleet';
     const isCoFleet = transportBy === 'Company fleet';
     const site = val('f_site'), product = val('f_product'), date = val('f_date');
     const effDate = val('f_repdate') || date;
@@ -8990,7 +9153,11 @@
           ? ` · ${winInfo.site} window`
           : (winInfo && winInfo.s ? ` · Window ${winInfo.s}..${winInfo.e || 'Open'}` : ''));
 
-    if (truckRow && effCap) setHint('hint_truck', `Capacity ${fmtNum(effCap, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}${winSuffix}`, 'ok');
+    const ownTruck = isOwnUnit(truckRow, company);
+    const pureOwnTruck = isPureOwnUnit(truckRow, company);
+    if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} — switch Transported By or pick a ${company} truck`, 'warn');
+    else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own unit — switch Transported By`, 'warn');
+    else if (truckRow && effCap) setHint('hint_truck', `${truckRow.plate_no && norm(truckRow.plate_no) !== norm(truckRow.name) ? 'Plate ' + truckRow.plate_no + ' · ' : ''}Capacity ${fmtNum(effCap, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}${winSuffix}`, 'ok');
     else if (agrSizeOverride) setHint('hint_truck', `Agreement Truck Size: ${fmtNum(agrSizeOverride.size, 1)} m³ (${agrSizeOverride.rule.name})`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
@@ -9032,7 +9199,9 @@
       }
     }
     setHint('hint_truckowner', !isCoFleet
-      ? (ownerFromTruck ? `Provided by Truck ${truckRow.name} (${truckOwner})` : (truckOwner ? '' : 'Auto-provided by Truck Plate (required for third-party haulage)'))
+      ? (ownerFromTruck
+          ? `Provided by Truck ${truckRow.name} (${truckOwner})`
+          : (truckOwner ? `Filtering trucks & drivers for ${truckOwner}` : 'Auto-provided when you select a Truck'))
       : '', (FORM_UI.postAttempted && !isCoFleet && !truckOwner && truckName) ? 'crit' : '');
     const ap = openApBalance(owner);
     setHint('hint_owner', owner ? (ap != null ? `Open AP ${fmtUSD(ap, 2)}` : 'New payee — not in the AP book yet') : '', '');
@@ -10551,7 +10720,7 @@
       else if (c.product && val('f_unitprice') === '') addErr('f_unitprice', 'Unit price is required.');
       else if (c.product && val('f_unitprice') !== '' && c.up === 0 && !notes) addErr('f_notes', 'A free ticket (unit price 0) needs a note.');
       if (c.saleType !== 'Unregistered' && c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
-        const tRow = equipInfo(val('f_truck'));
+        const tRow = equipInfo(val('f_truck'), company, false, { date: repDate || date, side: 'sales', customer: c.customer, site: c.site });
         if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
           addErr('f_truckowner', `Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
         }
@@ -10568,14 +10737,14 @@
       if (!c.site) addErr('f_site', 'Quarry site is required.');
       if (!(c.qty > 0)) {
         if (!val('f_truck') && $('f_qty') && $('f_qty').dataset.policyLockedNow === '1') {
-          addErr('f_truck', 'Truck Plate is required to set load capacity (or unlock Quantity).');
+          addErr('f_truck', 'Truck is required to set load capacity (or unlock Quantity).');
         }
         addErr('f_qty', 'Quantity must be above zero.');
       }
       if (c.up > 0 && !c.owner) addErr('f_siteowner', 'Quarry site owner (material payee) is required when the material has a cost.');
       if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) addErr('f_truckowner', 'Truck owner (haulage payee) is required for third-party haulage.');
       if (c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
-        const tRow = equipInfo(val('f_truck'));
+        const tRow = equipInfo(val('f_truck'), company, false, { date: repDate || date, side: 'raw', site: c.site });
         if (tRow && tRow.supplier && norm(tRow.supplier) !== norm(val('f_truckowner')) && !isFieldAdminUnlocked('f_truckowner')) {
           addErr('f_truckowner', `Truck ${val('f_truck')} is registered to ${tRow.supplier}, not ${val('f_truckowner')}.`);
         }
@@ -15759,7 +15928,7 @@
         product: val('f_product') || 'Raw Aggregate',
         site: val('f_site') || 'Quarry Site',
         site_owner: val('f_siteowner') || 'Quarry Owner',
-        transport_by: val('f_transportby') || 'Third-party truck',
+        transport_by: val('f_transportby') || 'Company fleet',
         truck_owner: isCo ? company : (val('f_truckowner') || 'Hauler'),
         truck: val('f_truck') || '—',
         driver: val('f_driver') || '—',
@@ -16380,8 +16549,8 @@
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Haulage Fleet:</span>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">🚛 Third-Party Hauler</button>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Company fleet">🏢 Company Fleet ($0 Haul)</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Company fleet">🏢 Company Fleet (Own Truck)</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">🚛 Third-Party Truck (Hauler)</button>
           </div>
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Quarry Origin Site:</span>

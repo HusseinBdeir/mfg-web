@@ -383,7 +383,7 @@ try {
       wrapMaxH: Math.round(wrapMaxH || 0)
     };
   })()`);
-  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /25,[89]\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && salesTotalsProbe.dmyDateOk && salesTotalsProbe.tfootColSpanSum === 15 && salesTotalsProbe.tfootNoStackedLbls && salesTotalsProbe.tfootNumNoWrap && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4 && salesTotalsProbe.wrapMaxH >= 300))
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /2[56],\d\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && salesTotalsProbe.dmyDateOk && salesTotalsProbe.tfootColSpanSum === 15 && salesTotalsProbe.tfootNoStackedLbls && salesTotalsProbe.tfootNumNoWrap && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4 && salesTotalsProbe.wrapMaxH >= 300))
     ? pass('sales tfoot, DD-MM-YYYY date & taller table-wrap · 15-col aligned tfoot, single-line totals, DD-MM-YYYY date & taller table', `date=${salesTotalsProbe.dateTxt} · wrapMaxH=${salesTotalsProbe.wrapMaxH}px · truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
     : fail('sales tfoot totals / DD-MM-YYYY / typography', JSON.stringify(salesTotalsProbe));
   await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(220);
@@ -750,11 +750,11 @@ try {
     const wtcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const wtcCoFleetMetas = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.getAttribute('data-meta') || '');
     const wtcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 12 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && wtcCoFleetTrucks.includes('TB8') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael') && wtcCoFleetDrivers.includes('Hussein Saleh') && wtcCoFleetDrivers.includes('Ali Saleh');
+    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 9 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && wtcCoFleetTrucks.includes('TB8') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && !wtcCoFleetTrucks.includes('TB1') && !wtcCoFleetTrucks.includes('Tb7') && !wtcCoFleetTrucks.includes('Tb9') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael') && wtcCoFleetDrivers.includes('Hussein Saleh') && wtcCoFleetDrivers.includes('Ali Saleh');
     set('f_truck', 'TB3');
     const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael';
     const wtcTb3HintTxt = (document.getElementById('hint_truck')?.textContent || '').trim();
-    const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => m.includes('354578 · Hussein Saleh')) && wtcCoFleetMetas.some(m => m.includes('364168 · Ali Saleh')) && wtcCoFleetMetas.some(m => m.includes('360676 · Ahmad Ismael')) && !/fleet/i.test(wtcTb3HintTxt);
+    const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => m.includes('354578 · Hussein Saleh')) && wtcCoFleetMetas.some(m => m.includes('358943 · Ali el Hajj')) && wtcCoFleetMetas.some(m => m.includes('358599 · Ismael')) && !/fleet/i.test(wtcTb3HintTxt);
 
     // Reproduce exact SharePoint Row 8007 (Screenshot 1 & 2): Company=WTC, Sale Type=Delivery, Transported By=Company fleet, Product=Mghasal, Customer=Sabeh Beton S.R.L, Site=Gisr al bacha, Truck=354578 (TB8) -> Driver=Hussein Saleh, Qty=27.00, Unit Price=$23.50, Mat Total=$634.50, Trans Unit Price=$2.00, Trans Total=$54.00, Total Ex-VAT=$688.50
     set('f_product', 'Mghasal');
@@ -769,21 +769,23 @@ try {
       document.getElementById('f_transunitprice').value === '2.00' &&
       document.getElementById('f_trans_total').value === '54.00' &&
       document.getElementById('f_total_usd').value === '688.50';
-    // Verify 364168 (Tb9 -> Ali Saleh / 27 m³), 360676 (TB1 -> Ahmad Ismael / 29 m³), 364656 (Tb7 -> Mohamad Habib / 29 m³)
+    // Verify 364168 (Tb9 -> Jad Bdeir / Ali Saleh / 27 m³), 360676 (TB1 -> Karim Bdeir / 29 m³), 364656 (Tb7 -> Hussein Bdeir / Mohamad Habib / 29 m³) on Third-party truck from 2026-08-24 onwards
+    set('f_transportby', 'Third-party truck');
     set('f_truck', '364168');
-    const sp8005Ok = document.getElementById('f_driver').value === 'Ali Saleh' && document.getElementById('f_qty').value === '27.00';
+    const sp8005Ok = document.getElementById('f_truckowner').value === 'Jad Bdeir' && document.getElementById('f_driver').value === 'Ali Saleh' && document.getElementById('f_qty').value === '27.00';
     set('f_truck', '360676');
-    const sp8008Ok = document.getElementById('f_driver').value === 'Ahmad Ismael' && document.getElementById('f_qty').value === '29.00';
+    const sp8008Ok = document.getElementById('f_truckowner').value === 'Karim Bdeir' && document.getElementById('f_qty').value === '29.00';
     set('f_truck', '364656');
-    const sp8009Ok = document.getElementById('f_driver').value === 'Mohamad Habib' && document.getElementById('f_qty').value === '29.00';
+    const sp8009Ok = document.getElementById('f_truckowner').value === 'Hussein Bdeir' && document.getElementById('f_driver').value === 'Mohamad Habib' && document.getElementById('f_qty').value === '29.00';
     const spFleetParityOk = sp8007Ok && sp8005Ok && sp8008Ok && sp8009Ok;
 
+    set('f_transportby', 'Company fleet');
     set('f_truck', 'TB3');
     set('f_company', 'BBConstruction');
     const bbcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const bbcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
     const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'Ismael';
-    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 16 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && bbcCoFleetDrivers.length === 35 && bbcCoFleetDrivers.includes('imad abdallah') && bbcCoFleetDrivers.includes('Ali Saleh') && bbcCoFleetDrivers.includes('Ahmad Ismael');
+    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 13 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && !bbcCoFleetTrucks.includes('TB1') && !bbcCoFleetTrucks.includes('Tb7') && !bbcCoFleetTrucks.includes('Tb9') && bbcCoFleetDrivers.length === 35 && bbcCoFleetDrivers.includes('imad abdallah') && bbcCoFleetDrivers.includes('Ali Saleh') && bbcCoFleetDrivers.includes('Ahmad Ismael');
     set('f_truck', 'TB5');
     set('f_company', 'WTC');
     const coSwitchClearedMismatchedFleetTruck = document.getElementById('f_truck').value === '';
@@ -821,11 +823,17 @@ try {
     set('f_truck', '');
     const truckClearClearedAll = document.getElementById('f_truckowner').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
 
-    // Check Raw Purchase form: Truck Plate comes before Truck Owner & Driver, and cascades identically
+    // Check Raw Purchase form: Transported By matches Sales (Company fleet first, then Third-party truck, with identical labeling), Truck comes before Truck Owner & Driver, and cascades identically
     document.querySelector('.modal-tab[data-form="raw"]').click();
+    const rawTransEl = document.getElementById('f_transportby');
+    const rawTransOptVals = rawTransEl ? Array.from(rawTransEl.options).map(o => o.value).join(',') : '';
+    const rawTransOptLabels = rawTransEl ? Array.from(rawTransEl.options).map(o => o.textContent.trim()).join('|') : '';
+    const rawTransMatchesSalesOk = rawTransEl && rawTransEl.value === 'Company fleet' && rawTransOptVals === 'Company fleet,Third-party truck' && rawTransOptLabels === 'Company fleet (Own Truck)|Third-party truck (Hauler)';
+    const rawTruckLabelsMatchSalesOk = (document.querySelector('#wrap_f_truck .pa-fld-lbl')?.textContent || '').trim() === 'Truck *' && (document.querySelector('#wrap_f_truckowner .pa-fld-lbl')?.textContent || '').trim() === 'Truck Owner (Hauler) *';
     const rawIds = Array.from(document.querySelectorAll('#modalBody input[id], #modalBody select[id]')).map(e => e.id);
     const rIdx = id => rawIds.indexOf(id);
-    const rawOrderingOk = rIdx('f_siteowner') < rIdx('f_truck') && rIdx('f_truck') < rIdx('f_truckowner') && rIdx('f_truckowner') < rIdx('f_driver');
+    const rawOrderingOk = rawTransMatchesSalesOk && rawTruckLabelsMatchSalesOk && rIdx('f_siteowner') < rIdx('f_truck') && rIdx('f_truck') < rIdx('f_truckowner') && rIdx('f_truckowner') < rIdx('f_driver');
+    set('f_transportby', 'Third-party truck');
     set('f_truck', 'Aahed');
     const rawAahedCascadeOk = document.getElementById('f_truckowner').value === 'Aahed' && document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_qty').value === '20.00';
     set('f_truckowner', 'Aawad');
@@ -2442,7 +2450,7 @@ try {
 
     const ownTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const ownSearchOnlyTrucks = ownTruckTypes.length === 20 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (20');
+    const ownSearchOnlyTrucks = ownTruckTypes.length === 17 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (17');
 
     // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,530 total)
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
@@ -2478,7 +2486,7 @@ try {
     if (selOwn) { selOwn.value = 'Own'; selOwn.dispatchEvent(new Event('change', { bubbles: true })); }
 
     const multiRows = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow'));
-    const multiAllMatch = (multiRows.length === 10 || multiRows.length === 12 || multiRows.length === 13 || multiRows.length === 15) && multiRows.every(tr =>
+    const multiAllMatch = (multiRows.length === 9 || multiRows.length === 10 || multiRows.length === 12 || multiRows.length === 13 || multiRows.length === 15) && multiRows.every(tr =>
       /WTC/i.test(tr.children[1].textContent) &&
       tr.children[3].textContent.trim() === 'Truck' &&
       /Own/i.test(tr.children[4].textContent)
@@ -2694,13 +2702,31 @@ try {
       }
     }
 
+    // 4. Verify 2026-08-24 cutover for TB1 (Karim Bdeir), Tb7 (Hussein Bdeir), and Tb9 (Jad Bdeir) across BOTH WTC and BBConstruction
+    const bdeirExpected = { tb1: 'Karim Bdeir', tb7: 'Hussein Bdeir', tb9: 'Jad Bdeir' };
+    const salesRecs = (window.MFG_SEED && window.MFG_SEED.records && window.MFG_SEED.records.sales_tickets) || [];
+    const rawRecs = (window.MFG_SEED && window.MFG_SEED.records && window.MFG_SEED.records.raw_purchases) || [];
+    let bdeirTxMismatch = 0;
+    for (const r of salesRecs.concat(rawRecs)) {
+      const tk = String(r.truck || '').trim().toLowerCase();
+      if (!bdeirExpected[tk] || !r.date) continue;
+      if (r.date >= '2026-08-24') {
+        if (r.truck_owner !== bdeirExpected[tk]) bdeirTxMismatch++;
+      } else {
+        const wantPre = r.company === 'WTC' ? '' : 'WTC';
+        if ((r.truck_owner || '') !== wantPre) bdeirTxMismatch++;
+      }
+    }
+
     return {
       ok: Boolean(winPanel && winRowsBefore >= 10 && addWinBtn &&
           oct2026Qty === '29.00' && oct2026Owner === 'Hussein Bdeir' &&
           sep2026Qty === '28.00' && jun2026Qty === '27.00' && feb2024SoimeQty === '26.00' &&
-          hasTruckSizeField && salesAgrOverrideQty === '25.50' && rawAgrOverrideQty === '24.50'),
+          hasTruckSizeField && salesAgrOverrideQty === '25.50' && rawAgrOverrideQty === '24.50' &&
+          bdeirTxMismatch === 0),
       winRowsBefore, oct2026Qty, oct2026Owner, sep2026Qty, jun2026Qty, feb2024SoimeQty,
-      hasTruckSizeField, salesAgrOverrideQty, rawAgrOverrideQty, rawMatTotal, rawTransTotal
+      hasTruckSizeField, salesAgrOverrideQty, rawAgrOverrideQty, rawMatTotal, rawTransTotal,
+      bdeirTxMismatch
     };
   })()`);
   truckSizeWindowsAndAgreementProbe && truckSizeWindowsAndAgreementProbe.ok

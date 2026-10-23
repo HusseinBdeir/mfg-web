@@ -595,10 +595,60 @@ def _attach_truck_adj_windows(equipment):
                     w["site"] = site
                 windows_by_eq[eq["name"]].append(w)
 
+    # m292 2026-10-23: TB1 (Karim Bdeir), Tb7 (Hussein Bdeir), and Tb9 (Jad Bdeir) belonged to WTC before 2026-08-24
+    # and to Karim Bdeir, Hussein Bdeir, and Jad Bdeir from 2026-08-24 onwards across BOTH WTC and BBConstruction.
+    bdeir_owners = {"tb1": "Karim Bdeir", "tb7": "Hussein Bdeir", "tb9": "Jad Bdeir"}
+    bdeir_caps = {"tb1": 29.0, "tb7": 29.0, "tb9": 27.0}
+    bdeir_drvs = {"tb1": "Ahmad Ismael", "tb7": "Mohamad Habib", "tb9": "Ali Saleh"}
+
     for e in equipment:
+        ename = _norm(e["name"])
         wlist = windows_by_eq.get(e["name"])
         if not wlist:
             continue
+        if ename in bdeir_owners:
+            target_own = bdeir_owners[ename]
+            norm_list = []
+            for w in wlist:
+                w = dict(w)
+                if w.get("e") == "2026-08-22":
+                    w["e"] = "2026-08-23"
+                if w.get("s") == "2026-08-23":
+                    w["s"] = "2026-08-24"
+                s = w.get("s") or ""
+                ed = w.get("e") or ""
+                if s < "2026-08-24" and (not ed or ed >= "2026-08-24"):
+                    w_pre = dict(w, e="2026-08-23", own="WTC")
+                    w_post = dict(w, s="2026-08-24", own=target_own)
+                    norm_list.append(w_pre)
+                    norm_list.append(w_post)
+                else:
+                    if s >= "2026-08-24":
+                        w["own"] = target_own
+                    elif (not w.get("cust") and not w.get("site")) or w.get("own", "").lower() in (
+                        "", "wtc", "bbconstruction", "karim bdeir", "kareem bdeir", "hussein bdeir", "jad bdeir"
+                    ):
+                        w["own"] = "WTC"
+                    norm_list.append(w)
+            has_bbc_post = any(
+                w["co"] == "BBConstruction" and w.get("s") == "2026-08-24" and not w.get("cust") and not w.get("site")
+                for w in norm_list
+            )
+            if not has_bbc_post:
+                norm_list.append({
+                    "co": "BBConstruction", "side": "both", "s": "2026-08-24", "e": "",
+                    "cap": bdeir_caps[ename], "own": target_own, "drv": bdeir_drvs[ename],
+                })
+            has_bbc_pre = any(
+                w["co"] == "BBConstruction" and (w.get("e") or "") <= "2026-08-23" and not w.get("cust") and not w.get("site")
+                for w in norm_list
+            )
+            if not has_bbc_pre:
+                norm_list.append({
+                    "co": "BBConstruction", "side": "both", "s": "2024-01-01", "e": "2026-08-23",
+                    "cap": bdeir_caps[ename], "own": "WTC", "drv": bdeir_drvs[ename],
+                })
+            wlist = norm_list
         by_sig = {}
         for w in wlist:
             sig = (
@@ -2107,6 +2157,11 @@ def main():
         models = {}
         for key in ("manufacturing-group", "wtc", "bbconstruction", "lionstransport"):
             models[key] = fetch_model_analytics(key)
+
+    for mObj in models.values():
+        for eqRow in (mObj or {}).get("equipment") or []:
+            if str(eqRow.get("Equipment") or "").strip().lower() in ("tb1", "tb7", "tb9"):
+                eqRow["Ownership"] = "Third Party"
 
     records = fetch_dataverse_records()
 
