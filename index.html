@@ -328,11 +328,21 @@
               <option value="last_12m">Last 12 Months</option>
             </select>
 
-            <!-- Custom Date Range Slicer (Power BI "Period (between)" From – To) -->
+            <!-- Custom Date Range Slicer (Power BI "Period (between)" From – To + Interactive Day/Month/Year Facilitator) -->
             <div class="date-range-bar" id="dateRangeBar" role="group" aria-label="Date Range Filter">
-              <input type="date" id="dateFromInput" class="date-range-input" min="2024-01-01" max="2030-12-31" value="2024-01-01" aria-label="From Date" title="Start Date (From)">
+              <div class="date-seg-slot" data-date-slot="from">
+                <input type="date" id="dateFromInput" class="date-range-input date-native-proxy" min="2024-01-01" max="2030-12-31" value="2024-01-01" aria-label="From Date" title="Start Date (From)" tabindex="-1">
+                <div class="date-seg-pill" id="dateFromSegPill" data-date-end="from" data-date-scope="top">
+                  <button type="button" class="date-seg-part" data-date-end="from" data-date-part="day" data-date-scope="top" title="From Day — click for Calendar or ↑/↓ to step ±1 day">01</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part" data-date-end="from" data-date-part="month" data-date-scope="top" title="From Month — click for Month Picker or ↑/↓ to step ±1 month">Jan</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part" data-date-end="from" data-date-part="year" data-date-scope="top" title="From Year — click for Year Picker or ↑/↓ to step ±1 year">2024</button><button type="button" class="date-seg-cal" data-date-end="from" data-date-part="day" data-date-scope="top" title="Open interactive Date &amp; Period Facilitator (From)" aria-label="Open From Date Picker"><svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.8"/><line x1="5" y1="1.5" x2="5" y2="4.2"/><line x1="11" y1="1.5" x2="11" y2="4.2"/><line x1="2" y1="6.5" x2="14" y2="6.5"/></svg></button>
+                </div>
+              </div>
               <span class="date-range-sep">–</span>
-              <input type="date" id="dateToInput" class="date-range-input" min="2024-01-01" max="2030-12-31" value="2030-12-31" aria-label="To Date" title="End Date (To)">
+              <div class="date-seg-slot" data-date-slot="to">
+                <input type="date" id="dateToInput" class="date-range-input date-native-proxy" min="2024-01-01" max="2030-12-31" value="2030-12-31" aria-label="To Date" title="End Date (To)" tabindex="-1">
+                <div class="date-seg-pill" id="dateToSegPill" data-date-end="to" data-date-scope="top">
+                  <button type="button" class="date-seg-part" data-date-end="to" data-date-part="day" data-date-scope="top" title="To Day — click for Calendar or ↑/↓ to step ±1 day">31</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part" data-date-end="to" data-date-part="month" data-date-scope="top" title="To Month — click for Month Picker or ↑/↓ to step ±1 month">Dec</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part" data-date-end="to" data-date-part="year" data-date-scope="top" title="To Year — click for Year Picker or ↑/↓ to step ±1 year">2030</button><button type="button" class="date-seg-cal" data-date-end="to" data-date-part="day" data-date-scope="top" title="Open interactive Date &amp; Period Facilitator (To)" aria-label="Open To Date Picker"><svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.8"/><line x1="5" y1="1.5" x2="5" y2="4.2"/><line x1="11" y1="1.5" x2="11" y2="4.2"/><line x1="2" y1="6.5" x2="14" y2="6.5"/></svg></button>
+                </div>
+              </div>
               <button type="button" id="dateRangeResetBtn" class="date-range-reset" title="Reset to All-Time (2024–2030)" aria-label="Reset Date Filter" hidden>✕</button>
             </div>
 
@@ -612,6 +622,9 @@
 
   <!-- Left Sidebar Truncation Hover Tooltip -->
   <div class="rail-hover-tooltip" id="railHoverTooltip" role="tooltip" hidden></div>
+
+  <!-- Interactive Date & Period Facilitator Popover (Day / Month / Week / Year / Range / Presets) -->
+  <div class="date-facilitator-popover" id="dateFacilitatorPopover" role="dialog" aria-label="Interactive Date and Period Facilitator" hidden></div>
 
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>

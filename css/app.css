@@ -12735,6 +12735,792 @@ th.sortable.col-filtered {
   }
 }
 
+/* ==========================================================================
+   v11.3 — Interactive Segmented Date Control ([DD] - [MMM] - [YYYY] [📅])
+           & Date / Period Facilitator Popover (#dateFacilitatorPopover)
+   ========================================================================== */
+.date-seg-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 98px;
+  min-width: 98px;
+  max-width: 98px;
+  flex-shrink: 0;
+}
+
+.date-seg-slot.pbi-seg-slot {
+  width: 118px;
+  min-width: 118px;
+  max-width: 118px;
+  padding: 2.5px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-sizing: border-box;
+}
+
+.date-native-proxy {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+.date-seg-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  gap: 0.5px;
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  font-size: 10.6px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  user-select: none;
+}
+
+.date-seg-pill.is-open-end {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--brass);
+  background: rgba(192, 137, 47, 0.10);
+}
+
+.date-seg-part {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 1.5px 1.5px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  white-space: nowrap;
+}
+
+.date-seg-part:hover,
+.date-seg-part:focus-visible {
+  background: var(--brass-tint);
+  color: var(--brass);
+  box-shadow: inset 0 0 0 1px var(--brass-border);
+  outline: none;
+}
+
+.date-seg-part.is-active-seg {
+  background: var(--brass);
+  color: #0B1730;
+  font-weight: 800;
+}
+
+.date-seg-dash {
+  color: var(--muted);
+  font-size: 9.5px;
+  padding: 0 0.5px;
+  pointer-events: none;
+}
+
+.date-seg-cal {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 1.5px 2px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.date-seg-cal:hover {
+  color: var(--brass);
+  background: var(--brass-tint);
+}
+
+@media (max-width: 1350px) and (min-width: 861px) {
+  .date-seg-slot:not(.pbi-seg-slot) {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+  }
+  .date-seg-slot:not(.pbi-seg-slot) .date-seg-pill {
+    font-size: 9.8px;
+  }
+  .date-seg-slot:not(.pbi-seg-slot) .date-seg-part {
+    padding: 1px 1px;
+  }
+}
+
+@media (max-width: 860px) {
+  .date-seg-slot,
+  .date-seg-slot.pbi-seg-slot {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+  .date-seg-pill {
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+  }
+}
+
+/* Floating Interactive Date & Period Facilitator Popover */
+.date-facilitator-popover {
+  position: fixed;
+  z-index: 260;
+  width: 460px;
+  max-width: calc(100vw - 16px);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1.5px solid var(--brass);
+  border-radius: 10px;
+  box-shadow: 0 18px 42px rgba(8, 17, 36, 0.32);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.date-facilitator-popover[hidden] {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .date-facilitator-popover {
+  background: #0F1D35;
+  border-color: rgba(217, 165, 74, 0.65);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.58);
+}
+
+.df-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 11px;
+  background: linear-gradient(135deg, #0B1730 0%, #14274A 100%);
+  color: #F4F2EE;
+  border-bottom: 1.5px solid var(--brass);
+}
+
+.df-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.df-kicker {
+  font-family: "Archivo", sans-serif;
+  font-size: 8.8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #D9A54A;
+}
+
+.df-active-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.df-range-readout {
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.df-step-period-btn {
+  border: 1px solid rgba(217, 165, 74, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F2EE;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.df-step-period-btn:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+
+.df-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.df-reset-btn,
+.df-close-btn {
+  border: 1px solid rgba(244, 242, 238, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F2EE;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.df-reset-btn:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+
+.df-close-btn:hover {
+  background: var(--crit);
+  color: #FFFFFF;
+  border-color: var(--crit);
+}
+
+.df-mode-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.df-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.df-tab {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 5px;
+  padding: 4.5px 6px;
+  font-family: "Archivo", sans-serif;
+  font-size: 10.8px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.df-tab:hover {
+  color: var(--ink);
+  border-color: var(--brass-border);
+}
+
+.df-tab.active {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+  font-weight: 800;
+}
+
+.df-target-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 4px;
+}
+
+.df-target-btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 3.5px 6px;
+  font-size: 10.2px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.df-target-btn b {
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.df-target-btn.active {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+.df-body {
+  padding: 9px 10px;
+  max-height: 315px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.df-sec-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.6px;
+  color: var(--muted);
+}
+
+.df-sec-hint b {
+  color: var(--ink);
+}
+
+/* Year Facilitator Grid */
+.df-year-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.df-year-card {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 7px 9px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.df-year-card:hover {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+}
+
+.df-year-card.in-range {
+  border-color: var(--brass-border);
+}
+
+.df-year-card.is-end-active,
+.df-year-card.is-full-active {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+.df-yc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.df-yc-num {
+  font-family: "Archivo", sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.df-yc-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.df-yc-tag.has-data {
+  color: var(--good);
+  border-color: rgba(22, 163, 74, 0.35);
+  background: var(--good-bg);
+}
+
+.df-yc-stat {
+  font-size: 10.2px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.df-yc-actions,
+.df-mc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.df-yc-act,
+.df-mc-act {
+  font-size: 9.3px;
+  font-weight: 700;
+  padding: 1.5px 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.df-yc-act:hover,
+.df-mc-act:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+
+/* Month Facilitator 4x3 Grid */
+.df-year-strip,
+.df-mo-mini-strip,
+.df-quarter-strip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.df-yr-pill,
+.df-mo-mini,
+.df-q-pill,
+.df-nav-mini {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 3px 6.5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.df-yr-pill.active,
+.df-mo-mini.active,
+.df-q-pill:hover,
+.df-yr-pill:hover,
+.df-mo-mini:hover,
+.df-nav-mini:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+
+.df-q-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-right: 3px;
+}
+
+.df-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.df-month-card {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 5.5px 7px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+}
+
+.df-month-card:hover {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+}
+
+.df-month-card.in-range {
+  border-color: var(--brass-border);
+}
+
+.df-month-card.is-end-active,
+.df-month-card.is-full-active {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+.df-mc-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.df-mc-num {
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--brass);
+}
+
+.df-mc-name {
+  font-family: "Archivo", sans-serif;
+  font-size: 11.4px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.df-mc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  margin-left: auto;
+}
+
+.df-mc-stat {
+  font-size: 9.6px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Week Facilitator List */
+.df-week-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.df-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.df-week-row:hover,
+.df-week-row.active {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+}
+
+.df-wk-main strong {
+  display: block;
+  font-size: 11.4px;
+  color: var(--ink);
+}
+
+.df-wk-main small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.df-wk-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.df-wk-badge.has-data {
+  color: var(--good);
+  border-color: rgba(22, 163, 74, 0.35);
+  background: var(--good-bg);
+}
+
+/* Interactive Calendar Day Grid */
+.df-cal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.df-cal-nav-left,
+.df-cal-nav-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.df-cal-jumper {
+  border: 1px solid var(--brass-border);
+  background: var(--brass-tint);
+  color: var(--ink);
+  border-radius: 5px;
+  padding: 3.5px 8px;
+  font-family: "Archivo", sans-serif;
+  font-size: 11.2px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.df-cal-jumper:hover {
+  background: var(--brass);
+  color: #0B1730;
+}
+
+.df-mini-act {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.df-mini-act:hover {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+}
+
+.df-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+  font-family: "Archivo", sans-serif;
+  font-size: 9.8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
+.df-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2.5px;
+}
+
+.df-cal-day {
+  position: relative;
+  height: 30px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 11.2px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.df-cal-day.is-outside {
+  opacity: 0.42;
+}
+
+.df-cal-day:hover:not(:disabled) {
+  border-color: var(--brass);
+  background: var(--brass-tint);
+}
+
+.df-cal-day.in-range {
+  background: rgba(192, 137, 47, 0.14);
+  border-color: rgba(192, 137, 47, 0.28);
+}
+
+.df-cal-day.is-from,
+.df-cal-day.is-to {
+  background: var(--brass) !important;
+  color: #0B1730 !important;
+  border-color: var(--brass) !important;
+  font-weight: 800;
+}
+
+.df-cal-day.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--good);
+}
+
+.df-cal-day i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--good);
+  margin-top: 1px;
+}
+
+.df-cal-day.is-from i,
+.df-cal-day.is-to i {
+  background: #0B1730;
+}
+
+/* Quick Presets Bar */
+.df-presets-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+}
+
+.df-pre-lbl {
+  font-family: "Archivo", sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--brass);
+  flex-shrink: 0;
+}
+
+.df-pre-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.df-pre-chip {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 2.5px 7.5px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.df-pre-chip:hover,
+.df-pre-chip.active {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+
+
 
 
 

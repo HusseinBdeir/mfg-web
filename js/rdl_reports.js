@@ -3149,10 +3149,14 @@
         });
       }
 
-      // Date inputs
+      // Date inputs (reject partial/invalid years like 0002-12-31 during typing)
       root.querySelectorAll('input.rdl-date-input[data-rdl-param]').forEach(inp => {
         inp.addEventListener('change', () => {
           const k = inp.dataset.rdlParam;
+          if (!/^(202[0-9]|2030)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(inp.value || '').trim())) {
+            inp.value = liveCtx.rdl.params[k] || '';
+            return;
+          }
           liveCtx.rdl.params[k] = inp.value;
           if (k === 'from' || k === 'to' || k === 'asof') liveCtx.rdl._dateTouched = true;
           refreshSheetAndParams();

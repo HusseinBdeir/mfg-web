@@ -1116,12 +1116,542 @@
     return (upTo.length ? upTo.slice(-Math.min(6, maxCount)) : allM.slice(-maxCount));
   }
 
+  // ---- Interactive Segmented Date Control & Date/Period Facilitator Engine ----
+  const _dateFacState = {
+    open: false,
+    tab: 'day',          // 'day' | 'month' | 'week' | 'year'
+    targetMode: 'from',  // 'from' | 'to' | 'grain'
+    activePart: 'day',   // 'day' | 'month' | 'year'
+    viewYear: 2026,
+    viewMonth: 10,
+    scope: 'top'         // 'top' | 'pbi'
+  };
+  let _dateActivityCacheKey = '';
+  let _dateActivityCacheVal = null;
+  const daysInMonth = lastDayOfMonth;
+  const MONTH_FULL = MONTH_LONG;
+
+  function normalizeValidFilterDate(rawIso, fallback = null) {
+    const s = String(rawIso == null ? '' : rawIso).trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return fallback;
+    const yr = Number(m[1]);
+    const mo = Number(m[2]);
+    const dy = Number(m[3]);
+    if (yr < 2024 || yr > 2030 || mo < 1 || mo > 12 || dy < 1) return fallback;
+    const maxDy = daysInMonth(yr, mo);
+    const clampedDy = Math.min(dy, maxDy);
+    return `${String(yr).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(clampedDy).padStart(2, '0')}`;
+  }
+
+  function formatDateSegParts(iso, defaultIso) {
+    const valid = normalizeValidFilterDate(iso, defaultIso || MIN_DATE) || MIN_DATE;
+    const [yStr, mStr, dStr] = valid.split('-');
+    const yrNum = Number(yStr) || 2024;
+    const moNum = Math.min(12, Math.max(1, Number(mStr) || 1));
+    const dayNum = Math.min(daysInMonth(yrNum, moNum), Math.max(1, Number(dStr) || 1));
+    return {
+      iso: valid,
+      yyyy: String(yrNum).padStart(4, '0'),
+      mm: String(moNum).padStart(2, '0'),
+      dd: String(dayNum).padStart(2, '0'),
+      mmm: MONTH_SHORT[moNum - 1] || 'Jan',
+      mmmm: MONTH_FULL[moNum - 1] || 'January',
+      yrNum,
+      moNum,
+      dayNum
+    };
+  }
+
+  function renderDateSegPillHtml(endKey, iso, scope = 'top') {
+    const defIso = endKey === 'to' ? MAX_DATE : MIN_DATE;
+    const p = formatDateSegParts(iso, defIso);
+    const endLbl = endKey === 'to' ? 'To' : 'From';
+    const isEndOpen = _dateFacState.open && _dateFacState.targetMode === endKey;
+    const dayAct = isEndOpen && _dateFacState.tab === 'day' ? ' is-active-seg' : '';
+    const moAct = isEndOpen && _dateFacState.tab === 'month' ? ' is-active-seg' : '';
+    const yrAct = isEndOpen && _dateFacState.tab === 'year' ? ' is-active-seg' : '';
+    return `<div class="date-seg-pill${isEndOpen ? ' is-open-end' : ''}" data-date-end="${esc(endKey)}" data-date-scope="${esc(scope)}"><button type="button" class="date-seg-part${dayAct}" data-date-end="${esc(endKey)}" data-date-part="day" data-date-scope="${esc(scope)}" title="${endLbl} Day — click for Calendar or ↑/↓ to step ±1 day">${esc(p.dd)}</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part${moAct}" data-date-end="${esc(endKey)}" data-date-part="month" data-date-scope="${esc(scope)}" title="${endLbl} Month — click for Month Picker or ↑/↓ to step ±1 month">${esc(p.mmm)}</button><span class="date-seg-dash">-</span><button type="button" class="date-seg-part${yrAct}" data-date-end="${esc(endKey)}" data-date-part="year" data-date-scope="${esc(scope)}" title="${endLbl} Year — click for Year Picker or ↑/↓ to step ±1 year">${esc(p.yyyy)}</button><button type="button" class="date-seg-cal" data-date-end="${esc(endKey)}" data-date-part="day" data-date-scope="${esc(scope)}" title="Open interactive Date &amp; Period Facilitator (${endLbl})" aria-label="Open ${endLbl} Date Picker"><svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.8"/><line x1="5" y1="1.5" x2="5" y2="4.2"/><line x1="11" y1="1.5" x2="11" y2="4.2"/><line x1="2" y1="6.5" x2="14" y2="6.5"/></svg></button></div>`;
+  }
+
+  function syncDateSegPillElement(pillEl, iso, endKey) {
+    if (!pillEl) return;
+    const p = formatDateSegParts(iso, endKey === 'to' ? MAX_DATE : MIN_DATE);
+    const isEndOpen = _dateFacState.open && _dateFacState.targetMode === endKey;
+    pillEl.classList.toggle('is-open-end', isEndOpen);
+    const dayBtn = pillEl.querySelector('[data-date-part="day"]:not(.date-seg-cal)');
+    const moBtn = pillEl.querySelector('[data-date-part="month"]');
+    const yrBtn = pillEl.querySelector('[data-date-part="year"]');
+    if (dayBtn) {
+      dayBtn.textContent = p.dd;
+      dayBtn.classList.toggle('is-active-seg', isEndOpen && _dateFacState.tab === 'day');
+    }
+    if (moBtn) {
+      moBtn.textContent = p.mmm;
+      moBtn.classList.toggle('is-active-seg', isEndOpen && _dateFacState.tab === 'month');
+    }
+    if (yrBtn) {
+      yrBtn.textContent = p.yyyy;
+      yrBtn.classList.toggle('is-active-seg', isEndOpen && _dateFacState.tab === 'year');
+    }
+  }
+
+  function stepDateEndpointByPart(endKey, part, delta) {
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+    const curIso = endKey === 'to' ? r.to : r.from;
+    const p = formatDateSegParts(curIso, endKey === 'to' ? MAX_DATE : MIN_DATE);
+    let nextYr = p.yrNum;
+    let nextMo = p.moNum;
+    let nextDy = p.dayNum;
+    if (part === 'year') {
+      nextYr = Math.min(2030, Math.max(2024, nextYr + delta));
+      nextDy = Math.min(nextDy, daysInMonth(nextYr, nextMo));
+    } else if (part === 'month') {
+      const totalMo = (nextYr * 12 + (nextMo - 1)) + delta;
+      const clampedTotal = Math.min(2030 * 12 + 11, Math.max(2024 * 12, totalMo));
+      nextYr = Math.floor(clampedTotal / 12);
+      nextMo = (clampedTotal % 12) + 1;
+      nextDy = Math.min(nextDy, daysInMonth(nextYr, nextMo));
+    } else {
+      const dt = new Date(Date.UTC(nextYr, nextMo - 1, nextDy) + delta * 86400000);
+      const isoCand = dt.toISOString().slice(0, 10);
+      const clamped = isoCand < MIN_DATE ? MIN_DATE : (isoCand > MAX_DATE ? MAX_DATE : isoCand);
+      const cp = formatDateSegParts(clamped);
+      nextYr = cp.yrNum;
+      nextMo = cp.moNum;
+      nextDy = cp.dayNum;
+    }
+    const nextIso = `${String(nextYr).padStart(4, '0')}-${String(nextMo).padStart(2, '0')}-${String(nextDy).padStart(2, '0')}`;
+    _dateFacState.viewYear = nextYr;
+    _dateFacState.viewMonth = nextMo;
+    if (endKey === 'to') setDateFilter({ from: r.from, to: nextIso });
+    else setDateFilter({ from: nextIso, to: r.to });
+  }
+
+  function stepCurrentPeriodWindow(dir) {
+    const step = dir >= 0 ? 1 : -1;
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+    const fp = formatDateSegParts(r.from, MIN_DATE);
+    const tp = formatDateSegParts(r.to, MAX_DATE);
+    if (STATE.dateGrain === 'year' || String(STATE.period).startsWith('year:')) {
+      const nextYr = Math.min(2030, Math.max(2024, fp.yrNum + step));
+      _dateFacState.viewYear = nextYr;
+      setDateFilter({ period: `year:${nextYr}` });
+      return;
+    }
+    if (STATE.dateGrain === 'month' || String(STATE.period).startsWith('month:') || STATE.period === 'mtd' || STATE.period === 'prev_m1' || STATE.period === 'prev_m2') {
+      const totalMo = Math.min(2030 * 12 + 11, Math.max(2024 * 12, fp.yrNum * 12 + (fp.moNum - 1) + step));
+      const ny = Math.floor(totalMo / 12);
+      const nm = (totalMo % 12) + 1;
+      _dateFacState.viewYear = ny;
+      _dateFacState.viewMonth = nm;
+      setDateFilter({ period: `month:${ny}-${String(nm).padStart(2, '0')}` });
+      return;
+    }
+    if (STATE.dateGrain === 'week' || String(STATE.period).startsWith('week:') || STATE.period === 'wtd' || STATE.period === 'last_week') {
+      const cat = getDateGrainCatalog();
+      const weeks = cat.week || [];
+      const curIdx = weeks.findIndex(w => w.from === r.from);
+      if (curIdx >= 0) {
+        const nextIdx = Math.min(weeks.length - 1, Math.max(0, curIdx - step));
+        const picked = weeks[nextIdx];
+        if (picked) {
+          const wp = formatDateSegParts(picked.from);
+          _dateFacState.viewYear = wp.yrNum;
+          _dateFacState.viewMonth = wp.moNum;
+          setDateFilter({ period: picked.value });
+          return;
+        }
+      }
+    }
+    if (STATE.dateGrain === 'day' || String(STATE.period).startsWith('day:') || STATE.period === 'today' || STATE.period === 'yesterday') {
+      const dt = new Date(Date.UTC(fp.yrNum, fp.moNum - 1, fp.dayNum) + step * 86400000);
+      const nextIso = normalizeValidFilterDate(dt.toISOString().slice(0, 10), fp.iso);
+      const np = formatDateSegParts(nextIso);
+      _dateFacState.viewYear = np.yrNum;
+      _dateFacState.viewMonth = np.moNum;
+      setDateFilter({ period: `day:${nextIso}` });
+      return;
+    }
+    // Custom range or other preset: step by full year if Jan 1..Dec 31, full month if 1st..last, else span of days
+    if (fp.yrNum === tp.yrNum && fp.moNum === 1 && fp.dayNum === 1 && tp.moNum === 12 && tp.dayNum === 31) {
+      const ny = Math.min(2030, Math.max(2024, fp.yrNum + step));
+      _dateFacState.viewYear = ny;
+      setDateFilter({ from: `${ny}-01-01`, to: `${ny}-12-31` });
+      return;
+    }
+    if (fp.yrNum === tp.yrNum && fp.moNum === tp.moNum && fp.dayNum === 1 && tp.dayNum === daysInMonth(tp.yrNum, tp.moNum)) {
+      const totalMo = Math.min(2030 * 12 + 11, Math.max(2024 * 12, fp.yrNum * 12 + (fp.moNum - 1) + step));
+      const ny = Math.floor(totalMo / 12);
+      const nm = (totalMo % 12) + 1;
+      const lastD = daysInMonth(ny, nm);
+      _dateFacState.viewYear = ny;
+      _dateFacState.viewMonth = nm;
+      setDateFilter({ from: `${ny}-${String(nm).padStart(2, '0')}-01`, to: `${ny}-${String(nm).padStart(2, '0')}-${String(lastD).padStart(2, '0')}` });
+      return;
+    }
+    const fMs = Date.UTC(fp.yrNum, fp.moNum - 1, fp.dayNum);
+    const tMs = Date.UTC(tp.yrNum, tp.moNum - 1, tp.dayNum);
+    const spanDays = Math.max(1, Math.min(365, Math.round((tMs - fMs) / 86400000) + 1));
+    const nfIso = normalizeValidFilterDate(new Date(fMs + step * spanDays * 86400000).toISOString().slice(0, 10), MIN_DATE);
+    const ntIso = normalizeValidFilterDate(new Date(tMs + step * spanDays * 86400000).toISOString().slice(0, 10), MAX_DATE);
+    const np = formatDateSegParts(nfIso);
+    _dateFacState.viewYear = np.yrNum;
+    _dateFacState.viewMonth = np.moNum;
+    setDateFilter({ from: nfIso, to: ntIso });
+  }
+
+  function getDateActivityIndex() {
+    const allowed = allowedCompanyNames();
+    const key = `${STATE.company}|${allowed.join(',')}|${STATE.basis}|${(STATE.customRecords.sales_tickets || []).length}`;
+    if (_dateActivityCacheKey === key && _dateActivityCacheVal) return _dateActivityCacheVal;
+    const byYear = {};
+    const byMonth = {};
+    const byDay = {};
+    for (let y = 2024; y <= 2030; y++) byYear[String(y)] = { count: 0, usd: 0 };
+    const allowSet = new Set(allowed.map(c => String(c || '').toLowerCase()));
+    const matchCo = r => {
+      if (!r || r.voided) return false;
+      const c = String(r.company || r.Company || '').toLowerCase();
+      return !c || allowSet.size === 0 || allowSet.has(c);
+    };
+    const rec = (SEED && SEED.records) || {};
+    const addRow = (r, amt) => {
+      if (!matchCo(r)) return;
+      const d = recordDateFor(r, STATE.basis);
+      if (!d || d.length < 10) return;
+      const yr = d.slice(0, 4);
+      const ym = d.slice(0, 7);
+      if (byYear[yr]) {
+        byYear[yr].count += 1;
+        byYear[yr].usd += amt;
+      }
+      if (!byMonth[ym]) byMonth[ym] = { count: 0, usd: 0 };
+      byMonth[ym].count += 1;
+      byMonth[ym].usd += amt;
+      byDay[d] = (byDay[d] || 0) + 1;
+    };
+    (rec.sales_tickets || []).forEach(r => addRow(r, Number(r.total_usd || 0)));
+    (rec.raw_purchases || []).forEach(r => addRow(r, 0));
+    (rec.expenses || []).forEach(r => addRow(r, 0));
+    _dateActivityCacheKey = key;
+    _dateActivityCacheVal = { byYear, byMonth, byDay };
+    return _dateActivityCacheVal;
+  }
+
+  function closeDateFacilitator() {
+    _dateFacState.open = false;
+    const pop = $('dateFacilitatorPopover');
+    if (pop) pop.hidden = true;
+    document.querySelectorAll('.date-seg-pill.is-open-end').forEach(el => el.classList.remove('is-open-end'));
+    document.querySelectorAll('.date-seg-part.is-active-seg').forEach(el => el.classList.remove('is-active-seg'));
+  }
+
+  function positionDateFacilitator() {
+    const pop = $('dateFacilitatorPopover');
+    if (!pop || pop.hidden) return;
+    const anchor = (_dateFacState.scope === 'pbi' && document.querySelector('.pbi-date-slicer-row'))
+      || $('dateRangeBar')
+      || $('grainSwitch');
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const vw = window.innerWidth || 1366;
+    const vh = window.innerHeight || 768;
+    const popW = Math.min(468, vw - 16);
+    pop.style.width = `${popW}px`;
+    let left = Math.round(rect.left);
+    if (left + popW > vw - 10) left = Math.max(8, vw - popW - 10);
+    if (left < 8) left = 8;
+    let top = Math.round(rect.bottom + 6);
+    const popH = pop.offsetHeight || 390;
+    if (top + popH > vh - 10 && rect.top > popH + 12) {
+      top = Math.max(8, Math.round(rect.top - popH - 6));
+    }
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
+  function renderDateFacilitatorPopover() {
+    const pop = $('dateFacilitatorPopover');
+    if (!pop) return;
+    if (!_dateFacState.open) {
+      pop.hidden = true;
+      return;
+    }
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE, label: 'All-Time (2024–2030)' };
+    const fp = formatDateSegParts(r.from, MIN_DATE);
+    const tp = formatDateSegParts(r.to, MAX_DATE);
+    const today = todayISO();
+    const act = getDateActivityIndex();
+    const tab = _dateFacState.tab || 'day';
+    const tm = _dateFacState.targetMode || 'from';
+    const vy = Math.min(2030, Math.max(2024, Number(_dateFacState.viewYear) || tp.yrNum || 2026));
+    const vm = Math.min(12, Math.max(1, Number(_dateFacState.viewMonth) || tp.moNum || 10));
+
+    let bodyHtml = '';
+    if (tab === 'year') {
+      const yrs = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+      const curYrNum = Number(today.slice(0, 4)) || 2026;
+      bodyHtml = `
+        <div class="df-sec-bar">
+          <span class="df-sec-hint">${tm === 'grain' ? 'Click any Year card to filter that Full Calendar Year:' : `Click any Year to set <b>${tm === 'to' ? 'To Date' : 'From Date'} Year</b> (or click <b>Full FY</b> for the whole year):`}</span>
+        </div>
+        <div class="df-year-grid">
+          ${yrs.map(y => {
+            const yStat = act.byYear[String(y)] || { count: 0, usd: 0 };
+            const isFullSelected = fp.iso === `${y}-01-01` && (tp.iso === `${y}-12-31` || (y === curYrNum && tp.iso === today));
+            const isEndMatch = (tm === 'from' && fp.yrNum === y) || (tm === 'to' && tp.yrNum === y);
+            const inSpan = y >= fp.yrNum && y <= tp.yrNum;
+            const tag = y === curYrNum ? 'Current YTD' : (y < curYrNum ? 'Historical' : 'Forecast');
+            const statTxt = yStat.count > 0 ? `${fmtNum(yStat.count)} recs · ${fmtUSDk(yStat.usd)}` : 'Open / Forecast';
+            return `
+              <div class="df-year-card ${isFullSelected ? 'is-full-active' : ''} ${isEndMatch ? 'is-end-active' : ''} ${inSpan ? 'in-range' : ''}" data-df-pick-year="${y}" role="button" tabindex="0">
+                <div class="df-yc-top">
+                  <strong class="df-yc-num">${y}</strong>
+                  <span class="df-yc-tag ${yStat.count > 0 ? 'has-data' : ''}">${tag}</span>
+                </div>
+                <div class="df-yc-stat">${esc(statTxt)}</div>
+                <div class="df-yc-actions">
+                  <span class="df-yc-act" data-df-year-action="full" data-df-year="${y}" title="Filter Full Year ${y} (01-Jan-${y} – 31-Dec-${y})">Full FY ${y}</span>
+                  <span class="df-yc-act" data-df-year-action="from" data-df-year="${y}" title="Set From Year to ${y}">From ${y}</span>
+                  <span class="df-yc-act" data-df-year-action="to" data-df-year="${y}" title="Set To Year to ${y}">To ${y}</span>
+                  <span class="df-yc-act" data-df-year-action="months" data-df-year="${y}" title="Browse Months of ${y}">Months ▸</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (tab === 'month') {
+      const yrs = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+      bodyHtml = `
+        <div class="df-year-strip" role="group" aria-label="Select Year for Months">
+          <button type="button" class="df-nav-mini" data-df-step-view-year="-1" title="Previous Year">‹</button>
+          ${yrs.map(y => {
+            const hasY = (act.byYear[String(y)] || {}).count > 0;
+            return `<button type="button" class="df-yr-pill ${y === vy ? 'active' : ''} ${hasY ? 'has-data' : ''}" data-df-view-year="${y}">${y}</button>`;
+          }).join('')}
+          <button type="button" class="df-nav-mini" data-df-step-view-year="1" title="Next Year">›</button>
+        </div>
+        <div class="df-quarter-strip">
+          <span class="df-q-lbl">Quarters (${vy}):</span>
+          ${[
+            [1, 'Q1 (Jan–Mar)'],
+            [2, 'Q2 (Apr–Jun)'],
+            [3, 'Q3 (Jul–Sep)'],
+            [4, 'Q4 (Oct–Dec)']
+          ].map(([q, lbl]) => `<button type="button" class="df-q-pill" data-df-quarter="${q}" data-df-qyear="${vy}">${lbl}</button>`).join('')}
+        </div>
+        <div class="df-month-grid">
+          ${MONTH_SHORT.map((mShort, idx) => {
+            const mNum = idx + 1;
+            const mm = String(mNum).padStart(2, '0');
+            const ym = `${vy}-${mm}`;
+            const mStat = act.byMonth[ym] || { count: 0, usd: 0 };
+            const mStart = `${ym}-01`;
+            const mEnd = `${ym}-${String(daysInMonth(vy, mNum)).padStart(2, '0')}`;
+            const isFullMo = fp.iso === mStart && tp.iso === mEnd;
+            const isEndMo = (tm === 'from' && fp.yrNum === vy && fp.moNum === mNum) || (tm === 'to' && tp.yrNum === vy && tp.moNum === mNum);
+            const inRangeMo = ym >= fp.iso.slice(0, 7) && ym <= tp.iso.slice(0, 7);
+            return `
+              <div class="df-month-card ${isFullMo ? 'is-full-active' : ''} ${isEndMo ? 'is-end-active' : ''} ${inRangeMo ? 'in-range' : ''}" data-df-pick-month="${mNum}" data-df-pick-year="${vy}" role="button" tabindex="0">
+                <div class="df-mc-top">
+                  <span class="df-mc-num">${mm}</span>
+                  <strong class="df-mc-name">${mShort} ${vy}</strong>
+                  ${mStat.count > 0 ? `<i class="df-mc-dot" title="${fmtNum(mStat.count)} records"></i>` : ''}
+                </div>
+                <div class="df-mc-stat">${mStat.count > 0 ? `${fmtNum(mStat.count)} recs · ${fmtUSDk(mStat.usd)}` : 'No records'}</div>
+                <div class="df-mc-actions">
+                  <span class="df-mc-act" data-df-month-action="full" data-df-month="${mNum}" data-df-year="${vy}">Whole ${mShort}</span>
+                  <span class="df-mc-act" data-df-month-action="from" data-df-month="${mNum}" data-df-year="${vy}">From</span>
+                  <span class="df-mc-act" data-df-month-action="to" data-df-month="${mNum}" data-df-year="${vy}">To</span>
+                  <span class="df-mc-act" data-df-month-action="days" data-df-month="${mNum}" data-df-year="${vy}">Days ▸</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (tab === 'week') {
+      const yrs = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+      const cat = getDateGrainCatalog();
+      const allWeeks = cat.week || [];
+      const ymPrefix = `${vy}-${String(vm).padStart(2, '0')}`;
+      const monthWeeks = allWeeks.filter(w => (w.from && w.from.startsWith(ymPrefix)) || (w.to && w.to.startsWith(ymPrefix))).slice(0, 8);
+      bodyHtml = `
+        <div class="df-year-strip">
+          ${yrs.map(y => `<button type="button" class="df-yr-pill ${y === vy ? 'active' : ''}" data-df-view-year="${y}">${y}</button>`).join('')}
+        </div>
+        <div class="df-mo-mini-strip">
+          ${MONTH_SHORT.map((ms, i) => `<button type="button" class="df-mo-mini ${(i + 1) === vm ? 'active' : ''}" data-df-view-month="${i + 1}">${ms}</button>`).join('')}
+        </div>
+        <div class="df-week-list">
+          ${monthWeeks.length ? monthWeeks.map(w => {
+            const isSel = STATE.period === w.value || (fp.iso === w.from && tp.iso === w.to);
+            let wkCount = 0;
+            let curMs = Date.UTC(Number(w.from.slice(0, 4)), Number(w.from.slice(5, 7)) - 1, Number(w.from.slice(8, 10)));
+            const endMs = Date.UTC(Number(w.to.slice(0, 4)), Number(w.to.slice(5, 7)) - 1, Number(w.to.slice(8, 10)));
+            while (curMs <= endMs) {
+              const dIso = new Date(curMs).toISOString().slice(0, 10);
+              wkCount += (act.byDay[dIso] || 0);
+              curMs += 86400000;
+            }
+            return `
+              <button type="button" class="df-week-row ${isSel ? 'active' : ''}" data-df-pick-week="${esc(w.value)}" data-df-week-from="${esc(w.from)}" data-df-week-to="${esc(w.to)}">
+                <div class="df-wk-main">
+                  <strong>${esc(w.label)}</strong>
+                  <small>${esc(fmtDateDMY(w.from))} → ${esc(fmtDateDMY(w.to))} (Mon–Sun)</small>
+                </div>
+                <span class="df-wk-badge ${wkCount > 0 ? 'has-data' : ''}">${wkCount > 0 ? `${fmtNum(wkCount)} recs` : '0 recs'}</span>
+              </button>
+            `;
+          }).join('') : `<div class="df-empty-note">No Monday–Sunday weeks in ${MONTH_SHORT[vm - 1]} ${vy}. Pick another month/year above.</div>`}
+        </div>
+      `;
+    } else {
+      // 'day' — Interactive Calendar Grid with clickable Month & Year jumpers
+      const firstDow = (new Date(Date.UTC(vy, vm - 1, 1)).getUTCDay() + 6) % 7; // Mon=0..Sun=6
+      const totalDays = daysInMonth(vy, vm);
+      const prevMo = vm === 1 ? 12 : vm - 1;
+      const prevYr = vm === 1 ? vy - 1 : vy;
+      const prevDays = daysInMonth(prevYr, prevMo);
+      const cells = [];
+      for (let i = firstDow - 1; i >= 0; i--) {
+        const d = prevDays - i;
+        const iso = `${String(prevYr).padStart(4, '0')}-${String(prevMo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        cells.push({ d, iso, outside: true, disabled: prevYr < 2024 });
+      }
+      for (let d = 1; d <= totalDays; d++) {
+        const iso = `${String(vy).padStart(4, '0')}-${String(vm).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        cells.push({ d, iso, outside: false, disabled: false });
+      }
+      while (cells.length % 7 !== 0) {
+        const d = cells.length - (firstDow + totalDays) + 1;
+        const nextMo = vm === 12 ? 1 : vm + 1;
+        const nextYr = vm === 12 ? vy + 1 : vy;
+        const iso = `${String(nextYr).padStart(4, '0')}-${String(nextMo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        cells.push({ d, iso, outside: true, disabled: nextYr > 2030 });
+      }
+      bodyHtml = `
+        <div class="df-cal-toolbar">
+          <div class="df-cal-nav-left">
+            <button type="button" class="df-nav-mini" data-df-cal-nav="-1" title="Previous Month">◀</button>
+            <button type="button" class="df-cal-jumper" data-df-switch-tab="month" title="Click to pick Month from 12-Month Grid">${esc(MONTH_FULL[vm - 1])} ▾</button>
+            <button type="button" class="df-cal-jumper" data-df-switch-tab="year" title="Click to pick Year (2024–2030)">${vy} ▾</button>
+            <button type="button" class="df-nav-mini" data-df-cal-nav="1" title="Next Month">▶</button>
+          </div>
+          <div class="df-cal-nav-right">
+            <button type="button" class="df-mini-act" data-df-whole-shown-month="${vy}-${String(vm).padStart(2, '0')}" title="Filter entire ${esc(MONTH_SHORT[vm - 1])} ${vy}">Whole ${esc(MONTH_SHORT[vm - 1])}</button>
+            <button type="button" class="df-mini-act" data-df-whole-shown-year="${vy}" title="Filter entire FY ${vy}">Full ${vy}</button>
+          </div>
+        </div>
+        <div class="df-cal-weekdays">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="df-cal-grid">
+          ${cells.map(c => {
+            const cnt = act.byDay[c.iso] || 0;
+            const isFrom = c.iso === fp.iso;
+            const isTo = c.iso === tp.iso;
+            const inRange = c.iso >= fp.iso && c.iso <= tp.iso;
+            const isToday = c.iso === today;
+            const cls = [
+              'df-cal-day',
+              c.outside ? 'is-outside' : '',
+              isFrom ? 'is-from' : '',
+              isTo ? 'is-to' : '',
+              inRange ? 'in-range' : '',
+              isToday ? 'is-today' : '',
+              cnt > 0 ? 'has-data' : ''
+            ].filter(Boolean).join(' ');
+            const tip = `${c.iso}${cnt > 0 ? ` · ${fmtNum(cnt)} records` : ''}`;
+            return `<button type="button" class="${cls}" data-df-pick-day="${c.iso}" ${c.disabled ? 'disabled' : ''} title="${esc(tip)}"><span>${c.d}</span>${cnt > 0 ? '<i></i>' : ''}</button>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    const presets = [
+      ['today', 'Today'],
+      ['yesterday', 'Yesterday'],
+      ['wtd', 'This Week'],
+      ['last_week', 'Last Week'],
+      ['mtd', 'MTD'],
+      ['prev_m1', 'Last Month'],
+      ['qtd', 'QTD'],
+      ['ytd', 'YTD'],
+      ['year:2025', 'FY 2025'],
+      ['year:2024', 'FY 2024'],
+      ['all', 'All-Time']
+    ];
+
+    pop.innerHTML = `
+      <div class="df-head">
+        <div class="df-head-left">
+          <span class="df-kicker">INTERACTIVE DATE &amp; PERIOD FACILITATOR</span>
+          <div class="df-active-summary">
+            <button type="button" class="df-step-period-btn" data-df-step-period="-1" title="Step to Previous Period">◀ Prev</button>
+            <strong class="df-range-readout">${esc(fp.dd)}-${esc(fp.mmm)}-${esc(fp.yyyy)} → ${esc(tp.dd)}-${esc(tp.mmm)}-${esc(tp.yyyy)}</strong>
+            <button type="button" class="df-step-period-btn" data-df-step-period="1" title="Step to Next Period">Next ▶</button>
+          </div>
+        </div>
+        <div class="df-head-right">
+          <button type="button" class="df-reset-btn" data-df-action="reset" title="Reset to All-Time (2024–2030)">↺ All-Time</button>
+          <button type="button" class="df-close-btn" data-df-action="close" aria-label="Close Date Facilitator" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+
+      <div class="df-mode-bar">
+        <div class="df-tabs" role="tablist" aria-label="Date Picker View">
+          <button type="button" role="tab" aria-selected="${tab === 'day'}" class="df-tab ${tab === 'day' ? 'active' : ''}" data-df-switch-tab="day">📅 Day</button>
+          <button type="button" role="tab" aria-selected="${tab === 'month'}" class="df-tab ${tab === 'month' ? 'active' : ''}" data-df-switch-tab="month">🗓️ Month</button>
+          <button type="button" role="tab" aria-selected="${tab === 'week'}" class="df-tab ${tab === 'week' ? 'active' : ''}" data-df-switch-tab="week">📆 Week</button>
+          <button type="button" role="tab" aria-selected="${tab === 'year'}" class="df-tab ${tab === 'year' ? 'active' : ''}" data-df-switch-tab="year">📊 Year</button>
+        </div>
+        <div class="df-target-group" role="group" aria-label="Selection Target">
+          <button type="button" class="df-target-btn ${tm === 'from' ? 'active' : ''}" data-df-target="from" title="Click picks From Date (Start)">From: <b>${esc(fp.dd)}-${esc(fp.mmm)}-${esc(fp.yyyy)}</b></button>
+          <button type="button" class="df-target-btn ${tm === 'to' ? 'active' : ''}" data-df-target="to" title="Click picks To Date (End)">To: <b>${esc(tp.dd)}-${esc(tp.mmm)}-${esc(tp.yyyy)}</b></button>
+          <button type="button" class="df-target-btn ${tm === 'grain' ? 'active' : ''}" data-df-target="grain" title="1-click selects entire Single Day, Week, Month, or Year">Whole Period</button>
+        </div>
+      </div>
+
+      <div class="df-body">${bodyHtml}</div>
+
+      <div class="df-presets-bar">
+        <span class="df-pre-lbl">Quick:</span>
+        <div class="df-pre-chips">
+          ${presets.map(([val, lbl]) => `<button type="button" class="df-pre-chip ${STATE.period === val ? 'active' : ''}" data-df-preset="${esc(val)}">${esc(lbl)}</button>`).join('')}
+        </div>
+      </div>
+    `;
+    pop.hidden = false;
+    positionDateFacilitator();
+  }
+
+  function openDateFacilitator(opts = {}) {
+    const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+    const targetMode = opts.targetMode || _dateFacState.targetMode || 'from';
+    const focusIso = opts.focusIso || (targetMode === 'to' ? r.to : r.from);
+    const p = formatDateSegParts(focusIso, targetMode === 'to' ? MAX_DATE : MIN_DATE);
+    _dateFacState.open = true;
+    if (opts.tab) _dateFacState.tab = opts.tab;
+    if (opts.targetMode) _dateFacState.targetMode = opts.targetMode;
+    if (opts.activePart) _dateFacState.activePart = opts.activePart;
+    if (opts.scope) _dateFacState.scope = opts.scope;
+    _dateFacState.viewYear = opts.viewYear || p.yrNum;
+    _dateFacState.viewMonth = opts.viewMonth || p.moNum;
+    syncDateSegPillElement($('dateFromSegPill'), r.from, 'from');
+    syncDateSegPillElement($('dateToSegPill'), r.to, 'to');
+    renderDateFacilitatorPopover();
+  }
+
   function setDateFilter(opts = {}) {
     if (opts.reset) {
       STATE.dateGrain = 'all';
       STATE.period = 'all';
       STATE.dateFrom = '';
       STATE.dateTo = '';
+      closeDateFacilitator();
     } else {
       if (opts.grain) {
         STATE.dateGrain = opts.grain;
@@ -1154,10 +1684,21 @@
       }
       if (opts.from !== undefined || opts.to !== undefined) {
         const curRange = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
-        let nf = opts.from !== undefined ? opts.from : (STATE.dateFrom || curRange.from);
-        let nt = opts.to !== undefined ? opts.to : (STATE.dateTo || curRange.to);
+        const validFromArg = opts.from !== undefined ? normalizeValidFilterDate(opts.from, null) : undefined;
+        const validToArg = opts.to !== undefined ? normalizeValidFilterDate(opts.to, null) : undefined;
+        // Reject partial/invalid year keystrokes like "0002-12-31" or empty strings so From/To never corrupt to 0002 or yyyy
+        if ((opts.from !== undefined && !validFromArg) && (opts.to === undefined || !validToArg)) {
+          syncTopbarDateControls();
+          return;
+        }
+        if ((opts.to !== undefined && !validToArg) && (opts.from === undefined || !validFromArg)) {
+          syncTopbarDateControls();
+          return;
+        }
+        let nf = validFromArg || normalizeValidFilterDate(STATE.dateFrom, curRange.from) || MIN_DATE;
+        let nt = validToArg || normalizeValidFilterDate(STATE.dateTo, curRange.to) || MAX_DATE;
         if (nf && nt && nf > nt) {
-          if (opts.from !== undefined) nt = nf;
+          if (validFromArg) nt = nf;
           else nf = nt;
         }
         STATE.dateFrom = nf || MIN_DATE;
@@ -1169,6 +1710,7 @@
     STATE.pbiTablePage = {};
     saveFilterState();
     renderApp();
+    if (_dateFacState.open) renderDateFacilitatorPopover();
   }
 
   function syncTopbarDateControls() {
@@ -1200,6 +1742,8 @@
     const rstEl = $('dateRangeResetBtn');
     if (fromEl && document.activeElement !== fromEl) fromEl.value = r.from;
     if (toEl && document.activeElement !== toEl) toEl.value = r.to;
+    syncDateSegPillElement($('dateFromSegPill'), r.from, 'from');
+    syncDateSegPillElement($('dateToSegPill'), r.to, 'to');
     const isFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
     if (barEl) barEl.classList.toggle('custom-active', STATE.period === 'custom' || isFiltered);
     if (rstEl) rstEl.hidden = !isFiltered;
@@ -1208,7 +1752,13 @@
   if (typeof window !== 'undefined') {
     window.MFG_DATE_TEST = {
       catalogFor: (iso) => getDateGrainCatalog(iso),
-      rangeFor: (p, iso) => periodRange(p, iso)
+      rangeFor: (p, iso) => periodRange(p, iso),
+      normalizeDate: (iso, fb) => normalizeValidFilterDate(iso, fb),
+      openFacilitator: (opts) => openDateFacilitator(opts),
+      closeFacilitator: () => closeDateFacilitator(),
+      stepPart: (endKey, part, delta) => stepDateEndpointByPart(endKey, part, delta),
+      stepPeriod: (dir) => stepCurrentPeriodWindow(dir),
+      facState: () => Object.assign({}, _dateFacState)
     };
   }
 
@@ -16530,7 +17080,7 @@
     let wsHtml = '';
     switch (STATE.view) {
       case 'overview': wsHtml = renderOverview(); break;
-      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons }) : renderOverview(); break;
+      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, renderDateSegPillHtml }) : renderOverview(); break;
       case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': wsHtml = renderSentinels(); break;
       case 'kiosks': wsHtml = renderKiosks(); break;
@@ -16640,7 +17190,17 @@
       });
     });
     container.querySelectorAll('[data-pbi-grain]').forEach(btn => {
-      btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-pbi-grain') }));
+      btn.addEventListener('click', e => {
+        const g = btn.getAttribute('data-pbi-grain');
+        const wasActive = STATE.dateGrain === g;
+        setDateFilter({ grain: g });
+        if (g === 'all') {
+          closeDateFacilitator();
+        } else if (e.isTrusted || wasActive || btn.dataset.openFacilitator === '1') {
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          openDateFacilitator({ tab: g, targetMode: 'grain', focusIso: r.from, scope: 'pbi' });
+        }
+      });
     });
     const pbiPeriodSel = $('pbiPeriodSelect');
     if (pbiPeriodSel) pbiPeriodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
@@ -17520,7 +18080,17 @@
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
     wireCompanySwitch();
-    document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => btn.addEventListener('click', () => setDateFilter({ grain: btn.getAttribute('data-grain') })));
+    document.querySelectorAll('#grainSwitch .grain-btn').forEach(btn => btn.addEventListener('click', e => {
+      const g = btn.getAttribute('data-grain');
+      const wasActive = STATE.dateGrain === g;
+      setDateFilter({ grain: g });
+      if (g === 'all') {
+        closeDateFacilitator();
+      } else if (e.isTrusted || wasActive || btn.dataset.openFacilitator === '1') {
+        const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+        openDateFacilitator({ tab: g, targetMode: 'grain', focusIso: r.from, scope: 'top' });
+      }
+    }));
     const periodSel = $('periodSelect');
     if (periodSel) periodSel.addEventListener('change', e => setDateFilter({ period: e.target.value }));
     const dateFromEl = $('dateFromInput');
@@ -17529,7 +18099,255 @@
     if (dateToEl) dateToEl.addEventListener('change', e => setDateFilter({ to: e.target.value }));
     const dateRstEl = $('dateRangeResetBtn');
     if (dateRstEl) dateRstEl.addEventListener('click', () => setDateFilter({ reset: true }));
-    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); saveFilterState(); renderApp(); }));
+    document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.addEventListener('click', () => { STATE.basis = btn.getAttribute('data-basis'); saveFilterState(); renderApp(); if (_dateFacState.open) renderDateFacilitatorPopover(); }));
+
+    // Delegated Interactive Segmented Date Control & Date/Period Facilitator Popover
+    document.addEventListener('click', e => {
+      const segBtn = e.target && e.target.closest ? e.target.closest('.date-seg-part, .date-seg-cal') : null;
+      if (segBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const endKey = segBtn.getAttribute('data-date-end') || 'from';
+        const part = segBtn.getAttribute('data-date-part') || 'day';
+        const scope = segBtn.getAttribute('data-date-scope') || 'top';
+        const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+        const focusIso = endKey === 'to' ? r.to : r.from;
+        openDateFacilitator({ tab: part, targetMode: endKey, activePart: part, focusIso, scope });
+        return;
+      }
+
+      const pop = $('dateFacilitatorPopover');
+      if (!pop || pop.hidden) return;
+      if (pop.contains(e.target)) {
+        const actBtn = e.target.closest('[data-df-action]');
+        if (actBtn) {
+          const act = actBtn.getAttribute('data-df-action');
+          if (act === 'close') closeDateFacilitator();
+          else if (act === 'reset') setDateFilter({ reset: true });
+          return;
+        }
+        const stepPerBtn = e.target.closest('[data-df-step-period]');
+        if (stepPerBtn) {
+          stepCurrentPeriodWindow(Number(stepPerBtn.getAttribute('data-df-step-period')) || 1);
+          return;
+        }
+        const tabBtn = e.target.closest('[data-df-switch-tab]');
+        if (tabBtn) {
+          _dateFacState.tab = tabBtn.getAttribute('data-df-switch-tab') || 'day';
+          syncTopbarDateControls();
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const tgtBtn = e.target.closest('[data-df-target]');
+        if (tgtBtn) {
+          _dateFacState.targetMode = tgtBtn.getAttribute('data-df-target') || 'from';
+          syncTopbarDateControls();
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const vyBtn = e.target.closest('[data-df-view-year]');
+        if (vyBtn) {
+          _dateFacState.viewYear = Number(vyBtn.getAttribute('data-df-view-year')) || 2026;
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const stepVyBtn = e.target.closest('[data-df-step-view-year]');
+        if (stepVyBtn) {
+          const d = Number(stepVyBtn.getAttribute('data-df-step-view-year')) || 1;
+          _dateFacState.viewYear = Math.min(2030, Math.max(2024, (_dateFacState.viewYear || 2026) + d));
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const vmBtn = e.target.closest('[data-df-view-month]');
+        if (vmBtn) {
+          _dateFacState.viewMonth = Number(vmBtn.getAttribute('data-df-view-month')) || 1;
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const calNavBtn = e.target.closest('[data-df-cal-nav]');
+        if (calNavBtn) {
+          const d = Number(calNavBtn.getAttribute('data-df-cal-nav')) || 1;
+          const totalMo = Math.min(2030 * 12 + 11, Math.max(2024 * 12, (_dateFacState.viewYear || 2026) * 12 + ((_dateFacState.viewMonth || 1) - 1) + d));
+          _dateFacState.viewYear = Math.floor(totalMo / 12);
+          _dateFacState.viewMonth = (totalMo % 12) + 1;
+          renderDateFacilitatorPopover();
+          return;
+        }
+        const wholeShownMo = e.target.closest('[data-df-whole-shown-month]');
+        if (wholeShownMo) {
+          setDateFilter({ period: 'month:' + wholeShownMo.getAttribute('data-df-whole-shown-month') });
+          return;
+        }
+        const wholeShownYr = e.target.closest('[data-df-whole-shown-year]');
+        if (wholeShownYr) {
+          setDateFilter({ period: 'year:' + wholeShownYr.getAttribute('data-df-whole-shown-year') });
+          return;
+        }
+        const qBtn = e.target.closest('[data-df-quarter]');
+        if (qBtn) {
+          const q = Number(qBtn.getAttribute('data-df-quarter')) || 1;
+          const qy = Number(qBtn.getAttribute('data-df-qyear')) || _dateFacState.viewYear || 2026;
+          const m1 = (q - 1) * 3 + 1;
+          const m2 = m1 + 2;
+          const fIso = `${qy}-${String(m1).padStart(2, '0')}-01`;
+          const tIso = `${qy}-${String(m2).padStart(2, '0')}-${String(daysInMonth(qy, m2)).padStart(2, '0')}`;
+          setDateFilter({ from: fIso, to: tIso });
+          return;
+        }
+        const yrActBtn = e.target.closest('[data-df-year-action]');
+        if (yrActBtn) {
+          e.stopPropagation();
+          const act = yrActBtn.getAttribute('data-df-year-action');
+          const yr = Math.min(2030, Math.max(2024, Number(yrActBtn.getAttribute('data-df-year')) || 2026));
+          _dateFacState.viewYear = yr;
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          if (act === 'full') {
+            setDateFilter({ period: `year:${yr}` });
+          } else if (act === 'months') {
+            _dateFacState.tab = 'month';
+            renderDateFacilitatorPopover();
+          } else if (act === 'to') {
+            const tp = formatDateSegParts(r.to, MAX_DATE);
+            const nd = Math.min(tp.dayNum, daysInMonth(yr, tp.moNum));
+            setDateFilter({ from: r.from, to: `${yr}-${tp.mm}-${String(nd).padStart(2, '0')}` });
+          } else {
+            const fp = formatDateSegParts(r.from, MIN_DATE);
+            const nd = Math.min(fp.dayNum, daysInMonth(yr, fp.moNum));
+            setDateFilter({ from: `${yr}-${fp.mm}-${String(nd).padStart(2, '0')}`, to: r.to });
+          }
+          return;
+        }
+        const pickYrCard = e.target.closest('[data-df-pick-year]');
+        if (pickYrCard && !e.target.closest('[data-df-pick-month]')) {
+          const yr = Math.min(2030, Math.max(2024, Number(pickYrCard.getAttribute('data-df-pick-year')) || 2026));
+          _dateFacState.viewYear = yr;
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          if (_dateFacState.targetMode === 'grain') {
+            setDateFilter({ period: `year:${yr}` });
+          } else if (_dateFacState.targetMode === 'to') {
+            const tp = formatDateSegParts(r.to, MAX_DATE);
+            const nd = Math.min(tp.dayNum, daysInMonth(yr, tp.moNum));
+            setDateFilter({ from: r.from, to: `${yr}-${tp.mm}-${String(nd).padStart(2, '0')}` });
+          } else {
+            const fp = formatDateSegParts(r.from, MIN_DATE);
+            const nd = Math.min(fp.dayNum, daysInMonth(yr, fp.moNum));
+            setDateFilter({ from: `${yr}-${fp.mm}-${String(nd).padStart(2, '0')}`, to: r.to });
+          }
+          return;
+        }
+        const moActBtn = e.target.closest('[data-df-month-action]');
+        if (moActBtn) {
+          e.stopPropagation();
+          const act = moActBtn.getAttribute('data-df-month-action');
+          const yr = Math.min(2030, Math.max(2024, Number(moActBtn.getAttribute('data-df-year')) || _dateFacState.viewYear || 2026));
+          const mo = Math.min(12, Math.max(1, Number(moActBtn.getAttribute('data-df-month')) || 1));
+          const mm = String(mo).padStart(2, '0');
+          _dateFacState.viewYear = yr;
+          _dateFacState.viewMonth = mo;
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          if (act === 'full') {
+            setDateFilter({ period: `month:${yr}-${mm}` });
+          } else if (act === 'days') {
+            _dateFacState.tab = 'day';
+            renderDateFacilitatorPopover();
+          } else if (act === 'to') {
+            const tp = formatDateSegParts(r.to, MAX_DATE);
+            const nd = Math.min(tp.dayNum, daysInMonth(yr, mo));
+            setDateFilter({ from: r.from, to: `${yr}-${mm}-${String(nd).padStart(2, '0')}` });
+          } else {
+            const fp = formatDateSegParts(r.from, MIN_DATE);
+            const nd = Math.min(fp.dayNum, daysInMonth(yr, mo));
+            setDateFilter({ from: `${yr}-${mm}-${String(nd).padStart(2, '0')}`, to: r.to });
+          }
+          return;
+        }
+        const pickMoCard = e.target.closest('[data-df-pick-month]');
+        if (pickMoCard) {
+          const yr = Math.min(2030, Math.max(2024, Number(pickMoCard.getAttribute('data-df-pick-year')) || _dateFacState.viewYear || 2026));
+          const mo = Math.min(12, Math.max(1, Number(pickMoCard.getAttribute('data-df-pick-month')) || 1));
+          const mm = String(mo).padStart(2, '0');
+          _dateFacState.viewYear = yr;
+          _dateFacState.viewMonth = mo;
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          if (_dateFacState.targetMode === 'grain') {
+            setDateFilter({ period: `month:${yr}-${mm}` });
+          } else if (_dateFacState.targetMode === 'to') {
+            const tp = formatDateSegParts(r.to, MAX_DATE);
+            const nd = Math.min(tp.dayNum, daysInMonth(yr, mo));
+            setDateFilter({ from: r.from, to: `${yr}-${mm}-${String(nd).padStart(2, '0')}` });
+          } else {
+            const fp = formatDateSegParts(r.from, MIN_DATE);
+            const nd = Math.min(fp.dayNum, daysInMonth(yr, mo));
+            setDateFilter({ from: `${yr}-${mm}-${String(nd).padStart(2, '0')}`, to: r.to });
+          }
+          return;
+        }
+        const pickWkBtn = e.target.closest('[data-df-pick-week]');
+        if (pickWkBtn) {
+          setDateFilter({ period: pickWkBtn.getAttribute('data-df-pick-week') });
+          return;
+        }
+        const pickDayBtn = e.target.closest('[data-df-pick-day]');
+        if (pickDayBtn) {
+          const iso = normalizeValidFilterDate(pickDayBtn.getAttribute('data-df-pick-day'), null);
+          if (!iso) return;
+          const dp = formatDateSegParts(iso);
+          _dateFacState.viewYear = dp.yrNum;
+          _dateFacState.viewMonth = dp.moNum;
+          const r = periodRange(STATE.period) || { from: MIN_DATE, to: MAX_DATE };
+          if (_dateFacState.targetMode === 'grain') {
+            setDateFilter({ period: `day:${iso}` });
+          } else if (_dateFacState.targetMode === 'to') {
+            if (iso < r.from) setDateFilter({ from: iso, to: r.from });
+            else setDateFilter({ from: r.from, to: iso });
+          } else {
+            _dateFacState.targetMode = 'to';
+            if (iso > r.to) setDateFilter({ from: iso, to: iso });
+            else setDateFilter({ from: iso, to: r.to });
+          }
+          return;
+        }
+        const preBtn = e.target.closest('[data-df-preset]');
+        if (preBtn) {
+          const v = preBtn.getAttribute('data-df-preset');
+          if (v === 'all') setDateFilter({ reset: true });
+          else setDateFilter({ period: v });
+          return;
+        }
+        return;
+      }
+
+      if (!e.target.closest('#grainSwitch, .pbi-grain-group, #dateRangeBar, .pbi-date-right')) {
+        closeDateFacilitator();
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      const segBtn = e.target && e.target.closest ? e.target.closest('.date-seg-part') : null;
+      if (segBtn && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        const endKey = segBtn.getAttribute('data-date-end') || 'from';
+        const part = segBtn.getAttribute('data-date-part') || 'day';
+        stepDateEndpointByPart(endKey, part, e.key === 'ArrowUp' ? 1 : -1);
+        return;
+      }
+      if (e.key === 'Escape' && _dateFacState.open) {
+        closeDateFacilitator();
+      }
+    });
+
+    document.addEventListener('wheel', e => {
+      const segBtn = e.target && e.target.closest ? e.target.closest('.date-seg-part') : null;
+      if (!segBtn) return;
+      e.preventDefault();
+      const endKey = segBtn.getAttribute('data-date-end') || 'from';
+      const part = segBtn.getAttribute('data-date-part') || 'day';
+      stepDateEndpointByPart(endKey, part, e.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
+
+    window.addEventListener('resize', () => {
+      if (_dateFacState.open) positionDateFacilitator();
+    });
 
     const toggleTheme = () => { STATE.theme = STATE.theme === 'light' ? 'dark' : 'light'; localStorage.setItem('isabi_mfg_theme', STATE.theme); renderApp(); };
     const themeBtn = $('themeToggleBtn');

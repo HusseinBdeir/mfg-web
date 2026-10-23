@@ -1542,9 +1542,15 @@
             </div>
             <div class="pbi-date-right">
               <span class="pbi-date-lbl">Period (Between)</span>
-              <input type="date" id="pbiDateFrom" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date">
+              <div class="date-seg-slot pbi-seg-slot" data-date-slot="from">
+                <input type="date" id="pbiDateFrom" class="pbi-date-input date-native-proxy" min="2024-01-01" max="2030-12-31" value="${esc(curFrom)}" aria-label="Power BI From Date" tabindex="-1">
+                ${ctx.renderDateSegPillHtml ? ctx.renderDateSegPillHtml('from', curFrom, 'pbi') : ''}
+              </div>
               <span style="color:var(--muted);font-weight:700">–</span>
-              <input type="date" id="pbiDateTo" class="pbi-date-input" min="2024-01-01" max="2030-12-31" value="${esc(curTo)}" aria-label="Power BI To Date">
+              <div class="date-seg-slot pbi-seg-slot" data-date-slot="to">
+                <input type="date" id="pbiDateTo" class="pbi-date-input date-native-proxy" min="2024-01-01" max="2030-12-31" value="${esc(curTo)}" aria-label="Power BI To Date" tabindex="-1">
+                ${ctx.renderDateSegPillHtml ? ctx.renderDateSegPillHtml('to', curTo, 'pbi') : ''}
+              </div>
               <button type="button" id="pbiDateResetBtn" class="btn" style="padding:3px 8px;font-size:10.5px" ${isDateFiltered ? '' : 'hidden'}>✕ All-Time</button>
             </div>
           </div>

@@ -2707,6 +2707,70 @@ try {
     ? pass('dated truck adjustment windows (Start Date → End Date) & price agreement client/site truck size override (Sales & Raw/Transport)', `Tb7: Oct=${truckSizeWindowsAndAgreementProbe.oct2026Qty} · Sep=${truckSizeWindowsAndAgreementProbe.sep2026Qty} · Jun=${truckSizeWindowsAndAgreementProbe.jun2026Qty} · SOIME=${truckSizeWindowsAndAgreementProbe.feb2024SoimeQty} · SalesAgr=${truckSizeWindowsAndAgreementProbe.salesAgrOverrideQty} · RawAgr=${truckSizeWindowsAndAgreementProbe.rawAgrOverrideQty}`)
     : fail('dated truck adjustment windows & price agreement client/site truck size override', JSON.stringify(truckSizeWindowsAndAgreementProbe));
 
+  // 7h. Interactive Segmented Date Control ([DD]-[MMM]-[YYYY]) & Date/Period Facilitator Popover (#dateFacilitatorPopover) + Partial-Year Guard
+  const dateFacilitatorProbe = await evaluate(`(() => {
+    const dt = window.MFG_DATE_TEST;
+    if (!dt) return { ok: false, err: 'missing MFG_DATE_TEST' };
+
+    // Reset to All-Time baseline first
+    document.getElementById('dateRangeResetBtn').click();
+
+    // 1. Verify partial-year "0002-12-31" is rejected and never corrupts From or To
+    const dtTo = document.getElementById('dateToInput');
+    dtTo.value = '0002-12-31';
+    dtTo.dispatchEvent(new Event('change', { bubbles: true }));
+    const partialYearRejectedOk =
+      document.getElementById('dateFromInput').value === '2024-01-01' &&
+      document.getElementById('dateToInput').value === '2030-12-31' &&
+      dt.normalizeDate('0002-12-31', null) === null;
+
+    // 2. Click To-Year segment ("2030") -> opens Facilitator in 'year' view targeting 'to'; pick 2026 -> updates To Date to 2026-12-31 ("31 - Dec - 2026")
+    const toYrBtn = document.querySelector('#dateToSegPill [data-date-part="year"]');
+    if (toYrBtn) toYrBtn.click();
+    const pop = document.getElementById('dateFacilitatorPopover');
+    const yrViewOpened = Boolean(pop && !pop.hidden && dt.facState().tab === 'year' && dt.facState().targetMode === 'to' && pop.querySelectorAll('[data-df-pick-year]').length === 7);
+    const pick2026 = pop ? pop.querySelector('[data-df-pick-year="2026"]') : null;
+    if (pick2026) pick2026.click();
+    const toYrUpdatedOk = document.getElementById('dateToInput').value === '2026-12-31' &&
+      (document.querySelector('#dateToSegPill [data-date-part="year"]')?.textContent || '') === '2026';
+
+    // 3. Click From-Month segment ("Jan") -> opens Facilitator in 'month' 4x3 grid view targeting 'from'; pick June (6) -> updates From Date to 2024-06-01 ("01 - Jun - 2024")
+    const fromMoBtn = document.querySelector('#dateFromSegPill [data-date-part="month"]');
+    if (fromMoBtn) fromMoBtn.click();
+    const moViewOpened = Boolean(pop && !pop.hidden && dt.facState().tab === 'month' && dt.facState().targetMode === 'from' && pop.querySelectorAll('[data-df-pick-month]').length === 12);
+    const pickJun = pop ? pop.querySelector('[data-df-pick-month="6"]') : null;
+    if (pickJun) pickJun.click();
+    const fromMoUpdatedOk = document.getElementById('dateFromInput').value === '2024-06-01' &&
+      (document.querySelector('#dateFromSegPill [data-date-part="month"]')?.textContent || '') === 'Jun';
+
+    // 4. Click From-Day segment ("01") -> opens Facilitator in 'day' calendar view; pick 2024-06-15 -> updates From Date to 2024-06-15 ("15 - Jun - 2024")
+    const fromDayBtn = document.querySelector('#dateFromSegPill [data-date-part="day"]');
+    if (fromDayBtn) fromDayBtn.click();
+    const dayViewOpened = Boolean(pop && !pop.hidden && dt.facState().tab === 'day' && pop.querySelectorAll('[data-df-pick-day]').length >= 28);
+    const pick15 = pop ? pop.querySelector('[data-df-pick-day="2024-06-15"]') : null;
+    if (pick15) pick15.click();
+    const fromDayUpdatedOk = document.getElementById('dateFromInput').value === '2024-06-15' &&
+      (document.querySelector('#dateFromSegPill [data-date-part="day"]')?.textContent || '') === '15';
+
+    // 5. ArrowUp / ArrowDown stepping on Day, Month & Year segments + Whole Month action
+    fromDayBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    const steppedDayOk = document.getElementById('dateFromInput').value === '2024-06-16';
+    dt.stepPart('to', 'month', -2);
+    const steppedMoOk = document.getElementById('dateToInput').value === '2026-10-31';
+
+    // Reset back to All-Time and verify popover closes cleanly
+    document.getElementById('dateRangeResetBtn').click();
+    const resetClosedOk = pop && pop.hidden === true && document.getElementById('dateFromInput').value === '2024-01-01' && document.getElementById('dateToInput').value === '2030-12-31';
+
+    return {
+      ok: Boolean(partialYearRejectedOk && yrViewOpened && toYrUpdatedOk && moViewOpened && fromMoUpdatedOk && dayViewOpened && fromDayUpdatedOk && steppedDayOk && steppedMoOk && resetClosedOk),
+      partialYearRejectedOk, yrViewOpened, toYrUpdatedOk, moViewOpened, fromMoUpdatedOk, dayViewOpened, fromDayUpdatedOk, steppedDayOk, steppedMoOk, resetClosedOk
+    };
+  })()`);
+  dateFacilitatorProbe && dateFacilitatorProbe.ok
+    ? pass('interactive segmented date control & facilitator popover · Day/Month/Year segments open Calendar, 12-Month Grid & Year Grid + Arrow/Wheel stepping + partial-year 0002 guard')
+    : fail('interactive segmented date control & facilitator popover', JSON.stringify(dateFacilitatorProbe));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);
