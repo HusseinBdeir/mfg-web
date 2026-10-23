@@ -204,17 +204,29 @@
     if (!rule) return { tier: 0, qty: truckCap, adj: 0, transAdj: 0 };
     const q1 = rule.qty1 != null && rule.qty1 !== '' ? Number(rule.qty1) : null;
     const q2 = rule.qty2 != null && rule.qty2 !== '' ? Number(rule.qty2) : null;
+    let q3 = rule.qty3 != null && rule.qty3 !== '' ? Number(rule.qty3) : null;
+    let adj3Val = rule.adj3 != null && rule.adj3 !== '' ? Number(rule.adj3) : 0;
+    if (q3 === null && rule.notes) {
+      const m3 = String(rule.notes).match(/Tier\s*3:\s*qty\s*([\d.]+)\s*adj\s*([+-]?[\d.]+)/i);
+      if (m3) {
+        q3 = Number(m3[1]);
+        adj3Val = Number(m3[2]);
+      }
+    }
+    const overrideCap = rule.truck_size != null && rule.truck_size !== '' && Number(rule.truck_size) > 0 ? Number(rule.truck_size) : null;
+    const effCap = (truckCap != null && truckCap > 0) ? truckCap : overrideCap;
     let t = 0;
-    if (truckCap != null && truckCap > 0) {
-      if (q2 !== null && Math.abs(q2 - truckCap) < 0.01) t = 2;
-      else if (q1 !== null && Math.abs(q1 - truckCap) < 0.01) t = 1;
+    if (effCap != null && effCap > 0) {
+      if (q2 !== null && Math.abs(q2 - effCap) < 0.01) t = 2;
+      else if (q1 !== null && Math.abs(q1 - effCap) < 0.01) t = 1;
+      else if (q3 !== null && Math.abs(q3 - effCap) < 0.01) t = 3;
     } else if (q1 !== null) {
       t = 1;
     }
-    const adj = t === 2 ? Number(rule.adj2 || 0) : (t === 1 ? Number(rule.adj1 || 0) : 0);
+    const adj = t === 3 ? adj3Val : (t === 2 ? Number(rule.adj2 || 0) : (t === 1 ? Number(rule.adj1 || 0) : 0));
     const transAdj = t === 2 ? Number(rule.trans_adj2 || 0) : (t === 1 ? Number(rule.trans_adj1 || 0) : 0);
-    const resolvedQty = (truckCap != null && truckCap > 0) ? truckCap : (t === 2 ? q2 : (t === 1 ? q1 : null));
-    return { tier: t, qty: resolvedQty, adj, transAdj };
+    const resolvedQty = (effCap != null && effCap > 0) ? effCap : (t === 3 ? q3 : (t === 2 ? q2 : (t === 1 ? q1 : null)));
+    return { tier: t, qty: resolvedQty, adj, transAdj, truckSizeOverride: overrideCap };
   }
 
   // ==================== TRUCK QUICK-VIEW STRIP (RETIRED) ====================
@@ -468,12 +480,14 @@
           ${fld('Customer (Sales Rules) *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames), { id: 'wrap_pr_customer' })}
           ${fld('Supplier / Quarry / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
           ${fld('Site / Destination', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames), { id: 'wrap_pr_site' })}
-          ${secHdr('2. Unit Pricing & Tier 1 / Tier 2 Truck Sizes')}
+          ${secHdr('2. Unit Pricing, Client/Site Truck Size & Tier 1 / Tier 2 Adjustments')}
           ${fld('Priced Per Unit *', sel('f_uom', uoms, 'm³'))}
           ${fld('Material Unit Price ($) *', inp('f_unitprice', 'number', '0.00', 'step="0.01" min="0"'), { id: 'wrap_pr_matprice' })}
           ${fld('Transport Rate Per', sel('f_rateper', [['m³', 'Per m³'], ['Ton', 'Per Ton (× Ton Factor)'], ['Truck', 'Flat Per Truck Load']], 'm³'), { id: 'wrap_pr_transrate' })}
           ${fld('Transport Unit Price ($)', inp('f_transunitprice', 'number', '0.00', 'step="0.01" min="0"'), { id: 'wrap_pr_transprice' })}
           ${fld('Indifference Price ($)', inp('f_indiff', 'number', '', 'step="0.01" min="0" placeholder="Optional benchmark"'), { id: 'wrap_pr_indiff' })}
+          ${fld('Client / Site Truck Size (m³)', inp('f_trucksize', 'number', '', 'step="0.5" min="0" placeholder="Optional — overrides truck m³ for client/site"'), { id: 'wrap_pr_trucksize', hintId: 'hint_pr_trucksize', hint: 'Optional: overrides truck capacity (m³) on matching Sales or Raw Material / Transport tickets.' })}
+          ${fld('Target Truck Plate (Optional)', inp('f_pr_truck', 'text', '', 'list="dl_equip" placeholder="All trucks (or select specific truck)..."') + dl('dl_equip', equipNames), { id: 'wrap_pr_truck' })}
           ${fld('Tier 1 Truck Size (m³)', inp('f_qty1', 'number', '', 'step="0.5" min="0" placeholder="e.g. 14 or 20 m³"'), { id: 'wrap_pr_tier1' })}
           ${fld('Tier 1 Price Adj ($)', inp('f_adj1', 'number', '0.00', 'step="0.01"'), { id: 'wrap_pr_adj1' })}
           ${fld('Tier 1 Trans Adj ($)', inp('f_transadj1', 'number', '0.00', 'step="0.01"'), { id: 'wrap_pr_transadj1' })}
@@ -643,6 +657,7 @@
           ${fld('Ownership *', sel('f_ownership', isCo ? [['Owned', 'Company Owned Fleet'], ['Rented', 'Long-Term Rented']] : [['Subcontractor', 'Third-Party Hauler / Subcontractor'], ['Owned', 'Company Owned Fleet'], ['Customer', 'Customer Truck']], isCo ? 'Owned' : 'Subcontractor'))}
           ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers" placeholder="Select or type truck owner..."') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo, hintId: 'hint_eq_supplier', hint: '' })}
           ${fld('Default Driver (Auto-chosen first on tickets)', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select default driver from owner\'s drivers..."') + dl('dl_drivers', driverNames), { id: 'wrap_eq_driver', hintId: 'hint_eq_driver', hint: 'Auto-selected first when this truck is chosen on a Delivery or Raw Material ticket; can be changed on the ticket if another driver substitutes.' })}
+          ${fld('Effective From Date', inp('f_effdate', 'date', today), { id: 'wrap_eq_effdate' })}
         </div>
       `;
     }

@@ -492,6 +492,136 @@ def fetch_model_analytics(model_key):
     }
 
 
+def _attach_truck_adj_windows(equipment):
+    """Attach dated Truck Size, Owner & Driver adjustment windows (from WTC & BBConstruction
+    SharePoint TrucksAdj_Data tables) onto matching equipment dicts."""
+    import re as _re
+
+    def _norm(s):
+        return _re.sub(r"\s+", " ", str(s or "").strip()).lower()
+
+    def _xl2d(n):
+        if not n:
+            return ""
+        try:
+            v = float(n)
+            if v >= 47000:
+                return ""
+            return (dt.date(1899, 12, 30) + dt.timedelta(days=int(v))).isoformat()
+        except Exception:
+            return str(n)[:10]
+
+    owner_canon = {
+        "wtc": "WTC",
+        "bbconstruction": "BBConstruction",
+        "kareem bdeir": "Karim Bdeir",
+        "karim bdeir": "Karim Bdeir",
+        "hussein bdeir": "Hussein Bdeir",
+        "jad bdeir": "Jad Bdeir",
+    }
+    drv_canon = {
+        "ahmad": "Ahmad Ismael",
+        "ahmad ismail": "Ahmad Ismael",
+        "ahmad ismael": "Ahmad Ismael",
+        "mohamad habib": "Mohamad Habib",
+        "majed karam": "Majed Karam",
+        "ali saleh": "Ali Saleh",
+        "hussein saleh": "Hussein Saleh",
+        "ismael": "Ismael",
+        "ismail": "Ismael",
+        "ali el hajj": "Ali el Hajj",
+        "ali haj": "Ali el Hajj",
+    }
+
+    def _canon(s, cmap):
+        raw = _re.sub(r"\s+", " ", str(s or "").strip())
+        if not raw or raw.lower() in ("none", "excluded", "n/a"):
+            return ""
+        return cmap.get(raw.lower(), raw)
+
+    eq_map = {}
+    for e in equipment:
+        eq_map[_norm(e.get("name"))] = e
+        if e.get("plate_no"):
+            eq_map.setdefault(_norm(e.get("plate_no")), e)
+    for k, target in (
+        ("360676", "tb1"),
+        ("365062", "tb2"),
+        ("358599", "tb3"),
+        ("358943", "tb4"),
+        ("364656", "tb7"),
+        ("354578", "tb8"),
+        ("364168", "tb9"),
+    ):
+        if target in eq_map:
+            eq_map[k] = eq_map[target]
+
+    exp_dir = MFG_SCRIPTS.parent / "exports"
+    windows_by_eq = defaultdict(list)
+    for co, fn in (("WTC", "wtc_raw.json"), ("BBConstruction", "bbconstruction_raw.json")):
+        p = exp_dir / fn
+        if not p.exists():
+            continue
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        for side, tbl_key in (("raw", "Stock/TrucksAdj_Data"), ("sales", "Revenue/TrucksAdj_Data")):
+            t = raw.get(tbl_key) or {}
+            headers = t.get("headers") or []
+            for r in t.get("rows") or []:
+                d = dict(zip(headers, r))
+                eq = eq_map.get(_norm(d.get("Truck")))
+                if not eq:
+                    continue
+                sz = d.get("Size")
+                try:
+                    cap = round(float(sz), 2) if sz not in (None, "") else 0.0
+                except Exception:
+                    cap = 0.0
+                if cap <= 0:
+                    continue
+                sd = _xl2d(d.get("StartDate"))
+                ed = _xl2d(d.get("EndDate"))
+                own = _canon(d.get("Owner"), owner_canon)
+                drv = _canon(d.get("Driver"), drv_canon)
+                cust = _canon(d.get("Customer"), {})
+                site = _canon(d.get("Site"), {})
+                w = {"co": co, "side": side, "s": sd, "e": ed, "cap": cap}
+                if own:
+                    w["own"] = own
+                if drv:
+                    w["drv"] = drv
+                if cust:
+                    w["cust"] = cust
+                if site:
+                    w["site"] = site
+                windows_by_eq[eq["name"]].append(w)
+
+    for e in equipment:
+        wlist = windows_by_eq.get(e["name"])
+        if not wlist:
+            continue
+        by_sig = {}
+        for w in wlist:
+            sig = (
+                w["co"],
+                w["s"],
+                w["e"],
+                w["cap"],
+                w.get("own", "").lower(),
+                w.get("drv", "").lower(),
+                w.get("cust", "").lower(),
+                w.get("site", "").lower(),
+            )
+            if sig in by_sig:
+                if by_sig[sig]["side"] != w["side"]:
+                    by_sig[sig]["side"] = "both"
+            else:
+                by_sig[sig] = dict(w)
+        e["adj_windows"] = sorted(
+            by_sig.values(),
+            key=lambda x: (x.get("s") or "", x.get("e") or "9999-12-31"),
+        )
+
+
 def fetch_dataverse_records():
     print("\n== Fetching live Dataverse records for SQLite / Snapshot (Full 28-Table Coverage)...", flush=True)
     mlib.session().headers["Prefer"] = FMT_PREFER
@@ -680,6 +810,7 @@ def fetch_dataverse_records():
             "default_driver": fmt_val(e, "_bhf_driver_value", "") or ce.get("default_driver") or "",
             "notes": e.get("bhf_notes") or "",
         })
+    _attach_truck_adj_windows(equipment)
     print(f"  Equipment: {len(equipment)} · Company Equipment rows: {len(company_equipment)}", flush=True)
 
     # 4. Drivers & Company Drivers

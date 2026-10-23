@@ -2572,6 +2572,141 @@ try {
     ? pass('multi-column filter engine & equipment search fix · "truck" returns 100% Truck rows (23 Co Fleet / 1,533 All) + TYPE sorts A→Z + LOADS HAULED sorts numerically + multi-column filter bar & popover', `CoFleet=${multiColFilterProbe.ownSearchOnlyTrucks ? 23 : 'err'} · WTC+Own+Truck=${multiColFilterProbe.multiCount} · Cap>=25=${multiColFilterProbe.cap25Count}`)
     : fail('multi-column filter engine & equipment search fix', JSON.stringify(multiColFilterProbe));
 
+  // 7g. Dated Truck Adjustment Windows (Start Date -> End Date) + Client/Site Truck Size Overrides on Price Agreements (Sales & Raw/Transport)
+  const truckSizeWindowsAndAgreementProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // 1. Open Truck 360° Inspector for Tb7 (364656) and verify Dated Adjustment Windows panel + adding a window
+    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    await wait(80);
+    const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
+    if (allViewBtn) allViewBtn.click();
+    const eqSearch = document.getElementById('tableSearchInput');
+    if (eqSearch) { eqSearch.value = 'Tb7'; eqSearch.dispatchEvent(new Event('input', { bubbles: true })); }
+    await wait(220);
+    const tb7Row = document.querySelector('#univRegPanel tbody tr.rrow');
+    if (tb7Row) tb7Row.click();
+    await wait(80);
+    const winPanel = document.getElementById('subgrid_truck_windows');
+    const winRowsBefore = winPanel ? winPanel.querySelectorAll('tbody tr').length : 0;
+    const addWinBtn = document.getElementById('inspAddTruckWinBtn');
+    const inspClose = document.getElementById('inspectorDoneBtn') || document.getElementById('inspectorCloseBtn');
+    if (inspClose) inspClose.click();
+    if (eqSearch) { eqSearch.value = ''; eqSearch.dispatchEvent(new Event('input', { bubbles: true })); }
+    await wait(220);
+
+    // 2. Open New Sales Ticket and verify date-aware truck capacity resolution on Tb7 (364656):
+    //    - 2026-10-15 -> 29.00 m³ (Hussein Bdeir)
+    //    - 2026-09-15 -> 28.00 m³ (Hussein Bdeir)
+    //    - 2026-06-15 -> 27.00 m³ (WTC)
+    //    - 2024-02-15 + Customer 'SOIME Dawra' -> 26.00 m³ (Client-specific window)
+    document.getElementById('newEntryBtn').click();
+    await wait(60);
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    set('f_company', 'WTC');
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Third-party truck');
+    set('f_date', '2026-10-15');
+    set('f_truck', '364656');
+    const oct2026Qty = document.getElementById('f_qty')?.value;
+    const oct2026Owner = document.getElementById('f_truckowner')?.value;
+    set('f_date', '2026-09-15');
+    const sep2026Qty = document.getElementById('f_qty')?.value;
+    set('f_date', '2026-06-15');
+    const jun2026Qty = document.getElementById('f_qty')?.value;
+    set('f_date', '2024-02-15');
+    set('f_customer', 'SOIME Dawra');
+    const feb2024SoimeQty = document.getElementById('f_qty')?.value;
+
+    // 3. Verify Price Agreement Client / Site Truck Size Override on BOTH Sales and Raw Material / Transport sides
+    document.querySelector('[data-pa-group="pricing"]').click();
+    document.querySelector('.modal-tab[data-form="pricerule"]').click();
+    const hasTruckSizeField = Boolean(document.getElementById('f_trucksize') && !document.getElementById('wrap_pr_trucksize').hidden);
+    set('f_company', 'WTC');
+    set('f_date', '2026-01-01');
+    set('f_ruletype', 'Sales (Delivery)');
+    set('f_customer', 'Kenyar');
+    set('f_site', 'Beirut');
+    set('f_product', 'Ramel Mrml');
+    set('f_unitprice', '10.00');
+    set('f_transunitprice', '3.00');
+    set('f_trucksize', '25.5');
+    document.getElementById('dynSaveModalBtn').click();
+    await wait(60);
+
+    // Re-open modal and create a Transport Price (Site) agreement on the Raw Material / Transport side with Client/Site Truck Size = 24.5 m³
+    document.getElementById('newEntryBtn').click();
+    await wait(60);
+    document.querySelector('[data-pa-group="pricing"]').click();
+    document.querySelector('.modal-tab[data-form="pricerule"]').click();
+    set('f_company', 'WTC');
+    set('f_date', '2026-01-01');
+    set('f_ruletype', 'Transport Price (Site)');
+    set('f_site', 'Aaraya');
+    set('f_supplier', 'Hussein Bdeir');
+    set('f_transunitprice', '3.25');
+    set('f_trucksize', '24.5');
+    document.getElementById('dynSaveModalBtn').click();
+    await wait(60);
+
+    // Verify Sales Ticket picks up the 25.50 m³ Client/Site agreement truck size override
+    document.getElementById('newEntryBtn').click();
+    await wait(60);
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    set('f_company', 'WTC');
+    set('f_date', '2026-10-15');
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Third-party truck');
+    set('f_customer', 'Kenyar');
+    set('f_site', 'Beirut');
+    set('f_product', 'Ramel Mrml');
+    set('f_truck', '364656');
+    const salesAgrOverrideQty = document.getElementById('f_qty')?.value;
+
+    // Verify Raw Material Ticket picks up the 24.50 m³ Quarry Site / Hauler agreement truck size override
+    document.querySelector('.modal-tab[data-form="raw"]').click();
+    set('f_company', 'WTC');
+    set('f_date', '2026-10-15');
+    set('f_transportby', 'Third-party truck');
+    set('f_site', 'Aaraya');
+    set('f_product', 'Ramel Mrml');
+    set('f_truck', '364656');
+    const rawAgrOverrideQty = document.getElementById('f_qty')?.value;
+    const rawMatTotal = document.getElementById('f_mat_total')?.value;
+    const rawTransTotal = document.getElementById('f_trans_total')?.value;
+
+    // Clean up the 2 test custom price_rules so downstream state stays pristine
+    const closeBtn = document.getElementById('closeModalBtn');
+    if (closeBtn) closeBtn.click();
+    const prs = (window.MFG_SEED && window.MFG_SEED.records && window.MFG_SEED.records.price_rules) || [];
+    for (let i = prs.length - 1; i >= 0; i--) {
+      if (prs[i] && prs[i].source === 'app' && (Number(prs[i].truck_size) === 25.5 || Number(prs[i].truck_size) === 24.5)) {
+        prs.splice(i, 1);
+      }
+    }
+
+    return {
+      ok: Boolean(winPanel && winRowsBefore >= 10 && addWinBtn &&
+          oct2026Qty === '29.00' && oct2026Owner === 'Hussein Bdeir' &&
+          sep2026Qty === '28.00' && jun2026Qty === '27.00' && feb2024SoimeQty === '26.00' &&
+          hasTruckSizeField && salesAgrOverrideQty === '25.50' && rawAgrOverrideQty === '24.50'),
+      winRowsBefore, oct2026Qty, oct2026Owner, sep2026Qty, jun2026Qty, feb2024SoimeQty,
+      hasTruckSizeField, salesAgrOverrideQty, rawAgrOverrideQty, rawMatTotal, rawTransTotal
+    };
+  })()`);
+  truckSizeWindowsAndAgreementProbe && truckSizeWindowsAndAgreementProbe.ok
+    ? pass('dated truck adjustment windows (Start Date → End Date) & price agreement client/site truck size override (Sales & Raw/Transport)', `Tb7: Oct=${truckSizeWindowsAndAgreementProbe.oct2026Qty} · Sep=${truckSizeWindowsAndAgreementProbe.sep2026Qty} · Jun=${truckSizeWindowsAndAgreementProbe.jun2026Qty} · SOIME=${truckSizeWindowsAndAgreementProbe.feb2024SoimeQty} · SalesAgr=${truckSizeWindowsAndAgreementProbe.salesAgrOverrideQty} · RawAgr=${truckSizeWindowsAndAgreementProbe.rawAgrOverrideQty}`)
+    : fail('dated truck adjustment windows & price agreement client/site truck size override', JSON.stringify(truckSizeWindowsAndAgreementProbe));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

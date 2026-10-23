@@ -3132,32 +3132,139 @@
     const n = norm(name);
     return SEED.records.products.find(p => norm(p.name) === n) || null;
   }
-  function equipInfo(name, company, isCoFleet) {
+  function prevDayISO(dateStr) {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) return '';
+    const [y, m, d] = String(dateStr).split('-').map(Number);
+    const dtObj = new Date(Date.UTC(y, m - 1, d - 1));
+    return dtObj.toISOString().slice(0, 10);
+  }
+  function resolveTruckWindow(eq, company, date, opts = {}) {
+    if (!eq || !Array.isArray(eq.adj_windows) || !eq.adj_windows.length) return null;
+    const refDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(String(date))) ? String(date) : '';
+    if (!refDate) return null;
+    const coN = norm(company);
+    const side = opts.side || '';
+    const custN = norm(opts.customer);
+    const siteN = norm(opts.site);
+    let best = null, bestSpec = -1, bestStart = '', bestTie = -1;
+    for (let i = 0; i < eq.adj_windows.length; i++) {
+      const w = eq.adj_windows[i];
+      if (!w) continue;
+      if (side && w.side && w.side !== 'both' && w.side !== side) continue;
+      if (w.cust && (!custN || norm(w.cust) !== custN)) continue;
+      if (w.site && (!siteN || norm(w.site) !== siteN)) continue;
+      if (w.s && String(w.s) > refDate) continue;
+      if (w.e && String(w.e) < refDate) continue;
+      const spec = (w.cust ? 8 : 0) + (w.site ? 4 : 0);
+      const sVal = String(w.s || '');
+      const tie = (coN && w.co && norm(w.co) === coN ? 2 : 0) + (side && w.side && w.side !== 'both' ? 1 : 0);
+      if (
+        spec > bestSpec ||
+        (spec === bestSpec && sVal > bestStart) ||
+        (spec === bestSpec && sVal === bestStart && tie >= bestTie)
+      ) {
+        best = w;
+        bestSpec = spec;
+        bestStart = sVal;
+        bestTie = tie;
+      }
+    }
+    return best;
+  }
+  function appendOrUpdateTruckWindow(eq, winSpec) {
+    if (!eq || !winSpec) return null;
+    if (!Array.isArray(eq.adj_windows)) eq.adj_windows = [];
+    const s = String(winSpec.s || todayISO()).slice(0, 10);
+    const e = String(winSpec.e || '').slice(0, 10);
+    const co = String(winSpec.co || '').trim();
+    const side = String(winSpec.side || 'both').trim() || 'both';
+    const cap = Number(winSpec.cap || eq.capacity || 0);
+    const own = String(winSpec.own != null ? winSpec.own : (eq.supplier || '')).trim();
+    const drv = String(winSpec.drv != null ? winSpec.drv : (eq.default_driver || '')).trim();
+    const cust = String(winSpec.cust || '').trim();
+    const site = String(winSpec.site || '').trim();
+    const isGeneral = !cust && !site;
+    if (isGeneral && !e) {
+      const prevEnd = prevDayISO(s);
+      eq.adj_windows.forEach(w => {
+        if (!w || w.cust || w.site) return;
+        const sameCo = !co || !w.co || norm(w.co) === norm(co);
+        const sameSide = side === 'both' || !w.side || w.side === 'both' || w.side === side;
+        if (sameCo && sameSide && (!w.e || w.e >= s) && (!w.s || w.s < s)) {
+          w.e = prevEnd;
+        }
+      });
+    }
+    const existing = eq.adj_windows.find(w =>
+      w && norm(w.co) === norm(co) && (w.side || 'both') === side &&
+      String(w.s || '') === s && norm(w.cust) === norm(cust) && norm(w.site) === norm(site)
+    );
+    let targetWin;
+    if (existing) {
+      existing.e = e;
+      if (cap > 0) existing.cap = cap;
+      if (own) existing.own = own; else delete existing.own;
+      if (drv) existing.drv = drv; else delete existing.drv;
+      targetWin = existing;
+    } else {
+      targetWin = { co: co || 'WTC', side, s, e, cap };
+      if (own) targetWin.own = own;
+      if (drv) targetWin.drv = drv;
+      if (cust) targetWin.cust = cust;
+      if (site) targetWin.site = site;
+      eq.adj_windows.push(targetWin);
+    }
+    eq.adj_windows.sort((a, b) => String(a.s || '').localeCompare(String(b.s || '')) || String(a.e || '9999-12-31').localeCompare(String(b.e || '9999-12-31')));
+    const today = todayISO();
+    if (isGeneral && (!s || s <= today) && (!e || e >= today)) {
+      if (cap > 0) eq.capacity = cap;
+      if (own && norm(own) !== 'wtc' && norm(own) !== 'bbconstruction') eq.supplier = own;
+      if (drv) eq.default_driver = drv;
+    }
+    return targetWin;
+  }
+  function equipInfo(name, company, isCoFleet, winOpts) {
     const n = norm(name);
     if (!n) return null;
     const eq = getFleetIndex().eqByName.get(n) || null;
-    if (!company && !isCoFleet) return eq;
-    const ce = companyFleetRow(name, company);
-    if (isCoFleet) {
-      if (ce) {
-        return Object.assign({}, eq || {}, {
-          name: (eq && eq.name) || ce.equipment || ce.name || name,
-          plate_no: (eq && eq.plate_no) || ce.equipment || ce.name || name,
-          company: ce.company || company,
-          ownership: ce.ownership || 'Own',
-          is_company_fleet: true,
-          supplier: (eq && eq.supplier) || ce.supplier || '',
-          default_driver: ce.default_driver || (eq && eq.default_driver) || ''
+    let baseRow = eq;
+    if (company || isCoFleet) {
+      const ce = companyFleetRow(name, company);
+      if (isCoFleet) {
+        if (ce) {
+          baseRow = Object.assign({}, eq || {}, {
+            name: (eq && eq.name) || ce.equipment || ce.name || name,
+            plate_no: (eq && eq.plate_no) || ce.equipment || ce.name || name,
+            company: ce.company || company,
+            ownership: ce.ownership || 'Own',
+            is_company_fleet: true,
+            supplier: (eq && eq.supplier) || ce.supplier || '',
+            default_driver: ce.default_driver || (eq && eq.default_driver) || ''
+          });
+        } else if (eq) {
+          const isAppOwn = (eq.company === company && /^(own|rent)/i.test(eq.ownership || '')) || (company && norm(eq.supplier) === norm(company));
+          baseRow = isAppOwn ? eq : Object.assign({}, eq, { default_driver: '' });
+        } else {
+          return null;
+        }
+      }
+    }
+    if (!baseRow) return null;
+    if (winOpts && winOpts.date && eq && Array.isArray(eq.adj_windows) && eq.adj_windows.length) {
+      const w = resolveTruckWindow(eq, company, winOpts.date, winOpts);
+      if (w) {
+        const effCap = Number(w.cap) > 0 ? Number(w.cap) : baseRow.capacity;
+        const winOwn = w.own && norm(w.own) !== 'wtc' && norm(w.own) !== 'bbconstruction' ? w.own : baseRow.supplier;
+        const winDrv = w.drv || baseRow.default_driver;
+        return Object.assign({}, baseRow, {
+          capacity: effCap,
+          supplier: winOwn,
+          default_driver: winDrv,
+          active_window: w
         });
       }
-      if (eq) {
-        const isAppOwn = (eq.company === company && /^(own|rent)/i.test(eq.ownership || '')) || (company && norm(eq.supplier) === norm(company));
-        if (isAppOwn) return eq;
-        return Object.assign({}, eq, { default_driver: '' });
-      }
-      return null;
     }
-    return eq;
+    return baseRow;
   }
   function driverInfo(name) {
     const n = norm(name);
@@ -3257,6 +3364,48 @@
   }
   function listPriceRule(company, product, date) {
     return findRule({ company, product, date, listPrice: true, types: ['List Price'] });
+  }
+  function resolveAgreementTruckSize(q) {
+    const trkRow = q.truckRow || null;
+    const tNameN = norm(trkRow && trkRow.name);
+    const tPlateN = norm(trkRow && trkRow.plate_no);
+    const truckMatchesRule = r => {
+      if (!r.truck) return true;
+      const rtN = norm(r.truck);
+      return Boolean(rtN && (rtN === tNameN || rtN === tPlateN));
+    };
+    const direct = (q.matchedRules || []).find(r => r && Number(r.truck_size) > 0 && truckMatchesRule(r));
+    if (direct) return { size: Number(direct.truck_size), rule: direct };
+
+    const cN = norm(q.customer), sN = norm(q.site), pN = norm(q.product);
+    const sup1N = norm(q.siteOwner), sup2N = norm(q.truckOwner);
+    const date = q.date || todayISO();
+    const isSalesSide = q.side === 'sales';
+    let best = null, bestScore = -1;
+    (SEED.records.price_rules || []).forEach(r => {
+      if (!r || r.voided || !(Number(r.truck_size) > 0)) return;
+      if (q.company && r.company && r.company !== q.company) return;
+      if (r.start_date && String(r.start_date) > date) return;
+      if (r.end_date && String(r.end_date) < date) return;
+      if (!truckMatchesRule(r)) return;
+      const rt = String(r.rule_type || '');
+      if (isSalesSide && /Purchase Price|Transport Price \(Site\)|List Price/i.test(rt)) return;
+      if (!isSalesSide && /Sales|Haulage \(Customer Site\)|List Price/i.test(rt)) return;
+      if (r.customer && (!cN || norm(r.customer) !== cN)) return;
+      if (r.site && (!sN || norm(r.site) !== sN)) return;
+      if (r.product && (!pN || norm(r.product) !== pN)) return;
+      if (r.supplier) {
+        const rsN = norm(r.supplier);
+        if (rsN !== sup1N && rsN !== sup2N) return;
+      }
+      if (!r.customer && !r.site && !r.supplier) return;
+      const score = (r.truck ? 8 : 0) + (r.site ? 4 : 0) + (r.customer || r.supplier ? 2 : 0) + (r.product ? 1 : 0);
+      if (score > bestScore || (score === bestScore && String(r.start_date || '') >= String((best && best.start_date) || ''))) {
+        best = r;
+        bestScore = score;
+      }
+    });
+    return best ? { size: Number(best.truck_size), rule: best } : null;
   }
   function ownFleetNames(company) {
     return uniqSorted(SEED.records.equipment.filter(e => /^own/i.test(e.ownership || '')).map(e => e.name));
@@ -4767,7 +4916,7 @@
                   <td>${pr.customer ? relLink('customers', pr.customer, pr.customer, true) : (pr.supplier ? relLink('suppliers', pr.supplier, pr.supplier, true) : (pr.site ? relLink('sites', pr.site, pr.site + ' (site)', true) : '<strong>Standard List</strong>'))}</td>
                   <td>${pr.product ? relLink('products', pr.product) : '(All Grades)'}</td>
                   <td>${pr.site ? relLink('sites', pr.site) : '—'}</td>
-                  <td class="mono">${esc(pr.unit)}</td>
+                  <td class="mono">${esc(pr.unit)}${pr.truck_size ? ` <span class="badge badge-brass" title="Client/Site Truck Size Override (${pr.truck || 'All trucks'})">${fmtNum(pr.truck_size, 1)} m³</span>` : (pr.qty1 ? ` <span class="badge badge-neutral" title="Tier 1${pr.qty2 ? ' / Tier 2' : ''} Truck Size">${fmtNum(pr.qty1, 1)}${pr.qty2 ? '/' + fmtNum(pr.qty2, 1) : ''} m³</span>` : '')}</td>
                   <td class="r"><strong>${fmtUSD(pr.unit_price, 2)}</strong></td>
                   <td class="r">${pr.trans_unit_price ? fmtUSD(pr.trans_unit_price, 2) : '—'}</td>
                   <td class="mono">${esc(fmtDateDMY(pr.start_date))}</td>
@@ -7740,21 +7889,26 @@
     return /^own/i.test(truckRow.ownership || '') && !truckRow.supplier;
   }
 
-  function syncFleetCascade(company, isCoFleet, is3P, isUnreg, needDriver = true) {
+  function syncFleetCascade(company, isCoFleet, is3P, isUnreg, needDriver = true, winOpts = null) {
     const curTruck = val('f_truck');
     const curOwner = val('f_truckowner');
+    const winKey = winOpts ? `${winOpts.date || ''}|${winOpts.side || ''}|${norm(winOpts.customer)}|${norm(winOpts.site)}` : '';
     const truckChanged = curTruck !== FORM_UI.lastTruck;
+    const winChanged = !truckChanged && Boolean(curTruck && winKey && FORM_UI.lastWinKey !== undefined && FORM_UI.lastWinKey !== winKey);
     const ownerChanged = !truckChanged && curOwner !== FORM_UI.lastTruckOwner;
+    FORM_UI.lastWinKey = winKey;
 
-    if (truckChanged) {
-      FORM_UI.qtyManual = false;
-      FORM_UI.ownerManuallyPicked = false;
-      FORM_UI.driverManual = false;
-      const tRow = curTruck ? equipInfo(curTruck, company, isCoFleet) : null;
-      if (is3P && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner')) {
+    if (truckChanged || winChanged) {
+      if (truckChanged) {
+        FORM_UI.qtyManual = false;
+        FORM_UI.ownerManuallyPicked = false;
+        FORM_UI.driverManual = false;
+      }
+      const tRow = curTruck ? equipInfo(curTruck, company, isCoFleet, winOpts) : null;
+      if (is3P && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
         $('f_truckowner').value = (tRow && tRow.supplier && !isPureOwnUnit(tRow, company)) ? tRow.supplier : '';
       }
-      if ($('f_driver')) {
+      if ($('f_driver') && (truckChanged || !FORM_UI.driverManual)) {
         if (!needDriver) {
           $('f_driver').value = '';
         } else if (tRow && tRow.default_driver) {
@@ -7762,11 +7916,11 @@
         } else if (tRow && tRow.supplier && is3P) {
           const oDrvs = driversForOwner(tRow.supplier, company, false, tRow);
           $('f_driver').value = oDrvs.length ? oDrvs[0] : '';
-        } else {
+        } else if (truckChanged) {
           $('f_driver').value = '';
         }
       }
-      if (qtyEl() && !isUnreg) {
+      if (qtyEl() && !isUnreg && !FORM_UI.qtyManual) {
         if (/truck/i.test(val('f_uom'))) {
           qtyEl().value = '1';
         } else {
@@ -7776,7 +7930,7 @@
     } else if (ownerChanged && is3P) {
       FORM_UI.ownerManuallyPicked = !!curOwner;
       FORM_UI.driverManual = false;
-      const tRow = curTruck ? equipInfo(curTruck, company, false) : null;
+      const tRow = curTruck ? equipInfo(curTruck, company, false, winOpts) : null;
       const allowedTrucks = curOwner ? trucksForOwner(curOwner, company, false) : [];
       const truckMatches = !!(curOwner && curTruck && ((tRow && normOwnerName(tRow.supplier) === normOwnerName(curOwner)) || allowedTrucks.some(tn => norm(tn) === norm(curTruck) || (tRow && norm(tn) === norm(tRow.name)))));
       if (curTruck && !truckMatches) {
@@ -7795,7 +7949,7 @@
     }
 
     let truckName = val('f_truck');
-    let truckRow = truckName ? equipInfo(truckName, company, isCoFleet) : null;
+    let truckRow = truckName ? equipInfo(truckName, company, isCoFleet, winOpts) : null;
     if (is3P && truckRow && truckRow.supplier && !isPureOwnUnit(truckRow, company) && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
       $('f_truckowner').value = truckRow.supplier;
     }
@@ -7978,8 +8132,9 @@
       methEl.value = custMethod;
     }
 
-    // 4. Cascading Truck -> Truck Owner + Driver + Capacity
-    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg, isDelivery);
+    // 4. Cascading Truck -> Truck Owner + Driver + Capacity (Date & Client/Site Window Aware)
+    const effDate = val('f_repdate') || date;
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg, isDelivery, { date: effDate, side: 'sales', customer, site: isDelivery ? site : '' });
     setHint('hint_truckowner', is3POrPickup
       ? (ownerFromTruck
           ? `Provided by Truck ${truckRow.name} (${truckOwner})`
@@ -7989,18 +8144,21 @@
     const ownTruck = isOwnUnit(truckRow, company);
     const pureOwnTruck = isPureOwnUnit(truckRow, company);
 
-    // 5. Price Agreement & List Price Lock (with m73 product-less Sales (Delivery) transport rule fallback)
+    // 5. Price Agreement & List Price Lock (with product-less Sales (Delivery) & Haulage (Customer Site) transport fallback)
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
     const wantType = isPickup ? 'Sales (Pickup)' : 'Sales (Delivery)';
-    let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType], requireProduct: true }) : null;
+    let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [wantType], requireProduct: true }) : null;
     if (!rule && !isUnreg && customer && product) {
-      const anyRule = findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [wantType] });
+      const anyRule = findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [wantType] });
       if (anyRule && Number(anyRule.unit_price) > 0) rule = anyRule;
     }
     const transRule = (isDelivery && !isUnreg && customer && (!rule || !(Number(rule.trans_unit_price) > 0)))
-      ? findRule({ company, customer, product: '', site, date, types: ['Sales (Delivery)'] })
+      ? findRule({ company, customer, product: '', site, date: effDate, types: ['Sales (Delivery)'] })
       : null;
-    const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
+    const haulCustRule = (isDelivery && !isUnreg && (customer || site || truckOwner))
+      ? findRule({ company, customer, supplier: truckOwner, product, site, date: effDate, types: ['Haulage (Customer Site)'] })
+      : null;
+    const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
 
     if ((customerChanged || productChanged || siteChanged || saleTypeChanged) && !isFieldAdminUnlocked('f_uom')) {
       FORM_UI.uomManual = false;
@@ -8012,8 +8170,14 @@
       uomEl.value = targetUom;
     }
     const uom = (uomEl && uomEl.value) ? uomEl.value : targetUom;
+    const agrSizeOverride = !isUnreg ? resolveAgreementTruckSize({
+      company, side: 'sales', customer, site: isDelivery ? site : '', truckOwner, product, truckRow, date: effDate,
+      matchedRules: [haulCustRule, transRule, rule]
+    }) : null;
+    const effCap = agrSizeOverride ? agrSizeOverride.size : ((truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity) : null);
+
     if (prevUom !== uom && !FORM_UI.qtyManual && qtyEl() && !/truck/i.test(uom) && /truck/i.test(prevUom)) {
-      qtyEl().value = (truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity).toFixed(2) : '';
+      qtyEl().value = (effCap != null && effCap > 0) ? Number(effCap).toFixed(2) : '';
     }
     setText('lbl_uom', uom);
     setHint('hint_product', prod ? (Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `1 ${baseUom} = ${prod.ton_factor} t` : '') : (product ? 'Unknown grade' : ''), '');
@@ -8022,7 +8186,11 @@
     const transLocked = applyFieldLockState('f_transunitprice', isDelivery, 'Locked to Price Agreement transport rate on Delivery');
     const agreedTransRate = (rule && Number(rule.trans_unit_price) > 0)
       ? Number(rule.trans_unit_price)
-      : ((transRule && Number(transRule.trans_unit_price) > 0) ? Number(transRule.trans_unit_price) : (rule ? Number(rule.trans_unit_price || 0) : 0));
+      : ((transRule && Number(transRule.trans_unit_price) > 0)
+          ? Number(transRule.trans_unit_price)
+          : ((haulCustRule && Number(haulCustRule.trans_unit_price || haulCustRule.unit_price) > 0)
+              ? Number(haulCustRule.trans_unit_price || haulCustRule.unit_price)
+              : (rule ? Number(rule.trans_unit_price || 0) : 0)));
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
       if (rule) {
@@ -8032,7 +8200,7 @@
         setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${rule.unit && rule.unit !== baseUom ? ' · priced per ' + rule.unit : ''}`, 'ok');
       } else {
         if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = agreedTransRate.toFixed(2);
-        const lpRule = product ? listPriceRule(company, product, date) : null;
+        const lpRule = product ? listPriceRule(company, product, effDate) : null;
         const lp = lpRule ? Number(lpRule.unit_price || 0) : (product ? listPrice(product) : null);
         if (lp != null) {
           upEl.value = lp.toFixed(2);
@@ -8054,41 +8222,57 @@
         tpEl.value = '0.00';
       } else if (transRule && Number(transRule.trans_unit_price) > 0 && (!rule || !(Number(rule.trans_unit_price) > 0))) {
         setHint('hint_trans', `Site transport agreement · ${transRule.name}${transRule.site ? ' · ' + transRule.site : ''}`, 'ok');
+      } else if (haulCustRule && Number(haulCustRule.trans_unit_price || haulCustRule.unit_price) > 0) {
+        setHint('hint_trans', `Customer site haulage · ${haulCustRule.name}${haulCustRule.site ? ' · ' + haulCustRule.site : ''}`, 'ok');
       } else {
         setHint('hint_trans', transportBy === 'Third-party truck' ? 'Hauler delivers — transport price billed to customer' : 'Company fleet delivery rate', '');
       }
     }
     setHint('hint_site', isDelivery ? (site ? '' : 'Required on Delivery') : '', (FORM_UI.postAttempted && isDelivery && !site) ? 'crit' : '');
 
-    // 6. Quantity Lock & Tier 1/2 Truck Capacity Adjustment
+    // 6. Quantity Lock & Tier 1/2/3 + Client/Site Agreement Truck Size Override
     let tier = { tier: 0, adj: 0, transAdj: 0 };
-    if (rule && truckRow && truckRow.capacity && window.MFG_FORMS) tier = window.MFG_FORMS.matchTier(rule, Number(truckRow.capacity));
-    else if (rule && !truckRow && window.MFG_FORMS && rule.qty1 != null && !isPickup) tier = window.MFG_FORMS.matchTier(rule, null);
-    if (!tier.transAdj && transRule && truckRow && truckRow.capacity && window.MFG_FORMS) {
-      const trTier = window.MFG_FORMS.matchTier(transRule, Number(truckRow.capacity));
-      if (trTier && trTier.transAdj) tier = Object.assign({}, tier, { transAdj: trTier.transAdj });
+    if (rule && effCap && window.MFG_FORMS) tier = window.MFG_FORMS.matchTier(rule, Number(effCap));
+    else if (rule && !effCap && window.MFG_FORMS && rule.qty1 != null && !isPickup) tier = window.MFG_FORMS.matchTier(rule, null);
+    if (!tier.transAdj && transRule && effCap && window.MFG_FORMS) {
+      const trTier = window.MFG_FORMS.matchTier(transRule, Number(effCap));
+      if (trTier && (trTier.transAdj || trTier.adj)) tier = Object.assign({}, tier, { transAdj: trTier.transAdj || trTier.adj });
+    }
+    if (!tier.transAdj && haulCustRule && effCap && window.MFG_FORMS) {
+      const hcTier = window.MFG_FORMS.matchTier(haulCustRule, Number(effCap));
+      if (hcTier && (hcTier.transAdj || hcTier.adj)) tier = Object.assign({}, tier, { transAdj: hcTier.transAdj || hcTier.adj });
     }
 
-    const truckHasNoCap = !!(truckRow && !(Number(truckRow.capacity) > 0));
+    const truckHasNoCap = !!(truckRow && !(Number(effCap) > 0));
     const unitOverridden = uom !== baseUom && !/truck/i.test(uom);
     const shouldLockQty = !isUnreg && !truckHasNoCap && !unitOverridden;
     const qtyLocked = applyFieldLockState('f_qty', shouldLockQty,
       /truck/i.test(uom)
         ? 'Unit = Truck locks Quantity to 1 load'
-        : (truckRow && truckRow.capacity
-            ? `Locked to ${truckRow.name} capacity (${truckRow.capacity} m³)`
-            : 'Auto-populated from Truck Capacity (m³); unlock as Admin to enter manual quantity'));
+        : (agrSizeOverride
+            ? `Locked to ${agrSizeOverride.rule.name} Client/Site Truck Size (${agrSizeOverride.size} m³)`
+            : (truckRow && effCap
+                ? `Locked to ${truckRow.name} capacity (${effCap} m³)`
+                : 'Auto-populated from Truck Capacity (m³); unlock as Admin to enter manual quantity')));
 
     if (/truck/i.test(uom) && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
       qtyEl().value = '1';
-    } else if (truckRow && truckRow.capacity && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
-      qtyEl().value = Number(truckRow.capacity).toFixed(2);
+    } else if (effCap && qtyEl() && qtyLocked && !FORM_UI.qtyManual && (truckRow || agrSizeOverride)) {
+      qtyEl().value = Number(effCap).toFixed(2);
     }
+
+    const winInfo = truckRow && truckRow.active_window ? truckRow.active_window : null;
+    const winSuffix = agrSizeOverride
+      ? ` · Sized by ${agrSizeOverride.rule.rule_type || 'Agreement'} (${agrSizeOverride.rule.site || agrSizeOverride.rule.customer || agrSizeOverride.rule.name})`
+      : (winInfo && (winInfo.cust || winInfo.site)
+          ? ` · ${winInfo.cust || winInfo.site} window`
+          : (winInfo && winInfo.s ? ` · Window ${winInfo.s}..${winInfo.e || 'Open'}` : ''));
 
     if (isDelivery && !truckName) setHint('hint_truck', 'Required on Delivery', FORM_UI.postAttempted ? 'crit' : '');
     else if (truckName && isCoFleet && truckRow && !ownTruck) setHint('hint_truck', `${truckRow.name} is not in ${company} — switch Transported By or pick a ${company} truck`, 'warn');
     else if (truckName && transportBy === 'Third-party truck' && pureOwnTruck) setHint('hint_truck', `${truckRow.name} is an own unit — switch Transported By`, 'warn');
-    else if (truckRow && truckRow.capacity) setHint('hint_truck', `${truckRow.plate_no && norm(truckRow.plate_no) !== norm(truckRow.name) ? 'Plate ' + truckRow.plate_no + ' · ' : ''}Capacity ${fmtNum(truckRow.capacity, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
+    else if (truckRow && effCap) setHint('hint_truck', `${truckRow.plate_no && norm(truckRow.plate_no) !== norm(truckRow.name) ? 'Plate ' + truckRow.plate_no + ' · ' : ''}Capacity ${fmtNum(effCap, 1)} m³${!isCoFleet && truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}${winSuffix}`, 'ok');
+    else if (agrSizeOverride) setHint('hint_truck', `Agreement Truck Size: ${fmtNum(agrSizeOverride.size, 1)} m³ (${agrSizeOverride.rule.name})`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
@@ -8136,6 +8320,7 @@
     const transportBy = val('f_transportby') || 'Third-party truck';
     const isCoFleet = transportBy === 'Company fleet';
     const site = val('f_site'), product = val('f_product'), date = val('f_date');
+    const effDate = val('f_repdate') || date;
 
     const transportByChanged = FORM_UI.lastTransportBy !== '' && FORM_UI.lastTransportBy !== transportBy;
     const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
@@ -8201,8 +8386,8 @@
     }
     const owner = val('f_siteowner');
 
-    // 3. Cascading Truck Plate -> Truck Owner + Driver + Capacity
-    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false, true);
+    // 3. Cascading Truck Plate -> Truck Owner + Driver + Capacity (Date & Quarry Site Window Aware)
+    const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, !isCoFleet, false, true, { date: effDate, side: 'raw', site });
 
     const warnings = [];
 
@@ -8210,8 +8395,8 @@
     const prod = productInfo(product);
     const baseUom = prod ? (prod.uom || 'm³') : 'm³';
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
-    const rule = (owner || site) && product ? findRule({ company, supplier: owner, site, product, date, types: ['Purchase Price (Site)'] }) : null;
-    const haulRule = site && product && !isCoFleet ? findRule({ company, supplier: truckOwner, site, product, date, types: ['Transport Price (Site)'] }) : null;
+    const rule = (owner || site) && product ? findRule({ company, supplier: owner, site, product, date: effDate, types: ['Purchase Price (Site)'] }) : null;
+    const haulRule = (site || truckOwner) && !isCoFleet ? findRule({ company, supplier: truckOwner, site, product, date: effDate, types: ['Transport Price (Site)'] }) : null;
 
     if ((siteChanged || productChanged) && !isFieldAdminUnlocked('f_uom')) {
       FORM_UI.uomManual = false;
@@ -8221,26 +8406,42 @@
     const uomLocked = applyFieldLockState('f_uom', true, `Locked to Product / Agreement UoM (${targetUom})`);
     if (uomEl && uomLocked && !FORM_UI.uomManual) uomEl.value = targetUom;
     const uom = val('f_uom') || targetUom;
+    const agrSizeOverride = resolveAgreementTruckSize({
+      company, side: 'raw', site, siteOwner: owner, truckOwner, product, truckRow, date: effDate,
+      matchedRules: [haulRule, rule]
+    });
+    const effCap = agrSizeOverride ? agrSizeOverride.size : ((truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity) : null);
+
     if (prevUom !== uom && !FORM_UI.qtyManual && qtyEl() && !/truck/i.test(uom) && /truck/i.test(prevUom)) {
-      qtyEl().value = (truckRow && Number(truckRow.capacity) > 0) ? Number(truckRow.capacity).toFixed(2) : '';
+      qtyEl().value = (effCap != null && effCap > 0) ? Number(effCap).toFixed(2) : '';
     }
     setText('lbl_uom', uom);
 
-    // 5. Quantity Lock
-    const truckHasNoCap = !!(truckRow && !(Number(truckRow.capacity) > 0));
+    // 5. Quantity Lock & Quarry Site / Hauler Agreement Truck Size Override
+    const truckHasNoCap = !!(truckRow && !(Number(effCap) > 0));
     const unitOverridden = uom !== baseUom && !/truck/i.test(uom);
     const shouldLockQty = !truckHasNoCap && !unitOverridden;
     const qtyLocked = applyFieldLockState('f_qty', shouldLockQty,
       /truck/i.test(uom)
         ? 'Unit = Truck locks Quantity to 1 load'
-        : 'Auto-populated from Truck Capacity (m³)');
+        : (agrSizeOverride
+            ? `Locked to ${agrSizeOverride.rule.name} Site/Hauler Truck Size (${agrSizeOverride.size} m³)`
+            : 'Auto-populated from Truck Capacity (m³)'));
     if (/truck/i.test(uom) && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
       qtyEl().value = '1';
-    } else if (truckRow && truckRow.capacity && qtyEl() && qtyLocked && !FORM_UI.qtyManual) {
-      qtyEl().value = Number(truckRow.capacity).toFixed(2);
+    } else if (effCap && qtyEl() && qtyLocked && !FORM_UI.qtyManual && (truckRow || agrSizeOverride)) {
+      qtyEl().value = Number(effCap).toFixed(2);
     }
 
-    if (truckRow && truckRow.capacity) setHint('hint_truck', `Capacity ${fmtNum(truckRow.capacity, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}`, 'ok');
+    const winInfo = truckRow && truckRow.active_window ? truckRow.active_window : null;
+    const winSuffix = agrSizeOverride
+      ? ` · Sized by ${agrSizeOverride.rule.rule_type || 'Agreement'} (${agrSizeOverride.rule.site || agrSizeOverride.rule.supplier || agrSizeOverride.rule.name})`
+      : (winInfo && winInfo.site
+          ? ` · ${winInfo.site} window`
+          : (winInfo && winInfo.s ? ` · Window ${winInfo.s}..${winInfo.e || 'Open'}` : ''));
+
+    if (truckRow && effCap) setHint('hint_truck', `Capacity ${fmtNum(effCap, 1)} m³${truckRow.supplier ? ' · Owner: ' + truckRow.supplier : ''}${winSuffix}`, 'ok');
+    else if (agrSizeOverride) setHint('hint_truck', `Agreement Truck Size: ${fmtNum(agrSizeOverride.size, 1)} m³ (${agrSizeOverride.rule.name})`, 'ok');
     else if (truckHasNoCap) setHint('hint_truck', 'No preset capacity on this truck — Quantity unlocked', 'warn');
     else setHint('hint_truck', '', '');
 
@@ -8254,7 +8455,7 @@
         setText('lbl_pricelock', 'AGREEMENT');
         setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}`, 'ok');
       } else {
-        const lpRule = product ? listPriceRule(company, product, date) : null;
+        const lpRule = product ? listPriceRule(company, product, effDate) : null;
         if (lpRule) {
           upEl.value = Number(lpRule.unit_price || 0).toFixed(2);
           setText('lbl_pricelock', 'LIST PRICE');
@@ -8288,11 +8489,16 @@
 
     syncOvertimeControl(isCoFleet);
 
-    // 7. Formula Locks & Method Lock
+    // 7. Formula Locks, Tier 1/2/3 Adjustments & Method Lock
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isCoFleet ? 0 : num('f_transunitprice'), disc = num('f_discount');
-    const mat = round2(Math.max(0, qty * up - disc)), tr = round2(qty * tp);
-    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Cost = Qty × Material Unit Cost − Discount');
-    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Haulage Cost = Qty × Haulage Unit Cost');
+    const matTier = (rule && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(rule, Number(effCap)) : { tier: 0, adj: 0 };
+    const haulTier = (haulRule && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(haulRule, Number(effCap)) : { tier: 0, adj: 0, transAdj: 0 };
+    const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice')) ? 0 : Number(matTier.adj || 0);
+    const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || isCoFleet) ? 0 : Number(haulTier.transAdj || haulTier.adj || 0);
+    const mat = round2(Math.max(0, qty * up + tierAdj - disc));
+    const tr = isCoFleet ? 0 : round2(Math.max(0, qty * tp + tierTrAdj));
+    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Cost = Qty × Material Unit Cost + Tier Adj − Discount');
+    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Haulage Cost = Qty × Haulage Unit Cost + Tier Trans Adj');
     const totLocked = applyFieldLockState('f_total_usd', true, 'Total Payable = Material Cost + Haulage Cost');
     const methLocked = applyFieldLockState('f_method', true, 'Locked to Credit (2-leg AP split)');
     if ($('f_method') && methLocked && !FORM_UI.methodManual) $('f_method').value = 'Credit';
@@ -8300,11 +8506,14 @@
     if ($('f_trans_total') && trTotLocked) $('f_trans_total').value = tr.toFixed(2);
     if ($('f_total_usd') && totLocked) $('f_total_usd').value = round2(mat + tr).toFixed(2);
 
-    setText('calc_mat', fmtUSD(mat, 2)); setText('calc_tr', fmtUSD(tr, 2)); setText('calc_qty', fmtNum(qty, 2) + ' ' + uom); setText('calc_total', fmtUSD(mat + tr, 2));
+    setText('calc_mat', fmtUSD(mat, 2) + (tierAdj ? ` (tier ${matTier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : ''));
+    setText('calc_tr', fmtUSD(tr, 2) + (tierTrAdj ? ` (tier ${haulTier.tier} ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : ''));
+    setText('calc_qty', fmtNum(qty, 2) + ' ' + uom);
+    setText('calc_total', fmtUSD(mat + tr, 2));
     commonDateChecks(warnings);
     dupCheck(company, 'raw', date);
     renderAdminLockBar();
-    return { company, transportBy, site, owner, product, date, repDate: val('f_repdate') || date, prod, uom, rule, qty, up, tp, disc, mat, tr };
+    return { company, transportBy, site, owner, product, date, repDate: val('f_repdate') || date, prod, uom, rule, haulRule, tierAdj, tierTrAdj, qty, up, tp, disc, mat, tr };
   }
 
   function recalcReceipt() {
@@ -8489,6 +8698,8 @@
         setFieldVisible('wrap_pr_transrate', hasTrans);
         setFieldVisible('wrap_pr_transprice', hasTrans);
         setFieldVisible('wrap_pr_indiff', showIndiff);
+        setFieldVisible('wrap_pr_trucksize', !isList);
+        setFieldVisible('wrap_pr_truck', !isList);
         setFieldVisible('wrap_pr_tier1', !isList);
         setFieldVisible('wrap_pr_adj1', !isList && hasMat);
         setFieldVisible('wrap_pr_transadj1', !isList && hasTrans);
@@ -8509,6 +8720,8 @@
         }
         if (!showIndiff && $('f_indiff') && $('f_indiff').value) $('f_indiff').value = '';
         if (isList) {
+          if ($('f_trucksize') && $('f_trucksize').value) $('f_trucksize').value = '';
+          if ($('f_pr_truck') && $('f_pr_truck').value) $('f_pr_truck').value = '';
           if ($('f_qty1') && $('f_qty1').value) $('f_qty1').value = '';
           if ($('f_adj1') && $('f_adj1').value !== '0.00') $('f_adj1').value = '0.00';
           if ($('f_transadj1') && $('f_transadj1').value !== '0.00') $('f_transadj1').value = '0.00';
@@ -8516,6 +8729,7 @@
         }
 
         const q1 = num('f_qty1');
+        const tSize = num('f_trucksize');
         const showTier2 = !isList && q1 > 0;
         setFieldVisible('wrap_pr_tier2', showTier2);
         setFieldVisible('wrap_pr_adj2', showTier2 && hasMat);
@@ -8527,8 +8741,8 @@
         }
 
         const up = num('f_unitprice'), tp = hasTrans ? num('f_transunitprice') : 0, a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
-        setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}`);
-        setText('calc_tr', q1 > 0 ? `${q1} ${val('f_uom') || 'm³'} → ${fmtUSD(q1 * up + a1, 2)}${tp ? ' + trans ' + fmtUSD(q1 * tp + ta1, 2) : ''}` : '—');
+        setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}${tSize > 0 ? ` · Size ${tSize} m³` : ''}`);
+        setText('calc_tr', q1 > 0 ? `${q1} ${val('f_uom') || 'm³'} → ${fmtUSD(q1 * up + a1, 2)}${tp ? ' + trans ' + fmtUSD(q1 * tp + ta1, 2) : ''}` : (tSize > 0 ? `${tSize} m³ → ${fmtUSD(tSize * (up + tp), 2)}` : '—'));
         setText('calc_vat', q2 > 0 ? `${q2} ${val('f_uom') || 'm³'} → ${fmtUSD(q2 * up + a2, 2)}${tp ? ' + trans ' + fmtUSD(q2 * tp + ta2, 2) : ''}` : '—');
         setText('calc_total', fmtUSD(up + tp, 2));
         renderAdminLockBar();
@@ -9846,13 +10060,46 @@
       record = { ...base, name: `SETTLE ${date} ${c.supplier}`, rep_date: repDate, supplier: c.supplier, method: val('f_method'), amount: round2(c.amount), discount: round2(c.disc), reference: val('f_reference'), ap_before: c.before };
     } else if (f === 'pricerule') {
       const prod = val('f_product'), rt = val('f_ruletype') || 'Sales (Delivery)';
-      if (!prod) addErr('f_product', 'Product / Grade is required.');
+      const tSizeV = val('f_trucksize') ? num('f_trucksize') : null;
+      const prTruck = val('f_pr_truck') || '';
+      const isTransOnly = rt === 'Transport Price (Site)' || rt === 'Haulage (Customer Site)';
+      const isSiteDelTransOrSize = rt === 'Sales (Delivery)' && Boolean(val('f_site')) && (num('f_transunitprice') > 0 || (tSizeV != null && tSizeV > 0));
+      if (!prod && !isTransOnly && !isSiteDelTransOrSize && !(tSizeV != null && tSizeV > 0)) {
+        addErr('f_product', 'Product / Grade is required.');
+      }
       const up0 = round2(num('f_unitprice')), tp0 = round2(num('f_transunitprice'));
+      const effUp = (!up0 && isTransOnly && tp0 > 0) ? tp0 : up0;
       const q1v = val('f_qty1') ? num('f_qty1') : null, q2v = val('f_qty2') ? num('f_qty2') : null;
       if (val('f_enddate') && val('f_enddate') < date) addErr('f_enddate', 'End Date cannot be before the Start Date.');
-      if (/Sales/.test(rt) && !val('f_customer')) addErr('f_customer', 'A Sales rule needs the Customer it is agreed with.');
+      if (/Sales/.test(rt) && !val('f_customer') && !(rt === 'Sales (Delivery)' && val('f_site') && tSizeV > 0)) addErr('f_customer', 'A Sales rule needs the Customer it is agreed with.');
       if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) addErr('f_supplier', 'A quarry Purchase / Transport rule needs the Supplier or the Site.');
-      record = { ...base, name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod}`, rule_type: rt, customer: val('f_customer'), supplier: val('f_supplier'), site: val('f_site'), product: prod, unit: val('f_uom') || 'm³', rate_per: val('f_rateper') || 'm³', unit_price: up0, price: up0, trans_unit_price: tp0, indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null, qty1: q1v, adj1: round2(num('f_adj1')), total1: q1v != null ? round2(q1v * up0 + num('f_adj1')) : null, trans_adj1: round2(num('f_transadj1')), qty2: q2v, adj2: round2(num('f_adj2')), total2: q2v != null ? round2(q2v * up0 + num('f_adj2')) : null, trans_adj2: round2(num('f_transadj2')), start_date: date, end_date: val('f_enddate') || '' };
+      record = {
+        ...base,
+        name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod || val('f_site') || val('f_customer') || 'RULE'}`,
+        rule_type: rt,
+        customer: val('f_customer'),
+        supplier: val('f_supplier'),
+        site: val('f_site'),
+        product: prod,
+        unit: val('f_uom') || 'm³',
+        rate_per: val('f_rateper') || 'm³',
+        unit_price: effUp,
+        price: effUp,
+        trans_unit_price: tp0,
+        indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null,
+        truck_size: tSizeV,
+        truck: prTruck,
+        qty1: q1v,
+        adj1: round2(num('f_adj1')),
+        total1: q1v != null ? round2(q1v * effUp + num('f_adj1')) : null,
+        trans_adj1: round2(num('f_transadj1')),
+        qty2: q2v,
+        adj2: round2(num('f_adj2')),
+        total2: q2v != null ? round2(q2v * effUp + num('f_adj2')) : null,
+        trans_adj2: round2(num('f_transadj2')),
+        start_date: date,
+        end_date: val('f_enddate') || ''
+      };
     } else if (f === 'vatinvoice') {
       const inv = val('f_ticketno'), cust = val('f_customer'), net = round2(num('f_amount')), vat = round2(num('f_vat'));
       if (!inv) addErr('f_ticketno', 'Invoice Serial No. is required.');
@@ -9943,7 +10190,10 @@
         const dupCoEq = (SEED.records.company_equipment || []).find(x => x && !x.voided && norm(x.company) === norm(company) && norm(x.equipment || x.name) === norm(nm));
         if (dupCoEq) addErr('f_truck', `Equipment "${nm}" is already assigned to ${company}.`);
       }
-      record = { ...base, name: nm, equipment: nm, plate_no: pl, type: val('f_category') || 'Truck', capacity: num('f_capacity') || 0, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model') };
+      const eqCap = num('f_capacity') || 0;
+      const effFrom = val('f_effdate') || date;
+      const initWin = eqCap > 0 ? [{ co: company || 'WTC', side: 'both', s: effFrom, e: '', cap: eqCap, ...(val('f_supplier') ? { own: val('f_supplier') } : {}), ...(val('f_driver') ? { drv: val('f_driver') } : {}) }] : [];
+      record = { ...base, name: nm, equipment: nm, plate_no: pl, type: val('f_category') || 'Truck', capacity: eqCap, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model'), adj_windows: initWin };
     } else if (f === 'driver') {
       const nm = val('f_driver');
       if (!nm) addErr('f_driver', 'Driver Name is required.');
@@ -11153,6 +11403,35 @@
     const sections = buildInspectorSections(key, row);
     const subgrids = buildInspectorSubgrids(key, row);
     const totalRelRows = subgrids.reduce((a, sg) => a + sg.rows.length, 0);
+    const isEquipInspect = key === 'equipment' || key === 'company_equipment';
+    const targetEqRow = isEquipInspect
+      ? (key === 'equipment' ? row : (getFleetIndex().eqByName.get(norm(row.equipment || row.name)) || row))
+      : null;
+    const eqWindows = (targetEqRow && Array.isArray(targetEqRow.adj_windows)) ? targetEqRow.adj_windows : [];
+    const modFieldsList = key === 'price_rules'
+      ? ['unit_price', 'trans_unit_price', 'truck_size', 'truck', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'start_date', 'end_date', 'notes']
+      : (isEquipInspect
+          ? ['effective_from', 'capacity', 'supplier', 'default_driver', 'plate_no', 'notes']
+          : ['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6));
+    const modFieldLabels = {
+      effective_from: 'Effective From Date',
+      capacity: 'Capacity (m³)',
+      supplier: isEquipInspect ? 'Truck Owner (Supplier)' : 'Supplier / Hauler',
+      default_driver: 'Default Driver',
+      plate_no: 'License Plate No.',
+      unit_price: 'Material Unit Price ($)',
+      trans_unit_price: 'Transport Unit Price ($)',
+      truck_size: 'Client / Site Truck Size (m³)',
+      truck: key === 'price_rules' ? 'Target Truck Plate (Optional)' : 'Truck',
+      qty1: 'Tier 1 Truck Size (m³)',
+      adj1: 'Tier 1 Price Adj ($)',
+      trans_adj1: 'Tier 1 Trans Adj ($)',
+      qty2: 'Tier 2 Truck Size (m³)',
+      adj2: 'Tier 2 Price Adj ($)',
+      trans_adj2: 'Tier 2 Trans Adj ($)',
+      start_date: 'Start Date',
+      end_date: 'End Date'
+    };
 
     const bodyEl = $('inspectorBody');
     bodyEl.innerHTML = `
@@ -11167,6 +11446,7 @@
         </div>
         <div class="pa-cmd-actions">
           ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">✎ Modify Record</button>` : ''}
+          ${isEquipInspect ? `<button type="button" class="pa-cmd-btn" data-insp-scroll-sg="truck_windows">📏 Truck Size Windows (${eqWindows.length})</button>` : ''}
           ${!row.voided && canVoid() ? `<button type="button" class="pa-cmd-btn pa-cmd-btn-danger" id="inspCmdVoidBtn" title="Void or delete this record (2-click confirmation)">🗑 Void / Delete</button>` : ''}
           ${['sales_tickets', 'raw_purchases', 'fuel_intakes'].includes(key) ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspThermalPrintBtn">🖨️ Thermal Receipt (80/58mm)</button>` : ''}
           <button type="button" class="pa-cmd-btn" data-insp-open-hub="${esc(key)}">⊞ Open ${esc(INSPECT_LABELS[key] || key)} Table</button>
@@ -11181,13 +11461,15 @@
           <span class="badge badge-brass">MODIFY DATA PRIVILEGE VERIFIED</span>
         </div>
         <div class="form-grid-3" style="margin-top:8px">
-          ${['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference' || (key === 'equipment' && (f === 'default_driver' || f === 'supplier' || f === 'capacity'))).slice(0, 6).map(f => {
-            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity'].includes(f);
-            const isDateField = f === 'date';
+          ${modFieldsList.map(f => {
+            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2'].includes(f);
+            const isDateField = f === 'date' || f === 'start_date' || f === 'end_date' || f === 'effective_from';
+            const curV = f === 'effective_from' ? todayISO() : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : ''));
+            const lbl = modFieldLabels[f] || f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             return `
               <div class="form-field">
-                <label for="insp_edit_${esc(f)}">${esc(f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</label>
-                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" value="${esc(row[f] != null ? row[f] : '')}">
+                <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
+                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" value="${esc(curV)}">
               </div>
             `;
           }).join('')}
@@ -11208,6 +11490,7 @@
       <div class="pa-rec-tabs">
         <button type="button" class="pa-rec-tab ${activeTab === 'general' ? 'active' : ''}" data-insp-tab="general">General <em>Form &amp; Cockpit</em></button>
         <button type="button" class="pa-rec-tab ${activeTab === 'related' ? 'active' : ''}" data-insp-tab="related">Related Tables <em>${fmtNum(totalRelRows)} rows</em></button>
+        ${isEquipInspect ? `<button type="button" class="pa-rec-tab" data-insp-scroll-sg="truck_windows">Truck Size Windows <em>${fmtNum(eqWindows.length)}</em></button>` : ''}
         ${subgrids.map(sg => `<button type="button" class="pa-rec-tab" data-insp-scroll-sg="${esc(sg.id)}">${esc(sg.shortLabel)} <em>${fmtNum(sg.rows.length)}</em></button>`).join('')}
       </div>
 
@@ -11272,6 +11555,100 @@
               </div>
             </div>
           `).join('')}
+        </div>
+      ` : ''}
+
+      ${isEquipInspect ? `
+        <div class="pa-subgrid-box" id="subgrid_truck_windows" style="margin-bottom:14px">
+          <div class="pa-subgrid-hdr">
+            <div>
+              <strong>📏 Truck Size, Owner &amp; Driver Adjustment Windows (Start Date → End Date)</strong>
+              <span class="pa-subgrid-sub">Dated capacity (m³), owner, driver &amp; optional Client / Site overrides — tickets automatically resolve the window matching their Transaction / Reporting Date</span>
+            </div>
+            <span class="badge badge-brass">${fmtNum(eqWindows.length)} Window${eqWindows.length === 1 ? '' : 's'}</span>
+          </div>
+          ${canModifyData() ? `
+            <div class="form-grid-3" style="padding:10px 12px;background:rgba(196,154,69,0.06);border-bottom:1px solid var(--line)">
+              <div class="form-field">
+                <label for="insp_tw_co">Company / BU</label>
+                <select id="insp_tw_co" data-native-select="1">
+                  <option value="WTC" ${row.company === 'BBConstruction' ? '' : 'selected'}>WTC</option>
+                  <option value="BBConstruction" ${row.company === 'BBConstruction' ? 'selected' : ''}>BBConstruction</option>
+                  <option value="Lions Transport" ${row.company === 'Lions Transport' ? 'selected' : ''}>Lions Transport</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_side">Applies To Side</label>
+                <select id="insp_tw_side" data-native-select="1">
+                  <option value="both" selected>Both (Sales &amp; Raw / Transport)</option>
+                  <option value="sales">Sales Side Only</option>
+                  <option value="raw">Raw Material &amp; Transport Side Only</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_cap">Truck Size / Capacity (m³) *</label>
+                <input type="number" step="0.5" min="1" id="insp_tw_cap" value="${esc(targetEqRow.capacity || 27)}">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_start">Start Date *</label>
+                <input type="date" id="insp_tw_start" value="${esc(todayISO())}">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_end">End Date (Blank = Open)</label>
+                <input type="date" id="insp_tw_end" value="">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_own">Truck Owner (Supplier)</label>
+                <input type="text" id="insp_tw_own" value="${esc(targetEqRow.supplier || '')}" placeholder="e.g. Hussein Bdeir, Karim Bdeir, WTC">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_drv">Default Driver</label>
+                <input type="text" id="insp_tw_drv" value="${esc(targetEqRow.default_driver || '')}" placeholder="Driver name">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_cust">Client Override (Optional)</label>
+                <input type="text" id="insp_tw_cust" value="" placeholder="All clients (or type client name)...">
+              </div>
+              <div class="form-field">
+                <label for="insp_tw_site">Site Override (Optional)</label>
+                <div style="display:flex;gap:6px">
+                  <input type="text" id="insp_tw_site" value="" placeholder="All sites (or type site name)..." style="flex:1">
+                  <button type="button" class="btn btn-primary" id="inspAddTruckWinBtn" style="white-space:nowrap">+ Add Window</button>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+          <div class="table-wrap" style="max-height:260px;overflow:auto">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>Co.</th><th>Side</th><th>Start Date</th><th>End Date</th><th class="r">Size (m³)</th><th>Truck Owner</th><th>Driver</th><th>Client / Site Scope</th><th>Status</th>${canModifyData() ? '<th></th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${eqWindows.length ? eqWindows.slice().reverse().map((w, rIdx) => {
+                  const origIdx = eqWindows.length - 1 - rIdx;
+                  const isOpen = !w.e || String(w.e) >= SEED_DATE;
+                  const sideLbl = w.side === 'sales' ? 'Sales' : (w.side === 'raw' ? 'Raw & Trans' : 'Both');
+                  const scopeLbl = [w.cust ? `Client: ${w.cust}` : '', w.site ? `Site: ${w.site}` : ''].filter(Boolean).join(' · ') || 'General (All)';
+                  return `
+                    <tr>
+                      <td>${coBadge(w.co || 'WTC')}</td>
+                      <td><span class="badge badge-info">${esc(sideLbl)}</span></td>
+                      <td class="mono">${esc(w.s || '2024-01-01')}</td>
+                      <td class="mono">${esc(w.e || 'Open')}</td>
+                      <td class="r"><strong>${fmtNum(w.cap, 1)} m³</strong></td>
+                      <td>${w.own ? relLink('suppliers', w.own, w.own, true) : '—'}</td>
+                      <td>${w.drv ? relLink('drivers', w.drv, w.drv) : '—'}</td>
+                      <td>${w.cust || w.site ? `<span class="badge badge-brass">${esc(scopeLbl)}</span>` : `<span class="mu">${esc(scopeLbl)}</span>`}</td>
+                      <td><span class="badge ${isOpen ? 'badge-ok' : 'badge-neutral'}">${isOpen ? 'Active' : 'Historical'}</span></td>
+                      ${canModifyData() ? `<td class="r"><button type="button" class="btn btn-sm" data-del-tw-idx="${origIdx}" title="Remove window">✕</button></td>` : ''}
+                    </tr>
+                  `;
+                }).join('') : `<tr><td colspan="${canModifyData() ? 10 : 9}" class="mu" style="text-align:center;padding:14px">No dated adjustment windows recorded — using default capacity (${fmtNum(targetEqRow && targetEqRow.capacity, 1)} m³).</td></tr>`}
+              </tbody>
+            </table>
+          </div>
         </div>
       ` : ''}
 
@@ -11373,13 +11750,20 @@
     if (saveModBtn && modDrawer) {
       saveModBtn.addEventListener('click', () => {
         if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
+        const numKeys = new Set(['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2']);
         const pendingUpdates = {};
+        let effFromDate = todayISO();
         modDrawer.querySelectorAll('[data-mod-field]').forEach(inp => {
           const fk = inp.getAttribute('data-mod-field');
           if (!fk) return;
-          const prevVal = row[fk];
+          if (fk === 'effective_from') {
+            effFromDate = inp.value || todayISO();
+            return;
+          }
+          const prevVal = row[fk] !== undefined ? row[fk] : (targetEqRow ? targetEqRow[fk] : undefined);
           const nextRaw = inp.value;
-          const nextVal = (typeof prevVal === 'number' && nextRaw !== '' && !Number.isNaN(Number(nextRaw))) ? Number(nextRaw) : nextRaw;
+          const isNumericFk = numKeys.has(fk) || typeof prevVal === 'number';
+          const nextVal = isNumericFk ? (nextRaw === '' ? null : (!Number.isNaN(Number(nextRaw)) ? Number(nextRaw) : nextRaw)) : nextRaw;
           if (String(prevVal ?? '') !== String(nextVal ?? '')) {
             pendingUpdates[fk] = nextVal;
           }
@@ -11396,10 +11780,30 @@
         let changedCount = 0;
         Object.entries(pendingUpdates).forEach(([fk, nextVal]) => {
           row[fk] = nextVal;
+          if (targetEqRow && targetEqRow !== row && ['capacity', 'supplier', 'default_driver', 'plate_no'].includes(fk)) {
+            targetEqRow[fk] = nextVal;
+          }
           if (key === 'drivers' && fk === 'driver') row.name = nextVal;
           if (key === 'equipment' && fk === 'equipment') row.name = nextVal;
           changedCount++;
         });
+        if (isEquipInspect && targetEqRow && ('capacity' in pendingUpdates || 'supplier' in pendingUpdates || 'default_driver' in pendingUpdates)) {
+          appendOrUpdateTruckWindow(targetEqRow, {
+            co: row.company || 'WTC',
+            side: 'both',
+            s: effFromDate,
+            e: '',
+            cap: targetEqRow.capacity,
+            own: targetEqRow.supplier,
+            drv: targetEqRow.default_driver
+          });
+          if (targetEqRow !== row) {
+            if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
+            const eqIdx = STATE.customRecords.equipment.findIndex(x => String(x.id) === String(targetEqRow.id));
+            if (eqIdx >= 0) Object.assign(STATE.customRecords.equipment[eqIdx], targetEqRow);
+            else STATE.customRecords.equipment.unshift(Object.assign({}, targetEqRow));
+          }
+        }
         row.modified_by = activeUser().email;
         row.modified_at = new Date().toISOString();
         if (!Array.isArray(STATE.customRecords[key])) STATE.customRecords[key] = [];
@@ -11415,6 +11819,57 @@
         showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
       });
     }
+
+    const addTwBtn = $('inspAddTruckWinBtn');
+    if (addTwBtn && targetEqRow) {
+      addTwBtn.addEventListener('click', () => {
+        if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
+        const capVal = Number(($('insp_tw_cap') && $('insp_tw_cap').value) || 0);
+        const sVal = ($('insp_tw_start') && $('insp_tw_start').value) || todayISO();
+        const eVal = ($('insp_tw_end') && $('insp_tw_end').value) || '';
+        if (!(capVal > 0)) { toast('Truck Size / Capacity (m³) must be above zero.', 'err'); return; }
+        if (eVal && eVal < sVal) { toast('End Date cannot be before Start Date.', 'err'); return; }
+        appendOrUpdateTruckWindow(targetEqRow, {
+          co: ($('insp_tw_co') && $('insp_tw_co').value) || 'WTC',
+          side: ($('insp_tw_side') && $('insp_tw_side').value) || 'both',
+          s: sVal,
+          e: eVal,
+          cap: capVal,
+          own: ($('insp_tw_own') && $('insp_tw_own').value) || '',
+          drv: ($('insp_tw_drv') && $('insp_tw_drv').value) || '',
+          cust: ($('insp_tw_cust') && $('insp_tw_cust').value) || '',
+          site: ($('insp_tw_site') && $('insp_tw_site').value) || ''
+        });
+        if (targetEqRow !== row && targetEqRow.capacity) row.capacity = targetEqRow.capacity;
+        if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
+        const eqIdx = STATE.customRecords.equipment.findIndex(x => String(x.id) === String(targetEqRow.id));
+        if (eqIdx >= 0) Object.assign(STATE.customRecords.equipment[eqIdx], targetEqRow);
+        else STATE.customRecords.equipment.unshift(Object.assign({}, targetEqRow));
+        applyCustomRecordsToSeed();
+        saveLocalAuthAndRecords();
+        renderApp();
+        toast(`✓ Added dated truck window (${fmtNum(capVal, 1)} m³ · ${sVal} → ${eVal || 'Open'})`);
+        showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
+      });
+    }
+
+    bodyEl.querySelectorAll('[data-del-tw-idx]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!canModifyData() || !targetEqRow || !Array.isArray(targetEqRow.adj_windows)) return;
+      const idx = Number(btn.getAttribute('data-del-tw-idx'));
+      if (idx >= 0 && idx < targetEqRow.adj_windows.length) {
+        targetEqRow.adj_windows.splice(idx, 1);
+        if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
+        const eqIdx = STATE.customRecords.equipment.findIndex(x => String(x.id) === String(targetEqRow.id));
+        if (eqIdx >= 0) Object.assign(STATE.customRecords.equipment[eqIdx], targetEqRow);
+        else STATE.customRecords.equipment.unshift(Object.assign({}, targetEqRow));
+        applyCustomRecordsToSeed();
+        saveLocalAuthAndRecords();
+        renderApp();
+        toast('✓ Removed dated truck adjustment window');
+        showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
+      }
+    }));
 
     // Wire clickable lookup pills inside the inspector
     bodyEl.querySelectorAll('[data-rel-key]').forEach(el => el.addEventListener('click', e => {
