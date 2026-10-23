@@ -394,6 +394,10 @@
         .trim();
       return cleaned || null;
     }
+    if (tableKey === 'price_rules' && c === 'indiff_price') {
+      const iv = r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price;
+      if (iv != null && iv !== '') return iv;
+    }
     if (r[c] != null && r[c] !== '') {
       if (Array.isArray(r[c])) return r[c].join(', ');
       return r[c];
@@ -2105,7 +2109,8 @@
             { label: 'Owner / Beneficiary', raw: r => r.supplier || r.customer || '—' },
             { label: 'Product', key: 'product', fmt: v => esc(v || '(All Grades)') },
             { label: 'Unit', key: 'unit', mono: true },
-            { label: 'Rate ($)', raw: r => r.unit_price != null ? r.unit_price : r.price, r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
+            { label: 'Unit Price ($)', raw: r => Number(r.unit_price || 0) > 0 ? r.unit_price : null, r: true, fmt: v => v != null ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
+            { label: 'Indifference ($)', raw: r => r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price, r: true, bar: 'brass', fmt: v => v != null && Number(v) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
             { label: 'End Date', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') }
           ], siteRules.concat(commRules), {
             subtitle: 'Quarry raw material purchase rates, haulage rates, and sales commission rules',
@@ -2124,7 +2129,8 @@
             { label: 'Product', key: 'product', fmt: v => esc(v || '(All Products)') },
             { label: 'Site', key: 'site' },
             { label: 'UoM', key: 'unit', mono: true },
-            { label: 'Unit Price ($)', key: 'unit_price', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
+            { label: 'Unit Price ($)', raw: r => (Number(r.unit_price || 0) > 0 || !(r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price)) ? r.unit_price : null, r: true, bar: true, fmt: v => v != null && Number(v) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
+            { label: 'Indifference ($)', raw: r => r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price, r: true, fmt: v => Number(v || 0) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
             { label: 'Trans / u ($)', key: 'trans_unit_price', r: true, fmt: v => Number(v || 0) ? fmtUSD(v, 2) : '—' },
             { label: 'Tier 1 (Cap / Adj $)', raw: r => r.qty1 != null ? `${r.qty1}: ${fmtUSD(r.adj1, 2)}` : '—', r: true, mono: true },
             { label: 'Tier 2 (Cap / Adj $)', raw: r => r.qty2 != null ? `${r.qty2}: ${fmtUSD(r.adj2, 2)}` : '—', r: true, mono: true },

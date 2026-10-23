@@ -2816,6 +2816,107 @@ try {
     ? pass('interactive segmented date control & facilitator popover · Day/Month/Year segments open Calendar, 12-Month Grid & Year Grid + Arrow/Wheel stepping + partial-year 0002 guard')
     : fail('interactive segmented date control & facilitator popover', JSON.stringify(dateFacilitatorProbe));
 
+  // 7i. Indifference Price (Flat / Load) vs Per-Unit Price Parity (#pricing table column + #raw Ali Klait / Jad Bdeir / Tb9 $50 haulage + flat Purchase Price (Site))
+  const indiffPriceProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // 1. Navigate to #pricing and verify Indifference ($) column & Indifference filter chip
+    document.querySelector('#sidebarNav .nav-item[data-view="pricing"]').click();
+    await wait(120);
+    const prHeaders = Array.from(document.querySelectorAll('#pricingPanel table.ledger-table thead th')).map(th => (th.dataset.colCleanLabel || th.textContent || '').trim());
+    const hasIndiffCol = prHeaders.some(h => /Indifference/i.test(h));
+    const indiffChip = document.querySelector('#pricingPanel [data-chip="indiff"]');
+    const hasIndiffChip = Boolean(indiffChip && /Indifference/i.test(indiffChip.textContent));
+    if (indiffChip) indiffChip.click();
+    await wait(80);
+    const prSearch = document.querySelector('#pricingPanel [data-search]');
+    if (prSearch) {
+      prSearch.value = 'Ali Klait';
+      prSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await wait(80);
+    const matchingRows = Array.from(document.querySelectorAll('#pricingPanel table.ledger-table tbody tr')).map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim().replace(/\\s+/g, ' ')));
+    const jadRow = matchingRows.find(cells => /Jad Bdeir/i.test(cells[3] || '')) || matchingRows[0] || [];
+    // Columns: Code(0), Co(1), Rule Type(2), Customer/Owner(3), Product(4), Site(5), Unit(6), Unit $(7), Transport $(8), Indifference $(9)
+    const unitPriceIsDash = jadRow[7] === '—';
+    const indiffPriceShows50Flat = /\\$50\\.00/.test(jadRow[9] || '') && /Flat/i.test(jadRow[9] || '');
+    if (prSearch) {
+      prSearch.value = '';
+      prSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const allChip = document.querySelector('#pricingPanel [data-chip="all"]');
+    if (allChip) allChip.click();
+    await wait(60);
+
+    // 2. Open Entry Modal -> Raw Material Purchase (#raw) and reproduce Ali Klait + Ramel Mrml + Tb9 (Jad Bdeir / Ali Saleh / 27 m³)
+    document.getElementById('newEntryBtn').click();
+    await wait(80);
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="raw"]').click();
+    await wait(60);
+    set('f_company', 'WTC');
+    set('f_date', '2026-10-20');
+    set('f_transportby', 'Third-party truck');
+    set('f_product', 'Ramel Mrml');
+    set('f_site', 'Ali Klait');
+    set('f_truck', 'Tb9');
+    await wait(60);
+
+    const rawQty = document.getElementById('f_qty')?.value;
+    const rawUom = document.getElementById('f_uom')?.value;
+    const rawOwner = document.getElementById('f_truckowner')?.value;
+    const rawDriver = document.getElementById('f_driver')?.value;
+    const rawMatUnit = document.getElementById('f_unitprice')?.value;
+    const rawMatCost = document.getElementById('f_mat_total')?.value;
+    const rawHaulUnit = document.getElementById('f_transunitprice')?.value;
+    const rawHaulCost = document.getElementById('f_trans_total')?.value;
+    const rawTotal = document.getElementById('f_total_usd')?.value;
+    const rawHaulHint = (document.getElementById('hint_trans')?.textContent || '').trim();
+
+    const aliKlaitHaulIndiffOk =
+      rawQty === '27.00' &&
+      rawUom === 'm³' &&
+      rawOwner === 'Jad Bdeir' &&
+      rawDriver === 'Ali Saleh' &&
+      rawMatUnit === '6.00' &&
+      rawMatCost === '162.00' &&
+      rawHaulUnit === '50.00' &&
+      rawHaulCost === '50.00' &&
+      rawTotal === '212.00' &&
+      /Indifference Price \\(Flat \\/ Load\\)/i.test(rawHaulHint);
+
+    // 3. Switch site to 'Boudi Saliba' with 'Ramel Mrml' (Purchase Price (Site) Indifference Price = $150.00 flat per load, PRC-20240101-PURCHASEPRICE(SITE)-RAMELMRML-014)
+    set('f_site', 'Boudi Saliba');
+    await wait(40);
+    const blockMatUnit = document.getElementById('f_unitprice')?.value;
+    const blockMatCost = document.getElementById('f_mat_total')?.value;
+    const blockMatHint = (document.getElementById('hint_price')?.textContent || '').trim();
+    const aliKlaitMatIndiffOk =
+      blockMatUnit === '150.00' &&
+      blockMatCost === '150.00' &&
+      /Indifference Price \\(Flat \\/ Load\\)/i.test(blockMatHint);
+
+    const closeBtn = document.getElementById('closeModalBtn');
+    if (closeBtn) closeBtn.click();
+
+    return {
+      ok: Boolean(hasIndiffCol && hasIndiffChip && unitPriceIsDash && indiffPriceShows50Flat && aliKlaitHaulIndiffOk && aliKlaitMatIndiffOk),
+      hasIndiffCol, hasIndiffChip, unitPriceIsDash, indiffPriceShows50Flat, jadRow,
+      rawQty, rawUom, rawOwner, rawDriver, rawMatUnit, rawMatCost, rawHaulUnit, rawHaulCost, rawTotal, rawHaulHint,
+      blockMatUnit, blockMatCost, blockMatHint
+    };
+  })()`);
+  indiffPriceProbe && indiffPriceProbe.ok
+    ? pass('indifference price (flat / load) parity · #pricing Indifference Price ($) column + #raw Ali Klait × Ramel Mrml × Tb9 ($162 mat + $50 flat haul = $212 total, never 27×$50=$1,350)', `mat=$${indiffPriceProbe.rawMatCost} + haul=$${indiffPriceProbe.rawHaulCost} = $${indiffPriceProbe.rawTotal} · flatMat=$${indiffPriceProbe.blockMatCost}`)
+    : fail('indifference price (flat / load) parity', JSON.stringify(indiffPriceProbe));
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

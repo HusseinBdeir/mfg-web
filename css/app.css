@@ -10477,7 +10477,9 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
     font-size: 11.6px;
   }
   #salesPanel table.ledger-table th,
-  #salesPanel table.ledger-table td {
+  #salesPanel table.ledger-table td,
+  #pricingPanel table.ledger-table th,
+  #pricingPanel table.ledger-table td {
     padding: 5.5px 3.2px;
     font-size: 11.5px;
   }

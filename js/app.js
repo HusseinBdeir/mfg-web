@@ -4076,6 +4076,47 @@
     return null;
   }
 
+  function ruleIndiffPrice(r) {
+    if (!r) return null;
+    if (r.indiff_price != null && r.indiff_price !== '' && Number(r.indiff_price) !== 0) {
+      return Number(r.indiff_price);
+    }
+    if ((r.rule_type === 'Transport Price (Site)' || r.rule_type === 'Haulage (Customer Site)') && (/^truck$/i.test(r.unit || '') || /^truck$/i.test(r.rate_per || '')) && Number(r.unit_price || r.price || 0) !== 0) {
+      return Number(r.unit_price || r.price);
+    }
+    return null;
+  }
+  function isMatIndiffRule(r) {
+    if (!r) return false;
+    const ip = ruleIndiffPrice(r);
+    if (ip == null) return false;
+    if (/^truck$/i.test(r.unit || '') || /^truck$/i.test(r.rate_per || '')) return true;
+    if (r.rule_type === 'Transport Price (Site)' || r.rule_type === 'Purchase Price (Site)') return true;
+    if (!(Number(r.price ?? r.unit_price ?? 0) > 0) || Number(r.price ?? r.unit_price) === ip) return true;
+    return false;
+  }
+  function ruleTransIndiffPrice(r) {
+    if (!r) return null;
+    if (r.trans_indiff_price != null && r.trans_indiff_price !== '' && Number(r.trans_indiff_price) !== 0) {
+      return Number(r.trans_indiff_price);
+    }
+    if ((r.rule_type === 'Transport Price (Site)' || r.rule_type === 'Haulage (Customer Site)') && ruleIndiffPrice(r) != null) {
+      return ruleIndiffPrice(r);
+    }
+    if ((r.rule_type === 'Transport Price (Site)' || r.rule_type === 'Haulage (Customer Site)') && (/^truck$/i.test(r.unit || '') || /^truck$/i.test(r.rate_per || '')) && Number(r.trans_unit_price || r.unit_price || 0) !== 0) {
+      return Number(r.trans_unit_price || r.unit_price);
+    }
+    return null;
+  }
+  function isTransIndiffRule(r) {
+    if (!r) return false;
+    return ruleTransIndiffPrice(r) != null || (r.rule_type === 'Transport Price (Site)' && isMatIndiffRule(r)) || /^truck$/i.test(r.rate_per || '');
+  }
+  function ruleAnyIndiffPrice(r) {
+    if (!r) return null;
+    return ruleIndiffPrice(r) ?? ruleTransIndiffPrice(r) ?? (r.delivered_indiff_price != null && Number(r.delivered_indiff_price) !== 0 ? Number(r.delivered_indiff_price) : null);
+  }
+
   // Price Agreement lookup (mirrors fillPrices on the Dataverse ticket form): customer × product × site × date,
   // the most specific active rule wins, ties → the latest start date. Quarry side keys on supplier / site.
   // q.types = the bhf_ruletype labels that may answer (e.g. ['Sales (Delivery)']); rules exported without a type (v3.0 seed) still match
@@ -5600,6 +5641,7 @@
     const rules = sortRows(base.filter(r => {
       if (STATE.chipFilter === 'active') return isActive(r);
       if (STATE.chipFilter === 'lapsed') return !isActive(r);
+      if (STATE.chipFilter === 'indiff') return ruleAnyIndiffPrice(r) != null;
       if (STATE.chipFilter === 'customer') return !!r.customer;
       if (STATE.chipFilter === 'quarry') return !r.customer && (r.supplier || r.site);
       if (STATE.chipFilter === 'app') return isAppRecord(r);
@@ -5609,6 +5651,7 @@
     const shown = rules.slice(0, shownCount('pricing'));
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
     const activeCount = base.filter(isActive).length;
+    const indiffCount = base.filter(r => ruleAnyIndiffPrice(r) != null).length;
     const shortRuleType = t => ({
       'Sales (Delivery)': 'Delivery',
       'Sales (Pickup)': 'Pickup',
@@ -5617,6 +5660,9 @@
       'List Price': 'List Price'
     }[t] || t);
     const typeChips = types.length ? types.map(t => chip(t, shortRuleType(t))).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Quarry / hauler rules');
+    const upRules = rules.filter(r => !isMatIndiffRule(r) && Number(r.unit_price ?? r.price ?? 0) !== 0);
+    const tpRules = rules.filter(r => !isTransIndiffRule(r) && Number(r.trans_unit_price ?? r.trans_price ?? 0) > 0);
+    const indRules = rules.filter(r => ruleAnyIndiffPrice(r) != null);
 
     return `
       <div class="cockpit-banner">
@@ -5628,6 +5674,7 @@
         <div class="cockpit-pills">
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Agreements</div><div class="cockpit-pill-val brass">${fmtNum(k.active_agreements != null ? k.active_agreements : activeCount)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total SQL Rules</div><div class="cockpit-pill-val">${fmtNum(base.length)}</div></div>
+          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Indifference Rules</div><div class="cockpit-pill-val emerald">${fmtNum(indiffCount)}</div></div>
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Commission Due</div><div class="cockpit-pill-val amber">${fmtUSD(k.commission_due, 0)}</div></div>
           ${appPill('price_rules', 'unit_price', 'agreements')}
         </div>
@@ -5637,7 +5684,7 @@
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${searchBox('Search customer, quarry supplier, product, site, agreement code...')}
-            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${typeChips}${chip('app', 'App-entered')}</div>
+            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${chip('indiff', `Indifference (${indiffCount})`)}${typeChips}${chip('app', 'App-entered')}</div>
           </div>
           <div style="display:flex;gap:6px">
             ${exportBtn('pricingPanel', 'Price_Agreements')}
@@ -5649,12 +5696,18 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                ${th('pricing', 'Agreement Code', 'name')}${th('pricing', 'Co.', 'company')}${th('pricing', 'Rule Type', 'rule_type')}${th('pricing', 'Customer / Quarry Owner', 'customer')}${th('pricing', 'Product', 'product')}${th('pricing', 'Site', 'site')}
-                ${th('pricing', 'Unit', 'unit')}${th('pricing', 'Unit Price ($)', 'unit_price', 'r')}${th('pricing', 'Transport Price ($)', 'trans_unit_price', 'r')}${th('pricing', 'Start Date', 'start_date')}${th('pricing', 'End Date', 'end_date')}<th>Status</th>
+                ${th('pricing', 'Code', 'name')}${th('pricing', 'Co.', 'company')}${th('pricing', 'Rule Type', 'rule_type')}${th('pricing', 'Customer / Owner', 'customer')}${th('pricing', 'Product', 'product')}${th('pricing', 'Site', 'site')}
+                ${th('pricing', 'Unit', 'unit')}${th('pricing', 'Unit ($)', 'unit_price', 'r')}${th('pricing', 'Transport ($)', 'trans_unit_price', 'r')}${th('pricing', 'Indifference ($)', 'indiff_price', 'r')}${th('pricing', 'Start', 'start_date')}${th('pricing', 'End', 'end_date')}<th>Status</th>
               </tr>
             </thead>
             <tbody>
-              ${shown.map(pr => `
+              ${shown.map(pr => {
+                const indVal = ruleAnyIndiffPrice(pr);
+                const matInd = isMatIndiffRule(pr);
+                const trInd = isTransIndiffRule(pr);
+                const upVal = (!matInd && Number(pr.unit_price ?? pr.price ?? 0) !== 0) ? Number(pr.unit_price ?? pr.price) : null;
+                const tpVal = (!trInd && Number(pr.trans_unit_price ?? pr.trans_price ?? 0) !== 0) ? Number(pr.trans_unit_price ?? pr.trans_price) : null;
+                return `
                 <tr class="rrow" data-rkey="price_rules" data-rid="${esc(pr.id)}">
                   <td class="mono"><strong>${esc(pr.name)}</strong>${appCell(pr, 'price_rules')}</td>
                   <td>${coBadge(pr.company)}</td>
@@ -5663,20 +5716,23 @@
                   <td>${pr.product ? relLink('products', pr.product) : '(All Grades)'}</td>
                   <td>${pr.site ? relLink('sites', pr.site) : '—'}</td>
                   <td class="mono">${esc(pr.unit)}${pr.truck_size ? ` <span class="badge badge-brass" title="Client/Site Truck Size Override (${pr.truck || 'All trucks'})">${fmtNum(pr.truck_size, 1)} m³</span>` : (pr.qty1 ? ` <span class="badge badge-neutral" title="Tier 1${pr.qty2 ? ' / Tier 2' : ''} Truck Size">${fmtNum(pr.qty1, 1)}${pr.qty2 ? '/' + fmtNum(pr.qty2, 1) : ''} m³</span>` : '')}</td>
-                  <td class="r"><strong>${fmtUSD(pr.unit_price, 2)}</strong></td>
-                  <td class="r">${pr.trans_unit_price ? fmtUSD(pr.trans_unit_price, 2) : '—'}</td>
+                  <td class="r">${upVal != null ? `<strong>${fmtUSD(upVal, 2)}</strong>` : '—'}</td>
+                  <td class="r">${tpVal != null ? fmtUSD(tpVal, 2) : '—'}</td>
+                  <td class="r">${indVal != null ? `<strong>${fmtUSD(indVal, 2)}</strong> <span class="badge badge-brass" title="Flat Indifference Price per truck load (not multiplied by m³)">Flat</span>` : '—'}</td>
                   <td class="mono">${esc(fmtDateDMY(pr.start_date))}</td>
                   <td class="mono">${esc(pr.end_date ? fmtDateDMY(pr.end_date) : 'Open')}</td>
                   <td><span class="badge ${isActive(pr) ? 'badge-ok' : 'badge-warn'}">${isActive(pr) ? 'Active' : 'Lapsed'}</span></td>
                 </tr>
-              `).join('') || emptyRow(12, STATE.search ? `No agreements match "${STATE.search}".` : 'No agreements for this entity')}
-              ${showMoreRow('pricing', rules.length, 12)}
+              `;
+              }).join('') || emptyRow(13, STATE.search ? `No agreements match "${STATE.search}".` : 'No agreements for this entity')}
+              ${showMoreRow('pricing', rules.length, 13)}
             </tbody>
             <tfoot>
               <tr>
                 <td colspan="7"><b>TOTAL (${fmtNum(rules.length)} MATCHING AGREEMENTS · ${fmtNum(rules.filter(isActive).length)} ACTIVE)</b></td>
-                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${fmtUSD(rules.length ? rules.reduce((a, r) => a + Number(r.unit_price || 0), 0) / rules.length : 0, 2)}</b></td>
-                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${fmtUSD(rules.filter(r => Number(r.trans_unit_price || 0) > 0).length ? rules.reduce((a, r) => a + Number(r.trans_unit_price || 0), 0) / rules.filter(r => Number(r.trans_unit_price || 0) > 0).length : 0, 2)}</b></td>
+                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${upRules.length ? fmtUSD(upRules.reduce((a, r) => a + Number(r.unit_price ?? r.price ?? 0), 0) / upRules.length, 2) : '—'}</b></td>
+                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${tpRules.length ? fmtUSD(tpRules.reduce((a, r) => a + Number(r.trans_unit_price ?? r.trans_price ?? 0), 0) / tpRules.length, 2) : '—'}</b></td>
+                <td class="r"><span class="mu" style="font-size:10px">Avg </span><b>${indRules.length ? fmtUSD(indRules.reduce((a, r) => a + Number(ruleAnyIndiffPrice(r) || 0), 0) / indRules.length, 2) : '—'}</b></td>
                 <td colspan="3"></td>
               </tr>
             </tfoot>
@@ -8896,9 +8952,10 @@
     let rule = (!isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [wantType], requireProduct: true }) : null;
     if (!rule && !isUnreg && customer && product) {
       const anyRule = findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [wantType] });
-      if (anyRule && Number(anyRule.unit_price) > 0) rule = anyRule;
+      if (anyRule && (Number(anyRule.unit_price || anyRule.price || 0) > 0 || ruleIndiffPrice(anyRule) != null)) rule = anyRule;
     }
-    const transRule = (isDelivery && !isUnreg && customer && (!rule || !(Number(rule.trans_unit_price) > 0)))
+    const ruleHasTrans = Boolean(rule && (Number(rule.trans_unit_price || rule.trans_price || 0) > 0 || ruleTransIndiffPrice(rule) != null));
+    const transRule = (isDelivery && !isUnreg && customer && !ruleHasTrans)
       ? findRule({ company, customer, product: '', site, date: effDate, types: ['Sales (Delivery)'] })
       : null;
     const haulCustRule = (isDelivery && !isUnreg && (customer || site || truckOwner))
@@ -8906,12 +8963,13 @@
       : null;
     const crossType = (!rule && !isUnreg && customer && product) ? findRule({ company, customer, product, site: isDelivery ? site : '', date: effDate, types: [isPickup ? 'Sales (Delivery)' : 'Sales (Pickup)'] }) : null;
 
+    const matIsIndiff = !isUnreg && isMatIndiffRule(rule);
     if ((customerChanged || productChanged || siteChanged || saleTypeChanged) && !isFieldAdminUnlocked('f_uom')) {
       FORM_UI.uomManual = false;
     }
     const prevUom = uomEl ? uomEl.value : 'm³';
-    const targetUom = (rule && rule.unit) ? rule.unit : baseUom;
-    const uomLocked = applyFieldLockState('f_uom', !isUnreg, `Locked to ${rule && rule.unit ? 'Agreement Unit' : 'Product UoM'} (${targetUom})`);
+    const targetUom = (rule && rule.unit && !matIsIndiff) ? rule.unit : baseUom;
+    const uomLocked = applyFieldLockState('f_uom', !isUnreg, `Locked to ${rule && rule.unit && !matIsIndiff ? 'Agreement Unit' : 'Product UoM'} (${targetUom})`);
     if (uomEl && uomLocked && !FORM_UI.uomManual) {
       uomEl.value = targetUom;
     }
@@ -8930,20 +8988,27 @@
 
     const priceLocked = applyFieldLockState('f_unitprice', !isUnreg, 'Locked to active Price Agreement or List Price on Pickup & Delivery');
     const transLocked = applyFieldLockState('f_transunitprice', isDelivery, 'Locked to Price Agreement transport rate on Delivery');
-    const agreedTransRate = (rule && Number(rule.trans_unit_price) > 0)
-      ? Number(rule.trans_unit_price)
-      : ((transRule && Number(transRule.trans_unit_price) > 0)
-          ? Number(transRule.trans_unit_price)
-          : ((haulCustRule && Number(haulCustRule.trans_unit_price || haulCustRule.unit_price) > 0)
-              ? Number(haulCustRule.trans_unit_price || haulCustRule.unit_price)
-              : (rule ? Number(rule.trans_unit_price || 0) : 0)));
+    const activeTransRule = !isDelivery ? null : (
+      ruleHasTrans ? rule : (
+        (transRule && (Number(transRule.trans_unit_price || transRule.trans_price || 0) > 0 || ruleTransIndiffPrice(transRule) != null)) ? transRule : (
+          (haulCustRule && (Number(haulCustRule.trans_unit_price || haulCustRule.unit_price || 0) > 0 || ruleTransIndiffPrice(haulCustRule) != null)) ? haulCustRule : null
+        )
+      )
+    );
+    const transIsIndiff = isDelivery && !isUnreg && isTransIndiffRule(activeTransRule);
+    const agreedMatRate = rule ? (matIsIndiff ? Number(ruleIndiffPrice(rule) || 0) : Number(rule.unit_price ?? rule.price ?? 0)) : 0;
+    const agreedTransRate = activeTransRule
+      ? (transIsIndiff
+          ? Number(ruleTransIndiffPrice(activeTransRule) || 0)
+          : Number(activeTransRule.trans_unit_price || activeTransRule.trans_price || activeTransRule.unit_price || 0))
+      : 0;
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
       if (rule) {
-        upEl.value = Number(rule.unit_price || 0).toFixed(2);
+        upEl.value = agreedMatRate.toFixed(2);
         if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = agreedTransRate.toFixed(2);
         setText('lbl_pricelock', 'AGREEMENT');
-        setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${rule.unit && rule.unit !== baseUom ? ' · priced per ' + rule.unit : ''}`, 'ok');
+        setHint('hint_price', `${rule.rule_type || 'Agreement'}${matIsIndiff ? ' · Indifference Price (Flat / Load)' : ''} · ${rule.name}${rule.site ? ' · ' + rule.site : ''}${rule.end_date ? ' · to ' + rule.end_date : ''}${!matIsIndiff && rule.unit && rule.unit !== baseUom ? ' · priced per ' + rule.unit : ''}`, 'ok');
       } else {
         if (tpEl && isDelivery && transLocked && !FORM_UI.transManual) tpEl.value = agreedTransRate.toFixed(2);
         const lpRule = product ? listPriceRule(company, product, effDate) : null;
@@ -8951,7 +9016,7 @@
         if (lp != null) {
           upEl.value = lp.toFixed(2);
           setText('lbl_pricelock', 'LIST PRICE');
-          setHint('hint_price', (crossType ? `No ${wantType} agreement (customer has ${crossType.rule_type} at ${fmtUSD(crossType.unit_price, 2)}) — ` : 'No customer agreement — ') + (lpRule ? lpRule.name : 'model list price'), 'warn');
+          setHint('hint_price', (crossType ? `No ${wantType} agreement (customer has ${crossType.rule_type} at ${fmtUSD(crossType.unit_price ?? ruleAnyIndiffPrice(crossType), 2)}) — ` : 'No customer agreement — ') + (lpRule ? lpRule.name : 'model list price'), 'warn');
         } else {
           upEl.value = '';
           setText('lbl_pricelock', 'LOCKED');
@@ -8960,16 +9025,18 @@
       }
     } else if (upEl) {
       setText('lbl_pricelock', isFieldAdminUnlocked('f_unitprice') ? 'ADMIN OVERRIDE' : 'MANUAL');
-      setHint('hint_price', rule ? `Overrides agreement ${rule.name} (${fmtUSD(rule.unit_price, 2)})` : 'Manual / Admin-unlocked unit price', rule ? 'warn' : '');
+      setHint('hint_price', rule ? `Overrides agreement ${rule.name} (${fmtUSD(agreedMatRate, 2)})` : 'Manual / Admin-unlocked unit price', rule ? 'warn' : '');
     }
 
     if (tpEl) {
       if (!isDelivery) {
         tpEl.value = '0.00';
-      } else if (transRule && Number(transRule.trans_unit_price) > 0 && (!rule || !(Number(rule.trans_unit_price) > 0))) {
-        setHint('hint_trans', `Site transport agreement · ${transRule.name}${transRule.site ? ' · ' + transRule.site : ''}`, 'ok');
-      } else if (haulCustRule && Number(haulCustRule.trans_unit_price || haulCustRule.unit_price) > 0) {
-        setHint('hint_trans', `Customer site haulage · ${haulCustRule.name}${haulCustRule.site ? ' · ' + haulCustRule.site : ''}`, 'ok');
+      } else if (activeTransRule && activeTransRule === transRule) {
+        setHint('hint_trans', `Site transport agreement${transIsIndiff ? ' · Indifference Price (Flat / Load)' : ''} · ${transRule.name}${transRule.site ? ' · ' + transRule.site : ''}`, 'ok');
+      } else if (activeTransRule && activeTransRule === haulCustRule) {
+        setHint('hint_trans', `Customer site haulage${transIsIndiff ? ' · Indifference Price (Flat / Load)' : ''} · ${haulCustRule.name}${haulCustRule.site ? ' · ' + haulCustRule.site : ''}`, 'ok');
+      } else if (activeTransRule && transIsIndiff) {
+        setHint('hint_trans', `${activeTransRule.rule_type || 'Delivery'} · Indifference Price (Flat / Load) · ${activeTransRule.name}`, 'ok');
       } else {
         setHint('hint_trans', transportBy === 'Third-party truck' ? 'Hauler delivers — transport price billed to customer' : 'Company fleet delivery rate', '');
       }
@@ -9027,14 +9094,15 @@
 
     // 8. Policy-Locked Totals & Live Calc
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isDelivery ? num('f_transunitprice') : 0, disc = num('f_discount'), tip = num('f_tip');
-    const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice')) ? 0 : Number(tier.adj || 0);
-    const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || !isDelivery) ? 0 : Number(tier.transAdj || 0);
-    const matGross = round2(qty * up + tierAdj);
+    const useMatIndiff = matIsIndiff && !FORM_UI.priceManual && !isFieldAdminUnlocked('f_unitprice');
+    const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice') || useMatIndiff) ? 0 : Number(tier.adj || 0);
+    const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || !isDelivery || transIsIndiff) ? 0 : Number(tier.transAdj || 0);
+    const matGross = useMatIndiff ? round2(up) : round2(qty * up + tierAdj);
     const matNet = round2(matGross - disc);
-    const tr = isDelivery ? round2(qty * tp + tierTrAdj) : 0;
+    const tr = isDelivery ? (transIsIndiff ? round2(tp) : round2(qty * tp + tierTrAdj)) : 0;
 
-    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Total = Qty × Unit Price + Tier Adj − Discount');
-    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Transport Total = Qty × Transport Unit Price + Tier Trans Adj');
+    const matLocked = applyFieldLockState('f_mat_total', true, useMatIndiff ? 'Material Total = Flat Indifference Price per load − Discount' : 'Material Total = Qty × Unit Price + Tier Adj − Discount');
+    const trTotLocked = applyFieldLockState('f_trans_total', true, transIsIndiff ? 'Transport Total = Flat Indifference Price per load (not multiplied by m³)' : 'Transport Total = Qty × Transport Unit Price + Tier Trans Adj');
     const totUsdLocked = applyFieldLockState('f_total_usd', true, 'Total (USD) = Material Total + Transport Total');
 
     if ($('f_mat_total') && matLocked) $('f_mat_total').value = matNet.toFixed(2);
@@ -9046,8 +9114,8 @@
 
     const vat = vatReg ? round2(net * VAT_RATE) : 0;
     const ttc = round2(net + vat);
-    setText('calc_mat', fmtUSD(matGross, 2) + (tierAdj ? ` (tier ${tier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : ''));
-    setText('calc_tr', fmtUSD(finalTr, 2) + (tierTrAdj ? ` (tier ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : ''));
+    setText('calc_mat', fmtUSD(matGross, 2) + (useMatIndiff ? ' (flat / load)' : (tierAdj ? ` (tier ${tier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : '')));
+    setText('calc_tr', fmtUSD(finalTr, 2) + (transIsIndiff ? ' (flat / load)' : (tierTrAdj ? ` (tier ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : '')));
     setText('calc_vat', vatReg ? fmtUSD(vat, 2) : '—');
     setText('calc_total', fmtUSD(ttc, 2));
     setHint('hint_qty', qty > 0 && prod && Number(prod.ton_factor) && Number(prod.ton_factor) !== 1 ? `≈ ${fmtNum(qty * Number(prod.ton_factor), 2)} t` : (qty <= 0 && val('f_qty') ? 'Must be above zero' : ''), qty <= 0 && val('f_qty') ? 'crit' : '');
@@ -9144,12 +9212,14 @@
     const upEl = $('f_unitprice'), tpEl = $('f_transunitprice'), uomEl = $('f_uom');
     const rule = (owner || site) && product ? findRule({ company, supplier: owner, site, product, date: effDate, types: ['Purchase Price (Site)'] }) : null;
     const haulRule = (site || truckOwner) && !isCoFleet ? findRule({ company, supplier: truckOwner, site, product, date: effDate, types: ['Transport Price (Site)'] }) : null;
+    const matIsIndiff = isMatIndiffRule(rule);
+    const haulIsIndiff = !isCoFleet && isTransIndiffRule(haulRule);
 
     if ((siteChanged || productChanged) && !isFieldAdminUnlocked('f_uom')) {
       FORM_UI.uomManual = false;
     }
     const prevUom = uomEl ? uomEl.value : 'm³';
-    const targetUom = (rule && rule.unit) ? rule.unit : ((haulRule && haulRule.rate_per) ? haulRule.rate_per : baseUom);
+    const targetUom = (rule && rule.unit && !matIsIndiff) ? rule.unit : baseUom;
     const uomLocked = applyFieldLockState('f_uom', true, `Locked to Product / Agreement UoM (${targetUom})`);
     if (uomEl && uomLocked && !FORM_UI.uomManual) uomEl.value = targetUom;
     const uom = val('f_uom') || targetUom;
@@ -9199,12 +9269,20 @@
     // 6. Purchase Price (Site) & Transport Price (Site) Lock
     const priceLocked = applyFieldLockState('f_unitprice', true, 'Locked to Purchase Price (Site) or List Price');
     const transLocked = applyFieldLockState('f_transunitprice', !isCoFleet, 'Locked to Transport Price (Site) agreement');
+    const agreedMatCost = rule ? (matIsIndiff ? Number(ruleIndiffPrice(rule) || 0) : Number(rule.unit_price ?? rule.price ?? 0)) : 0;
+    const haulPerTon = Boolean(haulRule && !haulIsIndiff && /^ton$/i.test(haulRule.rate_per || haulRule.unit || '') && !/^ton$/i.test(uom));
+    const haulTonFactor = (haulPerTon && prod && Number(prod.ton_factor) > 0) ? Number(prod.ton_factor) : 1;
+    const agreedHaulCost = haulRule
+      ? (haulIsIndiff
+          ? Number(ruleTransIndiffPrice(haulRule) || 0)
+          : round2(Number(haulRule.trans_unit_price || haulRule.price || haulRule.unit_price || 0) * haulTonFactor))
+      : 0;
 
     if (priceLocked && !FORM_UI.priceManual && upEl) {
       if (rule) {
-        upEl.value = Number(rule.unit_price || 0).toFixed(2);
+        upEl.value = agreedMatCost.toFixed(2);
         setText('lbl_pricelock', 'AGREEMENT');
-        setHint('hint_price', `${rule.rule_type || 'Agreement'} · ${rule.name}`, 'ok');
+        setHint('hint_price', `${rule.rule_type || 'Agreement'}${matIsIndiff ? ' · Indifference Price (Flat / Load)' : ''} · ${rule.name}`, 'ok');
       } else {
         const lpRule = product ? listPriceRule(company, product, effDate) : null;
         if (lpRule) {
@@ -9219,7 +9297,7 @@
       }
     } else if (upEl) {
       setText('lbl_pricelock', isFieldAdminUnlocked('f_unitprice') ? 'ADMIN OVERRIDE' : 'MANUAL');
-      setHint('hint_price', rule ? `Overrides ${rule.name} (${fmtUSD(rule.unit_price, 2)})` : '', rule ? 'warn' : '');
+      setHint('hint_price', rule ? `Overrides ${rule.name} (${fmtUSD(agreedMatCost, 2)})` : '', rule ? 'warn' : '');
     }
 
     if (tpEl) {
@@ -9227,9 +9305,9 @@
         tpEl.value = '0.00';
       } else {
         if (transLocked && !FORM_UI.transManual) {
-          tpEl.value = haulRule ? Number(haulRule.trans_unit_price || haulRule.unit_price || 0).toFixed(2) : '0.00';
+          tpEl.value = haulRule ? agreedHaulCost.toFixed(2) : '0.00';
         }
-        setHint('hint_trans', haulRule ? `${haulRule.rule_type} · ${haulRule.name}` : '', haulRule ? 'ok' : '');
+        setHint('hint_trans', haulRule ? `${haulRule.rule_type}${haulIsIndiff ? ' · Indifference Price (Flat / Load)' : (haulPerTon && haulTonFactor !== 1 ? ` · Per Ton (×${haulTonFactor})` : '')} · ${haulRule.name}` : '', haulRule ? 'ok' : '');
       }
     }
     setHint('hint_truckowner', !isCoFleet
@@ -9244,14 +9322,21 @@
 
     // 7. Formula Locks, Tier 1/2/3 Adjustments & Method Lock
     const qty = num('f_qty'), up = num('f_unitprice'), tp = isCoFleet ? 0 : num('f_transunitprice'), disc = num('f_discount');
-    const matTier = (rule && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(rule, Number(effCap)) : { tier: 0, adj: 0 };
-    const haulTier = (haulRule && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(haulRule, Number(effCap)) : { tier: 0, adj: 0, transAdj: 0 };
-    const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice')) ? 0 : Number(matTier.adj || 0);
-    const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || isCoFleet) ? 0 : Number(haulTier.transAdj || haulTier.adj || 0);
-    const mat = round2(Math.max(0, qty * up + tierAdj - disc));
-    const tr = isCoFleet ? 0 : round2(Math.max(0, qty * tp + tierTrAdj));
-    const matLocked = applyFieldLockState('f_mat_total', true, 'Material Cost = Qty × Material Unit Cost + Tier Adj − Discount');
-    const trTotLocked = applyFieldLockState('f_trans_total', true, 'Haulage Cost = Qty × Haulage Unit Cost + Tier Trans Adj');
+    const useMatIndiff = matIsIndiff && !FORM_UI.priceManual && !isFieldAdminUnlocked('f_unitprice');
+    const matTier = (rule && !useMatIndiff && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(rule, Number(effCap)) : { tier: 0, adj: 0 };
+    const haulTier = (haulRule && !haulIsIndiff && effCap && window.MFG_FORMS) ? window.MFG_FORMS.matchTier(haulRule, Number(effCap)) : { tier: 0, adj: 0, transAdj: 0 };
+    const tierAdj = (FORM_UI.priceManual || isFieldAdminUnlocked('f_unitprice') || useMatIndiff) ? 0 : Number(matTier.adj || 0);
+    const tierTrAdj = (FORM_UI.transManual || isFieldAdminUnlocked('f_transunitprice') || isCoFleet || haulIsIndiff) ? 0 : Number(haulTier.transAdj || haulTier.adj || 0);
+    const mat = useMatIndiff
+      ? round2(Math.max(0, up - disc))
+      : round2(Math.max(0, qty * up + tierAdj - disc));
+    const tr = isCoFleet
+      ? 0
+      : (haulIsIndiff
+          ? round2(Math.max(0, tp))
+          : round2(Math.max(0, qty * tp + tierTrAdj)));
+    const matLocked = applyFieldLockState('f_mat_total', true, useMatIndiff ? 'Material Cost = Flat Indifference Price per load − Discount (not multiplied by m³)' : 'Material Cost = Qty × Material Unit Cost + Tier Adj − Discount');
+    const trTotLocked = applyFieldLockState('f_trans_total', true, haulIsIndiff ? 'Haulage Cost = Flat Indifference Price per load (not multiplied by m³)' : 'Haulage Cost = Qty × Haulage Unit Cost + Tier Trans Adj');
     const totLocked = applyFieldLockState('f_total_usd', true, 'Total Payable = Material Cost + Haulage Cost');
     const methLocked = applyFieldLockState('f_method', true, 'Locked to Credit (2-leg AP split)');
     if ($('f_method') && methLocked && !FORM_UI.methodManual) $('f_method').value = 'Credit';
@@ -9259,8 +9344,8 @@
     if ($('f_trans_total') && trTotLocked) $('f_trans_total').value = tr.toFixed(2);
     if ($('f_total_usd') && totLocked) $('f_total_usd').value = round2(mat + tr).toFixed(2);
 
-    setText('calc_mat', fmtUSD(mat, 2) + (tierAdj ? ` (tier ${matTier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : ''));
-    setText('calc_tr', fmtUSD(tr, 2) + (tierTrAdj ? ` (tier ${haulTier.tier} ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : ''));
+    setText('calc_mat', fmtUSD(mat, 2) + (useMatIndiff ? ' (flat / load)' : (tierAdj ? ` (tier ${matTier.tier} ${tierAdj > 0 ? '+' : '−'}$${Math.abs(tierAdj).toFixed(2)})` : '')));
+    setText('calc_tr', fmtUSD(tr, 2) + (haulIsIndiff ? ' (flat / load)' : (tierTrAdj ? ` (tier ${haulTier.tier} ${tierTrAdj > 0 ? '+' : '−'}$${Math.abs(tierTrAdj).toFixed(2)})` : '')));
     setText('calc_qty', fmtNum(qty, 2) + ' ' + uom);
     setText('calc_total', fmtUSD(mat + tr, 2));
     commonDateChecks(warnings);
@@ -9433,7 +9518,9 @@
         const showCustomer = isSalesDel || isSalesPick || isHaulCust;
         const showSupplier = isPurch || isTransSite || isHaulCust;
         const showSite = !isList && !isSalesPick;
-        const showIndiff = isSalesDel || isSalesPick;
+        const showIndiff = !isList;
+        const ratePer = val('f_rateper') || 'm³';
+        const isTruckRate = hasTrans && ratePer === 'Truck';
 
         const prProduct = val('f_product');
         if (prProduct !== FORM_UI.lastProduct) {
@@ -9449,13 +9536,13 @@
         setFieldVisible('wrap_pr_site', showSite);
         setFieldVisible('wrap_pr_matprice', hasMat);
         setFieldVisible('wrap_pr_transrate', hasTrans);
-        setFieldVisible('wrap_pr_transprice', hasTrans);
+        setFieldVisible('wrap_pr_transprice', hasTrans && !isTruckRate);
         setFieldVisible('wrap_pr_indiff', showIndiff);
         setFieldVisible('wrap_pr_trucksize', !isList);
         setFieldVisible('wrap_pr_truck', !isList);
-        setFieldVisible('wrap_pr_tier1', !isList);
+        setFieldVisible('wrap_pr_tier1', !isList && !isTruckRate);
         setFieldVisible('wrap_pr_adj1', !isList && hasMat);
-        setFieldVisible('wrap_pr_transadj1', !isList && hasTrans);
+        setFieldVisible('wrap_pr_transadj1', !isList && hasTrans && !isTruckRate);
 
         // Clear hidden fields when Rule Type hides them so stale values are never saved
         if (!showCustomer && $('f_customer') && $('f_customer').value) $('f_customer').value = '';
@@ -9466,7 +9553,10 @@
           if ($('f_adj1') && $('f_adj1').value !== '0.00') $('f_adj1').value = '0.00';
           if ($('f_adj2') && $('f_adj2').value !== '0.00') $('f_adj2').value = '0.00';
         }
-        if (!hasTrans) {
+        if (!hasTrans || isTruckRate) {
+          if (isTruckRate && $('f_transunitprice') && num('f_transunitprice') > 0 && $('f_indiff') && !val('f_indiff')) {
+            $('f_indiff').value = num('f_transunitprice').toFixed(2);
+          }
           if ($('f_transunitprice') && $('f_transunitprice').value !== '0.00') $('f_transunitprice').value = '0.00';
           if ($('f_transadj1') && $('f_transadj1').value !== '0.00') $('f_transadj1').value = '0.00';
           if ($('f_transadj2') && $('f_transadj2').value !== '0.00') $('f_transadj2').value = '0.00';
@@ -9483,23 +9573,23 @@
 
         const q1 = num('f_qty1');
         const tSize = num('f_trucksize');
-        const showTier2 = !isList && q1 > 0;
+        const showTier2 = !isList && !isTruckRate && q1 > 0;
         setFieldVisible('wrap_pr_tier2', showTier2);
         setFieldVisible('wrap_pr_adj2', showTier2 && hasMat);
-        setFieldVisible('wrap_pr_transadj2', showTier2 && hasTrans);
+        setFieldVisible('wrap_pr_transadj2', showTier2 && hasTrans && !isTruckRate);
         if (!showTier2) {
           if ($('f_qty2') && $('f_qty2').value) $('f_qty2').value = '';
           if ($('f_adj2') && $('f_adj2').value !== '0.00') $('f_adj2').value = '0.00';
           if ($('f_transadj2') && $('f_transadj2').value !== '0.00') $('f_transadj2').value = '0.00';
         }
 
-        const up = num('f_unitprice'), tp = hasTrans ? num('f_transunitprice') : 0, a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
-        setText('calc_mat', `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}${tSize > 0 ? ` · Size ${tSize} m³` : ''}`);
-        setText('calc_tr', q1 > 0 ? `${q1} ${val('f_uom') || 'm³'} → ${fmtUSD(q1 * up + a1, 2)}${tp ? ' + trans ' + fmtUSD(q1 * tp + ta1, 2) : ''}` : (tSize > 0 ? `${tSize} m³ → ${fmtUSD(tSize * (up + tp), 2)}` : '—'));
+        const up = num('f_unitprice'), tp = (hasTrans && !isTruckRate) ? num('f_transunitprice') : 0, ind = num('f_indiff'), a1 = num('f_adj1'), ta1 = num('f_transadj1'), q2 = num('f_qty2'), a2 = num('f_adj2'), ta2 = num('f_transadj2');
+        setText('calc_mat', (ind > 0 && !(up > 0) && !(tp > 0)) ? `${fmtUSD(ind, 2)} flat / load (Indifference)` : `${fmtUSD(up, 2)} + ${fmtUSD(tp, 2)} / ${val('f_uom') || 'm³'}${ind > 0 ? ` · Indiff ${fmtUSD(ind, 2)}` : ''}${tSize > 0 ? ` · Size ${tSize} m³` : ''}`);
+        setText('calc_tr', q1 > 0 ? `${q1} ${val('f_uom') || 'm³'} → ${fmtUSD(q1 * up + a1, 2)}${tp ? ' + trans ' + fmtUSD(q1 * tp + ta1, 2) : ''}` : (ind > 0 && !(up > 0) && !(tp > 0) ? `${fmtUSD(ind, 2)} flat / load` : (tSize > 0 ? `${tSize} m³ → ${fmtUSD(tSize * (up + tp), 2)}` : '—')));
         setText('calc_vat', q2 > 0 ? `${q2} ${val('f_uom') || 'm³'} → ${fmtUSD(q2 * up + a2, 2)}${tp ? ' + trans ' + fmtUSD(q2 * tp + ta2, 2) : ''}` : '—');
-        setText('calc_total', fmtUSD(up + tp, 2));
+        setText('calc_total', (ind > 0 && !(up > 0) && !(tp > 0)) ? `${fmtUSD(ind, 2)} (Flat)` : fmtUSD(up + tp, 2));
         renderAdminLockBar();
-        return { up, tp };
+        return { up, tp, ind };
       }
       if (STATE.modalForm === 'vatinvoice') {
         const net = num('f_amount');
@@ -10815,14 +10905,21 @@
       const prod = val('f_product'), rt = val('f_ruletype') || 'Sales (Delivery)';
       const tSizeV = val('f_trucksize') ? num('f_trucksize') : null;
       const prTruck = val('f_pr_truck') || '';
+      const ratePer = val('f_rateper') || 'm³';
+      const rawIndiff = val('f_indiff') ? round2(num('f_indiff')) : null;
       const isTransOnly = rt === 'Transport Price (Site)' || rt === 'Haulage (Customer Site)';
-      const isSiteDelTransOrSize = rt === 'Sales (Delivery)' && Boolean(val('f_site')) && (num('f_transunitprice') > 0 || (tSizeV != null && tSizeV > 0));
+      const isSiteDelTransOrSize = rt === 'Sales (Delivery)' && Boolean(val('f_site')) && (num('f_transunitprice') > 0 || (rawIndiff != null && rawIndiff !== 0) || (tSizeV != null && tSizeV > 0));
       if (!prod && !isTransOnly && !isSiteDelTransOrSize && !(tSizeV != null && tSizeV > 0)) {
         addErr('f_product', 'Product / Grade is required.');
       }
       const up0 = round2(num('f_unitprice')), tp0 = round2(num('f_transunitprice'));
-      const effUp = (!up0 && isTransOnly && tp0 > 0) ? tp0 : up0;
-      const q1v = val('f_qty1') ? num('f_qty1') : null, q2v = val('f_qty2') ? num('f_qty2') : null;
+      const isFlatIndiff = (isTransOnly && ratePer === 'Truck') || (rawIndiff != null && rawIndiff !== 0 && !up0 && !tp0);
+      const effIndiff = rawIndiff != null ? rawIndiff : ((isTransOnly && ratePer === 'Truck' && (tp0 || up0)) ? (tp0 || up0) : null);
+      const effUp = isFlatIndiff ? 0 : ((!up0 && isTransOnly && tp0 > 0) ? tp0 : up0);
+      const effTp = (isTransOnly && ratePer === 'Truck') ? 0 : tp0;
+      const effUnit = (isTransOnly && (ratePer === 'Truck' || isFlatIndiff)) ? 'Truck' : (val('f_uom') || 'm³');
+      const effRatePer = (isTransOnly && isFlatIndiff) ? 'Truck' : ratePer;
+      const q1v = (!isFlatIndiff && val('f_qty1')) ? num('f_qty1') : null, q2v = (!isFlatIndiff && val('f_qty2')) ? num('f_qty2') : null;
       if (val('f_enddate') && val('f_enddate') < date) addErr('f_enddate', 'End Date cannot be before the Start Date.');
       if (/Sales/.test(rt) && !val('f_customer') && !(rt === 'Sales (Delivery)' && val('f_site') && tSizeV > 0)) addErr('f_customer', 'A Sales rule needs the Customer it is agreed with.');
       if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) addErr('f_supplier', 'A quarry Purchase / Transport rule needs the Supplier or the Site.');
@@ -10834,21 +10931,22 @@
         supplier: val('f_supplier'),
         site: val('f_site'),
         product: prod,
-        unit: val('f_uom') || 'm³',
-        rate_per: val('f_rateper') || 'm³',
+        unit: effUnit,
+        rate_per: effRatePer,
         unit_price: effUp,
-        price: effUp,
-        trans_unit_price: tp0,
-        indiff_price: val('f_indiff') ? round2(num('f_indiff')) : null,
+        price: effUp || null,
+        trans_unit_price: effTp,
+        indiff_price: (rt === 'Sales (Delivery)' && !prod && effIndiff != null) ? null : effIndiff,
+        trans_indiff_price: (rt === 'Sales (Delivery)' && !prod && effIndiff != null) ? effIndiff : null,
         truck_size: tSizeV,
         truck: prTruck,
         qty1: q1v,
         adj1: round2(num('f_adj1')),
-        total1: q1v != null ? round2(q1v * effUp + num('f_adj1')) : null,
+        total1: q1v != null && effUp ? round2(q1v * effUp + num('f_adj1')) : null,
         trans_adj1: round2(num('f_transadj1')),
         qty2: q2v,
         adj2: round2(num('f_adj2')),
-        total2: q2v != null ? round2(q2v * effUp + num('f_adj2')) : null,
+        total2: q2v != null && effUp ? round2(q2v * effUp + num('f_adj2')) : null,
         trans_adj2: round2(num('f_transadj2')),
         start_date: date,
         end_date: val('f_enddate') || ''
@@ -11515,9 +11613,15 @@
     if (key === 'price_rules') {
       const today = SEED_DATE;
       const active = (!row.end_date || String(row.end_date) >= today);
+      const anyIndiff = ruleAnyIndiffPrice(row);
+      const isFlatMat = isMatIndiffRule(row);
+      const isFlatTrans = isTransIndiffRule(row);
+      const priceSummary = isFlatMat
+        ? `Indifference Price: ${fmtUSD(anyIndiff, 2)} (Flat / Load · ${row.unit || 'Truck'})`
+        : `Unit Price: ${fmtUSD(row.unit_price, 2)}/${row.unit || 'm³'}${isFlatTrans ? ' + Transport Indifference ' + fmtUSD(ruleTransIndiffPrice(row), 2) + ' (Flat / Load)' : (row.trans_unit_price ? ' + Transport ' + fmtUSD(row.trans_unit_price, 2) : '')}`;
       return {
         tone: active ? 'info' : 'warn',
-        text: `Price Agreement ${row.name}: ${row.rule_type || 'Rule'} for ${row.customer || row.supplier || row.site || 'Standard List'} · Grade: ${row.product || 'All Grades'} · Unit Price: ${fmtUSD(row.unit_price, 2)}/${row.unit || 'm³'}${row.trans_unit_price ? ' + Transport ' + fmtUSD(row.trans_unit_price, 2) : ''} · Status: ${active ? 'ACTIVE (Auto-fills weighbridge tickets)' : 'ENDED (' + row.end_date + ')'}`
+        text: `Price Agreement ${row.name}: ${row.rule_type || 'Rule'} for ${row.customer || row.supplier || row.site || 'Standard List'} · Grade: ${row.product || 'All Grades'} · ${priceSummary} · Status: ${active ? 'ACTIVE (Auto-fills weighbridge tickets)' : 'ENDED (' + row.end_date + ')'}`
       };
     }
     if (key === 'customers') {
@@ -11686,7 +11790,8 @@
     // Generic rich 4-card cockpit for all other 30 tables
     const subgrids = buildInspectorSubgrids(key, row);
     const totalRel = subgrids.reduce((a, sg) => a + sg.rows.length, 0);
-    const primaryMoney = row.total_ttc ?? row.total ?? row.amount ?? row.usd_amount ?? row.unit_price ?? row.salary_usd ?? row.principal ?? row.credit_limit ?? row.list_price;
+    const prMoney = key === 'price_rules' ? (Number(row.unit_price || 0) > 0 ? row.unit_price : ruleAnyIndiffPrice(row)) : row.unit_price;
+    const primaryMoney = row.total_ttc ?? row.total ?? row.amount ?? row.usd_amount ?? prMoney ?? row.salary_usd ?? row.principal ?? row.credit_limit ?? row.list_price;
     return {
       bu,
       title,
@@ -11878,7 +11983,7 @@
       const custVat = (rec.vat_invoices || []).filter(v => norm(v.customer) === norm(row.customer));
       const trkFuel = row.truck ? (rec.fuel_intakes || []).filter(f => norm(f.equipment) === norm(row.truck)) : [];
 
-      addGrid('sg_rules', `Matching Price & Commission Agreements (${row.customer || row.product})`, 'Price Rules', 'Rule Lookup', 'price_rules', custRules, ['name', 'company', 'rule_type', 'customer', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_rules', `Matching Price & Commission Agreements (${row.customer || row.product})`, 'Price Rules', 'Rule Lookup', 'price_rules', custRules, ['name', 'company', 'rule_type', 'customer', 'product', 'site', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_sib_sales', `Other Sales Tickets for ${row.customer || 'Customer'}`, 'Customer Tickets', 'Sibling Loads', 'sales_tickets', sibTickets, ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'total_ttc', 'method'], 'total_ttc');
       addGrid('sg_rcpts', `Customer Receipts & FIFO Settlements (${row.customer})`, 'AR Receipts', 'FIFO Relief', 'receipts', custRcpts, ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
       addGrid('sg_vat', `Customer VAT 11% Tax Invoices (${row.customer})`, 'VAT Invoices', 'Tax Billing', 'vat_invoices', custVat, ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
@@ -11889,7 +11994,7 @@
       const siteLoads = (rec.raw_purchases || []).filter(t => norm(t.site) === norm(row.site) && String(t.id) !== String(row.id));
       const suppSettle = (rec.settlements || []).filter(s => (row.site_owner && norm(s.supplier) === norm(row.site_owner)) || (row.truck_owner && norm(s.supplier) === norm(row.truck_owner)));
 
-      addGrid('sg_raw_rules', `Quarry & Hauler Price Agreements (${row.site || row.site_owner})`, 'Quarry Rules', 'Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_raw_rules', `Quarry & Hauler Price Agreements (${row.site || row.site_owner})`, 'Quarry Rules', 'Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_site_loads', `Other Raw Material Purchases from ${row.site || 'Quarry'}`, 'Quarry Loads', 'Sibling Loads', 'raw_purchases', siteLoads, ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
       addGrid('sg_supp_settle', `Supplier Settlements for ${row.site_owner || row.truck_owner}`, 'AP Settlements', '3-Leg AP Relief', 'settlements', suppSettle, ['date', 'name', 'company', 'supplier', 'method', 'amount', 'discount', 'reference'], 'amount');
     }
@@ -11897,7 +12002,7 @@
       const name = row.name || row.Customer;
       addGrid('sg_c_sales', `Sales Tickets & Deliveries (${name})`, 'Sales Tickets', 'Sales Tickets', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.customer) === norm(name)), ['date', 'ticket_no', 'company', 'sale_type', 'product', 'site', 'truck', 'qty', 'unit_price', 'vat', 'total_ttc', 'method'], 'total_ttc');
       addGrid('sg_c_rcpts', `Customer Receipts — FIFO Applied (${name})`, 'AR Receipts', 'AR Receipts', 'receipts', (rec.receipts || []).filter(r => norm(r.customer) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'vat_invoice', 'reference'], 'amount');
-      addGrid('sg_c_rules', `Price & Commission Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.customer) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_c_rules', `Price & Commission Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.customer) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_c_cred', `Credit Terms & Limits (${name})`, 'Credit Terms', 'Credit Terms', 'credit_terms', (rec.credit_terms || []).filter(c => norm(c.customer) === norm(name)), ['name', 'company', 'credit_days', 'credit_limit', 'start_date', 'end_date', 'notes'], 'credit_limit');
       addGrid('sg_c_vat', `VAT 11% Tax Invoices (${name})`, 'VAT Invoices', 'VAT Invoices', 'vat_invoices', (rec.vat_invoices || []).filter(v => norm(v.customer) === norm(name)), ['invoice_no', 'date', 'company', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc'], 'total_ttc');
     }
@@ -11907,7 +12012,7 @@
       addGrid('sg_s_haul', `Leg 2 · Haulage Loads (${name})`, 'Haulage Loads', 'Truck Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.truck_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'driver', 'qty', 'trans_cost', 'total'], 'trans_cost');
       addGrid('sg_s_exp', `Leg 3 · General & Fleet Expenses (${name})`, 'Expenses', 'Expense Leg', 'expenses', (rec.expenses || []).filter(x => norm(x.supplier) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'equipment', 'method', 'amount', 'reference'], 'amount');
       addGrid('sg_s_pay', `Supplier AP Settlements (${name})`, 'Settlements', 'Settlements', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference'], 'amount');
-      addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_s_eq', `Registered Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.supplier) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'default_driver'], 'capacity');
       addGrid('sg_s_drv', `Registered Drivers (${name})`, 'Drivers', 'Drivers', 'drivers', (rec.drivers || []).filter(d => norm(d.truck_owner) === norm(name)), ['name', 'truck', 'phone', 'truck_owner', 'notes'], null);
     }
@@ -11917,7 +12022,7 @@
       if (key !== 'products') {
         addGrid('sg_p_prods', `Products in ${name}`, 'Products', 'Products', 'products', (rec.products || []).filter(p => norm(p[matchField]) === norm(name)), ['name', 'type', 'uom', 'ton_factor', 'ticket_product', 'fuel_item', 'revenue_account'], 'ton_factor');
       }
-      addGrid('sg_p_rules', `Price Agreements for ${name}`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.product) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'site', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_p_rules', `Price Agreements for ${name}`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.product) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'site', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_p_sales', `Sales Tickets (${name})`, 'Sales Tickets', 'Sales Tickets', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'site', 'truck', 'qty', 'unit_price', 'total_ttc'], 'total_ttc');
       addGrid('sg_p_raw', `Raw Material Purchases (${name})`, 'Raw Purchases', 'Raw Purchases', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.product) === norm(name) || norm(t.uom) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'qty', 'unit_cost', 'total'], 'total');
     }
@@ -11927,7 +12032,7 @@
         addGrid('sg_r_sites', `Sites & Quarries in Region ${name}`, 'Sites', 'Sites', 'sites', (rec.sites || []).filter(s => norm(s.region) === norm(name)), ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'], null);
         addGrid('sg_r_ot', `Driver Trip & Overtime Rates (${name})`, 'Overtime Rates', 'Overtime Rates', 'overtime_rates', (rec.overtime_rates || []).filter(o => norm(o.region) === norm(name)), ['name', 'company', 'region', 'amount', 'start_date', 'end_date'], 'amount');
       } else {
-        addGrid('sg_st_rules', `Price & Transport Agreements at ${name}`, 'Site Rules', 'Site Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.site) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'unit_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+        addGrid('sg_st_rules', `Price & Transport Agreements at ${name}`, 'Site Rules', 'Site Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.site) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
         addGrid('sg_st_sales', `Sales Deliveries to ${name}`, 'Sales Deliveries', 'Sales Deliveries', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'truck', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
         addGrid('sg_st_raw', `Quarry Raw Material Loads from ${name}`, 'Quarry Loads', 'Quarry Loads', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
         addGrid('sg_st_jv', `JV Partnerships & Profit Split (${name})`, 'JV Partners', 'JV Partners', 'jv_partnerships', (rec.jv_partnerships || []).filter(j => norm(j.site) === norm(name)), ['name', 'company', 'partner', 'percentage', 'notes'], 'percentage');
@@ -12007,7 +12112,7 @@
 
     const idFields = new Set(['name', 'official_name', 'ticket_no', 'invoice_no', 'date', 'rep_date', 'payroll_month', 'company', 'sale_type', 'rule_type', 'type', 'status', 'customer', 'supplier', 'staff', 'driver', 'partner', 'counterparty', 'mof_no', 'financial_no', 'vat_registered', 'iva', 'phone', 'contact', 'address', 'location']);
     const opsFields = new Set(['product', 'item', 'input_product', 'site', 'region', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'equipment', 'plate_no', 'ownership', 'capacity', 'default_driver', 'day_operator', 'night_operator', 'working_days', 'start_date', 'end_date', 'latitude', 'longitude', 'is_jv', 'is_truck_owner', 'trucks_count', 'trucks', 'drivers', 'category', 'subcategory', 'category1', 'category2']);
-    const finFields = new Set(['qty', 'uom', 'unit', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'unit_price', 'price', 'trans_unit_price', 'trans_price', 'unit_cost', 'cost', 'trans_cost', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'discount', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
+    const finFields = new Set(['qty', 'uom', 'unit', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'unit_price', 'price', 'indiff_price', 'trans_unit_price', 'trans_indiff_price', 'delivered_indiff_price', 'trans_price', 'unit_cost', 'cost', 'trans_cost', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'discount', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
 
     const s1 = [], s2 = [], s3 = [];
     allKeys.forEach(k => {
@@ -12087,7 +12192,11 @@
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="${esc(sg.targetKey)}" data-rid="${esc(r.id || r.name || r.ticket_no)}">
                     ${sg.cols.map((c, ci) => {
-                      const v = r[c];
+                      let v = r[c];
+                      if (sg.targetKey === 'price_rules') {
+                        if (c === 'indiff_price' && v == null) v = ruleAnyIndiffPrice(r);
+                        if (c === 'unit_price' && isMatIndiffRule(r)) v = null;
+                      }
                       const isMoney = /price|cost|amount|total|vat|limit|salary|daily_usd|rate_usd|principal|discount/.test(c) && !/rate$/.test(c);
                       const isNum = !isMoney && /qty|litres|capacity|hours|days|odometer|percentage/.test(c);
                       let txt = v == null || v === '' ? '—' : String(v);
@@ -12162,7 +12271,7 @@
       : null;
     const eqWindows = (targetEqRow && Array.isArray(targetEqRow.adj_windows)) ? targetEqRow.adj_windows : [];
     const modFieldsList = key === 'price_rules'
-      ? ['unit_price', 'trans_unit_price', 'truck_size', 'truck', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'start_date', 'end_date', 'notes']
+      ? ['unit_price', 'indiff_price', 'trans_unit_price', 'truck_size', 'truck', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'start_date', 'end_date', 'notes']
       : (isEquipInspect
           ? ['effective_from', 'capacity', 'supplier', 'default_driver', 'plate_no', 'notes']
           : ['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6));
@@ -12173,6 +12282,7 @@
       default_driver: 'Default Driver',
       plate_no: 'License Plate No.',
       unit_price: 'Material Unit Price ($)',
+      indiff_price: 'Indifference Price ($ · Flat / Load)',
       trans_unit_price: 'Transport Unit Price ($)',
       truck_size: 'Client / Site Truck Size (m³)',
       truck: key === 'price_rules' ? 'Target Truck Plate (Optional)' : 'Truck',
@@ -12215,7 +12325,7 @@
         </div>
         <div class="form-grid-3" style="margin-top:8px">
           ${modFieldsList.map(f => {
-            const isNumField = ['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2'].includes(f);
+            const isNumField = ['qty', 'unit_price', 'indiff_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2'].includes(f);
             const isDateField = f === 'date' || f === 'start_date' || f === 'end_date' || f === 'effective_from';
             const curV = f === 'effective_from' ? todayISO() : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : ''));
             const lbl = modFieldLabels[f] || f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());

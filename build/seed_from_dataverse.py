@@ -923,21 +923,40 @@ def fetch_dataverse_records():
     mfg_sup_names = set()
     for pr in pr_raw:
         bu = ID_TO_BU.get((pr.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        u_fmt = fmt_val(pr, "_bhf_uom_value", "") or fmt_val(pr, "bhf_unit", "") or "m³"
+        rt_lbl = fmt_val(pr, "bhf_ruletype", "")
+        rate_per_lbl = fmt_val(pr, "bhf_unit", "")
+        u_fmt = fmt_val(pr, "_bhf_uom_value", "") or rate_per_lbl or "m³"
         cname = fmt_val(pr, "_bhf_customer_value", "")
         sname = fmt_val(pr, "_bhf_supplier_value", "")
         if cname:
             mfg_cust_names.add(cname)
         if sname:
             mfg_sup_names.add(sname)
+        raw_price = pr.get("bhf_price")
+        raw_indiff = pr.get("bhf_indifferentprice")
+        raw_tprice = pr.get("bhf_transprice")
+        raw_tindiff = pr.get("bhf_transindifferentprice")
+        notes_str = pr.get("bhf_notes") or ""
+        is_mat_indiff = (raw_indiff not in (None, "", 0)) and (
+            raw_price in (None, "", 0)
+            or rt_lbl in ("Transport Price (Site)", "Purchase Price (Site)")
+            or rate_per_lbl == "Truck"
+            or "only an Indifferent Price" in notes_str
+        )
+        is_trans_indiff = raw_tindiff not in (None, "", 0)
+        eff_price = None if is_mat_indiff else raw_price
+        eff_unit_price = 0.0 if is_mat_indiff else float(raw_price or 0)
+        eff_tprice = None if (is_trans_indiff and ("only an Indifferent Price" in notes_str or raw_tprice == raw_tindiff)) else raw_tprice
+        eff_tunit_price = 0.0 if (is_trans_indiff and ("only an Indifferent Price" in notes_str or raw_tprice == raw_tindiff)) else float(raw_tprice or 0)
         price_rules.append({
             "id": pr["bhf_priceruleid"],
             "name": pr.get("bhf_name") or "",
             "company": bu,
             "rule_type_code": pr.get("bhf_ruletype"),
-            "rule_type": fmt_val(pr, "bhf_ruletype", ""),
+            "rule_type": rt_lbl,
             "by_product": bool(pr.get("bhf_byproduct")),
             "rate_per_code": pr.get("bhf_unit"),
+            "rate_per": rate_per_lbl or ("Truck" if (rt_lbl == "Transport Price (Site)" and is_mat_indiff) else ""),
             "customer_id": pr.get("_bhf_customer_value") or "",
             "customer": cname,
             "supplier_id": pr.get("_bhf_supplier_value") or "",
@@ -948,10 +967,10 @@ def fetch_dataverse_records():
             "site": fmt_val(pr, "_bhf_site_value", ""),
             "uom_id": pr.get("_bhf_uom_value") or "",
             "unit": u_fmt,
-            "unit_price": float(pr.get("bhf_price") or pr.get("bhf_indifferentprice") or 0),
-            "price": pr.get("bhf_price"),
-            "trans_unit_price": float(pr.get("bhf_transprice") or 0),
-            "trans_price": pr.get("bhf_transprice"),
+            "unit_price": eff_unit_price,
+            "price": eff_price,
+            "trans_unit_price": eff_tunit_price,
+            "trans_price": eff_tprice,
             "unit_price_total": pr.get("bhf_unitpricetotal"),
             "qty1": pr.get("bhf_quantity1"),
             "adj1": pr.get("bhf_adjustment1"),
@@ -968,7 +987,7 @@ def fetch_dataverse_records():
             "delivered_indiff_price": pr.get("bhf_deliveredindifferentprice"),
             "start_date": str(pr.get("bhf_startdate") or "")[:10],
             "end_date": str(pr.get("bhf_enddate") or "")[:10],
-            "notes": pr.get("bhf_notes") or "",
+            "notes": notes_str,
         })
     print(f"  Price Rules: {len(price_rules)}", flush=True)
 
@@ -1945,6 +1964,8 @@ def build_sqlite_and_postgres(snapshot):
         unit TEXT,
         unit_price REAL DEFAULT 0,
         trans_unit_price REAL DEFAULT 0,
+        indiff_price REAL,
+        trans_indiff_price REAL,
         start_date TEXT,
         end_date TEXT
     );
@@ -2115,8 +2136,8 @@ def build_sqlite_and_postgres(snapshot):
         cur.execute("INSERT OR IGNORE INTO drivers (id, name, phone, truck_owner) VALUES (?,?,?,?)",
                     (d["id"], d["name"], d["phone"], d["truck_owner"]))
     for pr in rec["price_rules"]:
-        cur.execute("INSERT OR IGNORE INTO price_rules (id, name, company, rule_type, customer, supplier, product, site, unit, unit_price, trans_unit_price, start_date, end_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (pr["id"], pr["name"], pr["company"], pr["rule_type"], pr["customer"], pr["supplier"], pr["product"], pr["site"], pr["unit"], pr["unit_price"], pr["trans_unit_price"], pr["start_date"], pr["end_date"]))
+        cur.execute("INSERT OR IGNORE INTO price_rules (id, name, company, rule_type, customer, supplier, product, site, unit, unit_price, trans_unit_price, indiff_price, trans_indiff_price, start_date, end_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (pr["id"], pr["name"], pr["company"], pr["rule_type"], pr["customer"], pr["supplier"], pr["product"], pr["site"], pr["unit"], pr["unit_price"], pr["trans_unit_price"], pr.get("indiff_price"), pr.get("trans_indiff_price"), pr["start_date"], pr["end_date"]))
     for t in rec["sales_tickets"]:
         cur.execute("INSERT OR IGNORE INTO sales_tickets (id, name, ticket_no, date, rep_date, company, sale_type, transport_by, customer, product, site, truck_owner, truck, driver, uom, qty, unit_price, price, trans_unit_price, trans_price, discount, total, vat, total_ttc, method, vat_invoice, time, overtime) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (t["id"], t["name"], t["ticket_no"], t["date"], t["rep_date"], t["company"], t["sale_type"], t["transport_by"], t["customer"], t["product"], t["site"], t["truck_owner"], t["truck"], t["driver"], t["uom"], t["qty"], t["unit_price"], t["price"], t["trans_unit_price"], t["trans_price"], t["discount"], t["total"], t["vat"], t["total_ttc"], t["method"], t["vat_invoice"], t["time"], 1 if t["overtime"] else 0))
