@@ -8606,11 +8606,11 @@
     const wrap = $('wrap_dupok');
     if (wrap) { wrap.hidden = true; const cb = $('f_dupok'); if (cb) cb.checked = false; }
     if (hit && hit.status === 'block') {
-      const party = hit.row.customer || hit.row.site_owner || hit.row.site || hit.row.equipment || '';
+      const party = hit.row.customer || hit.row.site || hit.row.site_owner || hit.row.equipment || '';
       const whenLbl = hit.ageDays === 0 ? 'same day' : (hit.diffDays === 1 ? 'day before' : '1 day apart');
       setHint('hint_ticket', `Not accepted — already used on ${hit.label} ${hit.row.ticket_no} dated ${hit.dateStr}${party ? ' · ' + party : ''} (${whenLbl})`, 'crit');
     } else if (hit && hit.status === 'warn') {
-      const party = hit.row.customer || hit.row.site_owner || hit.row.site || hit.row.equipment || '';
+      const party = hit.row.customer || hit.row.site || hit.row.site_owner || hit.row.equipment || '';
       setHint('hint_ticket', `Already used on ${hit.label} ${hit.row.ticket_no} dated ${hit.dateStr}${party ? ' · ' + party : ''} (${hit.ageDays} days ago — accepted)`, 'warn');
     } else {
       setHint('hint_ticket', '', '');
