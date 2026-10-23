@@ -151,8 +151,31 @@
     return (ctx && ctx.SEED && ctx.SEED.records) ? ctx.SEED.records : (window.MFG_SEED && window.MFG_SEED.records) || {};
   }
 
-  function uniqSorted(arr) {
-    return Array.from(new Set((arr || []).map(x => String(x || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  function uniqSorted(arr, freqMap) {
+    const seen = new Set();
+    const localCounts = new Map();
+    const out = [];
+    for (const x of (arr || [])) {
+      const s = String(x || '').trim();
+      const k = norm(s);
+      if (!k) continue;
+      localCounts.set(k, (localCounts.get(k) || 0) + 1);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(s);
+      }
+    }
+    const fMap = freqMap || (typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ().any : null);
+    return out.sort((a, b) => {
+      const ka = norm(a), kb = norm(b);
+      const fa = fMap ? (fMap.get(ka) || 0) : 0;
+      const fb = fMap ? (fMap.get(kb) || 0) : 0;
+      if (fb !== fa) return fb - fa;
+      const la = localCounts.get(ka) || 0;
+      const lb = localCounts.get(kb) || 0;
+      if (lb !== la) return lb - la;
+      return a.localeCompare(b);
+    });
   }
 
   // ==================== EMBEDDED EXECUTIVE COCKPIT (bhf_mfgCockpit.htm m283) ====================
@@ -438,8 +461,11 @@
       hidden: true,
       afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-reset-btn" id="resetRepDateBtn">× Same as Transaction Date</button><span class="hint" id="hint_repdate"></span></div>`
     });
-    const uoms = uniqSorted((rec.uoms || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
-    const prodNames = uniqSorted((rec.products || []).map(p => p.name));
+    const fIdx = (helpers && typeof helpers.getFreqIndex === 'function')
+      ? helpers.getFreqIndex()
+      : (typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ() : null);
+    const uoms = uniqSorted((rec.uoms || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']), fIdx && fIdx.uom);
+    const prodNames = uniqSorted((rec.products || []).map(p => p.name), fIdx && fIdx.product);
     const prodByName = {};
     (rec.products || []).forEach(p => { if (p && p.name && !prodByName[p.name]) prodByName[p.name] = p; });
     const prodMetaItems = prodNames.map(n => {
@@ -453,10 +479,10 @@
     const siteNames = helpers.siteNames();
     const equipNames = helpers.equipmentNames();
     const driverNames = helpers.driverNames();
-    const staffNames = uniqSorted((rec.employments || []).map(e => e.staff || e.name).concat((rec.salaries || []).map(s => s.staff)));
-    const roleNames = uniqSorted(['Driver', 'Plant Operator', 'Crusher Operator', 'Loader Operator', 'Mechanic', 'Electrician', 'Weighbridge Clerk', 'Site Supervisor', 'Guard', 'General Labour'].concat((rec.employments || []).map(e => e.role)).concat((rec.freelance_sheets || []).map(f => f.role)));
-    const counterpartyNames = uniqSorted(['Bdeir Holding', 'WTC', 'BBConstruction', 'Lions Transport', 'Cash Till 5300', 'Bank Audi', 'Blom Bank'].concat((rec.loans || []).map(l => l.lender || l.counterparty || l.name)).concat((rec.external_movements || []).map(x => x.counterparty || x.name)).concat(supNames));
-    const regNames = uniqSorted((rec.regions || []).map(r => r.name).concat(['Beirut', 'Mount Lebanon', 'South', 'Bekaa', 'North', 'Nabatieh']));
+    const staffNames = uniqSorted((rec.employments || []).map(e => e.staff || e.name).concat((rec.salaries || []).map(s => s.staff)), fIdx && fIdx.staff);
+    const roleNames = uniqSorted(['Driver', 'Plant Operator', 'Crusher Operator', 'Loader Operator', 'Mechanic', 'Electrician', 'Weighbridge Clerk', 'Site Supervisor', 'Guard', 'General Labour'].concat((rec.employments || []).map(e => e.role)).concat((rec.freelance_sheets || []).map(f => f.role)), fIdx && fIdx.role);
+    const counterpartyNames = uniqSorted(['Bdeir Holding', 'WTC', 'BBConstruction', 'Lions Transport', 'Cash Till 5300', 'Bank Audi', 'Blom Bank'].concat((rec.loans || []).map(l => l.lender || l.counterparty || l.name)).concat((rec.external_movements || []).map(x => x.counterparty || x.name)).concat(supNames), fIdx && fIdx.counterparty);
+    const regNames = uniqSorted((rec.regions || []).map(r => r.name).concat(['Beirut', 'Mount Lebanon', 'South', 'Bekaa', 'North', 'Nabatieh']), fIdx && fIdx.region);
     const adminHeaderHtml = `<div id="paAdminUnlockBox" hidden></div>`;
 
     if (fType === 'pricerule') {

@@ -579,7 +579,20 @@ try {
     rawD.dispatchEvent(new Event('change', { bubbles: true }));
     const rawDayBeforeHint = (document.getElementById('hint_ticket') || {}).textContent || '';
     const rawDayBeforeCls = (document.getElementById('hint_ticket') || {}).className || '';
+    rawD.value = '2026-10-23';
+    rawD.dispatchEvent(new Event('change', { bubbles: true }));
+    rawT.value = '19119';
+    rawT.dispatchEvent(new Event('input', { bubbles: true }));
+    const raw19119Hint = (document.getElementById('hint_ticket') || {}).textContent || '';
+    const raw19119Cls = (document.getElementById('hint_ticket') || {}).className || '';
     const rawDupWrapHidden = document.getElementById('wrap_dupok').hidden === true;
+    const rawProdEl = document.getElementById('f_product');
+    if (rawProdEl) { rawProdEl.value = ''; rawProdEl.click(); }
+    const rawProdMenu = rawProdEl ? rawProdEl.closest('.pa-suggest-wrap')?.querySelector('.pa-suggest-menu') : null;
+    const rawTopProd = rawProdMenu?.querySelector('.pa-suggest-item .pa-suggest-label')?.textContent?.trim() || '';
+    if (rawProdMenu) rawProdMenu.hidden = true;
+    const rawTopSite = (document.querySelector('#dl_sites option') || {}).value || '';
+    const rawTopOwner = (document.querySelector('#dl_suppliers option') || {}).value || '';
 
     return {
       salesBlankOnOpen,
@@ -615,7 +628,12 @@ try {
       rawWithinMonthCls,
       rawDayBeforeHint,
       rawDayBeforeCls,
-      rawDupWrapHidden
+      raw19119Hint,
+      raw19119Cls,
+      rawDupWrapHidden,
+      rawTopProd,
+      rawTopSite,
+      rawTopOwner
     };
   })()`);
   ticketAndSuggestProbe.salesBlankOnOpen && ticketAndSuggestProbe.rawBlankOnOpen && ticketAndSuggestProbe.salesBlankAfterCoChange && ticketAndSuggestProbe.salesHintOnOpen === ''
@@ -627,11 +645,12 @@ try {
   ticketAndSuggestProbe.sales19950Hint === '' && ticketAndSuggestProbe.sales19950DupWrapHidden &&
   ticketAndSuggestProbe.rawOverMonthHint === '' && !/\b(warn|crit)\b/.test(ticketAndSuggestProbe.rawOverMonthCls) &&
   /days ago — accepted/i.test(ticketAndSuggestProbe.rawWithinMonthHint) && /\bwarn\b/.test(ticketAndSuggestProbe.rawWithinMonthCls) &&
-  /Not accepted/i.test(ticketAndSuggestProbe.rawDayBeforeHint) && /\bcrit\b/.test(ticketAndSuggestProbe.rawDayBeforeCls) && ticketAndSuggestProbe.rawDupWrapHidden
-    ? pass('entry desk · 3-band duplicate ticket guard (<=1d blocked red · 2–30d yellow warning · >30d no warning)', `${ticketAndSuggestProbe.salesSameDayHint} | ${ticketAndSuggestProbe.salesWithinMonthHint}`)
+  /Not accepted/i.test(ticketAndSuggestProbe.rawDayBeforeHint) && /\bcrit\b/.test(ticketAndSuggestProbe.rawDayBeforeCls) &&
+  /dated 2026-10-20.*3 days ago — accepted/i.test(ticketAndSuggestProbe.raw19119Hint) && /\bwarn\b/.test(ticketAndSuggestProbe.raw19119Cls) && ticketAndSuggestProbe.rawDupWrapHidden
+    ? pass('entry desk · 3-band duplicate ticket guard (<=1d blocked red · 2–30d yellow warning · >30d no warning · Raw #19119 rep_date 3d warn)', `${ticketAndSuggestProbe.salesSameDayHint} | ${ticketAndSuggestProbe.raw19119Hint}`)
     : fail('entry desk 3-band duplicate ticket guard', JSON.stringify(ticketAndSuggestProbe));
-  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^TB/i.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
-    ? pass('entry desk · Rev 10 unified combobox & select popover (Product/Grade with UoM·Ton badges, 0 native popups, 0 scrollbars)', `grade="${ticketAndSuggestProbe.pickedProd}" (${ticketAndSuggestProbe.prodMetaBadges} badges) · truck=${ticketAndSuggestProbe.pickedTruck}`)
+  ticketAndSuggestProbe.nativeListCount === 0 && ticketAndSuggestProbe.unwiredSelectCount === 0 && ticketAndSuggestProbe.suggestWrapCount >= 10 && ticketAndSuggestProbe.prodIsInputCombobox && ticketAndSuggestProbe.prodMenuOpen && ticketAndSuggestProbe.prodMetaBadges > 0 && ticketAndSuggestProbe.pickedProd === 'Mghasal' && ticketAndSuggestProbe.rawTopProd === 'Ramel Mrml' && ticketAndSuggestProbe.rawTopSite === 'spinneys Mar Elias' && ticketAndSuggestProbe.rawTopOwner === 'Dabousi' && ticketAndSuggestProbe.prodClosedAfterPick && ticketAndSuggestProbe.prodReopensWhenFilled && ticketAndSuggestProbe.menuOpen && ticketAndSuggestProbe.menuItems > 0 && ticketAndSuggestProbe.menuItems <= 7 && ticketAndSuggestProbe.menuOverflowY === 'hidden' && /^TB/i.test(ticketAndSuggestProbe.pickedTruck) && ticketAndSuggestProbe.menuClosedAfterPick
+    ? pass('entry desk · Rev 10 frequency-ranked combobox & select popover (Raw #1="Ramel Mrml", Sales #1="Mghasal", 0 native popups, 0 scrollbars)', `raw#1="${ticketAndSuggestProbe.rawTopProd}" (site="${ticketAndSuggestProbe.rawTopSite}", owner="${ticketAndSuggestProbe.rawTopOwner}") · sales#1="${ticketAndSuggestProbe.pickedProd}" · truck=${ticketAndSuggestProbe.pickedTruck}`)
     : fail('entry desk custom suggestion popover', JSON.stringify(ticketAndSuggestProbe));
 
   // 6c. Intuitive Ticket Entry v7.0: Ordering, Conditional Column Hiding, Reporting Date & Policy Lock + Admin Unlock Process

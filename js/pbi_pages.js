@@ -539,7 +539,32 @@
   }
   function norm(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
   function round2(n) { return Math.round(Number(n || 0) * 100) / 100; }
-  function uniq(arr) { return Array.from(new Set((arr || []).map(x => String(x == null ? '' : x).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)); }
+  function uniq(arr, freqMap) {
+    const seen = new Set();
+    const localCounts = new Map();
+    const out = [];
+    for (const x of (arr || [])) {
+      const s = String(x == null ? '' : x).trim();
+      const k = norm(s);
+      if (!k) continue;
+      localCounts.set(k, (localCounts.get(k) || 0) + 1);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(s);
+      }
+    }
+    const fMap = freqMap || (typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ().any : null);
+    return out.sort((a, b) => {
+      const ka = norm(a), kb = norm(b);
+      const fa = fMap ? (fMap.get(ka) || 0) : 0;
+      const fb = fMap ? (fMap.get(kb) || 0) : 0;
+      if (fb !== fa) return fb - fa;
+      const la = localCounts.get(ka) || 0;
+      const lb = localCounts.get(kb) || 0;
+      if (lb !== la) return lb - la;
+      return a.localeCompare(b);
+    });
+  }
 
   function fmtUSD(v, decimals = 0) {
     const n = Number(v || 0);
@@ -1252,19 +1277,22 @@
     const coDriverSet = new Set((rec.company_drivers || []).map(d => norm(d.driver || d.name)));
     (rec.drivers || []).forEach(d => { if (d.is_company_driver) coDriverSet.add(norm(d.name)); });
 
-    // Full option pools for dynamic per-page slicers (all customers, suppliers, products, sites, equipment, drivers, staff)
+    // Full option pools for dynamic per-page slicers (all customers, suppliers, products, sites, equipment, drivers, staff), sorted by usage frequency descending
+    const fIdx = typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ() : null;
+    const isRawSlicerPage = activePageId === 'p08_stock';
+    const isSalesSlicerPage = activePageId === 'p04_sales';
     const slicerPools = {
-      prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name))),
-      custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name))),
-      suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name))),
-      siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name))),
-      equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name))),
-      driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver))),
-      staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff))),
-      catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category))),
-      subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name)),
-      regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region))),
-      cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty'))))
+      prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name)), fIdx ? (isRawSlicerPage ? fIdx.productRaw : (isSalesSlicerPage ? fIdx.productSales : fIdx.product)) : null),
+      custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name)), fIdx && fIdx.customer),
+      suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteOwner : fIdx.supplier) : null),
+      siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteRaw : (isSalesSlicerPage ? fIdx.siteSales : fIdx.site)) : null),
+      equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name)), fIdx && fIdx.truck),
+      driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver)), fIdx && fIdx.driver),
+      staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff)), fIdx && fIdx.staff),
+      catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category)), fIdx && fIdx.category),
+      subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name), fIdx && fIdx.subcategory),
+      regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region)), fIdx && fIdx.region),
+      cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty'))), fIdx && fIdx.counterparty)
     };
 
     const pageSlicerDefs = buildPageSlicerDefs(activePageId, slicerPools);

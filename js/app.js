@@ -3621,9 +3621,9 @@
     SEED.records.sales_tickets.forEach(r => out.push(r.customer));
     SEED.records.receipts.forEach(r => out.push(r.customer));
     SEED.records.price_rules.forEach(r => out.push(r.customer));
-    return uniqSorted(out);
+    return uniqSorted(out, getFreqIndex().customer);
   }
-  function supplierNames() {
+  function supplierNames(side) {
     const out = [];
     (SEED.records.suppliers || []).forEach(s => out.push(s.name));
     Object.values(SEED.models).forEach(m => (m.suppliers || []).forEach(s => out.push(s.Supplier)));
@@ -3631,7 +3631,9 @@
     SEED.records.settlements.forEach(r => out.push(r.supplier));
     SEED.records.expenses.forEach(r => out.push(r.supplier));
     SEED.records.price_rules.forEach(r => out.push(r.supplier));
-    return uniqSorted(out);
+    const fIdx = getFreqIndex();
+    const fMap = side === 'raw_owner' ? fIdx.siteOwner : (side === 'expense' ? fIdx.supplierExpense : fIdx.supplier);
+    return uniqSorted(out, fMap);
   }
   function truckOwnerNames() {
     const out = [];
@@ -3642,7 +3644,8 @@
     (SEED.records.equipment || []).forEach(e => { if (e.supplier) out.push(e.supplier); });
     (SEED.records.drivers || []).forEach(d => { if (d.truck_owner) out.push(d.truck_owner); });
     SEED.records.raw_purchases.forEach(r => { if (r.truck_owner) out.push(r.truck_owner); });
-    return uniqSorted(out);
+    SEED.records.sales_tickets.forEach(r => { if (r.truck_owner) out.push(r.truck_owner); });
+    return uniqSorted(out, getFreqIndex().truckOwner);
   }
   function trucksForOwner(ownerName, company, isCompanyFleet) {
     if (isCompanyFleet) {
@@ -3658,7 +3661,7 @@
          (company && norm(e.supplier) === norm(company))) &&
         isTruckUnit(e)
       ).map(e => e.name);
-      return uniqSorted(coUnits.concat(ownUnits));
+      return uniqSorted(coUnits.concat(ownUnits), getFreqIndex().truck);
     }
     const o = normOwnerName(ownerName);
     if (!o) return [];
@@ -3667,7 +3670,7 @@
     const sup = (SEED.records.suppliers || []).find(s => normOwnerName(s.name) === o);
     const fromSup = (sup && Array.isArray(sup.trucks)) ? sup.trucks.filter(isTruckUnit) : [];
     const fromTx = (idx.txTrucksByOwner.get(o) || []).filter(isTruckUnit);
-    return uniqSorted(fromEq.concat(fromSup, fromTx));
+    return uniqSorted(fromEq.concat(fromSup, fromTx), getFreqIndex().truck);
   }
   function driversForOwner(ownerName, company, isCompanyFleet, activeTruckRow) {
     let list = [];
@@ -3687,7 +3690,7 @@
         isTruckUnit(e)
       ).map(e => e.default_driver).filter(Boolean);
       const defDrv = (activeTruckRow && activeTruckRow.default_driver && isOwnUnit(activeTruckRow, company)) ? [activeTruckRow.default_driver] : [];
-      list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv));
+      list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv), getFreqIndex().driver);
     } else {
       const o = normOwnerName(ownerName);
       if (!o) {
@@ -3706,7 +3709,7 @@
       const defDrv = (activeTruckRow && activeTruckRow.default_driver && (!activeTruckRow.supplier || normOwnerName(activeTruckRow.supplier) === o))
         ? [activeTruckRow.default_driver]
         : [];
-      list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromTx, selfDrv, defDrv));
+      list = uniqSorted(fromDrv.concat(fromSup, fromEq, fromCoEq, fromTx, selfDrv, defDrv), getFreqIndex().driver);
     }
     // Always place the selected Truck's Default Driver first in the filtered list so it is chosen first
     if (activeTruckRow && activeTruckRow.default_driver && (!isCompanyFleet || isOwnUnit(activeTruckRow, company))) {
@@ -3720,8 +3723,12 @@
     const n = norm(name);
     return (SEED.records.sites || []).find(s => norm(s.name) === n) || null;
   }
-  function siteNames() { return uniqSorted(SEED.records.sites.map(s => s.name).concat(SEED.records.sales_tickets.map(r => r.site), SEED.records.raw_purchases.map(r => r.site))); }
-  function equipmentNames() { return uniqSorted(SEED.records.equipment.map(e => e.name).concat(SEED.records.fuel_intakes.map(f => f.equipment), SEED.records.sales_tickets.map(r => r.truck))); }
+  function siteNames(side) {
+    const fIdx = getFreqIndex();
+    const fMap = side === 'raw' ? fIdx.siteRaw : (side === 'sales' ? fIdx.siteSales : fIdx.site);
+    return uniqSorted(SEED.records.sites.map(s => s.name).concat(SEED.records.sales_tickets.map(r => r.site), SEED.records.raw_purchases.map(r => r.site)), fMap);
+  }
+  function equipmentNames() { return uniqSorted(SEED.records.equipment.map(e => e.name).concat(SEED.records.fuel_intakes.map(f => f.equipment), SEED.records.sales_tickets.map(r => r.truck), SEED.records.raw_purchases.map(r => r.truck)), getFreqIndex().truck); }
   function truckNames() {
     const idx = getFleetIndex();
     if (idx.truckNamesList) return idx.truckNamesList;
@@ -3735,7 +3742,7 @@
     (SEED.records.raw_purchases || []).forEach(r => {
       if (r && r.truck && r.transport_by !== 'Company fleet') raw.push(r.truck);
     });
-    idx.truckNamesList = uniqSorted(raw).filter(nm => {
+    idx.truckNamesList = uniqSorted(raw, getFreqIndex().truck).filter(nm => {
       const eq = idx.eqByName.get(norm(nm));
       if (eq) {
         if (eq.voided || eq.status === 'Sold / retired') return false;
@@ -3746,8 +3753,8 @@
     });
     return idx.truckNamesList;
   }
-  function driverNames() { return uniqSorted(SEED.records.drivers.map(d => d.name).concat(SEED.records.sales_tickets.map(r => r.driver), SEED.records.fuel_intakes.map(f => f.driver))); }
-  function staffNames() { return uniqSorted(SEED.records.salaries.map(s => s.staff).concat((SEED.records.employments || []).map(e => e.staff || e.name))); }
+  function driverNames() { return uniqSorted(SEED.records.drivers.map(d => d.name).concat(SEED.records.sales_tickets.map(r => r.driver), SEED.records.raw_purchases.map(r => r.driver), SEED.records.fuel_intakes.map(f => f.driver)), getFreqIndex().driver); }
+  function staffNames() { return uniqSorted(SEED.records.salaries.map(s => s.staff).concat((SEED.records.employments || []).map(e => e.staff || e.name), (SEED.records.attendance || []).map(a => a.staff)), getFreqIndex().staff); }
   function expenseCategories() {
     const map = new Map();
     (SEED.records.expense_categories || []).forEach(c => {
@@ -3764,19 +3771,38 @@
       if (x.subcategory) map.get(x.category).add(x.subcategory);
     });
     ['Fuel', 'Repairs and Maintenance', 'Spare Parts', 'Oils', 'Tools', 'Office Supplies', 'Utilities', 'Licences and Fees', 'Transportation', 'Tips', 'Minor Equipment', 'Other Costs'].forEach(c => { if (!map.has(c)) map.set(c, new Set()); });
-    return Array.from(map.entries()).map(([c, subs]) => ({ category: c, subs: Array.from(subs).sort() })).sort((a, b) => a.category.localeCompare(b.category));
+    const fIdx = getFreqIndex();
+    const catFreq = fIdx.category;
+    const subFreq = fIdx.subcategory;
+    return Array.from(map.entries())
+      .map(([c, subs]) => ({
+        category: c,
+        subs: Array.from(subs).sort((a, b) => (subFreq.get(norm(b)) || 0) - (subFreq.get(norm(a)) || 0) || a.localeCompare(b))
+      }))
+      .sort((a, b) => (catFreq.get(norm(b.category)) || 0) - (catFreq.get(norm(a.category)) || 0) || a.category.localeCompare(b.category));
   }
-  function productList(materialOnly) {
-    // Grades sold most → first (model products carry revenue), then every other registered product.
+  function productList(materialOnly, side) {
     // Tickets carry Material / ticket_product products only (m37 / m54 / m110) — oils and spare parts never go on a weighbridge ticket.
+    // Ordered by actual ticket usage frequency descending (raw_purchases on 'raw', sales_tickets on 'sales', combined otherwise).
     const pool = materialOnly ? SEED.records.products.filter(p => p.ticket_product !== false && (!p.type || /material/i.test(p.type))) : SEED.records.products;
-    const top = ((SEED.models['manufacturing-group'] || {}).products || []).map(p => p.Product);
-    const byName = new Map(pool.map(p => [norm(p.name), p]));
-    const out = [];
+    const fIdx = getFreqIndex();
+    const primaryMap = side === 'raw' ? fIdx.productRaw : (side === 'sales' ? fIdx.productSales : fIdx.product);
+    const fallbackMap = fIdx.product;
     const seen = new Set();
-    top.forEach(n => { const p = byName.get(norm(n)); if (p && !seen.has(norm(n))) { out.push(p); seen.add(norm(n)); } });
-    pool.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).forEach(p => { if (!seen.has(norm(p.name))) { out.push(p); seen.add(norm(p.name)); } });
-    return out;
+    const out = [];
+    pool.forEach(p => {
+      if (!p || !p.name) return;
+      const k = norm(p.name);
+      if (k && !seen.has(k)) { seen.add(k); out.push(p); }
+    });
+    return out.sort((a, b) => {
+      const ka = norm(a.name), kb = norm(b.name);
+      const ca = primaryMap.get(ka) || 0, cb = primaryMap.get(kb) || 0;
+      if (cb !== ca) return cb - ca;
+      const fa = fallbackMap.get(ka) || 0, fb = fallbackMap.get(kb) || 0;
+      if (fb !== fa) return fb - fa;
+      return String(a.name).localeCompare(String(b.name));
+    });
   }
   let _CUST_DECL_QTY_SET = null;
   let _CUST_EXT_INV_SET = null;
@@ -4159,13 +4185,20 @@
       fuel_intakes: ['fuel_intakes', 'Fuel Intake']
     };
     const [k, label] = poolMap[key] || poolMap.sales;
-    const rows = (SEED.records && SEED.records[k]) || [];
-    const targetDate = String(refDate || val('f_date') || todayISO()).slice(0, 10);
+    const seedRows = (SEED.records && SEED.records[k]) || [];
+    const customRows = (STATE.customRecords && STATE.customRecords[k]) || [];
+    const rows = customRows.length ? seedRows.concat(customRows) : seedRows;
+    const targetDate = String(refDate || (FORM_UI.repDateManual && val('f_repdate')) || val('f_date') || todayISO()).slice(0, 10);
     let best = null;
+    const seenIds = new Set();
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r || r.voided || r.company !== company || normTicketNo(r.ticket_no) !== t) continue;
-      const rDate = String(r.date || '').slice(0, 10);
+      if (r.id) {
+        if (seenIds.has(r.id)) continue;
+        seenIds.add(r.id);
+      }
+      const rDate = String(r.rep_date || r.date || '').slice(0, 10);
       const diff = rDate && targetDate ? daysBetween(rDate, targetDate) : 0;
       const ageDays = Math.abs(diff);
       if (!best || ageDays < best.ageDays || (ageDays === best.ageDays && rDate > best.dateStr)) {
@@ -8034,16 +8067,16 @@
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
     const adminHeaderHtml = `<div id="paAdminUnlockBox" hidden></div>`;
-    const uoms = uniqSorted(((SEED.records && SEED.records.uoms) || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']));
+    const uoms = uniqSorted(((SEED.records && SEED.records.uoms) || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre']), getFreqIndex().uom);
 
     if (window.MFG_FORMS && !['sales', 'raw', 'receipt', 'fuel', 'expense', 'settlement'].includes(fType)) {
       return cockpitHtml + window.MFG_FORMS.renderExtendedFormBody(fType, { SEED, STATE }, {
-        allowedCompanyNames, defaultEntryCompany, customerNames, supplierNames, siteNames, equipmentNames, driverNames
+        allowedCompanyNames, defaultEntryCompany, customerNames, supplierNames, siteNames, equipmentNames, driverNames, getFreqIndex, uniqSorted
       });
     }
 
     if (fType === 'sales') {
-      const prods = productList(true);
+      const prods = productList(true, 'sales');
       const prodMetaItems = prods.map(p => [p.name, `${p.uom || 'm³'}${Number(p.ton_factor) && Number(p.ton_factor) !== 1 ? ' · ×' + p.ton_factor + ' t' : ''}`]);
       return cockpitHtml + `
         ${adminHeaderHtml}
@@ -8065,7 +8098,7 @@
           ${fld('Ticket / Invoice No. *', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Enter pad ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Product / Aggregate Grade *', inp('f_product', 'text', '', 'list="dl_sales_prods" placeholder="Select or type grade..."') + dlMeta('dl_sales_prods', prodMetaItems), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
           ${fld('Customer *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', customerNames()), { id: 'wrap_f_customer', hintId: 'hint_customer', hint: '' })}
-          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
+          ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames('sales')), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
           ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hidden: true, hintId: 'hint_driver', hint: '' })}
@@ -8100,7 +8133,7 @@
     }
 
     if (fType === 'raw') {
-      const rawProdNames = uniqSorted(SEED.records.raw_purchases.map(r => r.product).concat(SEED.records.products.map(p => p.name)));
+      const rawProdNames = uniqSorted(SEED.records.raw_purchases.map(r => r.product).concat(SEED.records.products.map(p => p.name)), getFreqIndex().productRaw);
       const rawProdMeta = rawProdNames.map(nm => {
         const p = productInfo(nm);
         return [nm, p ? `${p.uom || 'm³'}${Number(p.ton_factor) && Number(p.ton_factor) !== 1 ? ' · ×' + p.ton_factor + ' t' : ''}` : 'm³'];
@@ -8119,8 +8152,8 @@
             ['Third-party truck', 'Third-party truck (Hauler)']
           ], 'Company fleet'), { id: 'wrap_f_transportby' })}
           ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
-          ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames()), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
-          ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
+          ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames('raw')), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
+          ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames('raw_owner')), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
           ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
@@ -8176,7 +8209,7 @@
     }
 
     if (fType === 'fuel') {
-      const fuelLocs = uniqSorted(['Main Plant Tank', 'WTC Quarry Tank', 'BBConstruction Tank', 'Mobile Bowser', 'External Station'].concat((SEED.records.fuel_intakes || []).map(r => r.location)));
+      const fuelLocs = uniqSorted(['Main Plant Tank', 'WTC Quarry Tank', 'BBConstruction Tank', 'Mobile Bowser', 'External Station'].concat((SEED.records.fuel_intakes || []).map(r => r.location)), getFreqIndex().fuelLoc);
       return cockpitHtml + `
         ${adminHeaderHtml}
         <div class="form-grid-3">
@@ -8216,8 +8249,8 @@
           ${repDateField}
           ${fld('Payment Method *', sel('f_method', [['Cash', 'Cash'], ['Credit', 'Credit']], 'Cash'), { id: 'wrap_f_method' })}
           ${fld('Category *', inp('f_category', 'text', '', 'list="dl_categories" placeholder="Select or type category..."') + dlMeta('dl_categories', cats.map(c => [c.category, c.subs && c.subs.length ? `${c.subs.length} subcats` : ''])), { id: 'wrap_f_category' })}
-          ${fld('Subcategory', inp('f_subcategory', 'text', '', 'list="dl_subcats" placeholder="Pick Category first..." readonly') + dl('dl_subcats', uniqSorted(cats.flatMap(c => c.subs))), { id: 'wrap_f_subcategory', lockField: 'f_subcategory', lockReason: 'Locked until Category is selected', hintId: 'hint_subcat', hint: '' })}
-          ${fld('Supplier / Vendor', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames()), { id: 'wrap_f_supplier', hintId: 'hint_supplier', hint: 'Required for Credit' })}
+          ${fld('Subcategory', inp('f_subcategory', 'text', '', 'list="dl_subcats" placeholder="Pick Category first..." readonly') + dl('dl_subcats', uniqSorted(cats.flatMap(c => c.subs), getFreqIndex().subcategory)), { id: 'wrap_f_subcategory', lockField: 'f_subcategory', lockReason: 'Locked until Category is selected', hintId: 'hint_subcat', hint: '' })}
+          ${fld('Supplier / Vendor', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supplierNames('expense')), { id: 'wrap_f_supplier', hintId: 'hint_supplier', hint: 'Required for Credit' })}
           ${fld('Equipment (cost centre)', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck' })}
           ${fld('Quantity', inp('f_qty', 'number', '1', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_qty' })}
           ${fld('Amount ($) *', inp('f_amount', 'number', '', 'step="0.01" min="0.01" inputmode="decimal"'), { id: 'wrap_f_amount', hintId: 'hint_amount', hint: '' })}
@@ -9023,7 +9056,8 @@
     else setHint('hint_disc', '', '');
 
     commonDateChecks(warnings);
-    dupCheck(company, 'sales', date);
+    const salesEffDate = (FORM_UI.repDateManual && val('f_repdate')) ? val('f_repdate') : date;
+    dupCheck(company, 'sales', salesEffDate);
     renderAdminLockBar();
     return { company, saleType, transportBy: isDelivery ? transportBy : (isPickup ? 'Customer truck' : 'Unregistered'), customer, product, site: isDelivery ? site : '', date, repDate: val('f_repdate') || date, prod, uom, cust, vatReg, rule, tier, tierAdj, tierTrAdj, qty, up, tp, disc, tip, mat: matGross, tr: finalTr, net, vat, ttc, method: val('f_method') };
   }
@@ -9033,7 +9067,7 @@
     const transportBy = val('f_transportby') || 'Company fleet';
     const isCoFleet = transportBy === 'Company fleet';
     const site = val('f_site'), product = val('f_product'), date = val('f_date');
-    const effDate = val('f_repdate') || date;
+    const effDate = (FORM_UI.repDateManual && val('f_repdate')) ? val('f_repdate') : date;
 
     const transportByChanged = FORM_UI.lastTransportBy !== '' && FORM_UI.lastTransportBy !== transportBy;
     const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
@@ -9230,7 +9264,7 @@
     setText('calc_qty', fmtNum(qty, 2) + ' ' + uom);
     setText('calc_total', fmtUSD(mat + tr, 2));
     commonDateChecks(warnings);
-    dupCheck(company, 'raw', date);
+    dupCheck(company, 'raw', effDate);
     renderAdminLockBar();
     return { company, transportBy, site, owner, product, date, repDate: val('f_repdate') || date, prod, uom, rule, haulRule, tierAdj, tierTrAdj, qty, up, tp, disc, mat, tr };
   }
@@ -10701,7 +10735,7 @@
     if (f === 'sales') {
       const ticket = val('f_ticketno');
       if (!ticket) addErr('f_ticketno', 'Ticket number is required.');
-      const dup = ticketExists(company, ticket, 'sales', date);
+      const dup = ticketExists(company, ticket, 'sales', repDate || date);
       if (dup && dup.blocked) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       if (!c.product) addErr('f_product', 'Product is required.');
       if (!c.customer) addErr('f_customer', 'Customer is required.');
@@ -10731,7 +10765,7 @@
     } else if (f === 'raw') {
       const ticket = val('f_ticketno');
       if (!ticket) addErr('f_ticketno', 'Ticket number is required.');
-      const dup = ticketExists(company, ticket, 'raw', date);
+      const dup = ticketExists(company, ticket, 'raw', repDate || date);
       if (dup && dup.blocked) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       if (!c.product) addErr('f_product', 'Raw material is required.');
       if (!c.site) addErr('f_site', 'Quarry site is required.');
@@ -16523,7 +16557,7 @@
     // Quick-preset chips for touch operators
     let quickStripHtml = '';
     if (kMode === 'sales') {
-      const topProds = productList(true).slice(0, 6);
+      const topProds = productList(true, 'sales').slice(0, 6);
       const topCusts = customerNames().slice(0, 5);
       quickStripHtml = `
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
@@ -16543,8 +16577,8 @@
         </div>
       `;
     } else if (kMode === 'raw') {
-      const topRawProds = productList(true).slice(0, 5);
-      const topSites = siteNames().slice(0, 5);
+      const topRawProds = productList(true, 'raw').slice(0, 5);
+      const topSites = siteNames('raw').slice(0, 5);
       quickStripHtml = `
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
           <div class="kiosk-quick-group">

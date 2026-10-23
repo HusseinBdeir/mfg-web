@@ -523,7 +523,19 @@
         };
       });
 
-      const uniq = arr => [...new Set(arr.filter(x => x !== null && x !== undefined && String(x).trim() !== '').map(x => String(x).trim()))].sort();
+      const uniq = arr => {
+        const counts = new Map();
+        const out = [];
+        for (const x of (arr || [])) {
+          if (x === null || x === undefined) continue;
+          const s = String(x).trim();
+          if (!s) continue;
+          const k = s.toLowerCase();
+          if (!counts.has(k)) out.push(s);
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+        return out.sort((a, b) => (counts.get(b.toLowerCase()) || 0) - (counts.get(a.toLowerCase()) || 0) || a.localeCompare(b));
+      };
 
       const customers = uniq(salesAll.map(r => r.customer));
       const products = uniq(salesAll.filter(r => !r.is_receipt_row).map(r => r.product));
