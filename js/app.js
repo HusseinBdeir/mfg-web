@@ -2902,12 +2902,12 @@
       { id: 'unlock_formula_totals', fields: ['f_date', 'f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Transaction Date & Calculated Total Locks', rule: 'DATE / TOTAL', sub: 'Override locked Transaction Date or computed Material / Transport / Total USD' }
     ],
     dashboards: [
-      { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Multi-Company & Sentinel Overview', sub: 'P01 Executive Overview, P02 Multi-Company Comparison, P03 Exceptions & Sentinels', badge: '3 PBI Pages' },
-      { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p20_recon'], count: 5, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'P04 Sales, P05 Price Matrix, P06 AR Aging & Statements, P18 Ticket Explorer, P20 Recon', badge: '5 PBI Pages' },
-      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'P07 Suppliers AP, P08 Stock Movement, P09 Fuel & Diesel, P10 Fleet Cost, P11 Drivers', badge: '5 PBI Pages' },
-      { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'P13 VAT 11% Ledger, P14 Cash Flow & Expenses, P19 Audit ChangeLog', badge: '3 PBI Pages' },
-      { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'P12 Monthly Salaries, Daily Attendance, Site Allowances & Contracts', badge: '1 PBI Page' },
-      { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'P15 Treasury & Partner Loans, P16 Audited P&L/TB, P17 JV Profit Split', badge: '3 PBI Pages' }
+      { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Entity Comparison & Sentinels', sub: 'P01 Executive Pulse, P02 Entity Comparison & Action Items (in AI Sentinels)', badge: '3 Dashboards' },
+      { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p20_recon'], count: 5, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'Sales Analytics, Pricing Spreads, AR Aging + Ticket Books & Statement Recon', badge: '5 Dashboards' },
+      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'Payables & Spend, Stock & Margin, Diesel Burn, Fleet Economics + Drivers & OT', badge: '5 Dashboards' },
+      { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'Cash Flow & Till 5300 + VAT 11% (in Customers) & Change Log (in Sentinels)', badge: '3 Dashboards' },
+      { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'Workforce Analytics, Site Allowances & Freelance', badge: '1 Dashboard' },
+      { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'Financial GL & Ratios + Treasury/Loans (in GL) & JV 50/50 Quarries (in Raw)', badge: '3 Dashboards' }
     ],
     statements: [
       { id: 'stmt_digest_ops', codes: ['01', '08', '09', '11', '12'], count: 5, label: 'Executive Digest & Operational Registers', sub: '#01 Daily Operations, #08 Sales Register, #09 Expense Register, #11 Raw Material, #12 Fuel Log', badge: '5 Statements' },
@@ -4783,6 +4783,17 @@
       </div>`;
   }
 
+  function moduleAnalyticsHtml(moduleKey) {
+    if (!window.MFG_PBI || typeof window.MFG_PBI.renderModuleAnalytics !== 'function') return '';
+    return window.MFG_PBI.renderModuleAnalytics(moduleKey, {
+      STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI,
+      filterRecords, buildSentinelItems, exportBtn, nextTicketNo,
+      canEnterForm, canAccessPbiPage, allowedCompanyNames,
+      SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog,
+      getScopedMonthly, setDateFilter, ticketTons, renderDateSegPillHtml
+    });
+  }
+
   function renderSentinels() {
     const items = buildSentinelItems();
     const { fleet, pricing, parity, generated } = sentinelSlice();
@@ -4850,6 +4861,7 @@
           { label: 'Header Net', key: 'header_net', r: true, fmt: usd2 }, { label: 'Header VAT', key: 'header_vat', r: true, fmt: usd2 }
         ], 'snVat')}
       </div>
+      ${moduleAnalyticsHtml('sentinels')}
     `;
   }
 
@@ -5184,6 +5196,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('sales')}
     `;
   }
 
@@ -5372,6 +5385,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('raw')}
     `;
   }
 
@@ -5626,6 +5640,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('fleet')}
     `;
   }
 
@@ -5781,6 +5796,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('pricing')}
     `;
   }
 
@@ -5977,6 +5993,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('customers')}
     `;
   }
 
@@ -6178,6 +6195,7 @@
           </div>
         </div>
       </div>
+      ${moduleAnalyticsHtml('suppliers')}
     `;
   }
 
@@ -6351,6 +6369,7 @@
           </div>
         </div>` : ''}
       </div>
+      ${moduleAnalyticsHtml('expenses')}
     `;
   }
 
@@ -6468,7 +6487,7 @@
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="btn btn-brass" data-pbi-jump="p12_payroll">📊 Open P12 · Payroll BI Studio</button>
+            <button type="button" class="btn btn-brass" data-pbi-jump="p12_payroll">📊 Workforce Analytics Studio</button>
             <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="10">🖨 Payroll Register RDL (#10)</button>
             <button type="button" class="btn" data-nav-jump="statements" data-stmt-jump="17">🖨 Driver Statement RDL (#17)</button>
             ${canEnterForm('salary') ? '<button type="button" class="btn btn-primary" data-open-modal="salary">+ Pay Salary</button>' : ''}
@@ -6685,6 +6704,7 @@
           </div>
         </div>` : ''}
       </div>
+      ${moduleAnalyticsHtml('payroll')}
     `;
   }
 
@@ -6801,6 +6821,7 @@
           </table>
         </div>
       </div>
+      ${moduleAnalyticsHtml('ledger')}
     `;
   }
 
@@ -7059,11 +7080,10 @@
   }
 
   function renderStatements() {
-    if (window.MFG_RDL && typeof window.MFG_RDL.renderStatementsView === 'function') {
-      return window.MFG_RDL.renderStatementsView(SEED, STATE);
-    }
-    const st = STATEMENT_CATALOG.find(x => x.code === STATE.activeStatement) || STATEMENT_CATALOG[0];
-    return renderStatementSheet(st.code);
+    const baseHtml = (window.MFG_RDL && typeof window.MFG_RDL.renderStatementsView === 'function')
+      ? window.MFG_RDL.renderStatementsView(SEED, STATE)
+      : renderStatementSheet((STATEMENT_CATALOG.find(x => x.code === STATE.activeStatement) || STATEMENT_CATALOG[0]).code);
+    return baseHtml + moduleAnalyticsHtml('statements');
   }
 
   // ==========================================================================
@@ -15235,7 +15255,7 @@
   // ==========================================================================
   const VIEW_TITLES = {
     overview: 'Executive Overview',
-    pbi: 'Power BI Studio',
+    pbi: 'Analytics & Insights',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
     kiosks: 'Kiosk Terminals',
@@ -15264,7 +15284,7 @@
   };
   const VIEW_MOBILE_TITLES = {
     overview: 'Executive Overview',
-    pbi: 'Power BI Studio',
+    pbi: 'Analytics & Insights',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
     kiosks: 'Kiosk Terminals',
@@ -17585,14 +17605,32 @@
         if (el.tagName === 'BUTTON' || el.classList.contains('btn')) el.hidden = true;
       }
     });
-    // Power BI Studio 20-page tabs & dynamic per-page slicers + 34-table hub chips
+    // Analytics & Insights 12-page tabs, embedded module analytics tabs & 34-table hub chips
+    container.querySelectorAll('[data-mod-sec]').forEach(btn => btn.addEventListener('click', () => {
+      const hubKey = btn.getAttribute('data-mod-hub-key') || STATE.view;
+      const secId = btn.getAttribute('data-mod-sec');
+      if (!STATE.moduleSection) STATE.moduleSection = {};
+      STATE.moduleSection[hubKey] = secId;
+      const ws = $('workspace');
+      const y = ws ? ws.scrollTop : 0;
+      renderApp();
+      if (ws) ws.scrollTop = y;
+    }));
     container.querySelectorAll('[data-pbi-page]').forEach(btn => btn.addEventListener('click', () => {
       STATE.pbiPage = btn.getAttribute('data-pbi-page');
       renderApp();
     }));
     container.querySelectorAll('[data-pbi-jump]').forEach(el => {
       const go = () => {
-        STATE.pbiPage = el.getAttribute('data-pbi-jump') || 'p01_overview';
+        const targetId = el.getAttribute('data-pbi-jump') || 'p01_overview';
+        const moved = window.MFG_PBI && window.MFG_PBI.MOVED_PBI_PAGES && window.MFG_PBI.MOVED_PBI_PAGES[targetId];
+        if (moved && moved.view) {
+          if (!STATE.moduleSection) STATE.moduleSection = {};
+          if (moved.modSec) STATE.moduleSection[moved.view] = moved.modSec;
+          setView(moved.view);
+          return;
+        }
+        STATE.pbiPage = targetId;
         if (STATE.view !== 'pbi') setView('pbi');
         else {
           renderApp();
@@ -17779,7 +17817,13 @@
       const go = () => {
         const stmt = btn.getAttribute('data-stmt-jump');
         if (stmt) STATE.activeStatement = stmt;
-        setView(btn.getAttribute('data-nav-jump'));
+        const targetView = btn.getAttribute('data-nav-jump');
+        const modJump = btn.getAttribute('data-mod-jump');
+        if (modJump && targetView) {
+          if (!STATE.moduleSection) STATE.moduleSection = {};
+          STATE.moduleSection[targetView] = modJump;
+        }
+        setView(targetView);
       };
       btn.addEventListener('click', go);
       if (btn.getAttribute('role') === 'button') btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });

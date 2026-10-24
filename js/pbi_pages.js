@@ -11,27 +11,31 @@
   'use strict';
 
   const PBI_PAGES = [
-    { id: 'p01_overview', num: '01', label: 'Overview', title: 'Executive P&L, Margin, AR/AP & Fleet Overview' },
-    { id: 'p02_companies', num: '02', label: 'Companies', title: 'Side-by-Side Entity Comparison (WTC · BBConstruction · Lions Transport)' },
-    { id: 'p03_exceptions', num: '03', label: 'Action Items', title: 'Executive Exception Queue — AR, IVA, Pricing, Fleet & Recon (m284)' },
-    { id: 'p04_sales', num: '04', label: 'Sales & Deliveries', title: 'Sales Revenue, Realised Price Trends, Top Grades & Customer Mix' },
-    { id: 'p05_pricing', num: '05', label: 'Pricing & Commissions', title: 'Price Agreements, Spread, Below-Agreed Exceptions & Commissions' },
-    { id: 'p06_ar', num: '06', label: 'Customers & Receivables', title: 'FIFO Customer Balances, 5-Bucket AR Aging & Running Statement' },
-    { id: 'p07_ap', num: '07', label: 'Suppliers & Expenses', title: '3-Leg Accounts Payable (Material / Haulage / Expense) & Overhead' },
-    { id: 'p08_stock', num: '08', label: 'Stock & Haulage', title: 'Quarry Material Intake, Unit Economics & Transport Cost Recovery' },
-    { id: 'p09_fuel', num: '09', label: 'Fuel & Lubricants', title: 'Diesel Tank Balance, Consumption per 100 km / hr & Meter Guard (m142)' },
-    { id: 'p10_fleet', num: '10', label: 'Equipment & Fleet', title: 'Equipment Registry, Utilization, Running Cost & Cost per Ton' },
-    { id: 'p11_drivers', num: '11', label: 'Drivers & Overtime', title: 'Driver Trips, Day vs Night Shift & Company-Fleet Overtime Bonus' },
-    { id: 'p12_payroll', num: '12', label: 'Payroll & Attendance', title: 'Staff Payroll Register, Contracts, Site Allowances & Freelance' },
-    { id: 'p13_vat', num: '13', label: 'VAT & Invoices', title: '11% Output vs Input VAT, Quarterly Position & Uninvoiced IVA Sales' },
-    { id: 'p14_cashflow', num: '14', label: 'Cash Flow & Till', title: 'Cash Inflows vs Outflows, Daily Till 5300 & Payment Method Mix' },
-    { id: 'p15_treasury', num: '15', label: 'Treasury & Loans', title: 'Partner Loans, Repayments, External Movements, FX Conversions & Barter' },
-    { id: 'p16_financial', num: '16', label: 'Financial GL & SOA', title: 'Lebanese CoA Income Statement, Balance Sheet, Trial Balance & SOA Stream' },
-    { id: 'p17_jv', num: '17', label: 'JV Sites', title: 'Joint Venture 50/50 Quarries, Stock Entitlement & Partner Ledger' },
-    { id: 'p18_tickets', num: '18', label: 'Ticket Books', title: '25/50-Ticket Weighbridge Pads — Completeness, Missing & Duplicate Serials' },
-    { id: 'p19_changelog', num: '19', label: 'Change Log', title: 'Daily Totals Ledger, Snapshot Drift & Tx vs Reporting Date Parity' },
-    { id: 'p20_recon', num: '20', label: 'Statement Recon', title: 'Counterparty Statement Reconciliation Bridge & 22 A4 PDF Statements' }
+    { id: 'p01_overview', num: '01', label: 'Executive Pulse', title: 'Executive P&L, Margin, AR/AP & Fleet Overview' },
+    { id: 'p02_companies', num: '02', label: 'Entity Comparison', title: 'Side-by-Side Entity Comparison (WTC · BBConstruction · Lions Transport)' },
+    { id: 'p04_sales', num: '03', label: 'Sales Analytics', title: 'Sales Revenue, Realised Price Trends, Top Grades & Customer Mix' },
+    { id: 'p05_pricing', num: '04', label: 'Pricing & Spreads', title: 'Price Agreements, Spread, Below-Agreed Exceptions & Commissions' },
+    { id: 'p06_ar', num: '05', label: 'Receivables & Aging', title: 'FIFO Customer Balances, 5-Bucket AR Aging & Running Statement' },
+    { id: 'p07_ap', num: '06', label: 'Payables & Spend', title: '3-Leg Accounts Payable (Material / Haulage / Expense) & Overhead' },
+    { id: 'p08_stock', num: '07', label: 'Stock & Unit Margin', title: 'Quarry Material Intake, Unit Economics & Transport Cost Recovery' },
+    { id: 'p09_fuel', num: '08', label: 'Diesel & Tank Burn', title: 'Diesel Tank Balance, Consumption per 100 km / hr & Meter Guard (m142)' },
+    { id: 'p10_fleet', num: '09', label: 'Fleet Economics', title: 'Equipment Utilization, Running Cost & Cost per Ton' },
+    { id: 'p12_payroll', num: '10', label: 'Workforce Analytics', title: 'Staff Payroll Analytics, Site Allowances & Freelance' },
+    { id: 'p14_cashflow', num: '11', label: 'Cash Flow & Till', title: 'Cash Inflows vs Outflows, Daily Till 5300 & Payment Method Mix' },
+    { id: 'p16_financial', num: '12', label: 'Financial GL & Ratios', title: 'Lebanese CoA Income Statement, Balance Sheet & Trial Balance' }
   ];
+
+  // 8 Operational Pages moved out of Analytics & Insights directly into their respective domain sidebar modules
+  const MOVED_PBI_PAGES = {
+    p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',  modSec: 'exceptions', short: 'Action Items',      targetLabel: 'AI Sentinels & Audit' },
+    p18_tickets:    { id: 'p18_tickets',    view: 'sales',      modSec: 'tickets',    short: 'Ticket Books',      targetLabel: 'Sales & Deliveries' },
+    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Quarries', targetLabel: 'Quarries & Raw Intake' },
+    p11_drivers:    { id: 'p11_drivers',    view: 'fleet',      modSec: 'drivers',    short: 'Drivers & Overtime',targetLabel: 'Fleet & Diesel Control' },
+    p13_vat:        { id: 'p13_vat',        view: 'customers',  modSec: 'vat',        short: 'VAT & Invoices',    targetLabel: 'Customers & Receivables' },
+    p15_treasury:   { id: 'p15_treasury',   view: 'ledger',     modSec: 'treasury',   short: 'Treasury & Loans',  targetLabel: 'General Ledger & SOA' },
+    p19_changelog:  { id: 'p19_changelog',  view: 'sentinels',  modSec: 'changelog',  short: 'Change Log & Drift',targetLabel: 'AI Sentinels & Audit' },
+    p20_recon:      { id: 'p20_recon',      view: 'statements', modSec: 'recon',      short: 'Statement Recon',   targetLabel: 'Statements & Reports' }
+  };
 
   // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — Universal Registries grouped in Group 3 (consistent across all BUs)
   const TABLE_CATALOG = [
@@ -1242,8 +1246,8 @@
     };
     return map[pageId] || map.p01_overview;
   }
-  // ==================== 20-PAGE POWER BI STUDIO RENDERER ====================
-  function renderPbiStudio(ctx) {
+  // ==================== 12-PAGE ANALYTICS & INSIGHTS STUDIO RENDERER ====================
+  function renderPbiStudio(ctx, overridePageId, bodyOnly) {
     const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, ticketTons } = ctx;
     _activePbiState = STATE;
     const m = getModel();
@@ -1254,11 +1258,13 @@
     const activeRange = ctx.periodRange ? ctx.periodRange(STATE.period) : null;
     const visiblePages = typeof ctx.canAccessPbiPage === 'function' ? PBI_PAGES.filter(p => ctx.canAccessPbiPage(p.id)) : PBI_PAGES;
     const pagePool = visiblePages.length ? visiblePages : PBI_PAGES;
-    const activePage = pagePool.find(p => p.id === (STATE.pbiPage || 'p01_overview')) || pagePool[0];
+    const activePage = overridePageId
+      ? ({ id: overridePageId, num: '—', label: overridePageId, title: '' })
+      : (pagePool.find(p => p.id === (STATE.pbiPage || 'p01_overview')) || pagePool[0]);
     const activePageId = activePage.id;
-    STATE.pbiPage = activePageId;
+    if (!overridePageId) STATE.pbiPage = activePageId;
 
-    const sl = STATE.pbiSlicer || {};
+    const sl = bodyOnly ? {} : (STATE.pbiSlicer || {});
     const rec = SEED.records || {};
     const sentinels = SEED.sentinels || {};
     const modelKey = STATE.company === 'wtc' ? 'WTC' : (STATE.company === 'bbconstruction' ? 'BBConstruction' : (STATE.company === 'lionstransport' ? 'Lions Transport' : 'Manufacturing Group'));
@@ -1524,13 +1530,26 @@
     const curTo = activeRange ? activeRange.to : maxDate;
     const isDateFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
 
+    function movedRegisterBanner(title, desc, targetView, targetLabel, modSec = '') {
+      if (bodyOnly && STATE.view === targetView) return '';
+      return `
+        <div class="pbi-panel" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:linear-gradient(90deg,rgba(184,136,59,0.08),transparent);border-left:3px solid var(--brass)">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${esc(title)}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${esc(desc)}</div>
+          </div>
+          <button type="button" class="btn btn-brass" style="padding:5px 12px;font-size:11.5px" data-nav-jump="${esc(targetView)}" ${modSec ? `data-mod-jump="${esc(modSec)}"` : ''}>Open in ${esc(targetLabel)} →</button>
+        </div>
+      `;
+    }
+
     // Studio Header + Page Strip + Embedded Date Grain/Range Slicer + Dynamic Per-Page Slicer Bar
     const headerHtml = `
       <div class="pbi-studio-hdr">
         <div class="pbi-studio-top">
           <div>
-            <div class="cockpit-eyebrow">POWER BI SEMANTIC STUDIO · ${pagePool.length} PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
-            <h2 class="pbi-studio-title">Power BI Studio</h2>
+            <div class="cockpit-eyebrow">ANALYTICS &amp; INSIGHTS STUDIO · ${pagePool.length} ANALYTICAL PAGES · ${esc(COMPANY_LABELS[STATE.company] || STATE.company)}</div>
+            <h2 class="pbi-studio-title">Analytics &amp; Insights</h2>
             <div class="cockpit-sub" style="color:var(--muted);margin-top:2px"><b>Page ${esc(activePage.num)} · ${esc(activePage.label)}</b> — ${esc(activePage.title)}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1540,13 +1559,21 @@
           </div>
         </div>
 
-        <!-- 20-Page Navigation Pill Strip -->
-        <div class="pbi-page-strip" role="tablist" aria-label="Power BI Report Pages">
+        <!-- 12-Page Analytical Navigation Pill Strip -->
+        <div class="pbi-page-strip" role="tablist" aria-label="Analytics &amp; Insights Pages">
           ${pagePool.map(p => `
             <button type="button" class="pbi-page-tab ${p.id === activePageId ? 'active' : ''}" data-pbi-page="${esc(p.id)}" role="tab" aria-selected="${p.id === activePageId}">
               <span class="pbi-page-num">${esc(p.num)}</span>
               <span>${esc(p.label)}</span>
             </button>
+          `).join('')}
+        </div>
+
+        <!-- 8 Domain Pages Embedded directly inside their respective Sidebar Modules -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;margin-bottom:8px;background:rgba(184,136,59,0.06);border:1px dashed var(--border-strong);border-radius:8px;font-size:11px">
+          <span style="font-weight:700;color:var(--brass);text-transform:uppercase;letter-spacing:.04em;margin-right:4px">Embedded in Sidebar Modules:</span>
+          ${Object.values(MOVED_PBI_PAGES).map(mp => `
+            <button type="button" class="filter-chip" style="padding:2px 8px;font-size:10.5px" data-pbi-jump="${esc(mp.id)}">${esc(mp.short)} <span style="opacity:.7">→ ${esc(mp.targetLabel)}</span></button>
           `).join('')}
         </div>
 
@@ -1993,29 +2020,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Sales tickets register (Weighbridge & dispatch sample · click any row to inspect)', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Ticket #', key: 'ticket_no', mono: true, bold: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Sale Type', key: 'sale_type' },
-            { label: 'Customer', key: 'customer', bold: true },
-            { label: 'Product', key: 'product' },
-            { label: 'Site', key: 'site' },
-            { label: 'Truck / Driver', raw: r => r.truck || '', fmt: (v, r) => `<span class="mono">${esc((r && r.truck) || '—')}</span>${r && r.driver ? ` <span class="mu">· ${esc(r.driver)}</span>` : ''}` },
-            { label: 'Qty', raw: r => r.qty, r: true, fmt: (v, r) => `${fmtNum(v, 2)}${r && r.uom ? ' ' + esc(r.uom) : ''}` },
-            { label: 'Unit ($)', key: 'unit_price', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Material ($)', key: 'price', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Transport ($)', key: 'trans_price', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'VAT ($)', key: 'vat', r: true, fmt: v => Number(v || 0) ? fmtUSD(v, 2) : '—' },
-            { label: 'Total TTC ($)', key: 'total_ttc', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
-            { label: 'Method', key: 'method' }
-          ], salesRows, {
-            subtitle: 'Pale navy row = Pick-up (Material Only) ticket · Click any row to open full 18-field Record Inspector',
-            rowNavy: r => r.sale_type === 'Pickup',
-            rkey: 'sales_tickets',
-            limit: 60,
-            unitLabel: 'tickets'
-          })}
+          ${movedRegisterBanner('Weighbridge Sales Tickets Register & 25/50-Ticket Book Audit', 'Individual sales tickets and 25/50-ticket weighbridge pad completeness & missing-serial audit now live directly inside Sales & Deliveries.', 'sales', 'Sales & Deliveries', 'tickets')}
         </div>
       `;
     }
@@ -2121,30 +2126,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Price agreements — one row per agreement, with two-tier truck capacity adjustments (m201–m204)', [
-            { label: 'Agreement Code', key: 'name', mono: true, bold: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Rule Type', key: 'rule_type' },
-            { label: 'Customer / Party', raw: r => r.customer || r.supplier || '(Standard List)', bold: true },
-            { label: 'Product', key: 'product', fmt: v => esc(v || '(All Products)') },
-            { label: 'Site', key: 'site' },
-            { label: 'UoM', key: 'unit', mono: true },
-            { label: 'Unit Price ($)', raw: r => (Number(r.unit_price || 0) > 0 || !(r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price)) ? r.unit_price : null, r: true, bar: true, fmt: v => v != null && Number(v) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
-            { label: 'Indifference ($)', raw: r => r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price, r: true, fmt: v => Number(v || 0) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
-            { label: 'Trans / u ($)', key: 'trans_unit_price', r: true, fmt: v => Number(v || 0) ? fmtUSD(v, 2) : '—' },
-            { label: 'Tier 1 (Cap / Adj $)', raw: r => r.qty1 != null ? `${r.qty1}: ${fmtUSD(r.adj1, 2)}` : '—', r: true, mono: true },
-            { label: 'Tier 2 (Cap / Adj $)', raw: r => r.qty2 != null ? `${r.qty2}: ${fmtUSD(r.adj2, 2)}` : '—', r: true, mono: true },
-            { label: 'Start', key: 'start_date', mono: true },
-            { label: 'End', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') },
-            { label: 'Status', raw: r => (r.end_date && String(r.end_date) < today) ? 'Ended' : 'Active', fmt: v => `<span class="badge ${v === 'Ended' ? 'badge-warn' : 'badge-ok'}">${v}</span>` }
-          ], allRules, {
-            subtitle: 'Amber row = Ended agreement · Pale navy row = Sales (Pickup) rule · Tier adjustments are per load in USD (m209)',
-            rowAmber: r => Boolean(r.end_date && String(r.end_date) < today),
-            rowNavy: r => /Pickup/i.test(String(r.rule_type || '')) && !(r.end_date && String(r.end_date) < today),
-            rkey: 'price_rules',
-            limit: 80,
-            unitLabel: 'agreements'
-          })}
+          ${movedRegisterBanner('Price & Commission Agreements Register (2-Tier Capacity Rules)', 'The full Price & Commission Agreements register (593 rules across Sales, Purchase, Transport, and Commission) lives directly in Pricing & Commissions.', 'pricing', 'Pricing & Commissions', 'spreads')}
         </div>
       `;
     }
@@ -2339,13 +2321,7 @@
             { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], recRows, { rkey: 'receipts', limit: 40, unitLabel: 'receipts' })}
 
-          ${pbiTable('Customer credit terms & limits', [
-            { label: 'Customer', key: 'customer', bold: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Credit Days', key: 'credit_days', r: true, fmt: v => fmtNum(v) + ' d' },
-            { label: 'Credit Limit ($)', key: 'credit_limit', r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
-            { label: 'Start Date', key: 'start_date', mono: true }
-          ], creditTerms, { rkey: 'credit_terms', limit: 40, unitLabel: 'agreements' })}
+          ${movedRegisterBanner('Customer Credit Terms, Limits & 11% VAT Tax Invoices', 'Customer credit policies, MOF 11% VAT tax headers, quarterly VAT positions, and VAT-tagged receipts now live inside Customers & Receivables.', 'customers', 'Customers & Receivables', 'vat')}
         </div>
       `;
     }
@@ -2427,25 +2403,8 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiTable('General & fleet expenses register', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Category', key: 'category', bold: true },
-            { label: 'Subcategory', key: 'subcategory' },
-            { label: 'Supplier', key: 'supplier' },
-            { label: 'Equipment', key: 'equipment', mono: true },
-            { label: 'Method', key: 'method' },
-            { label: 'Amount ($)', key: 'amount', r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], expRows, { rkey: 'expenses', limit: 45, unitLabel: 'vouchers' })}
-
-          ${pbiTable('Supplier settlements register', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Supplier / Hauler', key: 'supplier', bold: true },
-            { label: 'Payable Leg', key: 'payable_leg', fmt: v => esc(v || 'Material / Account') },
-            { label: 'Method', key: 'method' },
-            { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], setRows, { rkey: 'settlements', limit: 45, unitLabel: 'settlements' })}
+          ${movedRegisterBanner('General & Fleet Expenses Register + Cost-Class Analytics', 'Itemized expense vouchers and Production / OpEx / CapEx category breakdowns now live directly inside Expenses & Overhead.', 'expenses', 'Expenses & Overhead', 'costclass')}
+          ${movedRegisterBanner('Supplier Settlements & 3-Leg Payable Ledger', 'Full supplier payment vouchers (Material, Haulage & Expense legs) live directly inside Suppliers & Payables.', 'suppliers', 'Suppliers & Payables', 'ap3leg')}
         </div>
       `;
     }
@@ -2506,26 +2465,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Raw material purchases register (2-payable split: Site Owner + Truck Owner)', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Ticket #', key: 'ticket_no', mono: true, bold: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Source Quarry', key: 'site', bold: true },
-            { label: 'Site Owner (Leg 1)', key: 'site_owner' },
-            { label: 'Transported By', key: 'transport_by' },
-            { label: 'Truck Owner (Leg 2)', raw: r => r.truck_owner || (r.transport_by === 'Company fleet' ? 'Company fleet ($0)' : '—') },
-            { label: 'Product', key: 'product' },
-            { label: 'Qty', key: 'qty', r: true, fmt: (v, r) => `${fmtNum(v, 2)} ${esc(r.uom || '')}` },
-            { label: 'Mat Cost ($)', key: 'cost', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Haulage ($)', key: 'trans_cost', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Total ($)', key: 'total', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], rawRows, {
-            subtitle: 'Pale navy row = hauled by Company fleet ($0 third-party haulage leg)',
-            rowNavy: r => r.transport_by === 'Company fleet',
-            rkey: 'raw_purchases',
-            limit: 60,
-            unitLabel: 'receipts'
-          })}
+          ${movedRegisterBanner('Quarry Raw Material Purchases Register & JV 50/50 Quarry Ledger', 'Individual 2-leg quarry tickets (Site Owner + Truck Owner) and Joint Venture 50/50 quarry stock entitlements live directly inside Quarries & Raw Intake.', 'raw', 'Quarries & Raw Intake', 'jv')}
         </div>
       `;
     }
@@ -2576,16 +2516,7 @@
             { label: 'L / 100 km', key: 'l_per_100km', r: true, fmt: v => v ? fmtNum(v, 1) : '—' }
           ], topDieselUnits, { subtitle: 'Pale navy row = Own company fleet unit', rowNavy: r => r.Ownership === 'Own', limit: 40, unitLabel: 'units' })}
 
-          ${pbiTable('Fuel & lubricant intakes register (with m142 odometer / hour-meter guard)', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Ticket #', key: 'ticket_no', mono: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Equipment', key: 'equipment', mono: true, bold: true },
-            { label: 'Driver', key: 'driver' },
-            { label: 'Item', key: 'item', fmt: v => esc(v || 'Diesel') },
-            { label: 'Litres', key: 'litres', r: true, bar: 'brass', fmt: v => `<b>${fmtNum(v, 1)} L</b>` },
-            { label: 'Meter', raw: r => r.odometer != null && r.odometer !== '' ? r.odometer : r.hours, r: true, mono: true, agg: 'none', fmt: (v, r) => r && r.odometer != null && r.odometer !== '' ? fmtNum(r.odometer, 0) + ' km' : (r && r.hours != null && r.hours !== '' ? fmtNum(r.hours, 1) + ' h' : '—') }
-          ], fuelRows, { rkey: 'fuel_intakes', limit: 45, unitLabel: 'intakes' })}
+          ${movedRegisterBanner('Fuel & Lubricant Intakes Register + Driver Overtime Analytics', 'Individual diesel & lubricant fill tickets (with m142 odometer/hour-meter guard) and Driver Trips & Overtime analytics live inside Fleet & Diesel Control.', 'fleet', 'Fleet & Diesel Control', 'drivers')}
         </div>
       `;
     }
@@ -2941,47 +2872,9 @@
           })}
         </div>
 
-        <!-- Employment contracts (with amber Ended highlight) + Attendance records -->
-        <div class="pbi-grid-2">
-          ${pbiTable('Employment contracts', [
-            { label: 'Staff', key: 'staff', bold: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Type', key: 'type', fmt: v => esc(v || 'Regular') },
-            { label: 'Start', key: 'start_date', mono: true },
-            { label: 'End', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') },
-            { label: 'Status', raw: r => (r.status === 'Ended' || (r.end_date && String(r.end_date) < today)) ? 'Ended' : 'Current', fmt: v => `<span class="badge ${v === 'Ended' ? 'badge-warn' : 'badge-ok'}">${v}</span>` },
-            { label: 'Monthly Salary', key: 'salary_usd', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Daily Rate', key: 'daily_rate', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' }
-          ], empRows, {
-            subtitle: 'Amber shaded row = Employment contract has ended',
-            rowAmber: r => r.status === 'Ended' || Boolean(r.end_date && String(r.end_date) < today),
-            rkey: 'employments',
-            limit: 45,
-            unitLabel: 'contracts'
-          })}
-
-          ${pbiTable('Attendance records', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Staff', key: 'staff', bold: true },
-            { label: 'Type / Status', key: 'status', fmt: v => `<span class="badge ${/Absent|Sick/i.test(v) ? 'badge-warn' : 'badge-ok'}">${esc(v || 'Present')}</span>` },
-            { label: 'Reg Hrs', key: 'regular_hours', r: true, fmt: v => fmtNum(v, 1) },
-            { label: 'OT Hrs', key: 'overtime_hours', r: true, fmt: v => fmtNum(v, 1) },
-            { label: 'Late Hrs', key: 'late_hours', r: true, fmt: v => fmtNum(v, 1) },
-            { label: 'Notes', key: 'notes' }
-          ], attRows, { rkey: 'attendance', limit: 45, unitLabel: 'entries' })}
-        </div>
-
-        <!-- 62/38 Split: Salary payments + Salary payments without a contract (m220c) -->
+        <!-- Operational Contracts, Attendance & Salary Vouchers moved to Payroll & Workforce + Unmatched Contract Exceptions -->
         <div class="pbi-grid-62-38">
-          ${pbiTable('Salary payments', [
-            { label: 'Date', key: 'date', mono: true },
-            { label: 'Payroll Month', key: 'payroll_month', mono: true },
-            { label: 'Co.', key: 'company' },
-            { label: 'Staff', key: 'staff', bold: true },
-            { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
-            { label: 'Document', key: 'name', mono: true }
-          ], salRows, { rkey: 'salaries', limit: 45, unitLabel: 'payments' })}
+          ${movedRegisterBanner('Employment Contracts, Attendance Sheets, Salary Vouchers & Driver OT', 'Operational staff contracts, daily attendance logs, salary disbursement vouchers, and driver overtime tables now live directly in Payroll & Workforce.', 'payroll', 'Payroll & Workforce', 'allowances')}
 
           ${pbiTable('Salary payments without a contract', [
             { label: 'Staff Member', key: 'staff', bold: true },
@@ -3472,17 +3365,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Audited SOA Double-Entry Journal Stream (Voucher Postings)', [
-            { label: 'Date', key: 'date', mono: true, fmt: v => esc(String(v || '').slice(0, 10)) },
-            { label: 'Co.', key: 'company' },
-            { label: 'Voucher / Doc', key: 'doc', mono: true, bold: true },
-            { label: 'GL Code', key: 'code', mono: true, bold: true },
-            { label: 'Account', key: 'account' },
-            { label: 'Counterparty / Detail', key: 'detail' },
-            { label: 'Description', key: 'desc' },
-            { label: 'Debit ($)', key: 'debit', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' },
-            { label: 'Credit ($)', key: 'credit', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' }
-          ], soaRows, { limit: 70, unitLabel: 'journal legs' })}
+          ${movedRegisterBanner('Audited SOA Double-Entry Journal Stream & Partner Treasury / Loans', 'Full SOA voucher postings, Partner Loans, Repayments, External Treasury Movements, and USD ↔ LBP FX Conversions now live inside General Ledger & SOA.', 'ledger', 'General Ledger & SOA', 'treasury')}
         </div>
       `;
     }
@@ -3797,7 +3680,170 @@
       `;
     }
 
+    if (bodyOnly) return bodyHtml;
     return `<div id="pbiCanvasPanel" style="padding-bottom:24px">${headerHtml}${bodyHtml}</div>`;
+  }
+
+  // ==================== SIDEBAR MODULE EMBEDDED ANALYTICS & MOVED PAGES ====================
+  const MODULE_ANALYTICS_CATALOG = {
+    sales: {
+      title: 'Sales & Weighbridge Analytics',
+      subtitle: 'Embedded from Analytics & Insights — 25/50-Ticket Weighbridge Book Audit, Realised Price Trends & Destination Site Mix',
+      defaultSec: 'tickets',
+      sections: [
+        { id: 'tickets', label: 'Weighbridge Ticket Books (25/50-Pad Audit)', pageId: 'p18_tickets', badge: 'Moved Page' },
+        { id: 'analytics', label: 'Sales Revenue, Price Trends & Site Mix', pageId: 'p04_sales', badge: 'Analytics' }
+      ]
+    },
+    raw: {
+      title: 'Quarry Intake, JV 50/50 & Unit Economics',
+      subtitle: 'Embedded from Analytics & Insights — Joint Venture 50/50 Quarry Stock Entitlement, Unit Margin & Transport Cost Recovery',
+      defaultSec: 'jv',
+      sections: [
+        { id: 'jv', label: 'JV 50/50 Quarries & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
+        { id: 'stock', label: 'Unit Economics & Transport Cost Recovery', pageId: 'p08_stock', badge: 'Analytics' }
+      ]
+    },
+    fleet: {
+      title: 'Fleet, Drivers, Overtime & Diesel Analytics',
+      subtitle: 'Embedded from Analytics & Insights — Driver Trips & Night Overtime Bonus (m48/m93), Diesel Tank Burn & Equipment Cost/Ton',
+      defaultSec: 'drivers',
+      sections: [
+        { id: 'drivers', label: 'Drivers, Trips & Overtime Bonus (m48/m93)', pageId: 'p11_drivers', badge: 'Moved Page' },
+        { id: 'fuel', label: 'Diesel Tank Reconciliation & L/100km Burn', pageId: 'p09_fuel', badge: 'Analytics' },
+        { id: 'econ', label: 'Equipment Economics & Cost per Ton', pageId: 'p10_fleet', badge: 'Analytics' }
+      ]
+    },
+    pricing: {
+      title: 'Pricing Spreads, Below-Agreed Governance & Commissions',
+      subtitle: 'Embedded from Analytics & Insights — Agreed vs Realised vs List Spreads, Customer × Product Shortfalls & Commission Rules',
+      defaultSec: 'spreads',
+      sections: [
+        { id: 'spreads', label: 'Agreed vs Realised Spreads & Below-Agreed Exceptions', pageId: 'p05_pricing', badge: 'Analytics' }
+      ]
+    },
+    customers: {
+      title: 'Receivables Aging, Running Statement & 11% VAT Invoices',
+      subtitle: 'Embedded from Analytics & Insights — 11% Output/Input VAT & Quarterly MOF Position, FIFO AR Aging & Customer Running Sub-Ledger',
+      defaultSec: 'vat',
+      sections: [
+        { id: 'vat', label: '11% VAT Position, Quarterly MOF & Tax Invoices', pageId: 'p13_vat', badge: 'Moved Page' },
+        { id: 'aging', label: 'FIFO AR Aging & Customer Running Statement', pageId: 'p06_ar', badge: 'Analytics' }
+      ]
+    },
+    suppliers: {
+      title: '3-Leg Accounts Payable & Supplier Accrual Analytics',
+      subtitle: 'Embedded from Analytics & Insights — Leg 1 Quarry Material, Leg 2 Third-Party Haulage, Leg 3 Credit Expenses & Monthly Settlements',
+      defaultSec: 'ap3leg',
+      sections: [
+        { id: 'ap3leg', label: '3-Leg AP Schedule & Monthly Accrual vs Settlement', pageId: 'p07_ap', badge: 'Analytics' }
+      ]
+    },
+    expenses: {
+      title: 'Cost-Class Breakdown & Overhead Analytics',
+      subtitle: 'Embedded from Analytics & Insights — Production Cost, Operating Expense & Capital Expenditure Category Analytics',
+      defaultSec: 'costclass',
+      sections: [
+        { id: 'costclass', label: 'Expense Cost Classes & Category Breakdown', pageId: 'p07_ap', badge: 'Analytics' }
+      ]
+    },
+    payroll: {
+      title: 'Workforce Earnings Matrix, Site Allowances, Freelance & Driver OT',
+      subtitle: 'Embedded from Analytics & Insights — 16-Column Staff Earnings Matrix, Site Allowances (m247), Freelance Shifts (m245) & Driver OT',
+      defaultSec: 'allowances',
+      sections: [
+        { id: 'allowances', label: 'Staff Earnings Matrix, Site Allowances & Freelance', pageId: 'p12_payroll', badge: 'Analytics' },
+        { id: 'drivers_ot', label: 'Driver Trips & Night Overtime Bonus', pageId: 'p11_drivers', badge: 'Moved Page' }
+      ]
+    },
+    ledger: {
+      title: 'Partner Treasury, Loans, FX Conversions & Cash Flow Till 5300',
+      subtitle: 'Embedded from Analytics & Insights — Partner Loans, Repayments, External Movements, USD ↔ LBP Conversions & Daily Till 5300',
+      defaultSec: 'treasury',
+      sections: [
+        { id: 'treasury', label: 'Partner Loans, External Treasury & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Moved Page' },
+        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till 5300', pageId: 'p14_cashflow', badge: 'Analytics' }
+      ]
+    },
+    sentinels: {
+      title: 'Executive Action Items, Change Log & Date-Basis Parity Bridge',
+      subtitle: 'Embedded from Analytics & Insights — Action Items & Exception Queue (m284), Daily Totals Ledger & Tx vs Reporting Date Parity',
+      defaultSec: 'all',
+      sections: [
+        { id: 'exceptions', label: 'Action Items & Exception Queue (m284)', pageId: 'p03_exceptions', badge: 'Moved Page' },
+        { id: 'changelog', label: 'Change Log, Daily Totals & Date Parity Bridge', pageId: 'p19_changelog', badge: 'Moved Page' }
+      ]
+    },
+    statements: {
+      title: 'Counterparty Statement Reconciliation Bridge',
+      subtitle: 'Embedded from Analytics & Insights — Customer & Supplier Sub-Account Reconciliation vs Trial Balance',
+      defaultSec: 'recon',
+      sections: [
+        { id: 'recon', label: 'Statement Reconciliation Bridge & Sub-Account Tie', pageId: 'p20_recon', badge: 'Moved Page' }
+      ]
+    }
+  };
+
+  function renderModuleAnalytics(moduleKey, ctx) {
+    const cfg = MODULE_ANALYTICS_CATALOG[moduleKey];
+    if (!cfg || !ctx || !ctx.STATE) return '';
+    const { STATE } = ctx;
+    if (!STATE.moduleSection) STATE.moduleSection = {};
+    const availSecs = cfg.sections.filter(s => typeof ctx.canAccessPbiPage !== 'function' || ctx.canAccessPbiPage(s.pageId));
+    if (!availSecs.length) return '';
+
+    const activeSecId = STATE.moduleSection[moduleKey] || cfg.defaultSec || availSecs[0].id;
+    const isCollapsed = activeSecId === 'hide';
+    const isAll = activeSecId === 'all' && availSecs.length > 1;
+    const activeSecs = isCollapsed
+      ? []
+      : (isAll ? availSecs : [availSecs.find(s => s.id === activeSecId) || availSecs[0]]);
+
+    const primaryPageId = (availSecs[0] && availSecs[0].pageId) || 'p01_overview';
+    const hasPbiInStudio = PBI_PAGES.some(p => p.id === primaryPageId);
+
+    return `
+      <div class="mod-analytics-hub" data-mod-hub="${esc(moduleKey)}">
+        <div class="mod-analytics-bar">
+          <div class="mod-analytics-hdr">
+            <div class="mod-analytics-eyebrow">EMBEDDED MODULE ANALYTICS &amp; INSIGHTS</div>
+            <div class="mod-analytics-title">${esc(cfg.title)}</div>
+            <div class="mod-analytics-sub">${esc(cfg.subtitle)}</div>
+          </div>
+          <div class="mod-analytics-tabs" role="tablist" aria-label="${esc(cfg.title)} Sections">
+            ${availSecs.map(s => {
+              const sel = !isCollapsed && !isAll && activeSecs[0] && activeSecs[0].id === s.id;
+              return `
+                <button type="button" class="filter-chip ${sel ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="${esc(s.id)}" role="tab" aria-selected="${sel}">
+                  <span>${esc(s.label)}</span>
+                  <span class="badge ${s.badge === 'Moved Page' ? 'badge-brass' : 'badge-info'}" style="margin-left:5px;font-size:9.5px;padding:1px 5px">${esc(s.badge)}</span>
+                </button>
+              `;
+            }).join('')}
+            ${availSecs.length > 1 ? `
+              <button type="button" class="filter-chip ${isAll ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="all" role="tab" aria-selected="${isAll}">
+                All (${availSecs.length})
+              </button>
+            ` : ''}
+            <button type="button" class="filter-chip ${isCollapsed ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="hide">
+              ${isCollapsed ? '▸ Expand Insights' : '▾ Collapse'}
+            </button>
+            ${hasPbiInStudio ? `
+              <button type="button" class="btn" style="padding:4px 9px;font-size:11px" data-pbi-jump="${esc(primaryPageId)}">Full Slicers in Analytics &amp; Insights →</button>
+            ` : ''}
+          </div>
+        </div>
+        ${isCollapsed ? '' : `
+          <div class="mod-analytics-body">
+            ${activeSecs.map(s => `
+              <div class="mod-analytics-section" data-mod-sec-pane="${esc(s.id)}">
+                ${renderPbiStudio(ctx, s.pageId, true)}
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
   }
 
   // ==================== 34-TABLE POWER APPS DATA HUB RENDERER ====================
@@ -4138,10 +4184,13 @@
 
   window.MFG_PBI = {
     PBI_PAGES,
+    MOVED_PBI_PAGES,
+    MODULE_ANALYTICS_CATALOG,
     TABLE_CATALOG,
     getHubRelIndex,
     cellValue,
     renderPbiStudio,
+    renderModuleAnalytics,
     renderTablesHub,
     renderUniversalRegistriesView
   };

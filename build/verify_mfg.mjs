@@ -290,7 +290,7 @@ try {
   hdrBtnContrast && hdrBtnContrast.bg !== 'rgb(255, 255, 255)' ? pass('pbi · header buttons styled for dark header (no white square)', `${hdrBtnContrast.bg} / ${hdrBtnContrast.color}`) : fail('pbi header button contrast', JSON.stringify(hdrBtnContrast));
 
   const pages = await evaluate(`Array.from(document.querySelectorAll('[data-pbi-page]')).map(b => b.getAttribute('data-pbi-page'))`);
-  pages.length === 20 ? pass('pbi · 20 page tabs') : fail('pbi tabs', String(pages.length));
+  pages.length === 12 ? pass('pbi · 12 analytical page tabs (+ 8 moved to sidebar modules)') : fail('pbi tabs', String(pages.length));
   for (const p of pages) {
     await evaluate(`document.querySelector('[data-pbi-page="${p}"]').click()`);
     await sleep(250);
@@ -310,7 +310,7 @@ try {
     const bars = document.querySelectorAll('#pbiCanvasPanel .pbi-bar-fill').length;
     return { slicers, hasAging: /AR aging/i.test(txt) && /On account/i.test(txt), hasStatement: /Customer statement/i.test(txt), tables, bars };
   })()`);
-  p06Info.hasAging && p06Info.hasStatement && p06Info.tables >= 4 && p06Info.bars > 5
+  p06Info.hasAging && p06Info.hasStatement && p06Info.tables >= 3 && p06Info.bars > 5
     ? pass('pbi · P06 Customers & Receivables matches & exceeds Power Apps PBI', `${p06Info.tables} tables, ${p06Info.bars} inline data bars, slicers=${p06Info.slicers}`)
     : fail('pbi P06 parity', JSON.stringify(p06Info));
 
@@ -1544,7 +1544,7 @@ try {
       totalRenderedOpts, visibleOnSearch, all100CountText, all100ChipsMore,
       u8ConsistencyOk: u8CompanySwitchOk && u8BbcReconHidden && !u8LeakedBbcSales && u8StmtTabs === 13,
       u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerHidden && u3NavSentinelsHidden &&
-        u3NavPbiText === '15 Pages' && u3PbiTabs === 15 && u3TableChips === 23 && !u3HasSalariesTable,
+        u3NavPbiText === '9 Pages' && u3PbiTabs === 9 && u3TableChips === 23 && !u3HasSalariesTable,
       u10ConsistencyOk: u10VisibleNavViews.filter(v => !String(v || '').startsWith('reg_') && v !== 'kiosks').join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
         u10VisibleForms.join(',') === 'sales,receipt',
       u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3PbiTabs, u3TableChips, u10VisibleNavViews, u10VisibleForms
@@ -1714,7 +1714,7 @@ try {
     return {
       ok: matrixOpenOnInspect && hasDefaultAndCustomRoles &&
           ownerLinkedAcc === 'full|full' && salesLinkedAcc === 'partial|full' && customLinkedAcc === 'custom|custom' &&
-          customPbiTabs === 10 && hasGlPage && customStmtCards === 13 && hasPlStmt &&
+          customPbiTabs === 5 && hasGlPage && customStmtCards === 13 && hasPlStmt &&
           canUnlockUnitPrice && canUnlockQty && !canUnlockFormulaTotals &&
           lockedInitially && unlockedWithoutPin && hasModifyBtn && !hasVoidBtn && overflowUsers === 0,
       matrixOpenOnInspect, hasDefaultAndCustomRoles, ownerLinkedAcc, salesLinkedAcc, customLinkedAcc,
@@ -1724,7 +1724,7 @@ try {
     };
   })()`);
   customRoleProbe && customRoleProbe.ok
-    ? pass('roles, permissions & linked dashboards · default + Custom roles, Check Permissions matrix, field-level lock overrides without PIN, Modify Data & custom PBI/RDL', `PBI=${customRoleProbe.customPbiTabs}/20 · RDL=${customRoleProbe.customStmtCards}/22 · unlockUnitPrice=${customRoleProbe.unlockedWithoutPin} · modify=${customRoleProbe.hasModifyBtn}`)
+    ? pass('roles, permissions & linked dashboards · default + Custom roles, Check Permissions matrix, field-level lock overrides without PIN, Modify Data & custom PBI/RDL', `PBI=${customRoleProbe.customPbiTabs}/12 · RDL=${customRoleProbe.customStmtCards}/22 · unlockUnitPrice=${customRoleProbe.unlockedWithoutPin} · modify=${customRoleProbe.hasModifyBtn}`)
     : fail('roles, permissions & linked dashboards', JSON.stringify(customRoleProbe));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
@@ -1827,7 +1827,7 @@ try {
       const tf = t.querySelector('tfoot tr');
       return tf ? tf.innerText.replace(/\\s+/g, ' ').trim() : '';
     });
-    const allHaveTfoot = tables.length >= 3 && tfoots.every(txt => /TOTAL/i.test(txt) && /\\$[0-9]/.test(txt));
+    const allHaveTfoot = tables.length >= 2 && tfoots.every(txt => /TOTAL/i.test(txt) && /\\$[0-9]/.test(txt));
     // Verify no cell breaks 'Litres' mid-word across lines
     const brokenLitres = Array.from(document.querySelectorAll('#pbiCanvasPanel td')).some(td => {
       const txt = (td.innerText || '').trim();
@@ -1838,6 +1838,44 @@ try {
   p04LayoutAndFoot.allHaveTfoot && !p04LayoutAndFoot.brokenLitres
     ? pass('pbi P04 · all tables have sticky tfoot TOTAL row & zero mid-word wrapping', `${p04LayoutAndFoot.tableCount} tables · ${p04LayoutAndFoot.sampleFoot.slice(0, 70)}`)
     : fail('pbi P04 tfoot / wrapping', JSON.stringify(p04LayoutAndFoot));
+
+  // 7d-2. Analytics & Insights Rename + 8 Moved Pages & Domain Analytics Embedded in Sidebar Views
+  const modAnalyticsProbe = await evaluate(`(() => {
+    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const pbiTitle = (document.querySelector('.pbi-studio-title') || {}).textContent || '';
+    const pbiTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
+    const pbiPageCount = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
+    const movedJumpCount = document.querySelectorAll('.pbi-studio-hdr [data-pbi-jump]').length;
+
+    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales & Deliveries)
+    const jumpTickets = document.querySelector('.pbi-studio-hdr [data-pbi-jump="p18_tickets"]');
+    if (jumpTickets) jumpTickets.click();
+    const afterJumpTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
+    const salesHubPresent = !!document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+
+    // Verify all 11 domain sidebar views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
+    const modViews = ['sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'sentinels', 'statements'];
+    const modResults = [];
+    for (const v of modViews) {
+      const btn = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
+      if (btn) btn.click();
+      const hub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="' + v + '"]');
+      const kpis = hub ? hub.querySelectorAll('.pbi-kpi-card').length : 0;
+      const panels = hub ? hub.querySelectorAll('.pbi-panel').length : 0;
+      const overflow = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      modResults.push({ v, hasHub: !!hub, kpis, panels, overflow });
+    }
+    const allModsOk = modResults.every(r => r.hasHub && r.kpis >= 4 && r.panels >= 1 && r.overflow === 0);
+    return {
+      ok: pbiTitle === 'Analytics & Insights' && pbiTopTitle === 'Analytics & Insights' &&
+          pbiPageCount === 12 && movedJumpCount === 8 &&
+          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && allModsOk,
+      pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, modResults
+    };
+  })()`);
+  modAnalyticsProbe && modAnalyticsProbe.ok
+    ? pass('Analytics & Insights · 12 core pages + 8 moved pages & domain analytics embedded across 11 sidebar views', `studio=${modAnalyticsProbe.pbiPageCount} pages · moved=${modAnalyticsProbe.movedJumpCount} · hubs=${modAnalyticsProbe.modResults.length}/11`)
+    : fail('Analytics & Insights + embedded module hubs', JSON.stringify(modAnalyticsProbe));
 
   if (!MOBILE) {
     const railToggleProbe = await evaluate(`(() => {

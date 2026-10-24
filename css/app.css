@@ -13545,6 +13545,104 @@ th.sortable.col-filtered {
   border-color: var(--brass);
 }
 
+/* ============================================================================
+   EMBEDDED MODULE ANALYTICS & INSIGHTS HUB (.mod-analytics-hub)
+   Renders domain analytics & moved Power BI pages directly inside each sidebar view
+   ============================================================================ */
+.mod-analytics-hub {
+  margin-top: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.mod-analytics-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: 2px solid var(--brass);
+}
+
+.mod-analytics-hdr {
+  min-width: 220px;
+  flex: 1 1 280px;
+}
+
+.mod-analytics-eyebrow {
+  font-family: "Archivo", sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brass);
+}
+
+.mod-analytics-title {
+  font-family: "Archivo", sans-serif;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-top: 1px;
+}
+
+.mod-analytics-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.mod-analytics-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mod-analytics-body {
+  padding: 12px 14px 16px;
+}
+
+.mod-analytics-section + .mod-analytics-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.mod-analytics-hub .pbi-overview-bands,
+.mod-analytics-hub .pbi-kpi-sec,
+.mod-analytics-hub .pbi-sec-heading,
+.mod-analytics-hub .pbi-grid-1,
+.mod-analytics-hub .pbi-grid-2,
+.mod-analytics-hub .pbi-grid-62-38 {
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.mod-analytics-hub .pbi-grid-2:has(.table-wrap),
+.mod-analytics-hub .pbi-grid-62-38:has(.table-wrap) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mod-analytics-hub .ledger-table th,
+.mod-analytics-hub .ledger-table td {
+  padding: 5px 6px;
+  font-size: 11px;
+}
+
+.mod-analytics-hub .ledger-table td.mono {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+
 
 
 
