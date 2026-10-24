@@ -2021,11 +2021,33 @@ try {
       modResults.push({ v, hasHub: !!hub, kpis, panels, overflow });
     }
     const allModsOk = modResults.every(r => r.hasHub && r.kpis >= 4 && r.panels >= 1 && r.overflow === 0);
+
+    // Verify Collapse -> Expand Insights toggle round-trip & last-section restoration on #sales
+    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    const secAnalyticsBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"] [data-mod-sec="analytics"]');
+    if (secAnalyticsBtn) secAnalyticsBtn.click();
+    const collapseBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"] [data-mod-toggle="collapse"]');
+    if (collapseBtn) collapseBtn.click();
+    const collapsedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+    const collapsedBodyAbsent = !!(collapsedHub && !collapsedHub.querySelector('.mod-analytics-body'));
+    const expandBtn = collapsedHub ? collapsedHub.querySelector('[data-mod-toggle="expand"]') : null;
+    const expandBtnText = expandBtn ? expandBtn.textContent.trim() : '';
+    if (expandBtn) expandBtn.click();
+    const expandedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+    const expandedBodyPresent = !!(expandedHub && expandedHub.querySelector('.mod-analytics-body'));
+    const restoredAnalyticsPane = !!(expandedHub && expandedHub.querySelector('[data-mod-sec-pane="analytics"]'));
+    const expandedKpis = expandedHub ? expandedHub.querySelectorAll('.pbi-kpi-card').length : 0;
+    const collapseRestored = !!(expandedHub && expandedHub.querySelector('[data-mod-toggle="collapse"]'));
+    // Restore default tickets section cleanly
+    const secTicketsBtn = expandedHub ? expandedHub.querySelector('[data-mod-sec="tickets"]') : null;
+    if (secTicketsBtn) secTicketsBtn.click();
+    const expandToggleOk = collapsedBodyAbsent && expandBtnText.includes('Expand Insights') && expandedBodyPresent && restoredAnalyticsPane && expandedKpis >= 4 && collapseRestored;
+
     return {
       ok: pbiTitle === 'Analytics & Insights' && pbiTopTitle === 'Analytics & Insights' &&
           pbiPageCount === 12 && movedJumpCount === 8 &&
-          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && allModsOk,
-      pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, modResults
+          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && allModsOk && expandToggleOk,
+      pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, expandToggleOk, modResults
     };
   })()`);
   modAnalyticsProbe && modAnalyticsProbe.ok

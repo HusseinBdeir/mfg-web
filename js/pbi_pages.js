@@ -3995,23 +3995,38 @@
     if (!cfg || !ctx || !ctx.STATE) return '';
     const { STATE } = ctx;
     if (!STATE.moduleSection) STATE.moduleSection = {};
+    if (!STATE.moduleLastSection) STATE.moduleLastSection = {};
     const availSecs = cfg.sections.filter(s => typeof ctx.canAccessPbiPage !== 'function' || ctx.canAccessPbiPage(s.pageId));
     if (!availSecs.length) return '';
 
-    const activeSecId = STATE.moduleSection[moduleKey] || cfg.defaultSec || availSecs[0].id;
+    const defaultSecId = (cfg.defaultSec && cfg.defaultSec !== 'hide' && (cfg.defaultSec === 'all' ? availSecs.length > 1 : availSecs.some(s => s.id === cfg.defaultSec)))
+      ? cfg.defaultSec
+      : availSecs[0].id;
+    const activeSecId = STATE.moduleSection[moduleKey] || defaultSecId;
     const isCollapsed = activeSecId === 'hide';
     const isAll = activeSecId === 'all' && availSecs.length > 1;
     const activeSecs = isCollapsed
       ? []
       : (isAll ? availSecs : [availSecs.find(s => s.id === activeSecId) || availSecs[0]]);
 
-    const primaryPageId = (availSecs[0] && availSecs[0].pageId) || 'p01_overview';
-    const hasPbiInStudio = PBI_PAGES.some(p => p.id === primaryPageId);
+    if (!isCollapsed && activeSecs.length) {
+      STATE.moduleLastSection[moduleKey] = isAll ? 'all' : activeSecs[0].id;
+    }
+    const prevSavedSec = STATE.moduleLastSection[moduleKey];
+    const expandSecId = (prevSavedSec && prevSavedSec !== 'hide' && (prevSavedSec === 'all' ? availSecs.length > 1 : availSecs.some(s => s.id === prevSavedSec)))
+      ? prevSavedSec
+      : defaultSecId;
+
+    const studioTargetSec = !isCollapsed
+      ? (activeSecs.find(s => PBI_PAGES.some(p => p.id === s.pageId)) || null)
+      : null;
+    const primaryPageId = studioTargetSec ? studioTargetSec.pageId : ((availSecs[0] && availSecs[0].pageId) || 'p01_overview');
+    const hasPbiInStudio = Boolean(studioTargetSec);
 
     return `
-      <div class="mod-analytics-hub" data-mod-hub="${esc(moduleKey)}">
+      <div class="mod-analytics-hub${isCollapsed ? ' is-collapsed' : ''}" data-mod-hub="${esc(moduleKey)}">
         <div class="mod-analytics-bar">
-          <div class="mod-analytics-hdr">
+          <div class="mod-analytics-hdr"${isCollapsed ? ` role="button" tabindex="0" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="${esc(expandSecId)}" data-mod-toggle="expand-hdr" title="Expand ${esc(cfg.title)}"` : ''}>
             <div class="mod-analytics-eyebrow">EMBEDDED MODULE ANALYTICS &amp; INSIGHTS</div>
             <div class="mod-analytics-title">${esc(cfg.title)}</div>
             <div class="mod-analytics-sub">${esc(cfg.subtitle)}</div>
@@ -4031,7 +4046,7 @@
                 All (${availSecs.length})
               </button>
             ` : ''}
-            <button type="button" class="filter-chip ${isCollapsed ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="hide">
+            <button type="button" class="filter-chip ${isCollapsed ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="${esc(isCollapsed ? expandSecId : 'hide')}" data-mod-toggle="${isCollapsed ? 'expand' : 'collapse'}" aria-expanded="${!isCollapsed}">
               ${isCollapsed ? '▸ Expand Insights' : '▾ Collapse'}
             </button>
             ${hasPbiInStudio ? `

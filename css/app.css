@@ -13650,6 +13650,14 @@ th.sortable.col-filtered {
   border-bottom: 2px solid var(--brass);
 }
 
+.mod-analytics-hub.is-collapsed .mod-analytics-bar {
+  border-bottom-color: transparent;
+}
+
+.mod-analytics-hub.is-collapsed .mod-analytics-hdr {
+  cursor: pointer;
+}
+
 .mod-analytics-hdr {
   min-width: 220px;
   flex: 1 1 280px;

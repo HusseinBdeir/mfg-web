@@ -20366,16 +20366,55 @@
       }
     });
     // Analytics & Insights 12-page tabs, embedded module analytics tabs & 34-table hub chips
-    container.querySelectorAll('[data-mod-sec]').forEach(btn => btn.addEventListener('click', () => {
-      const hubKey = btn.getAttribute('data-mod-hub-key') || STATE.view;
-      const secId = btn.getAttribute('data-mod-sec');
-      if (!STATE.moduleSection) STATE.moduleSection = {};
-      STATE.moduleSection[hubKey] = secId;
-      const ws = $('workspace');
-      const y = ws ? ws.scrollTop : 0;
-      renderApp();
-      if (ws) ws.scrollTop = y;
-    }));
+    container.querySelectorAll('[data-mod-sec]').forEach(btn => {
+      const applySec = () => {
+        const hubKey = btn.getAttribute('data-mod-hub-key') || STATE.view;
+        const rawSecId = btn.getAttribute('data-mod-sec');
+        if (!STATE.moduleSection) STATE.moduleSection = {};
+        if (!STATE.moduleLastSection) STATE.moduleLastSection = {};
+        const prevSec = STATE.moduleSection[hubKey];
+        const wasCollapsed = prevSec === 'hide';
+        let nextSec = rawSecId;
+        if (rawSecId === 'hide') {
+          if (wasCollapsed) {
+            nextSec = STATE.moduleLastSection[hubKey] || '';
+          } else if (prevSec && prevSec !== 'hide') {
+            STATE.moduleLastSection[hubKey] = prevSec;
+          }
+        } else if (rawSecId) {
+          STATE.moduleLastSection[hubKey] = rawSecId;
+        }
+        if (nextSec) STATE.moduleSection[hubKey] = nextSec;
+        else delete STATE.moduleSection[hubKey];
+        const ws = $('workspace');
+        const y = ws ? ws.scrollTop : 0;
+        renderApp();
+        if (ws) {
+          ws.scrollTop = y;
+          if (wasCollapsed && STATE.moduleSection[hubKey] !== 'hide') {
+            const escKey = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(hubKey) : hubKey;
+            const hubEl = ws.querySelector(`.mod-analytics-hub[data-mod-hub="${escKey}"]`);
+            if (hubEl) {
+              const wsRect = ws.getBoundingClientRect();
+              const hubRect = hubEl.getBoundingClientRect();
+              if (hubRect.top > wsRect.top + wsRect.height * 0.45) {
+                scrollWorkspaceTo(hubEl, 14);
+              }
+            }
+          }
+          lockShellScroll();
+        }
+      };
+      btn.addEventListener('click', applySec);
+      if (btn.tagName !== 'BUTTON' && btn.getAttribute('role') === 'button') {
+        btn.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            applySec();
+          }
+        });
+      }
+    });
     container.querySelectorAll('[data-pbi-page]').forEach(btn => btn.addEventListener('click', () => {
       STATE.pbiPage = btn.getAttribute('data-pbi-page');
       renderApp();
