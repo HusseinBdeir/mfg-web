@@ -117,8 +117,21 @@ try {
 
   const errsBefore = events.filter(e => e.method === 'Runtime.exceptionThrown').length;
   const overflow = async label => {
-    const o = await evaluate(`Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)`);
-    o === 0 ? pass(`overflow 0px · ${label}`) : fail(`overflow · ${label}`, `${o}px horizontal`);
+    const o = await evaluate(`(() => {
+      const de = document.documentElement;
+      const sh = document.getElementById('appShell');
+      const r = sh ? sh.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+      return {
+        horiz: Math.max(0, de.scrollWidth - de.clientWidth),
+        vertRoot: Math.max(0, de.scrollHeight - window.innerHeight),
+        scrollY: Math.round(window.scrollY || de.scrollTop || 0),
+        shellTop: Math.round(r.top),
+        shellBottomGap: Math.abs(Math.round(r.bottom) - window.innerHeight)
+      };
+    })()`);
+    (o.horiz === 0 && o.vertRoot <= 1 && o.scrollY === 0 && o.shellTop === 0 && o.shellBottomGap <= 1)
+      ? pass(`overflow 0px · ${label}`)
+      : fail(`overflow · ${label}`, `horiz=${o.horiz}px vertRoot=${o.vertRoot}px scrollY=${o.scrollY}px shellTop=${o.shellTop}px bottomGap=${o.shellBottomGap}px`);
   };
 
   // 2. Every view + 1-to-1 Page Title Consistency (Left Sidebar == Topbar == Page Hero Heading == Browser Tab)
@@ -2471,12 +2484,13 @@ try {
     const ownTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
     const ownSearchOnlyTrucks = ownTruckTypes.length === 17 && ownTruckTypes.every(t => t === 'Truck') && ownTruckFoot.includes('TOTAL (17');
 
-    // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck (1,530 total)
+    // 3. Switch back to "All Trucks & Equipment" while searching "truck" -> all visible rows are Type = Truck
+    const expectedAllTrucks = eqPool.filter(r => r.type === 'Truck').length.toLocaleString('en-US');
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
     if (allViewBtn) allViewBtn.click();
     const allTruckTypes = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow td:nth-child(4)')).map(td => td.textContent.trim());
     const allTruckFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && allTruckFoot.includes('TOTAL (1,530');
+    const allSearchOnlyTrucks = allTruckTypes.length > 0 && allTruckTypes.every(t => t === 'Truck') && allTruckFoot.includes('TOTAL (' + expectedAllTrucks);
 
     // Clear search
     const clearSearch = document.getElementById('tableSearchInput');
@@ -2526,10 +2540,11 @@ try {
     const capFilterOk = rowsCap25.length > 0 && rowsCap25.length < multiRows.length && rowsCap25.every(tr => Number(tr.children[6].textContent.trim()) >= 25);
 
     // Clear all column filters via Reset All button
+    const expectedTotalEq = eqPool.length.toLocaleString('en-US');
     const clearAllBtn = document.querySelector('#univRegPanel [data-cf-clear-all]');
     if (clearAllBtn) clearAllBtn.click();
     const restoredAllFoot = (document.querySelector('#univRegPanel tfoot tr')?.textContent || '').trim();
-    const resetRestoredAll = restoredAllFoot.includes('TOTAL (1,637');
+    const resetRestoredAll = restoredAllFoot.includes('TOTAL (' + expectedTotalEq);
 
     // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, no redundant header/guide boxes, clean header hover, wide search box & custom pill popover
     document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
