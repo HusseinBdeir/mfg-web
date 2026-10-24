@@ -950,8 +950,29 @@ try {
     set('f_ruletype', 'List Price');
     const priceRuleClearedHiddenOk = document.getElementById('f_customer').value === '' && document.getElementById('f_site').value === '' && document.getElementById('f_qty1').value === '' && document.getElementById('f_adj1').value === '0.00';
 
-    // Return to Group 1 -> Sales
+    // Return to Group 1 -> Check Fuel & Lubricant Intake form: Driver * starts locked until Equipment / Truck * is chosen, then auto-unlocks & populates default/current driver (m296)
     document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="fuel"]').click();
+    set('f_company', 'WTC');
+    const fuelDrvEl = document.getElementById('f_driver');
+    const fuelDrvWrap = document.getElementById('wrap_f_driver');
+    const fuelDriverStartsLocked = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '');
+    set('f_truck', 'Mb4');
+    const fuelMb4DrvOpts = Array.from(document.querySelectorAll('#dl_drivers option'));
+    const fuelMb4AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.readOnly === false && fuelDrvEl.dataset.policyLockedNow === '0' && !fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === 'ibrahim Mortada' && fuelMb4DrvOpts.length > 0 && fuelMb4DrvOpts[0].value === 'ibrahim Mortada' && (fuelMb4DrvOpts[0].getAttribute('data-meta') || '').includes('Default Driver (Mb4)'));
+    set('f_driver', 'Substitute Fuel Driver');
+    const fuelSubstituteKeptOk = !!(fuelDrvEl && fuelDrvEl.value === 'Substitute Fuel Driver');
+    set('f_truck', 'Sb1');
+    const fuelSb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Khalil Al Sharif');
+    set('f_truck', 'Pb1');
+    const fuelPb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Ali Najdeh');
+    set('f_truck', 'Caterpillar');
+    const fuelCatAutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'abdallah smael');
+    set('f_truck', '');
+    const fuelClearRelocksDriverOk = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '');
+    const fuelDriverLockAndCascadeOk = fuelDriverStartsLocked && fuelMb4AutoFilledOk && fuelSubstituteKeptOk && fuelSb1AutoFilledOk && fuelPb1AutoFilledOk && fuelCatAutoFilledOk && fuelClearRelocksDriverOk;
+
+    // Return to Group 1 -> Sales
     document.querySelector('.modal-tab[data-form="sales"]').click();
 
     const cascadeDiag = {
@@ -961,7 +982,8 @@ try {
       driverFilteredToOwnerOnly, substituteDriverKept,
       ownerChangeClearedTruck, ownerChangeClearedDriver, ownerChangeClearedQty, truckClearClearedAll,
       rawOrderingOk, rawAahedCascadeOk, rawOwnerChangeClearedOk,
-      supDriverStagedOk, eqDriverFilteredToOwnerOk, priceRuleClearedHiddenOk
+      supDriverStagedOk, eqDriverFilteredToOwnerOk, priceRuleClearedHiddenOk,
+      fuelDriverLockAndCascadeOk
     };
     const fleetCascadeAndStaleClearOk = Object.values(cascadeDiag).every(Boolean);
 

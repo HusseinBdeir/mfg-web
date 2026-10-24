@@ -3709,9 +3709,10 @@
     const eqs = SEED.records.equipment || [];
     const sales = SEED.records.sales_tickets || [];
     const raws = SEED.records.raw_purchases || [];
+    const fuels = SEED.records.fuel_intakes || [];
     const drvs = SEED.records.drivers || [];
     const sups = SEED.records.suppliers || [];
-    const key = `${eqs.length}:${sales.length}:${raws.length}:${drvs.length}:${sups.length}`;
+    const key = `${eqs.length}:${sales.length}:${raws.length}:${fuels.length}:${drvs.length}:${sups.length}`;
     if (_FLEET_IDX && _FLEET_IDX.key === key) return _FLEET_IDX;
     const eqByName = new Map();
     eqs.forEach(e => {
@@ -3748,7 +3749,62 @@
       if (r.truck) addMapItem(txTrucksByOwner, ok, r.truck);
       if (r.driver) addMapItem(txDriversByOwner, ok, r.driver);
     });
-    _FLEET_IDX = { key, eqByName, txTrucksByOwner, txDriversByOwner, truckNamesList: null };
+    const fuelByEqRaw = new Map();
+    const fuelByCoEqRaw = new Map();
+    fuels.forEach(r => {
+      if (!r || r.voided || !r.equipment || !r.driver) return;
+      const drv = String(r.driver).trim();
+      if (!drv || drv === '—' || drv === '-') return;
+      const eqObj = eqByName.get(norm(r.equipment));
+      const eqKey = norm((eqObj && eqObj.name) || r.equipment);
+      if (!eqKey) return;
+      const dt = String(r.date || '').slice(0, 10);
+      addMapItem(fuelByEqRaw, eqKey, { d: drv, dt });
+      if (r.company) addMapItem(fuelByCoEqRaw, `${norm(r.company)}|${eqKey}`, { d: drv, dt });
+    });
+    const resolveFuelBest = arr => {
+      if (!arr || !arr.length) return { best: '', list: [] };
+      const sorted = arr.slice().sort((a, b) => (b.dt || '').localeCompare(a.dt || ''));
+      const recent10 = sorted.slice(0, 10);
+      const cnt10 = new Map();
+      const disp = new Map();
+      recent10.forEach(x => {
+        const k = norm(x.d);
+        if (!disp.has(k)) disp.set(k, x.d);
+        cnt10.set(k, (cnt10.get(k) || 0) + 1);
+      });
+      let best10Key = '', best10Cnt = 0;
+      cnt10.forEach((c, k) => { if (c > best10Cnt) { best10Cnt = c; best10Key = k; } });
+      const cntAll = new Map();
+      sorted.forEach(x => {
+        const k = norm(x.d);
+        if (!disp.has(k)) disp.set(k, x.d);
+        cntAll.set(k, (cntAll.get(k) || 0) + 1);
+      });
+      let bestAllKey = '', bestAllCnt = 0;
+      cntAll.forEach((c, k) => { if (c > bestAllCnt) { bestAllCnt = c; bestAllKey = k; } });
+      const bestKey = (best10Cnt >= 3 || best10Cnt === sorted.length) ? best10Key : bestAllKey;
+      const best = disp.get(bestKey) || '';
+      const orderedKeys = Array.from(cntAll.keys()).sort((a, b) => {
+        if (a === bestKey) return -1;
+        if (b === bestKey) return 1;
+        return (cntAll.get(b) || 0) - (cntAll.get(a) || 0);
+      });
+      return { best, list: orderedKeys.map(k => disp.get(k)).filter(Boolean) };
+    };
+    const fuelDriversByEq = new Map();
+    const currentFuelDriverByEq = new Map();
+    const currentFuelDriverByCoEq = new Map();
+    fuelByEqRaw.forEach((arr, k) => {
+      const res = resolveFuelBest(arr);
+      if (res.best) currentFuelDriverByEq.set(k, res.best);
+      if (res.list.length) fuelDriversByEq.set(k, res.list);
+    });
+    fuelByCoEqRaw.forEach((arr, k) => {
+      const res = resolveFuelBest(arr);
+      if (res.best) currentFuelDriverByCoEq.set(k, res.best);
+    });
+    _FLEET_IDX = { key, eqByName, txTrucksByOwner, txDriversByOwner, fuelDriversByEq, currentFuelDriverByEq, currentFuelDriverByCoEq, truckNamesList: null };
     return _FLEET_IDX;
   }
   function isTruckUnit(eOrName) {
@@ -3850,20 +3906,8 @@
     if (isCompanyFleet) {
       const coDrv = (SEED.records.company_drivers || []).filter(d => d && !d.voided && (!company || d.company === company)).map(d => d.driver || d.name);
       const customCoDrv = (SEED.records.drivers || []).filter(d => d && !d.voided && d.is_company_driver && (!company || d.company === company)).map(d => d.name || d.driver);
-      const eqDrv = (SEED.records.company_equipment || []).filter(e =>
-        e && !e.voided && e.status !== 'Sold / retired' &&
-        (!company || e.company === company) &&
-        (e.is_company_fleet === true || /^(own|rent)/i.test(e.ownership || '')) &&
-        isTruckUnit(e)
-      ).map(e => e.default_driver).filter(Boolean);
-      const ownEqDrv = (SEED.records.equipment || []).filter(e =>
-        e && !e.voided && e.status !== 'Sold / retired' &&
-        ((e.company && (!company || e.company === company) && /^(own|rent)/i.test(e.ownership || '')) ||
-         (company && norm(e.supplier) === norm(company))) &&
-        isTruckUnit(e)
-      ).map(e => e.default_driver).filter(Boolean);
       const defDrv = (activeTruckRow && activeTruckRow.default_driver && isOwnUnit(activeTruckRow, company)) ? [activeTruckRow.default_driver] : [];
-      list = uniqSorted(coDrv.concat(customCoDrv, eqDrv, ownEqDrv, defDrv), getFreqIndex().driver);
+      list = uniqSorted(coDrv.concat(customCoDrv, defDrv), getFreqIndex().driver);
     } else {
       const o = normOwnerName(ownerName);
       if (!o) {
@@ -4182,9 +4226,12 @@
   function equipInfo(name, company, isCoFleet, winOpts) {
     const n = norm(name);
     if (!n) return null;
-    const eq = getFleetIndex().eqByName.get(n) || null;
+    const idx = getFleetIndex();
+    const eq = idx.eqByName.get(n) || null;
+    const eqKey = norm((eq && eq.name) || name);
+    const isFuelSide = !!(winOpts && winOpts.side === 'fuel');
     let baseRow = eq;
-    if (company || isCoFleet) {
+    if (company || isCoFleet || isFuelSide) {
       const ce = companyFleetRow(name, company);
       if (isCoFleet) {
         if (ce) {
@@ -4195,7 +4242,7 @@
             ownership: ce.ownership || 'Own',
             is_company_fleet: true,
             supplier: (eq && eq.supplier) || ce.supplier || '',
-            default_driver: ce.default_driver || (eq && eq.default_driver) || ''
+            default_driver: ce.default_driver || ce.day_operator || ce.night_operator || (eq && eq.default_driver) || ''
           });
         } else if (eq) {
           const isAppOwn = (eq.company === company && /^(own|rent)/i.test(eq.ownership || '')) || (company && norm(eq.supplier) === norm(company));
@@ -4203,9 +4250,28 @@
         } else {
           return null;
         }
+      } else if (isFuelSide) {
+        const ceAny = ce || (SEED.records.company_equipment || []).find(e =>
+          e && !e.voided && e.status !== 'Sold / retired' &&
+          (!company || e.company === company) &&
+          (norm(e.equipment || e.name) === n || norm(e.equipment || e.name) === eqKey)
+        ) || null;
+        const fuelDrv = (ceAny && (ceAny.default_driver || ceAny.day_operator || ceAny.night_operator)) ||
+          (eq && eq.default_driver) ||
+          (company && idx.currentFuelDriverByCoEq ? idx.currentFuelDriverByCoEq.get(`${norm(company)}|${eqKey}`) : '') ||
+          (idx.currentFuelDriverByEq ? idx.currentFuelDriverByEq.get(eqKey) : '') || '';
+        baseRow = Object.assign({}, eq || (ceAny ? { name: ceAny.equipment || ceAny.name || name, type: ceAny.type || 'Equipment' } : { name }), {
+          default_driver: fuelDrv,
+          fuel_drivers: (idx.fuelDriversByEq && idx.fuelDriversByEq.get(eqKey)) || []
+        });
       }
     }
     if (!baseRow) return null;
+    if (!baseRow.default_driver && !isCoFleet && idx.currentFuelDriverByEq && idx.currentFuelDriverByEq.has(eqKey)) {
+      baseRow = Object.assign({}, baseRow, {
+        default_driver: (company && idx.currentFuelDriverByCoEq && idx.currentFuelDriverByCoEq.get(`${norm(company)}|${eqKey}`)) || idx.currentFuelDriverByEq.get(eqKey) || ''
+      });
+    }
     if (winOpts && winOpts.date && eq && Array.isArray(eq.adj_windows) && eq.adj_windows.length) {
       const w = resolveTruckWindow(eq, company, winOpts.date, winOpts);
       if (w) {
@@ -4245,11 +4311,22 @@
     if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
+  function equipFuelOptionHtml(v, company, effDate) {
+    const info = equipInfo(v, company || '', false, { date: effDate || '', side: 'fuel' });
+    if (!info) return `<option value="${esc(v)}">`;
+    const parts = [];
+    if (info.type) parts.push(info.type);
+    if (info.default_driver) parts.push(info.default_driver);
+    else if (info.supplier) parts.push(info.supplier);
+    return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
+  }
   function driverOptionHtml(v, activeTruckRow, activeOwner) {
     const info = driverInfo(v);
     const parts = [];
     const isDef = !!(activeTruckRow && activeTruckRow.default_driver && norm(activeTruckRow.default_driver) === norm(v));
+    const isFuelOp = !isDef && !!(activeTruckRow && Array.isArray(activeTruckRow.fuel_drivers) && activeTruckRow.fuel_drivers.some(fd => norm(fd) === norm(v)));
     if (isDef) parts.push(`★ Default Driver (${activeTruckRow.name})`);
+    else if (isFuelOp) parts.push(`Recent Operator (${activeTruckRow.name})`);
     const ownerLbl = (info && info.truck_owner) || activeOwner || '';
     if (ownerLbl) parts.push(ownerLbl);
     if (info && info.truck && (!activeTruckRow || norm(info.truck) !== norm(activeTruckRow.name))) parts.push(`Truck ${info.truck}`);
@@ -9230,7 +9307,7 @@
           ${fld('Ticket #', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Optional ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Lubricant / Item *', inp('f_item', 'text', 'Diesel', 'list="dl_fuel_items" placeholder="Select or type lubricant / item..."') + dlMeta('dl_fuel_items', [['Diesel', 'Bulk Fuel (L)'], ['Oil 15W40', 'Engine Oil'], ['Oil 68', 'Hydraulic 68'], ['Hydraulic Oil', 'Hydraulic'], ['Grease', 'Lubricant'], ['Other lubricant', 'Lubricant']]), { id: 'wrap_f_item', hidden: true })}
           ${fld('Equipment / Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select or type driver..."') + dl('dl_drivers', driverNames()), { id: 'wrap_f_driver' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Equipment / Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked until Equipment / Truck is selected', hintId: 'hint_driver', hint: '' })}
 
           ${secHdr('2. Intake Quantity & Meter Reading')}
           ${fld('Litres Issued (L) *', inp('f_qty', 'number', '', 'step="0.1" min="0.1" inputmode="decimal"'), { id: 'wrap_f_qty', hintId: 'hint_qty', hint: '' })}
@@ -10330,6 +10407,7 @@
 
   function recalcFuel() {
     const company = val('f_company'), equipment = val('f_truck'), date = val('f_date');
+    const effDate = val('f_repdate') || date;
     const fuelType = val('f_fueltype') || 'Diesel';
     const isLubricant = fuelType === 'Lubricant';
     // Lubricant Item (f_item) is hidden when Fuel Type = Diesel or Petrol
@@ -10340,14 +10418,83 @@
       else if (itemEl.value === 'Diesel' || itemEl.value === 'Petrol') itemEl.value = 'Oil 15W40';
     }
 
-    // Equipment -> Default Driver cascade (clears stale driver when switching equipment)
-    if (equipment !== FORM_UI.lastTruck) {
+    const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
+    const equipChanged = equipment !== FORM_UI.lastTruck;
+    const eqRow = equipment ? equipInfo(equipment, company, false, { date: effDate, side: 'fuel' }) : null;
+    const defDriver = (eqRow && eqRow.default_driver) || '';
+
+    // Populate #dl_equip with equipment category + default/current driver metadata
+    const dlEq = $('dl_equip');
+    if (dlEq) {
+      const eqPoolKey = `fuel|${company}|${getFleetIndex().key}`;
+      if (dlEq.dataset.poolKey !== eqPoolKey) {
+        dlEq.dataset.poolKey = eqPoolKey;
+        dlEq.innerHTML = equipmentNames().map(v => equipFuelOptionHtml(v, company, effDate)).join('');
+      }
+    }
+
+    // Lock Driver * until Equipment / Truck * is chosen; once chosen, auto-unlock & auto-fill default/current driver
+    const drvLocked = applyFieldLockState('f_driver', !equipment, !equipment
+      ? 'Pick Equipment / Truck first to unlock Driver'
+      : (defDriver
+          ? `Unlocked — default/current driver (${defDriver}) auto-selected for ${eqRow ? eqRow.name : equipment}`
+          : `Unlocked — select or type driver for ${eqRow ? eqRow.name : equipment}`));
+    const drvEl = $('f_driver');
+    const dlDrv = $('dl_drivers');
+
+    if (equipChanged) {
       FORM_UI.lastTruck = equipment;
       FORM_UI.driverManual = false;
-      const eqRow = equipment ? equipInfo(equipment) : null;
-      if ($('f_driver')) {
-        $('f_driver').value = (eqRow && eqRow.default_driver) ? eqRow.default_driver : '';
+    }
+
+    if (!equipment) {
+      if (drvEl) {
+        if (drvEl.value && !isFieldAdminUnlocked('f_driver')) drvEl.value = '';
+        drvEl.placeholder = 'Pick Equipment / Truck first...';
       }
+      if (dlDrv && dlDrv.dataset.poolKey !== 'empty') {
+        dlDrv.dataset.poolKey = 'empty';
+        dlDrv.innerHTML = '';
+      }
+      setHint('hint_driver', drvLocked ? 'Pick an Equipment / Truck first' : 'Admin override active', '');
+    } else {
+      if (drvEl) {
+        drvEl.placeholder = defDriver ? 'Default driver auto-selected; click to switch if substitute...' : 'Select or type driver...';
+        if (equipChanged || (companyChanged && !FORM_UI.driverManual) || (!val('f_driver') && !FORM_UI.driverManual)) {
+          drvEl.value = defDriver;
+        }
+      }
+      if (dlDrv) {
+        const drvPoolKey = `fuel_drv|${company}|${norm(eqRow ? eqRow.name : equipment)}|${norm(defDriver)}|${getFleetIndex().key}`;
+        if (dlDrv.dataset.poolKey !== drvPoolKey) {
+          dlDrv.dataset.poolKey = drvPoolKey;
+          const eqFuelDrvs = (eqRow && Array.isArray(eqRow.fuel_drivers)) ? eqRow.fuel_drivers : [];
+          const eqSup = (eqRow && eqRow.supplier) || '';
+          const ownerDrvs = driversForOwner(eqSup, company, !eqSup, eqRow);
+          const seenDrv = new Set();
+          const orderedDrvs = [];
+          const pushDrv = d => {
+            const s = String(d || '').trim();
+            const k = norm(s);
+            if (!k || seenDrv.has(k)) return;
+            seenDrv.add(k);
+            orderedDrvs.push(s);
+          };
+          if (defDriver) pushDrv(defDriver);
+          eqFuelDrvs.forEach(pushDrv);
+          ownerDrvs.forEach(pushDrv);
+          driverNames().forEach(pushDrv);
+          dlDrv.innerHTML = orderedDrvs.map(d => driverOptionHtml(d, eqRow, eqSup || company)).join('');
+        }
+      }
+      const curDrvVal = val('f_driver');
+      const isDefChosen = !!(defDriver && norm(curDrvVal) === norm(defDriver));
+      setHint('hint_driver', isDefChosen
+        ? `Default / current driver for ${eqRow ? eqRow.name : equipment} (click to switch if substitute)`
+        : (defDriver && curDrvVal
+            ? `Substitute driver — default for ${eqRow ? eqRow.name : equipment} is ${defDriver}`
+            : (defDriver ? `Default driver: ${defDriver}` : 'No preset default driver — select or type driver')),
+        isDefChosen ? 'ok' : '');
     }
 
     const type = val('f_metertype') || 'odometer';
@@ -10383,14 +10530,18 @@
     setText('calc_delta', delta == null ? '—' : fmtNum(delta, 0) + (type === 'hours' ? ' h' : ' km'));
     setText('calc_rate', delta && delta > 0 && litres > 0 ? (type === 'hours' ? fmtNum(litres / delta, 2) + ' L/h' : fmtNum(litres / delta * 100, 1) + ' L/100km') : '—');
     setText('calc_total', guard.ok ? (guard.cls === 'warn' ? 'CHECK' : 'PASS') : 'BLOCKED');
-    const known = equipmentNames().some(n => norm(n) === norm(equipment));
-    setHint('hint_truck', equipment ? (known ? '' : 'Not in the equipment registry — check the plate') : '', equipment && !known ? 'warn' : '');
+    const known = !!(eqRow && equipmentNames().some(n => norm(n) === norm(equipment)));
+    setHint('hint_truck', equipment
+      ? (known
+          ? `${(eqRow && eqRow.type) || 'Equipment'}${defDriver ? ' · Default driver: ' + defDriver : ''}${eqRow && eqRow.supplier ? ' · Owner: ' + eqRow.supplier : ''}`
+          : 'Not in the equipment registry — check the plate')
+      : '', equipment ? (known ? 'ok' : 'warn') : '');
     const bbcTankNegative = company === 'BBConstruction' && (fuelType === 'Diesel' || /diesel/i.test(val('f_item'))) && Number((((SEED.sentinels.fleet_fuel_overtime_auditor || {}).by_model || {}).BBConstruction || {}).diesel_stock_balance_l || 0) < 0;
     setHint('hint_qty', bbcTankNegative ? 'BBConstruction tank is negative — diesel intakes are refused until the history is corrected' : (litres <= 0 && val('f_qty') ? 'Must be above zero' : ''), bbcTankNegative || (litres <= 0 && val('f_qty')) ? 'crit' : '');
     commonDateChecks([]);
     if (val('f_ticketno')) dupCheck(company, 'fuel', date); else setHint('hint_ticket', 'Optional — leave blank for an unnumbered intake', '');
     renderAdminLockBar();
-    return { company, equipment, date, repDate: val('f_repdate') || date, fuelType, type, reading, litres, prev, delta, guard, bbcTankNegative };
+    return { company, equipment, date, repDate: effDate, fuelType, type, reading, litres, prev, delta, guard, bbcTankNegative };
   }
 
   function recalcExpense() {
