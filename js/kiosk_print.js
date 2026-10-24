@@ -427,8 +427,21 @@
       const fuelType = record.fuel_type || (/diesel/i.test(record.item || '') ? 'Diesel' : 'Lubricant');
       const item = record.item || fuelType || 'Diesel';
       const litres = Number(record.litres != null ? record.litres : (record.qty || 0));
-      const reading = record.odometer != null ? Number(record.odometer) : (record.hours != null ? Number(record.hours) : null);
-      const meterUnit = record.odometer != null ? 'km' : (record.hours != null ? 'h' : '');
+      const eqNm = String(record.equipment || record.truck || '').trim();
+      const eqList = (typeof window !== 'undefined' && window.MFG_SEED && window.MFG_SEED.records && window.MFG_SEED.records.equipment) || [];
+      const eqRec = eqNm ? eqList.find(e => e && String(e.name || '').trim().toLowerCase() === eqNm.toLowerCase()) : null;
+      const eqCatL = String((eqRec && (eqRec.type || eqRec.category)) || '').trim().toLowerCase();
+      const isHourCat = eqCatL === 'excavator' || eqCatL === 'wheel loader' || eqCatL === 'generator' || eqCatL === 'plant' ||
+        (eqCatL === 'other' && /baldouzar|bulldozer|compressor|kombrasor|rotary|rotare/i.test(eqNm)) ||
+        (!eqCatL && /^(pb\d|mb\d|mbs\d|sb\d|cat\b|caterpillar|volvo|bobcat|kasara|kassara|maghsal|mowaled|mwaled|welding)/i.test(eqNm));
+      const rawOdo = record.odometer != null && record.odometer !== '' ? Number(record.odometer) : null;
+      const rawHrs = record.hours != null && record.hours !== '' ? Number(record.hours) : null;
+      const reading = isHourCat
+        ? (rawHrs != null ? rawHrs : rawOdo)
+        : (rawOdo != null ? rawOdo : rawHrs);
+      const meterUnit = reading == null
+        ? ''
+        : (isHourCat ? 'h' : (rawOdo != null ? 'km' : 'h'));
       const delta = record.meter_delta != null ? Number(record.meter_delta) : null;
       return {
         docType: 'fuel',

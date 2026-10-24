@@ -503,6 +503,13 @@
         const rate = Number(r.price_per_l || 0.95);
         const tot = Number(r.total_usd || (liters * rate));
         const eqName = r.equipment || r.equip || 'Fleet Unit';
+        const eqType = eqMap.get(eqName) || r.fuel_type || 'Truck / Loader';
+        const isHourUnit = /^(excavator|wheel loader|generator|plant)$/i.test(String(eqType).trim()) ||
+          (/other/i.test(String(eqType)) && /baldouzar|bulldozer|compressor|kombrasor|rotary|rotare/i.test(eqName));
+        const rawOdo = r.odometer != null && r.odometer !== '' ? Number(r.odometer) : null;
+        const rawHrs = r.hours != null && r.hours !== '' ? Number(r.hours) : null;
+        const meterVal = isHourUnit ? (rawHrs != null ? rawHrs : rawOdo) : (rawOdo != null ? rawOdo : rawHrs);
+        const meterUnit = meterVal != null ? (isHourUnit ? 'h' : (rawOdo != null ? 'km' : 'h')) : '';
         return {
           id: r.id,
           date: r.date,
@@ -511,11 +518,12 @@
           voucher: r.ticket_no || r.name || r.id,
           name: r.name || '',
           equip: eqName,
-          equip_type: eqMap.get(eqName) || r.fuel_type || 'Truck / Loader',
+          equip_type: eqType,
           driver: r.driver || '',
           station: 'Plant Diesel Tank',
           supplier: 'Diesel Bulk Tank',
-          odometer: r.odometer || r.hours || 0,
+          odometer: meterVal || 0,
+          meter_unit: meterUnit,
           liters,
           price_per_l: rate,
           total_usd: tot,
@@ -2070,7 +2078,7 @@
               <td>${esc(r.equip_type || 'Mixer')}</td>
               <td>${esc(r.driver || '—')}</td>
               <td>${esc(r.station || r.supplier || 'Plant Tank')}</td>
-              <td class="num">${r.odometer ? fmtNum(r.odometer, 0) : '—'}</td>
+              <td class="num">${r.odometer ? fmtNum(r.odometer, r.meter_unit === 'h' && r.odometer % 1 !== 0 ? 1 : 0) + (r.meter_unit ? ' ' + r.meter_unit : '') : '—'}</td>
               <td class="num bold">${fmtNum(r.liters, 1)}</td>
               <td class="num">${fmtUsd(r.price_per_l, 2)}</td>
               <td class="num bold">${fmtUsd(r.total_usd, 2)}</td>

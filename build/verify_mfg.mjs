@@ -950,27 +950,42 @@ try {
     set('f_ruletype', 'List Price');
     const priceRuleClearedHiddenOk = document.getElementById('f_customer').value === '' && document.getElementById('f_site').value === '' && document.getElementById('f_qty1').value === '' && document.getElementById('f_adj1').value === '0.00';
 
-    // Return to Group 1 -> Check Fuel & Lubricant Intake form: Driver * starts locked until Equipment / Truck * is chosen, then auto-unlocks & populates default/current driver (m296)
+    // Return to Group 1 -> Check Fuel & Lubricant Intake form:
+    // 1. Driver * starts locked until Equipment / Truck * is chosen, then auto-unlocks & populates default/current driver (m296)
+    // 2. Meter Type is policy-locked & auto-loaded from Equipment Category (Excavator/Wheel Loader/Generator PB*/Plant -> hours, Truck/Vehicle -> odometer, Sundry Other -> none) and normalises legacy WTC readings!
     document.querySelector('[data-pa-group="dispatch"]').click();
     document.querySelector('.modal-tab[data-form="fuel"]').click();
     set('f_company', 'WTC');
     const fuelDrvEl = document.getElementById('f_driver');
     const fuelDrvWrap = document.getElementById('wrap_f_driver');
+    const fuelMtEl = document.getElementById('f_metertype');
+    const fuelMtWrap = document.getElementById('wrap_f_metertype');
+    const fuelMeterEl = document.getElementById('f_meter');
+    const fuelMeterWrap = document.getElementById('wrap_f_meter');
     const fuelDriverStartsLocked = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '');
+    const fuelMeterStartsLocked = !!(fuelMtEl && fuelMtEl.dataset.policyLockedNow === '1' && fuelMtWrap && fuelMtWrap.classList.contains('is-policy-locked') && fuelMtEl.value === '' && fuelMeterEl && fuelMeterEl.readOnly === true);
     set('f_truck', 'Mb4');
     const fuelMb4DrvOpts = Array.from(document.querySelectorAll('#dl_drivers option'));
     const fuelMb4AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.readOnly === false && fuelDrvEl.dataset.policyLockedNow === '0' && !fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === 'ibrahim Mortada' && fuelMb4DrvOpts.length > 0 && fuelMb4DrvOpts[0].value === 'ibrahim Mortada' && (fuelMb4DrvOpts[0].getAttribute('data-meta') || '').includes('Default Driver (Mb4)'));
+    const fuelMb4HoursOk = !!(fuelMtEl && fuelMtEl.value === 'hours' && fuelMtEl.dataset.policyLockedNow === '1' && document.getElementById('lbl_meter_reading')?.textContent === 'Meter Reading (h)' && (document.getElementById('calc_prev')?.textContent || '').startsWith('16,270 h'));
     set('f_driver', 'Substitute Fuel Driver');
     const fuelSubstituteKeptOk = !!(fuelDrvEl && fuelDrvEl.value === 'Substitute Fuel Driver');
     set('f_truck', 'Sb1');
-    const fuelSb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Khalil Al Sharif');
+    const fuelSb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Khalil Al Sharif' && fuelMtEl.value === 'hours' && (document.getElementById('calc_prev')?.textContent || '').startsWith('4,495 h'));
     set('f_truck', 'Pb1');
-    const fuelPb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Ali Najdeh');
+    const fuelPb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Ali Najdeh' && fuelMtEl.value === 'hours' && (document.getElementById('calc_prev')?.textContent || '').startsWith('57,470 h'));
     set('f_truck', 'Caterpillar');
-    const fuelCatAutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'abdallah smael');
+    set('f_qty', '50');
+    set('f_meter', '1862');
+    const fuelCatAutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'abdallah smael' && fuelMtEl.value === 'hours' && fuelMtEl.dataset.policyLockedNow === '1' && (document.getElementById('calc_prev')?.textContent || '').startsWith('1,854 h') && document.getElementById('calc_delta')?.textContent === '8 h' && document.getElementById('calc_rate')?.textContent === '6.25 L/h');
+    set('f_meter', '');
+    set('f_truck', 'Tb7');
+    const fuelTb7OdoOk = !!(fuelMtEl && fuelMtEl.value === 'odometer' && fuelMtEl.dataset.policyLockedNow === '1' && document.getElementById('lbl_meter_reading')?.textContent === 'Meter Reading (km)' && (document.getElementById('calc_prev')?.textContent || '').startsWith('497,370 km'));
+    set('f_truck', 'Gallon');
+    const fuelGallonNoMeterOk = !!(fuelMtEl && fuelMtEl.value === 'none' && fuelMtEl.dataset.policyLockedNow === '1' && fuelMeterWrap && fuelMeterWrap.hidden === true);
     set('f_truck', '');
-    const fuelClearRelocksDriverOk = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '');
-    const fuelDriverLockAndCascadeOk = fuelDriverStartsLocked && fuelMb4AutoFilledOk && fuelSubstituteKeptOk && fuelSb1AutoFilledOk && fuelPb1AutoFilledOk && fuelCatAutoFilledOk && fuelClearRelocksDriverOk;
+    const fuelClearRelocksDriverOk = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '' && fuelMtEl.value === '' && fuelMeterEl.readOnly === true && fuelMeterWrap && fuelMeterWrap.hidden === false);
+    const fuelDriverLockAndCascadeOk = fuelDriverStartsLocked && fuelMeterStartsLocked && fuelMb4AutoFilledOk && fuelMb4HoursOk && fuelSubstituteKeptOk && fuelSb1AutoFilledOk && fuelPb1AutoFilledOk && fuelCatAutoFilledOk && fuelTb7OdoOk && fuelGallonNoMeterOk && fuelClearRelocksDriverOk;
 
     // Return to Group 1 -> Sales
     document.querySelector('.modal-tab[data-form="sales"]').click();
