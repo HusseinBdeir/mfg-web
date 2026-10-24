@@ -570,7 +570,7 @@
       const la = localCounts.get(ka) || 0;
       const lb = localCounts.get(kb) || 0;
       if (lb !== la) return lb - la;
-      return a.localeCompare(b);
+      return a < b ? -1 : (a > b ? 1 : 0);
     });
   }
 
@@ -979,13 +979,18 @@
         continue;
       }
       let sum = 0, countNum = 0;
-      list.forEach((r, idx) => {
-        const rv = typeof c.raw === 'function' ? c.raw(r, idx) : (c.key ? r[c.key] : null);
-        if (rv != null && rv !== '' && (typeof rv === 'number' || (typeof rv === 'string' && /^-?\d+(\.\d+)?$/.test(rv.trim())))) {
+      const hasRawFn = typeof c.raw === 'function';
+      const cKey = c.key;
+      for (let idx = 0, len = list.length; idx < len; idx++) {
+        const r = list[idx];
+        const rv = hasRawFn ? c.raw(r, idx) : (cKey ? r[cKey] : null);
+        if (typeof rv === 'number') {
+          if (Number.isFinite(rv)) { sum += rv; countNum++; }
+        } else if (typeof rv === 'string' && rv !== '') {
           const n = Number(rv);
           if (Number.isFinite(n)) { sum += n; countNum++; }
         }
-      });
+      }
       if (!countNum) {
         footCells.push({ v: '—', r: true });
         continue;
@@ -1247,6 +1252,9 @@
     return map[pageId] || map.p01_overview;
   }
   // ==================== 12-PAGE ANALYTICS & INSIGHTS STUDIO RENDERER ====================
+  let _pbiBaseCacheKey = '';
+  let _pbiBaseCacheVal = null;
+
   function renderPbiStudio(ctx, overridePageId, bodyOnly) {
     const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, ticketTons } = ctx;
     _activePbiState = STATE;
@@ -1265,6 +1273,10 @@
     if (!overridePageId) STATE.pbiPage = activePageId;
 
     const sl = bodyOnly ? {} : (STATE.pbiSlicer || {});
+    const activeSlicerEntries = bodyOnly ? [] : Object.entries(sl).filter(([kKey, vVal]) => Boolean(vVal));
+    const activeSlicerCount = activeSlicerEntries.length;
+    const hasAnySlicer = activeSlicerCount > 0;
+
     const rec = SEED.records || {};
     const sentinels = SEED.sentinels || {};
     const modelKey = STATE.company === 'wtc' ? 'WTC' : (STATE.company === 'bbconstruction' ? 'BBConstruction' : (STATE.company === 'lionstransport' ? 'Lions Transport' : 'Manufacturing Group'));
@@ -1272,47 +1284,166 @@
     const prSn = ((sentinels.pricing_commission_payroll_sentinel || {}).by_model || {})[modelKey] || {};
     const paritySn = sentinels.sharepoint_parity_sentinel || {};
 
-    // Lookup maps for IVA / Cost Class / Equipment / Company Driver
-    const custIvaMap = new Map();
-    (rec.customers || []).forEach(c => custIvaMap.set(norm(c.name), c.vat_registered ? 'Yes' : 'No'));
-    (m.customers || []).forEach(c => custIvaMap.set(norm(c.Customer), c['VAT Registered'] === 'Yes' ? 'Yes' : 'No'));
-    const suppIvaMap = new Map();
-    (rec.suppliers || []).forEach(s => suppIvaMap.set(norm(s.name), s.iva ? 'Yes' : 'No'));
-    (m.suppliers || []).forEach(s => suppIvaMap.set(norm(s.Supplier), s.IVA === 'Yes' ? 'Yes' : 'No'));
-    const catClassMap = new Map();
-    (rec.expense_categories || []).forEach(c => catClassMap.set(norm(c.name), c.cost_class || 'Operating Expense'));
-    const equipMetaMap = new Map();
-    (rec.equipment || []).forEach(e => equipMetaMap.set(norm(e.name), e));
-    (m.equipment || []).forEach(e => { if (!equipMetaMap.has(norm(e.Equipment))) equipMetaMap.set(norm(e.Equipment), { name: e.Equipment, type: e.Type, ownership: e.Ownership, status: e.Status }); });
-    const coDriverSet = new Set((rec.company_drivers || []).map(d => norm(d.driver || d.name)));
-    (rec.drivers || []).forEach(d => { if (d.is_company_driver) coDriverSet.add(norm(d.name)); });
+    const allowedCosKey = typeof ctx.allowedCompanyNames === 'function' ? ctx.allowedCompanyNames().join(',') : '';
+    const baseCacheKey = `${STATE.company}|${STATE.period}|${STATE.dateFrom || ''}|${STATE.dateTo || ''}|${STATE.basis}|${allowedCosKey}|${SEED._customRev || 0}|${(rec.sales_tickets || []).length}|${(rec.raw_purchases || []).length}`;
+    if (_pbiBaseCacheKey !== baseCacheKey || !_pbiBaseCacheVal) {
+      const custIvaMap = new Map();
+      (rec.customers || []).forEach(c => custIvaMap.set(norm(c.name), c.vat_registered ? 'Yes' : 'No'));
+      (m.customers || []).forEach(c => custIvaMap.set(norm(c.Customer), c['VAT Registered'] === 'Yes' ? 'Yes' : 'No'));
+      const suppIvaMap = new Map();
+      (rec.suppliers || []).forEach(s => suppIvaMap.set(norm(s.name), s.iva ? 'Yes' : 'No'));
+      (m.suppliers || []).forEach(s => suppIvaMap.set(norm(s.Supplier), s.IVA === 'Yes' ? 'Yes' : 'No'));
+      const catClassMap = new Map();
+      (rec.expense_categories || []).forEach(c => catClassMap.set(norm(c.name), c.cost_class || 'Operating Expense'));
+      const equipMetaMap = new Map();
+      (rec.equipment || []).forEach(e => equipMetaMap.set(norm(e.name), e));
+      (m.equipment || []).forEach(e => { if (!equipMetaMap.has(norm(e.Equipment))) equipMetaMap.set(norm(e.Equipment), { name: e.Equipment, type: e.Type, ownership: e.Ownership, status: e.Status }); });
+      const coDriverSet = new Set((rec.company_drivers || []).map(d => norm(d.driver || d.name)));
+      (rec.drivers || []).forEach(d => { if (d.is_company_driver) coDriverSet.add(norm(d.name)); });
 
-    // Full option pools for dynamic per-page slicers (all customers, suppliers, products, sites, equipment, drivers, staff), sorted by usage frequency descending
-    const fIdx = typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ() : null;
-    const isRawSlicerPage = activePageId === 'p08_stock';
-    const isSalesSlicerPage = activePageId === 'p04_sales';
-    const slicerPools = {
-      prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name)), fIdx ? (isRawSlicerPage ? fIdx.productRaw : (isSalesSlicerPage ? fIdx.productSales : fIdx.product)) : null),
-      custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name)), fIdx && fIdx.customer),
-      suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteOwner : fIdx.supplier) : null),
-      siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteRaw : (isSalesSlicerPage ? fIdx.siteSales : fIdx.site)) : null),
-      equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name)), fIdx && fIdx.truck),
-      driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver)), fIdx && fIdx.driver),
-      staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff)), fIdx && fIdx.staff),
-      catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category)), fIdx && fIdx.category),
-      subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name), fIdx && fIdx.subcategory),
-      regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region)), fIdx && fIdx.region),
-      cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty'))), fIdx && fIdx.counterparty)
-    };
+      const baseSalesRows = filterRecords(rec.sales_tickets, { ignoreSearch: true });
+      const baseRawRows = filterRecords(rec.raw_purchases, { ignoreSearch: true });
+      const baseExpRows = filterRecords(rec.expenses, { ignoreSearch: true });
+      const baseRecRows = filterRecords(rec.receipts, { ignoreSearch: true });
+      const baseSetRows = filterRecords(rec.settlements, { ignoreSearch: true });
+      const baseFuelRows = filterRecords(rec.fuel_intakes, { ignoreSearch: true });
+      const sampleAllTtc = baseSalesRows.reduce((a, r) => a + Number(r.total_ttc || 0), 0) || 1;
 
-    const pageSlicerDefs = buildPageSlicerDefs(activePageId, slicerPools);
-    const legacyIdForKey = {
-      product: 'pbiSlicerProduct', customer: 'pbiSlicerCustomer', supplier: 'pbiSlicerSupplier',
-      site: 'pbiSlicerSite', saleType: 'pbiSlicerSaleType', method: 'pbiSlicerMethod'
-    };
+      let baseProds = m.products || [];
+      let baseCusts = m.customers || [];
+      let baseSupps = m.suppliers || [];
+      const baseSites = m.sites || [];
+      if (activeRange) {
+        const pMap = new Map();
+        baseSalesRows.forEach(s => {
+          const pk = norm(s.product);
+          if (!pk) return;
+          const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+          const q = Number(s.qty || 0);
+          const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+          const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
+          cur.loads += 1;
+          cur.qty_sold += q;
+          cur.tons_sold += ticketTons ? ticketTons(s) : (s.uom === 'm³' ? q * 1.5 : q);
+          cur.sales_ttc += ttc;
+          cur.net_sales += net;
+          cur.trans_rev += Number(s.trans_price || 0);
+          pMap.set(pk, cur);
+        });
+        baseProds = baseProds.map(p => {
+          const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+          return Object.assign({}, p, {
+            loads: st.loads,
+            qty_sold: round2(st.qty_sold),
+            tons_sold: round2(st.tons_sold),
+            sales_ttc: round2(st.sales_ttc),
+            net_sales: round2(st.net_sales),
+            trans_rev: round2(st.trans_rev),
+            avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
+            avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net
+          });
+        });
+
+        const cMap = new Map();
+        baseSalesRows.forEach(s => {
+          const ck = norm(s.customer);
+          if (!ck) return;
+          const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+          const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+          const vat = Number(s.vat || 0);
+          const net = Number(s.total != null ? s.total : (ttc - vat));
+          cur.loads += 1;
+          cur.sales_ttc += ttc;
+          cur.net_sales += net;
+          cur.sales_vat += vat;
+          if (s.method === 'Cash') cur.cash_sales += net;
+          else cur.credit_sales += net;
+          if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
+          cMap.set(ck, cur);
+        });
+        baseRecRows.forEach(r => {
+          const ck = norm(r.customer);
+          if (!ck) return;
+          const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+          cur.receipts += Number(r.amount || 0);
+          cMap.set(ck, cur);
+        });
+        baseCusts = baseCusts.map(c => {
+          const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+          return Object.assign({}, c, {
+            loads: st.loads,
+            sales_ttc: round2(st.sales_ttc),
+            net_sales: round2(st.net_sales),
+            sales_vat: round2(st.sales_vat),
+            credit_sales: round2(st.credit_sales),
+            cash_sales: round2(st.cash_sales),
+            receipts: round2(st.receipts),
+            last_sale: st.last_sale || c.last_sale
+          });
+        });
+
+        const sMap = new Map();
+        const ensureSup = name => {
+          const sk = norm(name);
+          if (!sMap.has(sk)) sMap.set(sk, { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
+          return sMap.get(sk);
+        };
+        baseRawRows.forEach(r => {
+          if (r.site_owner) {
+            const st = ensureSup(r.site_owner);
+            st.raw_loads += 1;
+            st.raw_mat_cost += Number(r.cost || 0);
+            st.raw_cost += Number(r.cost || 0);
+          }
+          if (r.truck_owner && Number(r.trans_cost || 0) > 0) {
+            const st = ensureSup(r.truck_owner);
+            if (norm(r.truck_owner) !== norm(r.site_owner)) st.raw_loads += 1;
+            st.raw_haulage += Number(r.trans_cost || 0);
+            st.raw_cost += Number(r.trans_cost || 0);
+          }
+        });
+        baseExpRows.forEach(x => {
+          if (x.supplier) {
+            const st = ensureSup(x.supplier);
+            st.expenses += Number(x.amount || 0);
+          }
+        });
+        baseSetRows.forEach(sp => {
+          if (sp.supplier) {
+            const st = ensureSup(sp.supplier);
+            st.settlements_paid += Number(sp.amount || 0);
+          }
+        });
+        baseSupps = baseSupps.map(s => {
+          const st = sMap.get(norm(s.Supplier)) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
+          return Object.assign({}, s, {
+            raw_loads: st.raw_loads,
+            raw_mat_cost: round2(st.raw_mat_cost),
+            raw_haulage: round2(st.raw_haulage),
+            raw_cost: round2(st.raw_cost),
+            settlements_paid: round2(st.settlements_paid)
+          });
+        });
+      }
+
+      const totalProdSales = baseProds.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
+      _pbiBaseCacheKey = baseCacheKey;
+      _pbiBaseCacheVal = {
+        custIvaMap, suppIvaMap, catClassMap, equipMetaMap, coDriverSet,
+        baseSalesRows, baseRawRows, baseExpRows, baseRecRows, baseSetRows, baseFuelRows,
+        baseProds, baseCusts, baseSupps, baseSites, sampleAllTtc, totalProdSales
+      };
+    }
+
+    const {
+      custIvaMap, suppIvaMap, catClassMap, equipMetaMap, coDriverSet,
+      baseSalesRows, baseRawRows, baseExpRows, baseRecRows, baseSetRows, baseFuelRows,
+      baseProds: cachedBaseProds, baseCusts: cachedBaseCusts, baseSupps: cachedBaseSupps,
+      baseSites: cachedBaseSites, sampleAllTtc, totalProdSales
+    } = _pbiBaseCacheVal;
 
     const matchSearch = r => !sl.search || Object.values(r || {}).join(' ').toLowerCase().includes(norm(sl.search));
-    const matchCommon = r => {
+    const matchCommon = !hasAnySlicer ? (() => true) : (r => {
       if (!r) return false;
       if (sl.product && norm(r.Product || r.product) !== norm(sl.product)) return false;
       if (sl.customer && norm(r.Customer || r.customer) !== norm(sl.customer)) return false;
@@ -1330,9 +1461,9 @@
         if (flag && norm(flag) !== norm(sl.iva)) return false;
       }
       return matchSearch(r);
-    };
+    });
 
-    const salesRows = filterRecords(rec.sales_tickets, { ignoreSearch: true }).filter(r => {
+    const salesRows = !hasAnySlicer ? baseSalesRows : baseSalesRows.filter(r => {
       if (!matchCommon(r)) return false;
       if (sl.shift) {
         const isNight = !!r.overtime;
@@ -1343,24 +1474,24 @@
       if (sl.overtimeFlag === 'No' && r.overtime) return false;
       return true;
     });
-    const rawRows = filterRecords(rec.raw_purchases, { ignoreSearch: true }).filter(r => {
+    const rawRows = !hasAnySlicer ? baseRawRows : baseRawRows.filter(r => {
       if (!matchCommon(r)) return false;
       if (sl.transportBy && norm(r.transport_by) !== norm(sl.transportBy)) return false;
       return true;
     });
-    const expRows = filterRecords(rec.expenses, { ignoreSearch: true }).filter(r => {
+    const expRows = !hasAnySlicer ? baseExpRows : baseExpRows.filter(r => {
       if (!matchCommon(r)) return false;
       if (sl.category && norm(r.category) !== norm(sl.category)) return false;
       if (sl.costClass && norm(catClassMap.get(norm(r.category)) || 'Operating Expense') !== norm(sl.costClass)) return false;
       return true;
     });
-    const recRows = filterRecords(rec.receipts, { ignoreSearch: true }).filter(matchCommon);
-    const setRows = filterRecords(rec.settlements, { ignoreSearch: true }).filter(r => {
+    const recRows = !hasAnySlicer ? baseRecRows : baseRecRows.filter(matchCommon);
+    const setRows = !hasAnySlicer ? baseSetRows : baseSetRows.filter(r => {
       if (!matchCommon(r)) return false;
       if (sl.payableLeg && r.payable_leg && norm(r.payable_leg) !== norm(sl.payableLeg)) return false;
       return true;
     });
-    const fuelRows = filterRecords(rec.fuel_intakes, { ignoreSearch: true }).filter(r => {
+    const fuelRows = !hasAnySlicer ? baseFuelRows : baseFuelRows.filter(r => {
       if (!matchCommon(r)) return false;
       const em = equipMetaMap.get(norm(r.equipment)) || {};
       if (sl.equipType && norm(em.type) !== norm(sl.equipType)) return false;
@@ -1370,12 +1501,12 @@
       return true;
     });
 
-    // When a specific date window is active, overlay period-scoped flow metrics on products, customers, suppliers & sites
-    let baseProds = m.products || [];
-    let baseCusts = m.customers || [];
-    let baseSupps = m.suppliers || [];
-    let baseSites = m.sites || [];
-    if (activeRange) {
+    // When a specific date window + slicer is active, overlay period-scoped flow metrics on products, customers, suppliers & sites
+    let baseProds = cachedBaseProds;
+    let baseCusts = cachedBaseCusts;
+    let baseSupps = cachedBaseSupps;
+    const baseSites = cachedBaseSites;
+    if (activeRange && hasAnySlicer) {
       const pMap = new Map();
       salesRows.forEach(s => {
         const pk = norm(s.product);
@@ -1392,7 +1523,7 @@
         cur.trans_rev += Number(s.trans_price || 0);
         pMap.set(pk, cur);
       });
-      baseProds = baseProds.map(p => {
+      baseProds = (m.products || []).map(p => {
         const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
         return Object.assign({}, p, {
           loads: st.loads,
@@ -1430,7 +1561,7 @@
         cur.receipts += Number(r.amount || 0);
         cMap.set(ck, cur);
       });
-      baseCusts = baseCusts.map(c => {
+      baseCusts = (m.customers || []).map(c => {
         const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
         return Object.assign({}, c, {
           loads: st.loads,
@@ -1476,7 +1607,7 @@
           st.settlements_paid += Number(sp.amount || 0);
         }
       });
-      baseSupps = baseSupps.map(s => {
+      baseSupps = (m.suppliers || []).map(s => {
         const st = sMap.get(norm(s.Supplier)) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
         return Object.assign({}, s, {
           raw_loads: st.raw_loads,
@@ -1488,8 +1619,8 @@
       });
     }
 
-    const prodRows = baseProds.filter(matchCommon);
-    const custRows = baseCusts.filter(c => {
+    const prodRows = !hasAnySlicer ? baseProds : baseProds.filter(matchCommon);
+    const custRows = !hasAnySlicer ? baseCusts : baseCusts.filter(c => {
       if (!matchCommon(c)) return false;
       if (sl.creditOnly === 'Credit Customers' && !(Number(c.credit_sales || 0) > 0 || Number(c.ar_balance || 0) !== 0)) return false;
       if (sl.creditOnly === 'Has Open Balance' && Math.abs(Number(c.ar_balance || 0)) < 0.01) return false;
@@ -1505,30 +1636,21 @@
       }
       return true;
     });
-    const suppRows = baseSupps.filter(s => {
+    const suppRows = !hasAnySlicer ? baseSupps : baseSupps.filter(s => {
       if (!matchCommon(s)) return false;
       if (sl.payableLeg === 'Material' && Number(s.ap_material || s.raw_mat_cost || 0) <= 0) return false;
       if (sl.payableLeg === 'Haulage' && Number(s.ap_haulage || s.raw_haulage || 0) <= 0) return false;
       if (sl.payableLeg === 'Supplies & services' && Number(s.ap_expense || s.expenses || 0) <= 0) return false;
       return true;
     });
-    const siteRows = baseSites.filter(matchCommon);
-    const equipRows = (m.equipment || []).filter(e => {
+    const siteRows = !hasAnySlicer ? baseSites : baseSites.filter(matchCommon);
+    const equipRows = !hasAnySlicer ? (m.equipment || []) : (m.equipment || []).filter(e => {
       if (!matchCommon(e)) return false;
       if (sl.equipType && norm(e.Type) !== norm(sl.equipType)) return false;
       if (sl.ownership && norm(e.Ownership) !== norm(sl.ownership)) return false;
       if (sl.equipStatus && norm(e.Status) !== norm(sl.equipStatus)) return false;
       return true;
     });
-
-    const activeSlicerEntries = Object.entries(sl).filter(([kKey, vVal]) => Boolean(vVal));
-    const activeSlicerCount = activeSlicerEntries.length;
-
-    const grainCat = ctx.getDateGrainCatalog ? ctx.getDateGrainCatalog() : { all: [] };
-    const activeGrainOpts = grainCat[STATE.dateGrain] || grainCat.all || [];
-    const curFrom = activeRange ? activeRange.from : minDate;
-    const curTo = activeRange ? activeRange.to : maxDate;
-    const isDateFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
 
     function movedRegisterBanner(title, desc, targetView, targetLabel, modSec = '') {
       if (bodyOnly && STATE.view === targetView) return '';
@@ -1543,8 +1665,37 @@
       `;
     }
 
-    // Studio Header + Page Strip + Embedded Date Grain/Range Slicer + Dynamic Per-Page Slicer Bar
-    const headerHtml = `
+    let headerHtml = '';
+    if (!bodyOnly) {
+      const fIdx = typeof window !== 'undefined' && typeof window.MFG_FREQ === 'function' ? window.MFG_FREQ() : null;
+      const isRawSlicerPage = activePageId === 'p08_stock';
+      const isSalesSlicerPage = activePageId === 'p04_sales';
+      const slicerPools = {
+        prodOpts: uniq((m.products || []).map(p => p.Product).concat((rec.products || []).map(p => p.name)), fIdx ? (isRawSlicerPage ? fIdx.productRaw : (isSalesSlicerPage ? fIdx.productSales : fIdx.product)) : null),
+        custOpts: uniq((m.customers || []).map(c => c.Customer).concat((rec.customers || []).map(c => c.name)), fIdx && fIdx.customer),
+        suppOpts: uniq((m.suppliers || []).map(s => s.Supplier).concat((rec.suppliers || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteOwner : fIdx.supplier) : null),
+        siteOpts: uniq((m.sites || []).map(s => s.Site).concat((rec.sites || []).map(s => s.name)), fIdx ? (isRawSlicerPage ? fIdx.siteRaw : (isSalesSlicerPage ? fIdx.siteSales : fIdx.site)) : null),
+        equipOpts: uniq((m.equipment || []).map(e => e.Equipment).concat((rec.equipment || []).map(e => e.name)), fIdx && fIdx.truck),
+        driverOpts: uniq((rec.drivers || []).map(d => d.name).concat((rec.sales_tickets || []).map(t => t.driver)), fIdx && fIdx.driver),
+        staffOpts: uniq((rec.employments || []).map(e => e.staff).concat((rec.salaries || []).map(s => s.staff)).concat((rec.attendance || []).map(a => a.staff)), fIdx && fIdx.staff),
+        catOpts: uniq((rec.expense_categories || []).map(c => c.name).concat((rec.expenses || []).map(x => x.category)), fIdx && fIdx.category),
+        subcatOpts: uniq((rec.expense_subcategories || []).map(c => c.name), fIdx && fIdx.subcategory),
+        regOpts: uniq((rec.regions || []).map(r => r.name).concat((rec.overtime_rates || []).map(o => o.region)), fIdx && fIdx.region),
+        cpOpts: uniq((rec.external_movements || []).map(x => cellValue(x, 'counterparty')).concat((rec.loans || []).map(l => cellValue(l, 'counterparty'))), fIdx && fIdx.counterparty)
+      };
+
+      const pageSlicerDefs = buildPageSlicerDefs(activePageId, slicerPools);
+      const legacyIdForKey = {
+        product: 'pbiSlicerProduct', customer: 'pbiSlicerCustomer', supplier: 'pbiSlicerSupplier',
+        site: 'pbiSlicerSite', saleType: 'pbiSlicerSaleType', method: 'pbiSlicerMethod'
+      };
+      const grainCat = ctx.getDateGrainCatalog ? ctx.getDateGrainCatalog() : { all: [] };
+      const activeGrainOpts = grainCat[STATE.dateGrain] || grainCat.all || [];
+      const curFrom = activeRange ? activeRange.from : minDate;
+      const curTo = activeRange ? activeRange.to : maxDate;
+      const isDateFiltered = STATE.period !== 'all' || STATE.dateGrain !== 'all' || Boolean(STATE.dateFrom || STATE.dateTo);
+
+      headerHtml = `
       <div class="pbi-studio-hdr">
         <div class="pbi-studio-top">
           <div>
@@ -1644,24 +1795,23 @@
         </div>
       </div>
     `;
+    }
 
     // Scale factor when a slicer narrows the active page
-    const totalProdSales = baseProds.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
-    const filtProdSales = prodRows.reduce((a, r) => a + Number(r.sales_ttc || 0), 0);
     const hasSalesSlicer = Boolean(sl.product || sl.customer || sl.saleType || sl.method || sl.iva);
-    const sampleAllTtc = filterRecords(rec.sales_tickets, { ignoreSearch: true }).reduce((a, r) => a + Number(r.total_ttc || 0), 0) || 1;
-    const sampleFiltTtc = salesRows.reduce((a, r) => a + Number(r.total_ttc || 0), 0);
+    const filtProdSales = hasSalesSlicer ? prodRows.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) : totalProdSales;
+    const sampleFiltTtc = hasSalesSlicer ? salesRows.reduce((a, r) => a + Number(r.total_ttc || 0), 0) : sampleAllTtc;
     const sRatio = sl.product && !sl.customer && !sl.saleType && !sl.method
       ? (filtProdSales / totalProdSales)
       : (hasSalesSlicer ? (sampleFiltTtc / sampleAllTtc) : 1);
     const sc = v => round2(Number(v || 0) * (hasSalesSlicer ? sRatio : 1));
     const baseMonths = ctx.getScopedMonthly ? ctx.getScopedMonthly(m.monthly, 14) : (m.monthly || []).slice(-14);
-    const months = baseMonths.map(r => hasSalesSlicer ? ({
+    const months = hasSalesSlicer ? baseMonths.map(r => ({
       ...r,
       sales_ttc: sc(r.sales_ttc), net_sales: sc(r.net_sales), credit_sales: sc(r.credit_sales),
       cash_sales: sc(r.cash_sales), raw_cost: sc(r.raw_cost), expenses: sc(r.expenses),
       operating_profit: sc(r.operating_profit), gross_margin: sc(r.gross_margin), receipts: sc(r.receipts)
-    }) : r);
+    })) : baseMonths;
 
     let bodyHtml = '';
 
@@ -2194,7 +2344,10 @@
       recRows.forEach(r => {
         stmtItems.push({ id: r.id, rkey: 'receipts', date: r.date, type: 'Receipt (' + (r.method || 'Cash') + ')', doc: r.reference || r.name || 'RCPT', customer: r.customer, detail: r.kind || 'Payment', debit: 0, credit: Number(r.amount || 0) });
       });
-      stmtItems.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      stmtItems.sort((a, b) => {
+        const da = String(a.date || ''), db = String(b.date || '');
+        return da < db ? -1 : (da > db ? 1 : 0);
+      });
       let runBal = 0;
       stmtItems.forEach(it => { runBal = round2(runBal + it.debit - it.credit); it.running = runBal; });
       stmtItems.reverse();
@@ -3478,7 +3631,7 @@
         if (sl.bookStatus === 'Incomplete Books' && b.missing === 0) return false;
         if (sl.bookStatus === 'Missing Serials' && b.missing === 0) return false;
         return true;
-      }).sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+      }).sort((a, b) => b.lastDate < a.lastDate ? -1 : (b.lastDate > a.lastDate ? 1 : 0));
 
       bodyHtml = `
         <div class="pbi-overview-bands">
@@ -3521,7 +3674,10 @@
             { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], salesRows.map(r => ({ id: r.id, rkey: 'sales_tickets', pad: 'Sales Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.customer, product: r.product, qty: r.qty, amount: r.total_ttc }))
             .concat(rawRows.map(r => ({ id: r.id, rkey: 'raw_purchases', pad: 'Quarry Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.site_owner || r.site, product: r.product, qty: r.qty, amount: r.total })))
-            .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+            .sort((a, b) => {
+              const da = String(a.date || ''), db = String(b.date || '');
+              return db < da ? -1 : (db > da ? 1 : 0);
+            }),
           { unitLabel: 'tickets' })}
         </div>
       `;
@@ -3851,7 +4007,7 @@
     const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm } = ctx;
     const catalog = typeof ctx.canAccessTable === 'function' ? TABLE_CATALOG.filter(t => ctx.canAccessTable(t.key)) : TABLE_CATALOG;
     const tablePool = catalog.length ? catalog : TABLE_CATALOG;
-    const activeKey = STATE.activeTableKey || 'price_rules';
+    const activeKey = STATE.activeTableKey || 'sales_tickets';
     const meta = tablePool.find(t => t.key === activeKey) || tablePool[0];
     STATE.activeTableKey = meta.key;
     const rel = getHubRelIndex(SEED);
@@ -3877,19 +4033,50 @@
     const groups = Array.from(new Set(tablePool.map(t => t.group)));
     const relTablesMeta = (meta.relTables || []).map(rk => tablePool.find(t => t.key === rk)).filter(Boolean);
 
+    const matchPct = rlsScopedRaw.length > 0 ? Math.min(100, (rows.length / rlsScopedRaw.length) * 100) : 100;
+
     return `
-      <div class="cockpit-banner">
-        <div class="cockpit-title-block">
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
           <div class="cockpit-eyebrow">${isUniv ? `UNIVERSAL REGISTRY (ALL BUSINESS UNITS) · ACTIVE TABLE: ${esc(meta.label.toUpperCase())}` : `${tablePool.length} OPERATIONAL &amp; MASTER TABLES · ACTIVE TABLE: ${esc(meta.label.toUpperCase())}`}</div>
           <div class="cockpit-title">Tables &amp; Registers</div>
-          <div class="cockpit-sub">Browse, search, sort, switch System Views, click any row for its 360° Record Form &amp; Related Subgrids, or click any blue lookup pill to drill into the connected entity.</div>
         </div>
-        <div class="cockpit-pills">
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Active Table</div><div class="cockpit-pill-val brass">${esc(meta.label)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Scope</div><div class="cockpit-pill-val ${isUniv ? 'emerald' : ''}">${isUniv ? 'All BUs (Universal)' : 'BU Scoped'}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Matching Rows</div><div class="cockpit-pill-val">${fmtNum(rows.length)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Connected Tables</div><div class="cockpit-pill-val">${fmtNum(relTablesMeta.length)}</div></div>
-          <div class="cockpit-pill"><div class="cockpit-pill-lbl">Total in Scope</div><div class="cockpit-pill-val emerald">${fmtNum(rlsScopedRaw.length)}</div></div>
+        <div class="cockpit-pills insight-grid">
+          <div class="cockpit-pill insight-card tone-brass">
+            <div class="cockpit-pill-top">
+              <div class="cockpit-pill-lbl">Active Register</div>
+              <span class="cockpit-pill-tag brass">${esc(meta.group)}</span>
+            </div>
+            <div class="cockpit-pill-val brass">${esc(meta.label)}</div>
+            <div class="cockpit-pill-sub">${meta.cols.length} columns · ${views.length} system views</div>
+          </div>
+          <div class="cockpit-pill insight-card tone-emerald">
+            <div class="cockpit-pill-top">
+              <div class="cockpit-pill-lbl">Governance Scope</div>
+              <span class="cockpit-pill-tag ${isUniv ? 'emerald' : 'brass'}">${isUniv ? 'Root Shared' : 'BU Scoped'}</span>
+            </div>
+            <div class="cockpit-pill-val ${isUniv ? 'emerald' : ''}">${isUniv ? 'All BUs (Universal)' : 'BU Scoped'}</div>
+            <div class="cockpit-pill-sub">Active view: <b>${esc(activeView.label)}</b></div>
+          </div>
+          <div class="cockpit-pill insight-card tone-steel">
+            <div class="cockpit-pill-top">
+              <div class="cockpit-pill-lbl">Filter &amp; View Yield</div>
+              <span class="cockpit-pill-tag">${matchPct.toFixed(0)}% Shown</span>
+            </div>
+            <div class="cockpit-pill-val">${fmtNum(rows.length)} <small>/ ${fmtNum(rlsScopedRaw.length)}</small></div>
+            <div class="cockpit-meter" aria-hidden="true">
+              <span class="cockpit-meter-fill primary" style="width:${matchPct.toFixed(1)}%"></span>
+            </div>
+            <div class="cockpit-pill-sub">Matching rows in active scope</div>
+          </div>
+          <div class="cockpit-pill insight-card tone-amber">
+            <div class="cockpit-pill-top">
+              <div class="cockpit-pill-lbl">Relational Schema</div>
+              <span class="cockpit-pill-tag amber">${tablePool.length} Total Tables</span>
+            </div>
+            <div class="cockpit-pill-val">${fmtNum(relTablesMeta.length)} <small>Connected</small></div>
+            <div class="cockpit-pill-sub">Click any row for 360° Inspector &amp; Subgrids</div>
+          </div>
         </div>
       </div>
 

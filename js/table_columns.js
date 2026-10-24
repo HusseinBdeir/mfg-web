@@ -117,6 +117,8 @@
   }
 
   function indexTableCells(table) {
+    if (table._cellsIndexed) return;
+    table._cellsIndexed = true;
     const rows = Array.from(table.querySelectorAll('thead tr, tbody tr, tfoot tr'));
     rows.forEach(tr => {
       let colCursor = 0;
@@ -137,6 +139,10 @@
     const headRow = table.querySelector('thead tr');
     if (!headRow) return;
     const ths = Array.from(headRow.children).filter(el => el.tagName === 'TH' || el.tagName === 'TD');
+    if (!Array.isArray(table._naturalWidths) || table._naturalWidths.length !== ths.length) {
+      const natWidths = ths.map(th => Math.round(th.getBoundingClientRect().width || 0));
+      if (natWidths.some(w => w >= MIN_COL_W)) table._naturalWidths = natWidths;
+    }
     const nat = Array.isArray(table._naturalWidths) && table._naturalWidths.length === ths.length ? table._naturalWidths : null;
     if (!st.baseWidths || st.baseWidths.length !== ths.length) {
       st.baseWidths = ths.map((th, i) => {
@@ -157,7 +163,6 @@
     if (!table) return;
     const tableId = table.dataset.colMgrId;
     if (!tableId) return;
-    indexTableCells(table);
     const labels = extractHeaderLabels(table);
     const colCount = labels.length;
     if (colCount < 2) return;
@@ -165,6 +170,12 @@
     const st = getOrCreateState(tableId, false);
     const hiddenSet = (st && st.hiddenCols) ? st.hiddenCols : new Set();
     const widthMap = (st && st.colWidths) ? st.colWidths : new Map();
+
+    if (hiddenSet.size === 0 && widthMap.size === 0 && !table._hadColCustom) {
+      return;
+    }
+    table._hadColCustom = hiddenSet.size > 0 || widthMap.size > 0;
+    indexTableCells(table);
 
     // Never allow all columns to be hidden; keep at least 1 visible
     if (hiddenSet.size >= colCount) {
@@ -256,6 +267,7 @@
     const labels = extractHeaderLabels(table);
     const colCount = labels.length;
     const st = getOrCreateState(tableId, true);
+    snapshotBaseWidthsIfNeeded(table, st);
     const currentlyHidden = st.hiddenCols.has(colIdx);
     const wantVisible = forceVisible != null ? Boolean(forceVisible) : currentlyHidden;
 
@@ -505,14 +517,7 @@
     if (ths.length < 2) return;
 
     const tableId = getTableId(table, idx);
-    indexTableCells(table);
     extractHeaderLabels(table);
-    if (!table.classList.contains('has-col-resize')) {
-      const natWidths = ths.map(th => Math.round(th.getBoundingClientRect().width || 0));
-      if (natWidths.some(w => w >= MIN_COL_W)) {
-        table._naturalWidths = natWidths;
-      }
-    }
 
     // 1. Enhance every <th> with a drag resizer + hover quick-actions (narrow / widen / hide)
     const thead = table.querySelector('thead');

@@ -237,16 +237,17 @@ try {
       : fail('left sidebar hover tooltip', JSON.stringify(railHoverProbe));
   }
 
-  // 2b. Operational module toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll)
+  // 2b. Operational & Financial module primary-ticket-first table order & toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll, Ledger)
   const moduleToolbarSpecs = [
-    { view: 'sales', panel: '#salesPanel', modal: 'sales' },
-    { view: 'raw', panel: '#rawPanel', modal: 'raw' },
-    { view: 'fleet', panel: '#equipPanel', modal: 'fuel' },
-    { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule' },
-    { view: 'customers', panel: '#custPanel', modal: 'receipt' },
-    { view: 'suppliers', panel: '#supPanel', modal: 'settlement' },
-    { view: 'expenses', panel: '#expPanel', modal: 'expense' },
-    { view: 'payroll', panel: '#workspace .panel-card', modal: 'salary' }
+    { view: 'sales', panel: '#salesPanel', modal: 'sales', secondPanel: '#salesProdPanel' },
+    { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#sitesPanel' },
+    { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#equipPanel' },
+    { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule', secondPanel: '#listPricePanel' },
+    { view: 'customers', panel: '#rcptPanel', modal: 'receipt', secondPanel: '#custPanel' },
+    { view: 'suppliers', panel: '#settlePanel', modal: 'settlement', secondPanel: '#supPanel' },
+    { view: 'expenses', panel: '#expPanel', modal: 'expense', secondPanel: '#expCatPanel' },
+    { view: 'payroll', panel: '#paySalPanel', modal: 'salary', secondPanel: '#payAttPanel' },
+    { view: 'ledger', panel: '#soaPanel', modal: 'treasury', secondPanel: '#glPanel' }
   ];
   for (const spec of moduleToolbarSpecs) {
     await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="${spec.view}"]').click()`);
@@ -254,6 +255,10 @@ try {
     const tb = await evaluate(`(() => {
       const panel = document.querySelector('${spec.panel}');
       if (!panel) return { ok: false, reason: 'missing panel' };
+      const allPanels = Array.from(document.querySelectorAll('#workspace .panel-card'));
+      const isFirstPanel = allPanels[0] === panel;
+      const secondPanel = document.querySelector('${spec.secondPanel}');
+      const secondAfterFirst = Boolean(secondPanel && allPanels.indexOf(secondPanel) === 1);
       const toolbar = panel.querySelector('.table-toolbar');
       if (!toolbar) return { ok: false, reason: 'missing .table-toolbar' };
       const search = panel.querySelector('#tableSearchInput');
@@ -265,7 +270,11 @@ try {
       const newRect = newBtn ? newBtn.getBoundingClientRect() : null;
       const rightAligned = newRect ? (tbRect.right - newRect.right <= 200) : false;
       return {
-        ok: Boolean(search && chips >= 4 && csvBtn && newBtn && dupSearch === 1),
+        ok: Boolean(isFirstPanel && secondAfterFirst && search && chips >= 4 && csvBtn && newBtn && dupSearch === 1),
+        isFirstPanel,
+        secondAfterFirst,
+        firstId: allPanels[0] ? allPanels[0].id : '',
+        secondId: allPanels[1] ? allPanels[1].id : '',
         chips,
         dupSearch,
         btnText: newBtn ? newBtn.textContent.trim() : '',
@@ -273,8 +282,8 @@ try {
       };
     })()`);
     tb.ok && (MOBILE || tb.rightAligned)
-      ? pass(`toolbar parity · ${spec.view}`, `${tb.chips} filter chips + CSV + "${tb.btnText}"`)
-      : fail(`toolbar parity · ${spec.view}`, JSON.stringify(tb));
+      ? pass(`primary ticket table 1st & toolbar parity · ${spec.view}`, `1st=#${tb.firstId} → 2nd=#${tb.secondId} · ${tb.chips} chips + CSV + "${tb.btnText}"`)
+      : fail(`primary ticket table 1st & toolbar parity · ${spec.view}`, JSON.stringify(tb));
   }
 
   // 3. Every PBI page + GL totals on P16 + pricing active-count on P05 + dynamic per-page slicers + header button contrast
@@ -2992,6 +3001,50 @@ try {
   indiffPriceProbe && indiffPriceProbe.ok
     ? pass('indifference price (flat / load) parity · #pricing Indifference Price ($) column + #raw Ali Klait × Ramel Mrml × Tb9 ($162 mat + $50 flat haul = $212 total, never 27×$50=$1,350)', `mat=$${indiffPriceProbe.rawMatCost} + haul=$${indiffPriceProbe.rawHaulCost} = $${indiffPriceProbe.rawTotal} · flatMat=$${indiffPriceProbe.blockMatCost}`)
     : fail('indifference price (flat / load) parity', JSON.stringify(indiffPriceProbe));
+
+  // 7o. Entity Split & Reconciliation Card Parity across Multi-Group (2 cards) and Single-Group (structured .sales-recon-card.single-card with 6 stacked metric columns & inline header reset button)
+  const singleGroupReconProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const navSales = document.querySelector('#sidebarNav .nav-item[data-view="sales"]');
+    if (navSales) navSales.click();
+    const grpBtn = document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]');
+    if (grpBtn) grpBtn.click();
+    await wait(30);
+    const multiCards = Array.from(document.querySelectorAll('#salesPanel .sales-entity-recon:not(.single) .sales-recon-card:not([hidden])'));
+    const multiOk = multiCards.length === 2 && multiCards.every(c => c.querySelectorAll('.sales-recon-metrics span small').length === 6);
+
+    const wtcBtn = document.querySelector('#companySwitch .entity-btn[data-company="wtc"]');
+    if (wtcBtn) wtcBtn.click();
+    await wait(30);
+    const singleCard = document.querySelector('#salesPanel .sales-entity-recon.single .sales-recon-card.single-card');
+    const head = singleCard ? singleCard.querySelector('.sales-recon-head') : null;
+    const badge = head ? head.querySelector('.badge') : null;
+    const resetBtn = head ? head.querySelector('.sales-recon-reset') : null;
+    const metricSpans = singleCard ? Array.from(singleCard.querySelectorAll('.sales-recon-metrics > span')) : [];
+    const metricLabels = metricSpans.map(s => (s.querySelector('small')?.textContent || '').trim());
+    const metricVals = metricSpans.map(s => (s.querySelector('b')?.textContent || '').trim());
+    const bRect = badge ? badge.getBoundingClientRect() : null;
+    const rRect = resetBtn ? resetBtn.getBoundingClientRect() : null;
+    const sameHeaderRow = Boolean(bRect && rRect && Math.abs((bRect.top + bRect.height / 2) - (rRect.top + rRect.height / 2)) < 14);
+    const singleOk = Boolean(
+      singleCard &&
+      head &&
+      resetBtn &&
+      !resetBtn.hidden &&
+      sameHeaderRow &&
+      metricSpans.length === 6 &&
+      metricLabels[0] === 'Sales Ex-VAT' &&
+      metricLabels[4] === 'Sales VAT Incl.' &&
+      metricVals.every(v => v.startsWith('$'))
+    );
+
+    if (grpBtn) grpBtn.click();
+    await wait(20);
+    return { ok: Boolean(multiOk && singleOk), multiCount: multiCards.length, singleMetricCount: metricSpans.length, sameHeaderRow, metricLabels };
+  })()`);
+  singleGroupReconProbe && singleGroupReconProbe.ok
+    ? pass('entity recon card parity · Multi-Group (2 structured cards) & Single-Group (structured .sales-recon-card.single-card with 6 stacked metric columns & inline header Show All Group button)', `multi=${singleGroupReconProbe.multiCount} cards · single=${singleGroupReconProbe.singleMetricCount} metrics · sameHeaderRow=${singleGroupReconProbe.sameHeaderRow}`)
+    : fail('entity recon card parity (Multi-Group vs Single-Group)', JSON.stringify(singleGroupReconProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

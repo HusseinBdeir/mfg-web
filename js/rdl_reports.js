@@ -523,6 +523,7 @@
         };
       });
 
+      const _rdlCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
       const uniq = arr => {
         const counts = new Map();
         const out = [];
@@ -534,7 +535,7 @@
           if (!counts.has(k)) out.push(s);
           counts.set(k, (counts.get(k) || 0) + 1);
         }
-        return out.sort((a, b) => (counts.get(b.toLowerCase()) || 0) - (counts.get(a.toLowerCase()) || 0) || a.localeCompare(b));
+        return out.sort((a, b) => (counts.get(b.toLowerCase()) || 0) - (counts.get(a.toLowerCase()) || 0) || _rdlCollator.compare(a, b));
       };
 
       const customers = uniq(salesAll.map(r => r.customer));
@@ -547,12 +548,48 @@
       const equipments = uniq([...fuelAll.map(r => r.equip), ...salesAll.map(r => r.truck)]);
       const drivers = uniq([...salesAll.map(r => r.driver), ...fuelAll.map(r => r.driver), ...rmAll.map(r => r.driver)]);
 
+      // Pre-index salesAll by vat_inv and customer in one O(N) pass for O(1) VAT invoice grouping
+      const salesByVatInv = new Map();
+      const salesByCust = new Map();
+      for (let i = 0; i < salesAll.length; i++) {
+        const r = salesAll[i];
+        if (!r || r.is_receipt_row) continue;
+        r._rDate = rowDate(r, basis);
+        if (r.vat_inv) {
+          let arr = salesByVatInv.get(r.vat_inv);
+          if (!arr) { arr = []; salesByVatInv.set(r.vat_inv, arr); }
+          arr.push(r);
+        }
+        if (r.customer) {
+          let cArr = salesByCust.get(r.customer);
+          if (!cArr) { cArr = []; salesByCust.set(r.customer, cArr); }
+          cArr.push(r);
+        }
+      }
+
       // Build official VAT invoice groups
       const invMap = new Map();
       rawVatInvs.forEach(vi => {
         const key = String(vi.invoice_no || '').trim();
         if (!key) return;
-        const matchingRows = salesAll.filter(r => !r.is_receipt_row && (r.vat_inv === key || (r.customer === vi.customer && (!vi.start_date || rowDate(r, basis) >= vi.start_date) && (!vi.end_date || rowDate(r, basis) <= vi.end_date))));
+        const byInv = salesByVatInv.get(key) || [];
+        const byCust = vi.customer ? (salesByCust.get(vi.customer) || []) : [];
+        let matchingRows;
+        if (!byCust.length) {
+          matchingRows = byInv;
+        } else {
+          const seenRows = new Set(byInv);
+          matchingRows = byInv.slice();
+          for (let j = 0; j < byCust.length; j++) {
+            const r = byCust[j];
+            if (seenRows.has(r)) continue;
+            const d = r._rDate || rowDate(r, basis);
+            if ((!vi.start_date || d >= vi.start_date) && (!vi.end_date || d <= vi.end_date)) {
+              seenRows.add(r);
+              matchingRows.push(r);
+            }
+          }
+        }
         if (!matchingRows.length) return;
         const rowsSlice = key === '2738' ? matchingRows.slice(0, 10) : matchingRows;
         invMap.set(key, {
@@ -592,12 +629,19 @@
       const invoiceList = [...invMap.values()].sort((a, b) => {
         if (a.key === '2738') return -1;
         if (b.key === '2738') return 1;
-        return String(b.key).localeCompare(String(a.key), undefined, { numeric: true });
+        return _rdlCollator.compare(String(b.key), String(a.key));
       });
 
       const ticketCandidates = salesAll
         .filter(r => !r.is_receipt_row && r.ticket_no)
-        .sort((a, b) => rowDate(b, basis).localeCompare(rowDate(a, basis)) || String(b.ticket_no).localeCompare(String(a.ticket_no), undefined, { numeric: true }));
+        .sort((a, b) => {
+          const db = b._rDate || rowDate(b, basis);
+          const da = a._rDate || rowDate(a, basis);
+          if (db !== da) return db < da ? -1 : 1;
+          const nb = Number(b.ticket_no), na = Number(a.ticket_no);
+          if (Number.isFinite(nb) && Number.isFinite(na) && nb !== na) return nb - na;
+          return _rdlCollator.compare(String(b.ticket_no), String(a.ticket_no));
+        });
 
       const ticketById = new Map();
       ticketCandidates.forEach(t => {
@@ -606,7 +650,10 @@
 
       const receiptCandidates = rawReceipts
         .slice()
-        .sort((a, b) => rowDate(b, basis).localeCompare(rowDate(a, basis)))
+        .sort((a, b) => {
+          const db = rowDate(b, basis), da = rowDate(a, basis);
+          return db < da ? -1 : (db > da ? 1 : 0);
+        })
         .map(rc => ({
           id: String(rc.id),
           date: rc.date,

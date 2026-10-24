@@ -801,7 +801,11 @@ def fetch_dataverse_records():
         eid = (ce.get("_bhf_equipment_value") or "").lower()
         own_code = ce.get("bhf_ownership")
         own_lbl = fmt_val(ce, "bhf_ownership", "Owned")
-        drv_lbl = fmt_val(ce, "_bhf_driver_value", "")
+        drv_lbl = (
+            fmt_val(ce, "_bhf_driver_value", "")
+            or fmt_val(ce, "_bhf_dayoperator_value", "")
+            or fmt_val(ce, "_bhf_nightoperator_value", "")
+        )
         ce_item = {
             "id": ce["bhf_companyequipmentid"],
             "company": bu,
