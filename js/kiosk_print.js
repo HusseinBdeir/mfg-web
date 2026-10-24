@@ -11,6 +11,8 @@
 (function () {
   'use strict';
 
+  const ic = (name, cls) => (typeof window !== 'undefined' && window.MFG_ICONS ? window.MFG_ICONS.svg(name, cls) : '');
+
   const STORAGE_KEY = 'isabi_mfg_printer_cfg_v1';
 
   const DEFAULT_CFG = {
@@ -1001,8 +1003,8 @@
           <div class="thermal-ctrl-group">
             <span class="thermal-ctrl-lbl">Ticket Format (Pref 1):</span>
             <div class="grain-switch" id="thermalModeSwitch">
-              <button type="button" class="grain-btn" data-th-mode="priced">🧾 Priced (Invoice / Voucher)</button>
-              <button type="button" class="grain-btn" data-th-mode="unpriced">🚚 Unpriced (Gate Pass / Slip)</button>
+              <button type="button" class="grain-btn" data-th-mode="priced">${ic('receipt')} Priced (Invoice / Voucher)</button>
+              <button type="button" class="grain-btn" data-th-mode="unpriced">${ic('truck')} Unpriced (Gate Pass / Slip)</button>
             </div>
           </div>
           <div class="thermal-ctrl-group">
@@ -1017,9 +1019,9 @@
         <div class="modal-foot thermal-modal-foot">
           <span class="form-note" id="thermalModalStatusNote">Ready to print via Bluetooth ESC/POS</span>
           <div class="thermal-modal-actions">
-            <button type="button" class="btn" id="thermalBrowserPrintBtn" title="Print via system / browser thermal printer dialog">🗔 Browser Print</button>
-            <button type="button" class="btn" id="thermalWebBtBtn" title="Pair &amp; print directly via Web Bluetooth GATT">🔵 Web Bluetooth</button>
-            <button type="button" class="btn btn-brass" id="thermalRawBtBtn" title="Send ESC/POS raster + barcode to Bluetooth printer via RawBT">🖨️ Print Bluetooth (RawBT)</button>
+            <button type="button" class="btn" id="thermalBrowserPrintBtn" title="Print via system / browser thermal printer dialog">${ic('window')} Browser Print</button>
+            <button type="button" class="btn" id="thermalWebBtBtn" title="Pair &amp; print directly via Web Bluetooth GATT">${ic('bluetooth')} Web Bluetooth</button>
+            <button type="button" class="btn btn-brass" id="thermalRawBtBtn" title="Send ESC/POS raster + barcode to Bluetooth printer via RawBT">${ic('printer')} Print Bluetooth (RawBT)</button>
           </div>
         </div>
       </div>

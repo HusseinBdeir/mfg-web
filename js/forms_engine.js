@@ -24,10 +24,12 @@
   const FX_RATE = 90000;
   const VAT_RATE = 0.11;
   const MIN_DATE = '2024-01-01';
+  const ic = (name, cls) => (typeof window !== 'undefined' && window.MFG_ICONS ? window.MFG_ICONS.svg(name, cls) : '');
 
   const FORM_GROUPS = [
     {
       id: 'dispatch',
+      icon: 'truck',
       label: '1. Dispatch & Settlements (6)',
       forms: [
         { id: 'sales', label: 'Sales Ticket', badge: 'bhf_salesticket', crKey: 'sales_tickets', title: 'New Sales Ticket' },
@@ -40,6 +42,7 @@
     },
     {
       id: 'pricing',
+      icon: 'pricing',
       label: '2. Sales & Pricing Setup (3)',
       forms: [
         { id: 'pricerule', label: 'Price Agreement', badge: 'bhf_pricerule', crKey: 'price_rules', title: 'New Price Agreement' },
@@ -49,6 +52,7 @@
     },
     {
       id: 'hq',
+      icon: 'globe',
       label: '3. Universal Registries (6)',
       forms: [
         { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer (Universal Registry)', universal: true },
@@ -61,6 +65,7 @@
     },
     {
       id: 'ops',
+      icon: 'payroll',
       label: '4. Payroll, Fleet & Treasury (9)',
       forms: [
         { id: 'companyequipment', label: 'Company Fleet Unit', badge: 'bhf_companyequipment', crKey: 'company_equipment', title: 'New Company Fleet Unit (BU Assignment)' },
@@ -402,7 +407,7 @@
         ${FORM_GROUPS.map(g => {
           const visibleForms = g.forms.filter(f => !canEnterFn || canEnterFn(f.id));
           if (!visibleForms.length) return '';
-          return `<button type="button" class="pa-group-btn ${g.id === activeGroup.id ? 'active' : ''}" data-pa-group="${esc(g.id)}">${esc(g.label)}</button>`;
+          return `<button type="button" class="pa-group-btn ${g.id === activeGroup.id ? 'active' : ''}" data-pa-group="${esc(g.id)}">${g.icon ? ic(g.icon) : ''}<span>${esc(g.label)}</span></button>`;
         }).join('')}
       </div>
       <div class="pa-modal-subtabs">
@@ -421,7 +426,7 @@
   }
   function fld(label, inner, opts = {}) {
     const lockAttr = opts.lockField ? ` data-policy-lock="${esc(opts.lockField)}" data-lock-reason="${esc(opts.lockReason || 'Locked by business rule')}"` : '';
-    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
+    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">${ic('lock')} LOCKED</span>` : '';
     return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.afterHtml || ''}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
   }
   function inp(id, type, value, attrs = '') {
@@ -454,7 +459,7 @@
       id: 'wrap_f_date',
       lockField: 'f_date',
       lockReason: 'Locked to entry date for Cash Flow accuracy — use Reporting Date for report adjustments',
-      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">📅 Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">${ic('calendar')} Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
     });
     const collapsibleRepDateField = () => fld('Reporting Date *', inp('f_repdate', 'date', today, dateAttrs), {
       id: 'wrap_f_repdate',
@@ -679,12 +684,14 @@
           ${fld('Equipment Category *', sel('f_category', [['Truck', 'Dump Truck / Tipper'], ['Mixer', 'Transit Mixer'], ['Loader', 'Wheel Loader'], ['Excavator', 'Excavator'], ['Bulldozer', 'Bulldozer'], ['Generator', 'Generator / Crusher'], ['Service Vehicle', 'Pickup / Service Vehicle']], 'Truck'))}
           ${fld('Capacity (m³) *', inp('f_capacity', 'number', '18', 'step="0.5" min="0"'), { id: 'wrap_eq_capacity' })}
           ${fld('Model / Make', inp('f_model', 'text', '', 'placeholder="Mercedes / Volvo / Shacman / CAT"'))}
-          ${secHdr('2. Truck Owner & Default Driver Assignment')}
+          ${secHdr('2. Owner & Active Driver Assignment')}
           ${fld('Ownership *', sel('f_ownership', isCo ? [['Owned', 'Company Owned Fleet'], ['Rented', 'Long-Term Rented']] : [['Subcontractor', 'Third-Party Hauler / Subcontractor'], ['Owned', 'Company Owned Fleet'], ['Customer', 'Customer Truck']], isCo ? 'Owned' : 'Subcontractor'))}
           ${fld('Truck Owner (Supplier / Hauler)', inp('f_supplier', 'text', isCo ? company : '', 'list="dl_suppliers" placeholder="Select or type truck owner..."') + dl('dl_suppliers', supNames), { id: 'wrap_eq_supplier', hidden: isCo, hintId: 'hint_eq_supplier', hint: '' })}
-          ${fld('Default Driver (Auto-chosen first on tickets)', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select default driver from owner\'s drivers..."') + dl('dl_drivers', driverNames), { id: 'wrap_eq_driver', hintId: 'hint_eq_driver', hint: 'Auto-selected first when this truck is chosen on a Delivery or Raw Material ticket; can be changed on the ticket if another driver substitutes.' })}
+          ${fld('Default / Active Driver (Locked onto Tickets)', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Select active driver..."') + dl('dl_drivers', driverNames), { id: 'wrap_eq_driver', hintId: 'hint_eq_driver', hint: 'Strictly auto-populated and locked on Sales, Raw Material, Lubricant & Diesel tickets unless changed in the Equipment Log.' })}
           ${fld('Effective From Date', inp('f_effdate', 'date', today), { id: 'wrap_eq_effdate' })}
+          ${fld('Effective To Date (Blank = Open / Substitute End)', inp('f_effend', 'date', ''), { id: 'wrap_eq_effend' })}
         </div>
+        <div id="wrap_eq_driver_log" hidden style="margin-top:12px"></div>
       `;
     }
 

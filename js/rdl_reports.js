@@ -9,6 +9,8 @@
 (function () {
   'use strict';
 
+  const ic = (name, cls) => (typeof window !== 'undefined' && window.MFG_ICONS ? window.MFG_ICONS.svg(name, cls) : '');
+
   const RDL_CATALOG = [
     { id: '01', code: '01', slug: 'daily_ops',     cat: 'Digest',         name: 'Daily Operations',      title: 'Daily Operations',      ar: 'ملخص العمليات اليومية', landscape: true,  params: ['from', 'to'] },
     { id: '02', code: '02', slug: 'balance_sheet', cat: 'Statements',     name: 'Balance Sheet',         title: 'Balance Sheet',         ar: 'الميزانية العمومية',   landscape: false, params: ['asof'] },
@@ -3042,8 +3044,8 @@
                 ${ctx.rdl.paramsOpen ? '▽' : '▷'} Parameters
               </button>
               <span class="rdl-tb-divider"></span>
-              <button type="button" class="rdl-tb-btn" id="printStmtBtn" title="Print / Save as PDF">🖨 Print / PDF</button>
-              <button type="button" class="rdl-tb-btn" id="rdlExportCsvBtn" title="Export current report to CSV">⬇ Export CSV</button>
+              <button type="button" class="rdl-tb-btn" id="printStmtBtn" title="Print / Save as PDF">${ic('printer')} Print / PDF</button>
+              <button type="button" class="rdl-tb-btn" id="rdlExportCsvBtn" title="Export current report to CSV">${ic('download')} Export CSV</button>
             </div>
           </div>
 

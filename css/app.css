@@ -13720,14 +13720,223 @@ th.sortable.col-filtered {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* === Rev 10 Institutional Vector Icon System (js/icons.js) === */
+svg.ic {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+  pointer-events: none;
+}
 
+.btn svg.ic,
+.pa-cmd-btn svg.ic,
+.rdl-tb-btn svg.ic,
+.kiosk-qchip svg.ic,
+.kiosk-toggle-pill svg.ic,
+.kiosk-dir-btn svg.ic,
+.grain-btn svg.ic,
+.df-tab svg.ic,
+.pa-lock-pill svg.ic,
+.repdate-toggle-btn svg.ic,
+.pa-admin-btn svg.ic,
+.role-posture-pill svg.ic,
+.perm-state-pill svg.ic,
+.role-inspect-btn svg.ic,
+.entity-picker-act-btn svg.ic {
+  margin-right: 3px;
+}
 
+.btn svg.ic:only-child,
+.tkt-print-mini svg.ic:only-child,
+.tbl-print-icon svg.ic:only-child,
+.mobile-theme-btn svg.ic:only-child,
+.kiosk-tab-ico svg.ic:only-child,
+.pa-rec-banner-ico svg.ic:only-child {
+  margin-right: 0;
+  vertical-align: 0;
+}
 
+/* Left Sidebar Module Icons */
+.rail-nav .nav-ico {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0.78;
+  transition: color 0.14s, opacity 0.14s;
+}
+.rail-nav .nav-ico svg.ic {
+  vertical-align: 0;
+}
+.rail-nav button.nav-item:hover .nav-ico,
+.rail-nav a.rail-showcase-link:hover .nav-ico {
+  color: var(--brass-strong);
+  opacity: 1;
+}
+:root[data-theme="dark"] .rail-nav button.nav-item:hover .nav-ico,
+:root[data-theme="dark"] .rail-nav a.rail-showcase-link:hover .nav-ico {
+  color: var(--brass);
+}
+.rail-nav button.nav-item.on .nav-ico {
+  color: var(--brass-strong);
+  opacity: 1;
+}
+:root[data-theme="dark"] .rail-nav button.nav-item.on .nav-ico {
+  color: var(--brass);
+}
+@media (min-width: 861px) {
+  .app-shell.rail-narrow .rail-nav .nav-ico {
+    width: 13px;
+    height: 13px;
+    font-size: 13px;
+  }
+}
 
+/* Mobile Subnav Module Icons */
+.m-subnav-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-right: 4px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.m-subnav-ico svg.ic {
+  vertical-align: 0;
+}
+.m-subnav-pill.on .m-subnav-ico {
+  opacity: 1;
+  color: var(--brass);
+}
 
+/* Unified Thermal Ticket Print Action Pill (#sales, #raw, #fleet & #kiosks) */
+#fuelPanel table.ledger-table thead th:nth-child(2),
+#fuelPanel table.ledger-table tbody td:nth-child(2) {
+  white-space: nowrap;
+}
+.tkt-print-mini,
+.tbl-print-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1px solid var(--brass-border);
+  background: var(--brass-tint);
+  color: var(--brass-strong);
+  cursor: pointer;
+  vertical-align: middle;
+  line-height: 1;
+  transition: background 0.14s, color 0.14s, border-color 0.14s, transform 0.1s;
+}
+:root[data-theme="dark"] .tkt-print-mini,
+:root[data-theme="dark"] .tbl-print-icon {
+  color: var(--brass);
+}
+.tkt-print-mini:hover,
+.tbl-print-icon:hover {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+:root[data-theme="dark"] .tkt-print-mini:hover,
+:root[data-theme="dark"] .tbl-print-icon:hover {
+  color: #0B1730;
+}
+.tkt-print-mini svg.ic,
+.tbl-print-icon svg.ic {
+  width: 12px;
+  height: 12px;
+  vertical-align: 0;
+}
 
+/* Kiosk Terminal Switcher Icon Tile */
+.kiosk-tab-ico {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--brass-tint);
+  border: 1px solid var(--brass-border);
+  color: var(--brass-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+:root[data-theme="dark"] .kiosk-tab-ico {
+  color: var(--brass);
+}
+.kiosk-mode-tab.active .kiosk-tab-ico {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+}
+.kiosk-bar-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.kiosk-bar-lbl svg.ic {
+  color: var(--brass-strong);
+  vertical-align: 0;
+}
+:root[data-theme="dark"] .kiosk-bar-lbl svg.ic {
+  color: var(--brass);
+}
 
+/* Topbar Theme Toggle Compact Width Guard (1366x768 single-row invariant) */
+#themeToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  padding-right: 9px;
+}
+#themeToggleBtn svg.ic {
+  font-size: 11.5px;
+  vertical-align: 0;
+}
+#mobileThemeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#mobileThemeBtn svg.ic {
+  font-size: 14px;
+  vertical-align: 0;
+}
 
-
-
-
+/* Entry Modal Group Tabs & Record Inspector Banner Icon */
+.pa-group-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pa-group-btn svg.ic {
+  font-size: 12.5px;
+  opacity: 0.85;
+  vertical-align: 0;
+  margin-right: 0;
+}
+.pa-rec-banner-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--brass-strong);
+}
+:root[data-theme="dark"] .pa-rec-banner-ico {
+  color: var(--brass);
+}
