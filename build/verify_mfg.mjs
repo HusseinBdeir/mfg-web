@@ -2757,8 +2757,10 @@ try {
     const dt = window.MFG_DATE_TEST;
     if (!dt) return { ok: false, err: 'missing MFG_DATE_TEST' };
 
-    // Reset to All-Time baseline first
+    // Reset to All-Time baseline first & verify redundant middle period dropdown (#periodSelect & #pbiPeriodSelect) is retired/hidden
     document.getElementById('dateRangeResetBtn').click();
+    const periodSelEl = document.getElementById('periodSelect');
+    const periodSelectHiddenOk = Boolean(periodSelEl && periodSelEl.hidden === true && getComputedStyle(periodSelEl).display === 'none');
 
     // 1. Verify partial-year "0002-12-31" is rejected and never corrupts From or To
     const dtTo = document.getElementById('dateToInput');
@@ -2808,8 +2810,8 @@ try {
     const resetClosedOk = pop && pop.hidden === true && document.getElementById('dateFromInput').value === '2024-01-01' && document.getElementById('dateToInput').value === '2030-12-31';
 
     return {
-      ok: Boolean(partialYearRejectedOk && yrViewOpened && toYrUpdatedOk && moViewOpened && fromMoUpdatedOk && dayViewOpened && fromDayUpdatedOk && steppedDayOk && steppedMoOk && resetClosedOk),
-      partialYearRejectedOk, yrViewOpened, toYrUpdatedOk, moViewOpened, fromMoUpdatedOk, dayViewOpened, fromDayUpdatedOk, steppedDayOk, steppedMoOk, resetClosedOk
+      ok: Boolean(periodSelectHiddenOk && partialYearRejectedOk && yrViewOpened && toYrUpdatedOk && moViewOpened && fromMoUpdatedOk && dayViewOpened && fromDayUpdatedOk && steppedDayOk && steppedMoOk && resetClosedOk),
+      periodSelectHiddenOk, partialYearRejectedOk, yrViewOpened, toYrUpdatedOk, moViewOpened, fromMoUpdatedOk, dayViewOpened, fromDayUpdatedOk, steppedDayOk, steppedMoOk, resetClosedOk
     };
   })()`);
   dateFacilitatorProbe && dateFacilitatorProbe.ok

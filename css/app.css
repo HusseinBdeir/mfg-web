@@ -866,14 +866,10 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   outline: none;
 }
 
-#periodSelect {
-  width: 142px;
-  min-width: 142px;
-  max-width: 142px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 0;
+#periodSelect,
+#pbiPeriodSelect,
+.pbi-period-select {
+  display: none !important;
 }
 
 .pill-select:focus {

@@ -1567,7 +1567,7 @@
                   <button type="button" class="pbi-grain-btn ${STATE.dateGrain === gKey ? 'active' : ''}" data-pbi-grain="${gKey}">${gLbl}</button>
                 `).join('')}
               </div>
-              <select id="pbiPeriodSelect" class="pbi-period-select" aria-label="Power BI Period Value">
+              <select id="pbiPeriodSelect" class="pbi-period-select" aria-label="Power BI Period Value" hidden aria-hidden="true">
                 ${STATE.period === 'custom' ? `<option value="custom" selected>Range: ${esc(curFrom)} → ${esc(curTo)}</option>` : ''}
                 ${activeGrainOpts.map(o => `<option value="${esc(o.value)}" ${STATE.period === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
               </select>
