@@ -10286,10 +10286,10 @@ table.ledger-table td.td-truck-drv {
   white-space: nowrap;
 }
 #salesPanel table.ledger-table thead th:nth-child(2),
-#salesPanel table.ledger-table tbody td:nth-child(2) {
-  max-width: 68px;
-  white-space: normal;
-  overflow-wrap: break-word;
+#salesPanel table.ledger-table tbody td:nth-child(2),
+#rawPanel table.ledger-table thead th:nth-child(2),
+#rawPanel table.ledger-table tbody td:nth-child(2) {
+  white-space: nowrap;
 }
 #salesPanel table.ledger-table thead th:nth-child(3),
 #salesPanel table.ledger-table tbody td:nth-child(3) {
@@ -10793,7 +10793,29 @@ table.ledger-table:has(#usersDirectoryTbody) .user-actions-wrap .btn {
    (1: Sales Dispatch · 2: Raw Material · 3: Fuel & Lube · 4: Attendance Biometric)
    ============================================================================ */
 
-/* Inline Thermal Print Mini Button in Registers */
+/* Inline Thermal Print Mini Button & Single-Line Ticket # Cell in Registers */
+.tkt-cell-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.tkt-cell-inline .tkt-no-num {
+  display: inline-block;
+  min-width: 34px;
+  font-variant-numeric: tabular-nums;
+}
+.tkt-cell-inline .tkt-print-mini {
+  margin-left: 0;
+  flex-shrink: 0;
+}
+.tkt-cell-inline .tkt-ot-badge {
+  padding: 1px 4.5px !important;
+  font-size: 9.5px !important;
+  line-height: 1.15 !important;
+  flex-shrink: 0;
+}
 .tkt-print-mini {
   display: inline-flex;
   align-items: center;

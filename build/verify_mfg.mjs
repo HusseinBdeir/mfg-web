@@ -381,6 +381,25 @@ try {
     const tfootNumNoWrap = Array.from(document.querySelectorAll('#salesPanel tfoot tr td.r')).every(td => getComputedStyle(td).whiteSpace === 'nowrap' && td.clientHeight <= 38);
     const wrapEl = document.querySelector('#salesPanel .table-wrap');
     const wrapMaxH = wrapEl ? parseFloat(getComputedStyle(wrapEl).maxHeight) : 0;
+    const tktCells = Array.from(document.querySelectorAll('#salesPanel tbody tr.rrow td:nth-child(2)'));
+    const allTktNoWrap = tktCells.length > 0 && tktCells.every(td => {
+      const sp = td.querySelector('.tkt-cell-inline');
+      return getComputedStyle(td).whiteSpace === 'nowrap' && sp && sp.getBoundingClientRect().height <= 24;
+    });
+    const otCell = tktCells.find(td => td.querySelector('.tkt-ot-badge'));
+    const nonOtCell = tktCells.find(td => !td.querySelector('.tkt-ot-badge'));
+    let otSingleRowAligned = false;
+    if (otCell && nonOtCell) {
+      const otNumR = otCell.querySelector('.tkt-no-num').getBoundingClientRect();
+      const otPrnR = otCell.querySelector('.tkt-print-mini').getBoundingClientRect();
+      const otBdgR = otCell.querySelector('.tkt-ot-badge').getBoundingClientRect();
+      const nonPrnR = nonOtCell.querySelector('.tkt-print-mini').getBoundingClientRect();
+      otSingleRowAligned =
+        Math.abs((otNumR.top + otNumR.height / 2) - (otPrnR.top + otPrnR.height / 2)) <= 3 &&
+        Math.abs((otPrnR.top + otPrnR.height / 2) - (otBdgR.top + otBdgR.height / 2)) <= 3 &&
+        Math.abs(otPrnR.left - nonPrnR.left) <= 2 &&
+        otBdgR.left >= otPrnR.right - 1;
+    }
     return {
       showMoreBtns,
       tfootTxt: tfootTxt.replace(/\\s+/g, ' ').trim(),
@@ -393,11 +412,13 @@ try {
       tfootColSpanSum,
       tfootNoStackedLbls,
       tfootNumNoWrap,
-      wrapMaxH: Math.round(wrapMaxH || 0)
+      wrapMaxH: Math.round(wrapMaxH || 0),
+      allTktNoWrap,
+      otSingleRowAligned
     };
   })()`);
-  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /2[56],\d\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && salesTotalsProbe.dmyDateOk && salesTotalsProbe.tfootColSpanSum === 15 && salesTotalsProbe.tfootNoStackedLbls && salesTotalsProbe.tfootNumNoWrap && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4 && salesTotalsProbe.wrapMaxH >= 300))
-    ? pass('sales tfoot, DD-MM-YYYY date & taller table-wrap · 15-col aligned tfoot, single-line totals, DD-MM-YYYY date & taller table', `date=${salesTotalsProbe.dateTxt} · wrapMaxH=${salesTotalsProbe.wrapMaxH}px · truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
+  salesTotalsProbe.showMoreBtns === 0 && !salesTotalsProbe.hasShownWord && /2[56],\d\d\d LOADS/.test(salesTotalsProbe.tfootTxt) && salesTotalsProbe.filteredTxt !== salesTotalsProbe.tfootTxt && salesTotalsProbe.dmyDateOk && salesTotalsProbe.tfootColSpanSum === 15 && salesTotalsProbe.tfootNoStackedLbls && salesTotalsProbe.tfootNumNoWrap && salesTotalsProbe.allTktNoWrap && salesTotalsProbe.otSingleRowAligned && (MOBILE || (salesTotalsProbe.truckColW <= 110 && salesTotalsProbe.bodyFontPx >= 11.4 && salesTotalsProbe.wrapMaxH >= 300))
+    ? pass('sales tfoot, single-line Ticket # (OT aligned), DD-MM-YYYY date & taller table-wrap · 15-col aligned tfoot, single-line totals & OT badges', `date=${salesTotalsProbe.dateTxt} · otSingleRow=${salesTotalsProbe.otSingleRowAligned} · wrapMaxH=${salesTotalsProbe.wrapMaxH}px · truckW=${salesTotalsProbe.truckColW}px · font=${salesTotalsProbe.bodyFontPx}px · ${salesTotalsProbe.tfootTxt}`)
     : fail('sales tfoot totals / DD-MM-YYYY / typography', JSON.stringify(salesTotalsProbe));
   await evaluate(`document.querySelector('tr.rrow[data-rid]').click()`); await sleep(220);
   const insp = await evaluate(`(() => {

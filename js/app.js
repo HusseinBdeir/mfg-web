@@ -2263,7 +2263,7 @@
     const on = s.key === key;
     const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
     const hasFilter = Boolean(cf[key] && String(cf[key]).trim());
-    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered th-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" title="Click header to sort by ${esc(label)} · Hover &amp; click filter icon for column filter &amp; width"><span class="th-lbl">${label}</span><i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter or resize ${esc(label)} column">${TH_FUNNEL_SVG}</span></th>`;
+    return `<th class="${cls || ''} sortable${on ? ' on' : ''}${hasFilter ? ' col-filtered th-filtered' : ''}" data-sort-view="${esc(view)}" data-sort-key="${esc(key)}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Click column header to filter, sort or resize ${esc(label)}"><span class="th-lbl">${label}</span><i>${on ? (s.dir === 'asc' ? '▲' : '▼') : ''}</i><span class="th-filter-btn${hasFilter ? ' active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(key)}" data-th-filter-label="${esc(label)}" title="Filter or resize ${esc(label)} column">${TH_FUNNEL_SVG}</span></th>`;
   }
 
   function getColLabel(colKey) {
@@ -2427,9 +2427,8 @@
     const filteredCount = applyColFiltersForView(pool, view).length;
 
     return `
-      <div class="col-filter-bar${activeEntries.length ? ' has-active' : ''}" data-cf-bar="${esc(view)}">
-        <span class="cf-bar-lbl" title="Click any column pill below or the funnel icon on any table column header to filter &amp; sort">${TH_FUNNEL_SVG}<span>Filter by Column</span></span>
-        <div class="cf-controls">
+      <div class="col-filter-bar${activeEntries.length ? ' has-active' : ''}" data-cf-bar="${esc(view)}" ${activeEntries.length ? '' : 'hidden'}>
+        <div class="cf-controls" hidden aria-hidden="true">
           ${defs.map(def => {
             const curVal = String(cf[def.key] || '');
             const isNum = def.kind === 'numeric' || isNumericColKey(def.key);
@@ -2439,12 +2438,7 @@
             const hasCurInOpts = !curVal || opts.some(o => o.v === curVal);
             const humanVal = curVal ? formatFilterSpecHuman(curVal) : 'All';
             return `
-              <div class="cf-item${curVal ? ' is-active active' : ''}">
-                <button type="button" class="cf-pill-trigger${curVal ? ' is-active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(def.key)}" data-th-filter-label="${esc(def.label)}" aria-label="Filter by ${esc(def.label)}">
-                  <span class="cf-pill-key">${esc(def.label)}${curVal ? ':' : ''}</span>
-                  ${curVal ? `<span class="cf-pill-val">${esc(humanVal)}</span>` : ''}
-                  <span class="cf-pill-caret" aria-hidden="true">▾</span>
-                </button>
+              <div class="cf-item${curVal ? ' is-active active' : ''}" hidden>
                 <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}" hidden aria-hidden="true" tabindex="-1">
                   <option value="">${esc(def.label)}: All</option>
                   ${!hasCurInOpts ? `<option value="${esc(curVal)}" selected>${esc(def.label)}: ${esc(humanVal)}</option>` : ''}
@@ -2456,6 +2450,7 @@
         </div>
         ${activeEntries.length ? `
           <div class="cf-active-strip">
+            <span class="cf-active-lbl">${TH_FUNNEL_SVG}<span>Active Column Filters:</span></span>
             ${activeEntries.map(([ck, spec]) => `
               <button type="button" class="cf-active-pill" data-cf-clear-view="${esc(view)}" data-cf-clear-key="${esc(ck)}" title="Remove ${esc(getColLabel(ck))} filter">
                 <span>${esc(getColLabel(ck))}: <b>${esc(formatFilterSpecHuman(spec))}</b></span>
@@ -2474,14 +2469,16 @@
     if (pop) {
       pop.hidden = true;
       pop.dataset.openKey = '';
+      pop._anchorEl = null;
     }
   }
 
   function openColFilterPopover(btnEl) {
     if (!btnEl) return;
-    const view = btnEl.getAttribute('data-th-filter-view');
-    const colKey = btnEl.getAttribute('data-th-filter-key');
-    const colLabel = btnEl.getAttribute('data-th-filter-label') || getColLabel(colKey);
+    const thEl = btnEl.closest('th[data-sort-view]');
+    const view = btnEl.getAttribute('data-th-filter-view') || (thEl && thEl.getAttribute('data-sort-view'));
+    const colKey = btnEl.getAttribute('data-th-filter-key') || (thEl && thEl.getAttribute('data-sort-key'));
+    const colLabel = btnEl.getAttribute('data-th-filter-label') || (thEl && (thEl.dataset.colCleanLabel || (thEl.querySelector('.th-lbl') && thEl.querySelector('.th-lbl').textContent.trim()))) || getColLabel(colKey);
     if (!view || !colKey) return;
 
     let pop = document.getElementById('colFilterPopover');
@@ -2492,7 +2489,7 @@
       pop.hidden = true;
       document.body.appendChild(pop);
       document.addEventListener('mousedown', e => {
-        if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-th-filter-key]')) {
+        if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('th.sortable, [data-th-filter-key]')) {
           closeColFilterPopover();
         }
       });
@@ -2513,7 +2510,7 @@
     const numOpts = isNum ? buildNumericFilterOptions(pool, colKey, view) : [];
     const allOpts = isNum ? numOpts : catOpts;
     const distinctOpts = allOpts.filter(o => o.v !== '__nonempty__' && o.v !== '__empty__');
-    const targetTh = btnEl.closest('th[data-sort-view]') || document.querySelector(`th[data-sort-view="${CSS.escape(view)}"][data-sort-key="${CSS.escape(colKey)}"]`);
+    const targetTh = thEl || document.querySelector(`th[data-sort-view="${CSS.escape(view)}"][data-sort-key="${CSS.escape(colKey)}"]`);
     const hasColTools = Boolean(targetTh && targetTh.querySelector('[data-th-hide]'));
 
     pop.innerHTML = `
@@ -2564,16 +2561,26 @@
       ` : ''}
     `;
 
+    // Always position consistently BELOW the clicked column header / filter button (never on top)
+    const anchorEl = targetTh || btnEl;
+    pop._anchorEl = anchorEl;
     pop.hidden = false;
-    const rect = btnEl.getBoundingClientRect();
-    const popW = 284;
-    const left = Math.max(8, Math.min(window.innerWidth - popW - 8, rect.left));
-    const popH = Math.min(390, pop.offsetHeight || 350);
-    const top = (rect.bottom + popH + 12 > window.innerHeight && rect.top > popH + 12)
-      ? Math.max(8, rect.top - popH - 6)
-      : Math.max(8, Math.min(window.innerHeight - popH - 8, rect.bottom + 6));
+    let rect = anchorEl.getBoundingClientRect();
+    const ws = document.getElementById('workspace');
+    if (ws && window.innerHeight - rect.bottom < 220 && ws.scrollHeight > ws.clientHeight) {
+      const nudge = Math.min(ws.scrollHeight - ws.clientHeight - ws.scrollTop, 230 - Math.max(0, window.innerHeight - rect.bottom));
+      if (nudge > 4) {
+        ws.scrollTop += nudge;
+        rect = anchorEl.getBoundingClientRect();
+      }
+    }
+    const popW = Math.min(284, window.innerWidth - 16);
+    const left = Math.round(Math.max(8, Math.min(window.innerWidth - popW - 8, rect.left)));
+    const top = Math.round(rect.bottom + 4);
+    const availBelow = Math.max(176, Math.floor(window.innerHeight - top - 8));
     pop.style.left = left + 'px';
     pop.style.top = top + 'px';
+    pop.style.maxHeight = Math.min(380, availBelow) + 'px';
 
     const applyFilterVal = valStr => {
       if (!STATE.colFilters[view]) STATE.colFilters[view] = {};
@@ -2653,6 +2660,27 @@
         if (b) b.click();
       });
     }
+  }
+
+  function insightCard({ label, badge = '', badgeCls = '', val, valCls = '', pct = null, pct2 = null, sub = '', tone = 'brass', id = '' }) {
+    const p1 = pct != null ? Math.max(0, Math.min(100, Number(pct) || 0)) : null;
+    const p2 = pct2 != null ? Math.max(0, Math.min(100 - (p1 || 0), Number(pct2) || 0)) : null;
+    return `
+      <div class="cockpit-pill insight-card tone-${esc(tone)}">
+        <div class="cockpit-pill-top">
+          <div class="cockpit-pill-lbl">${esc(label)}</div>
+          ${badge ? `<span class="cockpit-pill-tag ${esc(badgeCls)}">${esc(badge)}</span>` : ''}
+        </div>
+        <div class="cockpit-pill-val ${esc(valCls)}"${id ? ` id="${esc(id)}"` : ''}>${val}</div>
+        ${p1 != null ? `
+          <div class="cockpit-meter" aria-hidden="true">
+            <span class="cockpit-meter-fill primary" style="width:${p1.toFixed(1)}%"></span>
+            ${p2 != null && p2 > 0 ? `<span class="cockpit-meter-fill secondary" style="width:${p2.toFixed(1)}%"></span>` : ''}
+          </div>
+        ` : ''}
+        ${sub ? `<div class="cockpit-pill-sub">${sub}</div>` : ''}
+      </div>
+    `;
   }
 
   function shownCount(view) { return STATE.shown[view] || PAGE; }
@@ -5076,7 +5104,7 @@
                 return `
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'sales_tickets')}</td>
-                  <td class="mono"><strong>${esc(r.ticket_no || '—')}</strong>${r.overtime ? ' <span class="badge badge-warn" title="Overtime load">OT</span>' : ''} <button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
+                  <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '—')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">🖨️</button>${r.overtime ? '<span class="badge badge-warn tkt-ot-badge" title="Overtime load">OT</span>' : ''}</span></td>
                   <td>${coBadge(r.company)}</td>
                   <td>${r.sale_type === 'Unregistered' ? '<span title="Unregistered">Unreg.<span class="sr-only">istered</span></span>' : esc(r.sale_type)}</td>
                   <td>${relLink('customers', r.customer, r.customer, true)}</td>
@@ -5319,7 +5347,7 @@
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'raw_purchases')}</td>
-                    <td class="mono"><strong>${esc(r.ticket_no || '(no number)')}</strong> <button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">🖨️</button></td>
+                    <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '(no number)')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">🖨️</button></span></td>
                     <td>${coBadge(r.company)}</td>
                     <td>${relLink('sites', r.site, r.site || '—', true)}</td>
                     <td>${r.site_owner ? relLink('suppliers', r.site_owner) : '—'}</td>
