@@ -58,7 +58,7 @@
         { id: 'customer', label: 'Customer', badge: 'bhf_customer', crKey: 'customers', title: 'New Customer (Universal Registry)', universal: true },
         { id: 'supplier', label: 'Supplier / Hauler', badge: 'bhf_supplier', crKey: 'suppliers', title: 'New Supplier / Hauler (Universal Registry)', universal: true },
         { id: 'product', label: 'Product / Grade', badge: 'bhf_product', crKey: 'products', title: 'New Product / Aggregate Grade (Universal Registry)', universal: true },
-        { id: 'site', label: 'Site & Quarry GPS', badge: 'bhf_site', crKey: 'sites', title: 'New Site / Quarry (Universal Registry)', universal: true },
+        { id: 'site', label: 'Site', badge: 'bhf_site', crKey: 'sites', title: 'New Site (Universal Registry)', universal: true },
         { id: 'equipment', label: 'Equipment / Truck', badge: 'bhf_equipment', crKey: 'equipment', title: 'New Equipment / Truck (Universal Registry)', universal: true },
         { id: 'driver', label: 'Driver / Operator', badge: 'bhf_driver', crKey: 'drivers', title: 'New Driver / Operator (Universal Registry)', universal: true }
       ]
@@ -330,14 +330,14 @@
     if (!legFilter || legFilter === 'all' || legFilter === 'material') {
       (rec.raw_purchases || []).forEach(r => {
         if (r && !r.voided && (!company || !r.company || r.company === company) && norm(r.site_owner) === sNorm && Number(r.cost || 0) > 0) {
-          legs.push({ date: r.date, ref: `RAW #${r.ticket_no || '—'}`, leg: 'Leg 1 · Quarry Material', detail: `${r.product || ''} @ ${r.site || ''}`, amount: Number(r.cost || 0) });
+          legs.push({ date: r.date, ref: `RAW #${r.ticket_no || '—'}`, leg: 'Leg 1 · Raw Material', detail: `${r.product || ''} @ ${r.site || ''}`, amount: Number(r.cost || 0) });
         }
       });
     }
     if (!legFilter || legFilter === 'all' || legFilter === 'haulage') {
       (rec.raw_purchases || []).forEach(r => {
         if (r && !r.voided && (!company || !r.company || r.company === company) && norm(r.truck_owner) === sNorm && Number(r.trans_cost || 0) > 0) {
-          legs.push({ date: r.date, ref: `RAW #${r.ticket_no || '—'}`, leg: 'Leg 2 · Quarry Haulage', detail: `${r.truck || ''} · ${r.product || ''}`, amount: Number(r.trans_cost || 0) });
+          legs.push({ date: r.date, ref: `RAW #${r.ticket_no || '—'}`, leg: 'Leg 2 · Raw Haulage', detail: `${r.truck || ''} · ${r.product || ''}`, amount: Number(r.trans_cost || 0) });
         }
       });
       (rec.sales_tickets || []).forEach(t => {
@@ -502,14 +502,14 @@
             ['Sales (Delivery)', 'Sales (Delivery) — Customer + Site + Material/Trans'],
             ['Sales (Pickup)', 'Sales (Pickup) — Customer Material Price (Pick-up)'],
             ['List Price', 'List Price — Benchmark Product Price'],
-            ['Purchase Price (Site)', 'Purchase Price (Site) — Quarry Material Cost'],
-            ['Transport Price (Site)', 'Transport Price (Site) — Quarry Haulage Rate'],
+            ['Purchase Price (Site)', 'Purchase Price (Site) — Site Material Cost'],
+            ['Transport Price (Site)', 'Transport Price (Site) — Site Haulage Rate'],
             ['Haulage (Customer Site)', 'Haulage (Customer Site) — 3P Delivery Hauler Rate']
           ], 'Sales (Delivery)'))}
           ${fld('Agreement Code / Name', inp('f_name', 'text', '', 'placeholder="Auto-named if blank"'))}
           ${fld('Product / Grade *', inp('f_product', 'text', '', 'list="dl_pr_prods" placeholder="Select or type grade..."') + dlMeta('dl_pr_prods', prodMetaItems))}
           ${fld('Customer (Sales Rules) *', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames), { id: 'wrap_pr_customer' })}
-          ${fld('Supplier / Quarry / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
+          ${fld('Supplier / Hauler *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames), { id: 'wrap_pr_supplier', hidden: true })}
           ${fld('Site / Destination', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames), { id: 'wrap_pr_site' })}
           ${secHdr('2. Unit Pricing, Client/Site Truck Size & Tier 1 / Tier 2 Adjustments')}
           ${fld('Priced Per Unit *', sel('f_uom', uoms, 'm³'))}
@@ -592,7 +592,7 @@
       return `
         <div class="form-grid-3">
           ${secHdr('1. Supplier / Hauler Identity (Universal Registry · All BUs)')}
-          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type quarry, hauler, or vendor name..."') + dl('dl_suppliers', supNames))}
+          ${fld('Supplier / Hauler Name *', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier, hauler, or vendor name..."') + dl('dl_suppliers', supNames))}
           <div class="form-field" id="wrap_f_category">
             <label for="supCategoryTrigger"><span class="pa-fld-lbl">Category *</span></label>
             <div class="pa-suggest-wrap pa-multiselect-wrap" id="supCategoryMultiWrap">
@@ -653,7 +653,7 @@
           ${fld('Standard List Price ($)', inp('f_unitprice', 'number', '', 'step="0.01" min="0"'))}
           <div class="form-field check-field"><input type="checkbox" id="f_ticketprod" checked><label for="f_ticketprod">Show on Sales / Raw Material tickets</label></div>
           <div class="form-field check-field"><input type="checkbox" id="f_fuelitem"><label for="f_fuelitem">Show on Fuel & Lubricant Intake</label></div>
-          <div class="form-field check-field"><input type="checkbox" id="f_inputprod"><label for="f_inputprod">Quarry Input Material</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_inputprod"><label for="f_inputprod">Raw Input Material</label></div>
         </div>
       `;
     }
@@ -661,13 +661,13 @@
     if (fType === 'site') {
       return `
         <div class="form-grid-3">
-          ${fld('Site / Quarry Name *', inp('f_site', 'text', '', 'placeholder="Site or quarry name"'))}
+          ${fld('Site Name *', inp('f_site', 'text', '', 'placeholder="Site name"'))}
           ${fld('Region *', inp('f_region', 'text', '', 'list="dl_regions" placeholder="Select or type region..."') + dl('dl_regions', regNames))}
-          ${fld('Default Quarry / Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames))}
+          ${fld('Default Site Owner (Supplier)', inp('f_supplier', 'text', '', 'list="dl_suppliers" placeholder="Select or type supplier..."') + dl('dl_suppliers', supNames))}
           ${fld('Associated Customer (if Delivery Site)', inp('f_customer', 'text', '', 'list="dl_customers" placeholder="Select or type customer..."') + dl('dl_customers', custNames))}
           ${fld('Latitude (GPS)', inp('f_lat', 'number', '', 'step="0.000001" placeholder="33.8938"'))}
           ${fld('Longitude (GPS)', inp('f_lng', 'number', '', 'step="0.000001" placeholder="35.5018"'))}
-          <div class="form-field check-field"><input type="checkbox" id="f_isjv"><label for="f_isjv">Joint-Venture (JV) Quarry Site</label></div>
+          <div class="form-field check-field"><input type="checkbox" id="f_isjv"><label for="f_isjv">Joint-Venture (JV) Site</label></div>
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>
       `;
@@ -784,7 +784,7 @@
         <div class="form-grid-3">
           ${companyField}
           ${fld('Effective From *', inp('f_date', 'date', today))}
-          ${fld('Route / Rate Name *', inp('f_name', 'text', '', 'placeholder="e.g. WTC Quarry → Beirut Night Trip"'))}
+          ${fld('Route / Rate Name *', inp('f_name', 'text', '', 'placeholder="e.g. WTC Site → Beirut Night Trip"'))}
           ${fld('Site / Destination *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type destination site..."') + dl('dl_sites', siteNames))}
           ${fld('Equipment Category', sel('f_category', [['Truck', 'Dump Truck'], ['Mixer', 'Mixer'], ['All', 'All Fleet Units']], 'Truck'))}
           ${fld('Overtime Bonus per Trip ($) *', inp('f_amount', 'number', '10.00', 'step="0.50" min="0"'))}
@@ -824,7 +824,7 @@
         ${companyField}
         ${lockedDateField('Transaction Date *')}
         ${collapsibleRepDateField()}
-        ${fld('JV Entry Type *', sel('f_jvtype', [['distribution', 'JV Profit / Cash Distribution'], ['partnership', 'New JV Quarry Partnership Setup']], 'distribution'))}
+        ${fld('JV Entry Type *', sel('f_jvtype', [['distribution', 'JV Profit / Cash Distribution'], ['partnership', 'New JV Site Partnership Setup']], 'distribution'))}
         ${fld('JV Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type JV site..."') + dl('dl_sites', siteNames))}
         ${fld('JV Partner *', inp('f_counterparty', 'text', '', 'list="dl_suppliers" placeholder="Select or type JV partner..."') + dl('dl_suppliers', supNames))}
         ${fld('Partner Share (%)', inp('f_share', 'number', '50', 'step="0.5" min="0" max="100"'), { id: 'wrap_jv_share', hidden: true })}

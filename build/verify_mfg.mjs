@@ -916,10 +916,10 @@ try {
     const noExplanationBadges = document.querySelectorAll('#supCategoryMenu .pa-suggest-meta').length === 0 && !document.querySelector('#supCategoryMenu .pa-select-filter');
     const sixCleanCategoriesOk = menuOpts.length === 6 && noExplanationBadges;
     if (trigEl) trigEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    // Selecting 'Aahed' hydrates normalized categories ('Hauler / Truck Owner, Quarry & Raw Materials') and keeps trigger single-line <= 40px
+    // Selecting 'Aahed' hydrates normalized categories ('Hauler / Truck Owner, Site & Raw Materials') and keeps trigger single-line <= 40px
     set('f_supplier', 'Aahed');
     const aahedChips = Array.from(document.querySelectorAll('#supCategoryChips .pa-ms-chip')).map(c => c.getAttribute('data-ms-val'));
-    const multiCatHydratedOk = aahedChips.includes('Hauler / Truck Owner') && aahedChips.includes('Quarry & Raw Materials') && (trigEl ? trigEl.getBoundingClientRect().height <= 40 : false);
+    const multiCatHydratedOk = aahedChips.includes('Hauler / Truck Owner') && aahedChips.includes('Site & Raw Materials') && (trigEl ? trigEl.getBoundingClientRect().height <= 40 : false);
     // Selecting 'IPT' deduplicates legacy 'Fuel' + 'Oils' into 1 category ('Fuel & Lubricants')
     set('f_supplier', 'IPT');
     const iptChips = Array.from(document.querySelectorAll('#supCategoryChips .pa-ms-chip')).map(c => c.getAttribute('data-ms-val'));

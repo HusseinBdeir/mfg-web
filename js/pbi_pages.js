@@ -17,7 +17,7 @@
     { id: 'p05_pricing', num: '04', label: 'Pricing & Spreads', title: 'Price Agreements, Spread, Below-Agreed Exceptions & Commissions' },
     { id: 'p06_ar', num: '05', label: 'Receivables & Aging', title: 'FIFO Customer Balances, 5-Bucket AR Aging & Running Statement' },
     { id: 'p07_ap', num: '06', label: 'Payables & Spend', title: '3-Leg Accounts Payable (Material / Haulage / Expense) & Overhead' },
-    { id: 'p08_stock', num: '07', label: 'Stock & Unit Margin', title: 'Quarry Material Intake, Unit Economics & Transport Cost Recovery' },
+    { id: 'p08_stock', num: '07', label: 'Stock & Unit Margin', title: 'Raw Material Intake, Unit Economics & Transport Cost Recovery' },
     { id: 'p09_fuel', num: '08', label: 'Diesel & Tank Burn', title: 'Diesel Tank Balance, Consumption per 100 km / hr & Meter Guard (m142)' },
     { id: 'p10_fleet', num: '09', label: 'Fleet Economics', title: 'Equipment Utilization, Running Cost & Cost per Ton' },
     { id: 'p12_payroll', num: '10', label: 'Workforce Analytics', title: 'Staff Payroll Analytics, Site Allowances & Freelance' },
@@ -29,7 +29,7 @@
   const MOVED_PBI_PAGES = {
     p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',  modSec: 'exceptions', short: 'Action Items',      targetLabel: 'AI Sentinels & Audit' },
     p18_tickets:    { id: 'p18_tickets',    view: 'sales',      modSec: 'tickets',    short: 'Ticket Books',      targetLabel: 'Sales & Deliveries' },
-    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Quarries', targetLabel: 'Material & Transportation' },
+    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Sites',    targetLabel: 'Material & Transportation' },
     p11_drivers:    { id: 'p11_drivers',    view: 'fleet',      modSec: 'drivers',    short: 'Drivers & Overtime',targetLabel: 'Fleet & Diesel Control' },
     p13_vat:        { id: 'p13_vat',        view: 'customers',  modSec: 'vat',        short: 'VAT & Invoices',    targetLabel: 'Customers & Receivables' },
     p15_treasury:   { id: 'p15_treasury',   view: 'ledger',     modSec: 'treasury',   short: 'Treasury & Loans',  targetLabel: 'General Ledger & SOA' },
@@ -50,7 +50,7 @@
     { key: 'vat_invoices', group: '2 · Commercial & Pricing', label: 'VAT 11% Tax Invoices', dvn: 'bhf_vatinvoice', form: 'vatinvoice', cols: ['invoice_no', 'date', 'company', 'customer', 'start_date', 'end_date', 'net_amount', 'vat_amount', 'total_ttc', 'tickets_count', 'notes'], relTables: ['customers', 'sales_tickets', 'receipts'], views: [{ id: 'all', label: 'All VAT Invoices' }] },
     { key: 'equipment', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_equipment', label: 'Equipment & Trucks', dvn: 'bhf_equipment', form: 'equipment', cols: ['name', 'companies_list', 'plate_no', 'type', 'ownership', 'supplier', 'capacity', 'default_driver', 'loads_hauled', 'fuel_fills'], relTables: ['company_equipment', 'suppliers', 'drivers', 'sales_tickets', 'raw_purchases', 'fuel_intakes', 'expenses'], views: [{ id: 'all', label: 'All Trucks & Equipment' }, { id: 'trucks', label: 'Trucks Only', fn: r => /^truck$/i.test(r.type || 'Truck') }, { id: 'own', label: 'Company Fleet', fn: r => /company|own/i.test(r.ownership || '') }, { id: 'company_trucks', label: 'Company Trucks', fn: r => /company|own/i.test(r.ownership || '') && /^truck$/i.test(r.type || 'Truck') }, { id: 'machinery', label: 'Heavy Machinery & Plant', fn: r => /excavator|loader|bulldozer|generator|other/i.test(r.type || '') }, { id: 'vehicles', label: 'Vehicles & Pickups', fn: r => /vehicle/i.test(r.type || '') }, { id: 'third_party', label: 'Third-Party Haulers', fn: r => !/company|own/i.test(r.ownership || '') }] },
     { key: 'drivers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_drivers', label: 'Drivers & Operators', dvn: 'bhf_driver', form: 'driver', cols: ['name', 'truck_owner', 'assigned_trucks', 'companies_list', 'phone', 'loads_hauled', 'fuel_fills'], relTables: ['company_drivers', 'equipment', 'suppliers', 'sales_tickets', 'raw_purchases', 'fuel_intakes'], views: [{ id: 'all', label: 'All Drivers & Operators' }] },
-    { key: 'sites', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_sites', label: 'Quarries & Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Quarries & Sites' }, { id: 'jv', label: 'JV 50/50 Quarries', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
+    { key: 'sites', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_sites', label: 'Sites', dvn: 'bhf_site', form: 'site', cols: ['name', 'region', 'supplier', 'is_jv', 'gps_status', 'latitude', 'longitude', 'active_rules', 'sales_loads', 'raw_loads'], relTables: ['regions', 'suppliers', 'sales_tickets', 'raw_purchases', 'price_rules', 'jv_partnerships', 'logistics_allowances'], views: [{ id: 'all', label: 'All Sites' }, { id: 'jv', label: 'JV 50/50 Sites', fn: r => Boolean(r.is_jv) }, { id: 'gps', label: 'Verified GPS Pin', fn: r => r.latitude != null && r.longitude != null }] },
     { key: 'regions', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_regions', label: 'Regions & Zones', dvn: 'bhf_region', form: 'site', cols: ['name', 'code', 'sites_count', 'overtime_rate', 'sales_loads'], relTables: ['sites', 'overtime_rates', 'sales_tickets'], views: [{ id: 'all', label: 'All Regions & Zones' }] },
     { key: 'products', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_products', label: 'Products & Grades', dvn: 'bhf_product', form: 'product', cols: ['name', 'type', 'uom', 'ton_factor', 'list_price', 'ticket_product', 'fuel_item', 'input_product', 'active_rules', 'sales_loads', 'revenue_account'], relTables: ['sales_tickets', 'raw_purchases', 'price_rules', 'fuel_intakes', 'product_types', 'uoms'], views: [{ id: 'all', label: 'All Products & Grades' }, { id: 'agg', label: 'Ticket / Aggregate Grades', fn: r => Boolean(r.ticket_product) }, { id: 'fuel', label: 'Fuel & Lube Items', fn: r => Boolean(r.fuel_item) }] },
     { key: 'product_types', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Product Types (Families)', dvn: 'bhf_producttype', form: 'product', cols: ['name', 'code', 'products_count', 'sales_loads'], relTables: ['products', 'sales_tickets'], views: [{ id: 'all', label: 'All Product Families' }] },
@@ -59,8 +59,8 @@
     { key: 'suppliers', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_suppliers', label: 'Suppliers & Haulers', dvn: 'bhf_supplier', form: 'supplier', cols: ['name', 'supplier_role', 'method', 'trucks_list', 'drivers_list', 'haul_loads', 'raw_loads', 'expenses_count', 'active_rules', 'iva', 'ap_balance'], relTables: ['raw_purchases', 'expenses', 'settlements', 'price_rules', 'equipment', 'drivers', 'sites'], views: [
       { id: 'all', label: 'All Suppliers & Haulers' },
       { id: 'haulers', label: 'Truck Owners / Haulers', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; return Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0))); } },
-      { id: 'quarries', label: 'Quarries & Material Suppliers', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; return Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Raw Material/i.test(r.category || r.category1 || '')); } },
-      { id: 'vendors', label: 'Expense & Parts Vendors', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; const isH = Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0))); const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Raw Material/i.test(r.category || r.category1 || '')); return Boolean((se && (se.is_expense || se.expenses_count > 0)) || (!isH && !isQ)); } },
+      { id: 'quarries', label: 'Material & Site Suppliers', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; return Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Site|Raw Material/i.test(r.category || r.category1 || '')); } },
+      { id: 'vendors', label: 'Expense & Parts Vendors', fn: (r, rel) => { const se = rel && rel.suppByName[norm(r.name)]; const isH = Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0))); const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Site|Raw Material/i.test(r.category || r.category1 || '')); return Boolean((se && (se.is_expense || se.expenses_count > 0)) || (!isH && !isQ)); } },
       { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 },
       { id: 'iva', label: 'IVA / VAT Registered', fn: r => Boolean(r.iva || r.financial_no || r.mof_no) }
     ] },
@@ -161,7 +161,7 @@
       if (Array.isArray(s.trucks)) s.trucks.forEach(t => { if (t) e.trucks.add(fmtTruckRef(t)); });
       if (Array.isArray(s.drivers)) s.drivers.forEach(d => { if (d) e.drivers.add(d); });
       if (s.is_truck_owner || Number(s.trucks_count || 0) > 0 || e.trucks.size > 0 || /hauler|truck owner/i.test(s.category || '')) e.is_hauler = true;
-      if (/quarry|raw material/i.test(s.category || s.category1 || '')) e.is_quarry = true;
+      if (/quarry|site|raw material/i.test(s.category || s.category1 || '')) e.is_quarry = true;
     });
 
     (rec.credit_terms || []).forEach(ct => {
@@ -376,7 +376,7 @@
         const s = String(raw || '').trim();
         if (!s) return '';
         if (/hauler|truck\s*owner|transport/i.test(s)) return 'Hauler / Truck Owner';
-        if (/quarry|raw\s*material|aggregate/i.test(s)) return 'Quarry & Raw Materials';
+        if (/quarry|site|raw\s*material|aggregate/i.test(s)) return 'Site & Raw Materials';
         if (/fuel|lubricant|diesel|oil|bowser/i.test(s)) return 'Fuel & Lubricants';
         if (/spare\s*part|repair|maintenance|garage|tyre|tire|workshop|tool/i.test(s)) return 'Spare Parts & Repairs';
         if (/capital\s*expenditure|minor\s*equipment|machinery|equipment/i.test(s)) return 'Equipment & Machinery';
@@ -438,7 +438,7 @@
     }
     if (c === 'payable_leg') {
       if (r.expense_record) return '3 · General Expense';
-      if (r.raw_ticket) return '1/2 · Quarry & Haulage';
+      if (r.raw_ticket) return '1/2 · Material & Haulage';
       return 'Account Settlement';
     }
     if (c === 'total_ttc') return round2(Number(r.amount || r.net_amount || r.price || 0) + Number(r.vat || r.vat_amount || 0));
@@ -467,17 +467,17 @@
         if (c === 'ap_balance') return se ? se.ap_balance : 0;
         if (c === 'supplier_role') {
           if (r.category && !/Raw Material Settlements/i.test(r.category)) {
-            if (/Quarry\s*\+\s*Hauler/i.test(r.category)) return 'Quarry + Hauler';
+            if (/^\s*(?:Quarry|Site)\s*\+\s*Hauler/i.test(r.category) || /(?:Quarry|Site)\s*\+\s*Hauler/i.test(r.category)) return 'Site + Hauler';
             if (/Hauler|Truck Owner/i.test(r.category)) return 'Truck Owner (Hauler)';
-            if (/Quarry|Raw Material/i.test(r.category)) return 'Quarry / Material';
+            if (/Quarry|Site|Raw Material/i.test(r.category)) return 'Site / Material';
             return r.category;
           }
           const isH = Boolean(r.is_truck_owner || Number(r.trucks_count || 0) > 0 || (se && (se.is_hauler || se.trucks.size > 0 || se.haul_loads > 0)));
-          const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Raw Material/i.test(r.category1 || ''));
+          const isQ = Boolean((se && (se.is_quarry || se.raw_loads > 0 || se.sites.size > 0)) || /Quarry|Site|Raw Material/i.test(r.category1 || ''));
           const isE = Boolean(se && (se.is_expense || se.expenses_count > 0));
-          if (isH && isQ) return 'Quarry + Hauler';
+          if (isH && isQ) return 'Site + Hauler';
           if (isH) return 'Truck Owner (Hauler)';
-          if (isQ) return 'Quarry / Material';
+          if (isQ) return 'Site / Material';
           if (isE) return 'Expense / Parts Vendor';
           return 'General Vendor';
         }
@@ -1132,7 +1132,7 @@
       p01_overview: [
         { key: 'customer', label: 'Customer', opts: custOpts },
         { key: 'product', label: 'Material / Grade', opts: prodOpts },
-        { key: 'site', label: 'Site / Quarry', opts: siteOpts },
+        { key: 'site', label: 'Site', opts: siteOpts },
         { key: 'iva', label: 'Customer IVA (VAT)', opts: yn },
         { key: 'method', label: 'Payment Method', opts: ['Cash', 'Credit'] }
       ],
@@ -1161,7 +1161,7 @@
         { key: 'product', label: 'Product / Grade', opts: prodOpts },
         { key: 'customer', label: 'Customer', opts: custOpts },
         { key: 'activeStatus', label: 'Agreement Status', opts: ['Active', 'Ended'] },
-        { key: 'site', label: 'Site / Quarry', opts: siteOpts },
+        { key: 'site', label: 'Site', opts: siteOpts },
         { key: 'supplier', label: 'Owner / Beneficiary', opts: suppOpts }
       ],
       p06_ar: [
@@ -1181,7 +1181,7 @@
       ],
       p08_stock: [
         { key: 'product', label: 'Product / Grade', opts: prodOpts },
-        { key: 'site', label: 'Source Quarry / Site', opts: siteOpts },
+        { key: 'site', label: 'Source Site', opts: siteOpts },
         { key: 'supplier', label: 'Site / Truck Owner', opts: suppOpts },
         { key: 'transportBy', label: 'Transported By', opts: ['Third-party truck', 'Company fleet'] }
       ],
@@ -1241,14 +1241,14 @@
         { key: 'pnlSection', label: 'Journal Filter', opts: ['Sales & VAT', 'Raw & Haulage', 'Expenses & Payroll', 'Receipts & Settlements'] }
       ],
       p17_jv: [
-        { key: 'site', label: 'JV Quarry Site', opts: ['Halat JV', 'Jiyeh JV', 'Nahr Ibrahim JV'] },
+        { key: 'site', label: 'JV Site', opts: ['Halat JV', 'Jiyeh JV', 'Nahr Ibrahim JV'] },
         { key: 'partner', label: 'JV Partner', opts: ['Assaf', 'WTC', 'Partner 50%'] },
         { key: 'jvBasis', label: 'Distribution Basis', opts: ['Stock', 'Revenue', 'Profit', 'Cash'] }
       ],
       p18_tickets: [
-        { key: 'padType', label: 'Ticket Pad Stream', opts: ['Sales Pad', 'Quarry Pad', 'Fuel Pad'] },
+        { key: 'padType', label: 'Ticket Pad Stream', opts: ['Sales Pad', 'Raw Pad', 'Fuel Pad'] },
         { key: 'bookStatus', label: 'Serial Hygiene', opts: ['All Serials', 'Incomplete Books', 'Missing Serials'] },
-        { key: 'site', label: 'Site / Quarry', opts: siteOpts }
+        { key: 'site', label: 'Site', opts: siteOpts }
       ],
       p19_changelog: [
         { key: 'ledgerDomain', label: 'Ledger Domain', opts: ['Sales', 'RawPurchases', 'Expenses', 'CustomerReceipts', 'SupplierPayments', 'Fuel'] },
@@ -1906,7 +1906,7 @@
             { key: 'raw_cost', label: 'Raw material cost', color: '#8A94A6' },
             { key: 'expenses', label: 'Expenses', color: '#C8333B' }
           ], { label: 'Operating profit', key: 'operating_profit', color: '#D9A54A', isMoney: true }, { shareAxis: true }), {
-            subtitle: 'Monthly Sales TTC vs Raw Quarry Cost & Operating Expenses with Operating Profit line',
+            subtitle: 'Monthly Sales TTC vs Raw Material Cost & Operating Expenses with Operating Profit line',
             legend: [{ label: 'Sales TTC', color: '#2B5C8F' }, { label: 'Raw Cost', color: '#8A94A6' }, { label: 'Expenses', color: '#C8333B' }, { label: 'Op. Profit', color: '#D9A54A', line: true }]
           })}
           ${pbiPanel('Cash in vs cash out by month', buildClusteredColumnSvg(months, [
@@ -1992,7 +1992,7 @@
         ['Weighbridge Loads', fmtNum(w.loads), fmtNum(b.loads), '—', fmtNum(g.loads)],
         ['Tons Sold', fmtNum(w.tons_sold, 0) + ' t', fmtNum(b.tons_sold, 0) + ' t', '—', fmtNum(g.tons_sold, 0) + ' t'],
         ['Raw Material Cost', fmtUSD(w.raw_cost, 2), fmtUSD(b.raw_cost, 2), '—', fmtUSD(g.raw_cost, 2)],
-        ['  — Material Leg (Quarry Owners)', fmtUSD(w.raw_mat_cost, 2), fmtUSD(b.raw_mat_cost, 2), '—', fmtUSD(g.raw_mat_cost, 2)],
+        ['  — Material Leg (Site Owners)', fmtUSD(w.raw_mat_cost, 2), fmtUSD(b.raw_mat_cost, 2), '—', fmtUSD(g.raw_mat_cost, 2)],
         ['  — Haulage Leg (3rd-Party Trucks)', fmtUSD(w.raw_haulage, 2), fmtUSD(b.raw_haulage, 2), '—', fmtUSD(g.raw_haulage, 2)],
         ['Gross Margin ($)', fmtUSD(w.gross_margin, 2), fmtUSD(b.gross_margin, 2), '—', fmtUSD(g.gross_margin, 2)],
         ['Gross Margin (%)', fmtPct(w.gm_pct, w.gross_margin, w.net_sales), fmtPct(b.gm_pct, b.gross_margin, b.net_sales), '—', fmtPct(g.gm_pct, g.gross_margin, g.net_sales)],
@@ -2263,12 +2263,12 @@
             { label: 'Lapsed Pairs Still Trading', value: fmtNum(prSn.lapsed_agreement_pairs_count || 0), sub: 'Trading after End date', tone: 'warn' },
             { label: 'Per-Truck Delivery Rules', value: fmtNum(prSn.truck_unit_delivery_rules || 0), sub: 'Unit = Truck flat rate' }
           ])}
-          ${kpiBand('2 · Commissions & Quarry Site Purchase / Transport Rules', [
+          ${kpiBand('2 · Commissions & Site Purchase / Transport Rules', [
             { label: 'Commission Earned', value: fmtUSD(prSn.commission_earned_usd || k.commission_due, 0), sub: 'Accrued on qualifying loads' },
             { label: 'Commission Paid', value: fmtUSD(prSn.commission_paid_usd || 0, 0), sub: 'Settled to beneficiaries', tone: 'good' },
             { label: 'Commission Balance Due', value: fmtUSD(prSn.commission_balance_usd || k.commission_due, 0), sub: 'Open payable', tone: 'brass' },
             { label: 'Customer Sales Rules', value: fmtNum(salesRules.length), sub: 'Delivery & Pickup agreements' },
-            { label: 'Quarry Purchase & Haul Rules', value: fmtNum(siteRules.length), sub: 'Site Owner & Transport rates' },
+            { label: 'Site Purchase & Haul Rules', value: fmtNum(siteRules.length), sub: 'Site Owner & Transport rates' },
             { label: 'Commission Rules', value: fmtNum(commRules.length), sub: 'Per-ton / per-load rules' }
           ])}
         </div>
@@ -2302,10 +2302,10 @@
             { label: 'Shortfall ($)', raw: r => (Number(r.last_price || 0) - Number(r.agreed_price || 0)) * Number(r.qty || 0), r: true, negRed: true, fmt: v => fmtUSD(v, 0) }
           ], (prSn.top_below_agreed_exceptions || []).filter(matchCommon), { subtitle: 'Pairs where tickets were billed below the customer agreement price', unitLabel: 'pairs' })}
 
-          ${pbiTable('Quarry site purchase, transport & commission rules', [
+          ${pbiTable('Site purchase, transport & commission rules', [
             { label: 'Rule Type', key: 'rule_type', bold: true },
             { label: 'Co.', key: 'company' },
-            { label: 'Site / Quarry', key: 'site' },
+            { label: 'Site', key: 'site' },
             { label: 'Owner / Beneficiary', raw: r => r.supplier || r.customer || '—' },
             { label: 'Product', key: 'product', fmt: v => esc(v || '(All Grades)') },
             { label: 'Unit', key: 'unit', mono: true },
@@ -2313,7 +2313,7 @@
             { label: 'Indifference ($)', raw: r => r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price, r: true, bar: 'brass', fmt: v => v != null && Number(v) > 0 ? `<b>${fmtUSD(v, 2)}</b>` : '—' },
             { label: 'End Date', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') }
           ], siteRules.concat(commRules), {
-            subtitle: 'Quarry raw material purchase rates, haulage rates, and sales commission rules',
+            subtitle: 'Raw material purchase rates, haulage rates, and sales commission rules',
             rowAmber: r => Boolean(r.end_date && String(r.end_date) < today),
             rkey: 'price_rules',
             unitLabel: 'rules'
@@ -2545,7 +2545,7 @@
         <div class="pbi-overview-bands">
           ${kpiBand('1 · 3-Leg Accounts Payable Engine (Material · Haulage · Supplies & Services — m192)', [
             { label: 'Net Open AP Balance', value: fmtUSD(k.ap_balance, 0), sub: 'Class 4011 Supplier Liability', tone: 'brass' },
-            { label: 'Leg 1 · Quarry Material', value: fmtUSD(k.ap_material, 0), sub: 'Owed to quarry site owners' },
+            { label: 'Leg 1 · Raw Material', value: fmtUSD(k.ap_material, 0), sub: 'Owed to site owners' },
             { label: 'Leg 2 · 3rd-Party Haulage', value: fmtUSD(k.ap_haulage, 0), sub: '$0 on company-fleet loads' },
             { label: 'Leg 3 · Credit Expenses', value: fmtUSD(k.ap_expense, 0), sub: 'Supplies, repairs & services' },
             { label: 'Supplier Settlements Paid', value: fmtUSD(k.settlements_paid, 0), sub: 'Cash, check & bank wires', tone: 'good' },
@@ -2555,7 +2555,7 @@
             { label: 'Total General Expenses', value: fmtUSD(sc(k.expenses), 0), sub: fmtNum(expRows.length) + ' vouchers in sample' },
             { label: 'Cash Expenses', value: fmtUSD(sc(k.cash_expenses), 0), sub: 'Paid from Till 5300' },
             { label: 'Credit Expenses', value: fmtUSD(sc(k.credit_expenses), 0), sub: 'Booked to Supplier AP Leg 3' },
-            { label: 'Total Raw Quarry Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' raw loads' },
+            { label: 'Total Raw Material Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' raw loads' },
             { label: 'Avg Raw Cost / Unit', value: fmtUSD(k.avg_raw_cost, 2), sub: 'Material + haulage combined' },
             { label: 'Expense Categories', value: fmtNum(catList.length), sub: 'Production · OpEx · CapEx' }
           ])}
@@ -2566,7 +2566,7 @@
             { label: 'Raw + Credit Exp', color: '#C8333B', get: r => Number(r.raw_cost || 0) + Number(r.credit_expenses || 0) },
             { label: 'Settlements Paid', key: 'settlements_paid', color: '#1E7A6E' }
           ]), {
-            subtitle: 'Monthly supplier accruals (quarry material + haulage + credit expenses) vs supplier settlements paid',
+            subtitle: 'Monthly supplier accruals (raw material + haulage + credit expenses) vs supplier settlements paid',
             legend: [{ label: 'Accrued (Raw + Credit Exp)', color: '#C8333B' }, { label: 'Settlements Paid', color: '#1E7A6E' }]
           })}
           ${pbiPanel('Expenses by category', buildHorizontalBarChart(catList, 'Category', 'amount', v => fmtUSD(v, 0), { subKey: 'costClass', color: '#B8883B', maxItems: 10 }), {
@@ -2579,7 +2579,7 @@
             subtitle: 'Net closing AP balance (+ owed by company, − advance to supplier)'
           })}
           ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart(suppRows, 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
-            subtitle: 'Total quarry material + haulage accrued'
+            subtitle: 'Total raw material + haulage accrued'
           })}
         </div>
 
@@ -2614,8 +2614,8 @@
       const costRecPct = Number(k.raw_haulage || 0) > 0 ? (Number(k.trans_rev || 0) / Number(k.raw_haulage || 1)) : 1;
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Quarry Material Intake, Tonnage & Two-Leg Cost Split', [
-            { label: 'Total Raw Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' quarry loads', tone: 'brass' },
+          ${kpiBand('1 · Raw Material Intake, Tonnage & Two-Leg Cost Split', [
+            { label: 'Total Raw Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' raw loads', tone: 'brass' },
             { label: 'Material Cost (Site Owners)', value: fmtUSD(sc(k.raw_mat_cost), 0), sub: fmtPct(null, k.raw_mat_cost, k.raw_cost) + ' of raw cost' },
             { label: 'Haulage Cost (3rd-Party)', value: fmtUSD(sc(k.raw_haulage), 0), sub: fmtPct(null, k.raw_haulage, k.raw_cost) + ' of raw cost' },
             { label: 'Raw Tons Purchased', value: fmtNum(k.raw_tons, 0) + ' t', sub: fmtNum(k.raw_qty, 0) + ' m³ purchased', tone: 'good' },
@@ -2629,28 +2629,28 @@
             { label: 'Avg Selling Price (ex-VAT)', key: 'avg_price_net', color: '#2B5C8F' },
             { label: 'Avg Raw Cost / unit', key: 'avg_raw_cost', color: '#C8333B' }
           ], { isMoney: true, decimals: 2 }), {
-            subtitle: 'Monthly unit spread between realised ex-VAT selling price and raw quarry intake cost',
+            subtitle: 'Monthly unit spread between realised ex-VAT selling price and raw material intake cost',
             legend: [{ label: 'Selling Price ($/u)', color: '#2B5C8F', line: true }, { label: 'Raw Cost ($/u)', color: '#C8333B', line: true }]
           })}
           ${pbiPanel('Transport revenue vs truck haulage cost by month', buildComboChartSvg(months, [
             { key: 'trans_rev', label: 'Transport Revenue', color: '#1E7A6E' },
             { key: 'raw_haulage', label: '3rd-Party Haulage Cost', color: '#C8333B' }
           ], { label: 'Recovery %', color: '#D9A54A', isPct: true, get: r => Number(r.raw_haulage || 0) > 0 ? Number(r.trans_rev || 0) / Number(r.raw_haulage) : 1 }), {
-            subtitle: 'Delivery transport billed to customers vs third-party quarry haulage cost',
+            subtitle: 'Delivery transport billed to customers vs third-party raw haulage cost',
             legend: [{ label: 'Trans Revenue', color: '#1E7A6E' }, { label: 'Haulage Cost', color: '#C8333B' }, { label: 'Recovery %', color: '#D9A54A', line: true }]
           })}
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiTable('Quarry & customer sites — raw intake vs sales volume', [
-            { label: 'Site / Quarry', key: 'Site', bold: true, fmt: v => esc(v || '(Unassigned Site)') },
+          ${pbiTable('Sites — raw intake vs sales volume', [
+            { label: 'Site', key: 'Site', bold: true, fmt: v => esc(v || '(Unassigned Site)') },
             { label: 'JV', key: 'JV', fmt: v => v === 'Yes' ? '<span class="badge badge-brass">JV 50/50</span>' : '—' },
             { label: 'Raw Loads', key: 'raw_loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Raw Tons', key: 'raw_tons', r: true, fmt: v => fmtNum(v, 0) },
             { label: 'Raw Cost ($)', key: 'raw_cost', r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
             { label: 'Sales Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Sales TTC ($)', key: 'sales_ttc', r: true, bar: true, fmt: v => fmtUSD(v, 0) }
-          ], siteRows, { subtitle: 'Volume and value across source quarries and customer destination sites', unitLabel: 'sites' })}
+          ], siteRows, { subtitle: 'Volume and value across source sites and customer destination sites', unitLabel: 'sites' })}
 
           ${pbiTable('Products — sold vs purchased unit economics', [
             { label: 'Product / Grade', key: 'Product', bold: true },
@@ -2659,11 +2659,11 @@
             { label: 'Raw Qty (m³)', key: 'raw_qty', r: true, fmt: v => v > 0 ? `${fmtNum(v, 0)} m³` : '—' },
             { label: 'Avg Raw ($)', key: 'avg_raw_cost', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' },
             { label: 'Raw Cost ($)', key: 'raw_cost', r: true, bar: true, fmt: v => fmtUSD(v, 0) }
-          ], prodRows, { subtitle: 'Comparison of sales volume vs raw quarry intake by aggregate grade', unitLabel: 'products' })}
+          ], prodRows, { subtitle: 'Comparison of sales volume vs raw material intake by aggregate grade', unitLabel: 'products' })}
         </div>
 
         <div class="pbi-grid-1">
-          ${movedRegisterBanner('Quarry Raw Material Purchases Register & JV 50/50 Quarry Ledger', 'Individual 2-leg quarry tickets (Site Owner + Truck Owner), 3rd-party customer-site transportation, supplier remaining expenses, and Joint Venture 50/50 quarry stock entitlements live directly inside Material & Transportation.', 'raw', 'Material & Transportation', 'jv')}
+          ${movedRegisterBanner('Raw Material Purchases Register & JV 50/50 Site Ledger', 'Individual 2-leg raw material tickets (Site Owner + Truck Owner), 3rd-party customer-site transportation, supplier remaining expenses, and Joint Venture 50/50 site stock entitlements live directly inside Material & Transportation.', 'raw', 'Material & Transportation', 'jv')}
         </div>
       `;
     }
@@ -2798,7 +2798,7 @@
           ${kpiBand('1 · Driver Dispatch Volume, Shift Split & Company-Fleet Overtime Bonus (m48 / m93)', [
             { label: 'Overtime Bonus Due', value: fmtUSD(k.overtime_bonus, 0), sub: 'Period accrued allowance', tone: 'brass' },
             { label: 'Sales Overtime (Book)', value: fmtUSD(flSn.sales_overtime_bonus_usd || 0, 0), sub: 'Company-fleet night sales' },
-            { label: 'Quarry Overtime (Book)', value: fmtUSD(flSn.raw_overtime_bonus_usd || 0, 0), sub: 'Company-fleet night raw' },
+            { label: 'Raw Overtime (Book)', value: fmtUSD(flSn.raw_overtime_bonus_usd || 0, 0), sub: 'Company-fleet night raw' },
             { label: '3rd-Party Overtime Paid', value: '$0.00', sub: 'm93: 3rd-party loads earn $0 OT', tone: 'good' },
             { label: 'Company Fleet Drivers', value: fmtNum((rec.company_drivers || []).length), sub: fmtNum((rec.drivers || []).length) + ' total drivers in registry' },
             { label: 'Driver Pay Unattributed', value: fmtUSD(flSn.unallocated_driver_payroll_usd || 0, 0), sub: fmtNum(flSn.unallocated_driver_months_count || 0) + ' driver-months', tone: 'warn' }
@@ -2808,12 +2808,12 @@
         <div class="pbi-grid-2">
           ${pbiPanel('Overtime bonus vs delivery loads by month', buildComboChartSvg(months, [
             { key: 'delivery_loads', label: 'Delivery Loads', color: '#2B5C8F' },
-            { key: 'raw_loads', label: 'Quarry Loads', color: '#8A94A6' }
+            { key: 'raw_loads', label: 'Raw Loads', color: '#8A94A6' }
           ], { label: 'Overtime Bonus ($)', key: 'overtime_due', color: '#D9A54A', isMoney: true }, { isMoney: false }), {
             subtitle: 'Monthly dispatch loads vs accrued driver overtime bonus ($)',
-            legend: [{ label: 'Delivery Loads', color: '#2B5C8F' }, { label: 'Quarry Loads', color: '#8A94A6' }, { label: 'OT Bonus ($)', color: '#D9A54A', line: true }]
+            legend: [{ label: 'Delivery Loads', color: '#2B5C8F' }, { label: 'Raw Loads', color: '#8A94A6' }, { label: 'OT Bonus ($)', color: '#D9A54A', line: true }]
           })}
-          ${pbiPanel('Trips by driver (Sales + Quarry sample)', buildHorizontalBarChart(drvList, 'driver', 'trips', v => fmtNum(v) + ' trips', { subKey: 'trucksStr', color: '#2B5C8F', maxItems: 10 }), {
+          ${pbiPanel('Trips by driver (Sales + Raw sample)', buildHorizontalBarChart(drvList, 'driver', 'trips', v => fmtNum(v) + ' trips', { subKey: 'trucksStr', color: '#2B5C8F', maxItems: 10 }), {
             subtitle: 'Top drivers by dispatched trips in the active sample'
           })}
         </div>
@@ -3491,8 +3491,8 @@
         { code: '7011', name: 'Material Sales Revenue (Ex-VAT)', amt: k.net_sales || 0, pct: fmtPct(null, k.net_sales || 0, totRevExVat) },
         { code: '7061', name: 'Delivery Transport Revenue', amt: k.trans_rev || 0, pct: fmtPct(null, k.trans_rev || 0, totRevExVat) },
         { code: '70', name: 'TOTAL SALES REVENUE (EX-VAT)', amt: totRevExVat, pct: '100.0%', bold: true },
-        { code: '6011', name: 'Raw Material Quarry Purchases (Leg 1)', amt: -(k.raw_mat_cost || 0), pct: fmtPct(null, k.raw_mat_cost, k.net_sales) },
-        { code: '6111', name: 'Subcontracted Quarry Haulage (Leg 2)', amt: -(k.raw_haulage || 0), pct: fmtPct(null, k.raw_haulage, k.net_sales) },
+        { code: '6011', name: 'Raw Material Purchases (Leg 1)', amt: -(k.raw_mat_cost || 0), pct: fmtPct(null, k.raw_mat_cost, k.net_sales) },
+        { code: '6111', name: 'Subcontracted Raw Haulage (Leg 2)', amt: -(k.raw_haulage || 0), pct: fmtPct(null, k.raw_haulage, k.net_sales) },
         { code: 'GM', name: 'GROSS MARGIN', amt: k.gross_margin || 0, pct: fmtPct(k.gm_pct, k.gross_margin, k.net_sales), bold: true },
         { code: '61/62', name: 'Operating, Fleet & Plant Expenses', amt: -(k.expenses || 0), pct: fmtPct(null, k.expenses, k.net_sales) },
         { code: '6411', name: 'Staff Salaries & Overtime Paid', amt: -(k.salaries_paid || 0), pct: fmtPct(null, k.salaries_paid, k.net_sales) },
@@ -3590,11 +3590,11 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Joint Venture (JV) 50/50 Quarry Sites & Partner Stock Entitlement', [
-            { label: 'Active JV Quarry Sites', value: fmtNum(jvSites.length), sub: 'Halat JV · Jiyeh JV · Nahr Ibrahim JV', tone: 'brass' },
+          ${kpiBand('1 · Joint Venture (JV) 50/50 Sites & Partner Stock Entitlement', [
+            { label: 'Active JV Sites', value: fmtNum(jvSites.length), sub: 'Halat JV · Jiyeh JV · Nahr Ibrahim JV', tone: 'brass' },
             { label: 'JV Partnership Contracts', value: fmtNum(jvParts.length), sub: '50% / 50% profit & stock split' },
             { label: 'JV Sites Sales TTC', value: fmtUSD(jvSites.reduce((a, r) => a + Number(r.sales_ttc || 0), 0), 0), sub: 'Dispatched from JV pits' },
-            { label: 'JV Sites Raw Material Cost', value: fmtUSD(totJvRaw, 0), sub: 'Total quarry intake on JV sites' },
+            { label: 'JV Sites Raw Material Cost', value: fmtUSD(totJvRaw, 0), sub: 'Total raw intake on JV sites' },
             { label: 'Partner 50% Stock Entitlement', value: fmtUSD(totJvRaw / 2, 0), sub: '50% × JV Raw Material Cost', tone: 'good' },
             { label: 'JV Partner Distributions Paid', value: fmtUSD(totJvDist, 0), sub: fmtNum(jvDists.length) + ' distribution vouchers' }
           ])}
@@ -3604,9 +3604,9 @@
           ${pbiPanel('JV sites — Sales TTC vs Raw Material Cost', buildClusteredBarChart(jvSites, 'Site', [
             { label: 'Sales TTC', key: 'sales_ttc', color: '#2B5C8F' },
             { label: 'Raw Cost', key: 'raw_cost', color: '#D9A54A' }
-          ], { decimals: 0 }), { subtitle: 'Volume comparison across the 3 Joint Venture quarry sites' })}
+          ], { decimals: 0 }), { subtitle: 'Volume comparison across the 3 Joint Venture sites' })}
 
-          ${pbiTable('JV 50/50 Quarry Sites & Partner Stock Entitlement', [
+          ${pbiTable('JV 50/50 Sites & Partner Stock Entitlement', [
             { label: 'JV Site', key: 'Site', bold: true },
             { label: 'Sales Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Sales TTC ($)', key: 'sales_ttc', r: true, fmt: v => fmtUSD(v, 0) },
@@ -3662,7 +3662,7 @@
         if (r.date > b.lastDate) b.lastDate = r.date;
       };
       salesRows.forEach(r => addTkt('Sales Pad', r));
-      rawRows.forEach(r => addTkt('Quarry Pad', r));
+      rawRows.forEach(r => addTkt('Raw Pad', r));
       fuelRows.forEach(r => addTkt('Fuel Pad', r));
 
       const bookRows = Array.from(bookMap.values()).map(b => {
@@ -3696,10 +3696,10 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiPanel('Weighbridge loads by month — Sales vs Quarry pads', buildClusteredColumnSvg(months, [
+          ${pbiPanel('Weighbridge loads by month — Sales vs Raw pads', buildClusteredColumnSvg(months, [
             { key: 'loads', label: 'Sales Pad Tickets', color: '#2B5C8F' },
-            { key: 'raw_loads', label: 'Quarry Pad Tickets', color: '#D9A54A' }
-          ], { isMoney: false }), { legend: [{ label: 'Sales Pad', color: '#2B5C8F' }, { label: 'Quarry Pad', color: '#D9A54A' }] })}
+            { key: 'raw_loads', label: 'Raw Pad Tickets', color: '#D9A54A' }
+          ], { isMoney: false }), { legend: [{ label: 'Sales Pad', color: '#2B5C8F' }, { label: 'Raw Pad', color: '#D9A54A' }] })}
 
           ${pbiTable('25-Ticket Pad Completeness & Missing Serial Audit', [
             { label: 'Pad Range', key: 'book', mono: true, bold: true },
@@ -3713,7 +3713,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${pbiTable('Recent weighbridge ticket serial audit (Sales, Quarry & Fuel pads)', [
+          ${pbiTable('Recent weighbridge ticket serial audit (Sales, Raw & Fuel pads)', [
             { label: 'Pad Stream', key: 'pad', fmt: v => `<span class="badge ${v === 'Sales Pad' ? 'badge-ok' : 'badge-info'}">${esc(v)}</span>` },
             { label: 'Date', key: 'date', mono: true },
             { label: 'Co.', key: 'company' },
@@ -3723,7 +3723,7 @@
             { label: 'Qty', key: 'qty', r: true, fmt: v => fmtNum(v, 1) },
             { label: 'Amount ($)', key: 'amount', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], salesRows.map(r => ({ id: r.id, rkey: 'sales_tickets', pad: 'Sales Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.customer, product: r.product, qty: r.qty, amount: r.total_ttc }))
-            .concat(rawRows.map(r => ({ id: r.id, rkey: 'raw_purchases', pad: 'Quarry Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.site_owner || r.site, product: r.product, qty: r.qty, amount: r.total })))
+            .concat(rawRows.map(r => ({ id: r.id, rkey: 'raw_purchases', pad: 'Raw Pad', date: r.date, company: r.company, ticket_no: r.ticket_no, party: r.site_owner || r.site, product: r.product, qty: r.qty, amount: r.total })))
             .sort((a, b) => {
               const da = String(a.date || ''), db = String(b.date || '');
               return db < da ? -1 : (db > da ? 1 : 0);
@@ -3903,10 +3903,10 @@
     },
     raw: {
       title: 'Material, Transportation, JV 50/50 & Unit Economics',
-      subtitle: 'Embedded from Analytics & Insights — Joint Venture 50/50 Quarry Stock Entitlement, Unit Margin & Transport Cost Recovery',
+      subtitle: 'Embedded from Analytics & Insights — Joint Venture 50/50 Site Stock Entitlement, Unit Margin & Transport Cost Recovery',
       defaultSec: 'jv',
       sections: [
-        { id: 'jv', label: 'JV 50/50 Quarries & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
+        { id: 'jv', label: 'JV 50/50 Sites & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
         { id: 'stock', label: 'Unit Economics & Transport Cost Recovery', pageId: 'p08_stock', badge: 'Analytics' }
       ]
     },
@@ -3939,7 +3939,7 @@
     },
     suppliers: {
       title: '3-Leg Accounts Payable & Supplier Accrual Analytics',
-      subtitle: 'Embedded from Analytics & Insights — Leg 1 Quarry Material, Leg 2 Third-Party Haulage, Leg 3 Credit Expenses & Monthly Settlements',
+      subtitle: 'Embedded from Analytics & Insights — Leg 1 Raw Material, Leg 2 Third-Party Haulage, Leg 3 Credit Expenses & Monthly Settlements',
       defaultSec: 'ap3leg',
       sections: [
         { id: 'ap3leg', label: '3-Leg AP Schedule & Monthly Accrual vs Settlement', pageId: 'p07_ap', badge: 'Analytics' }
@@ -4255,7 +4255,7 @@
     trucks_list: 'Owned Trucks',
     drivers_list: 'Linked Drivers',
     haul_loads: 'Haul Loads',
-    raw_loads: 'Quarry Loads',
+    raw_loads: 'Raw Loads',
     expenses_count: 'Expense Bills',
     active_rules: 'Price Rules',
     iva: 'IVA (VAT)',
@@ -4269,7 +4269,7 @@
     fuel_fills: 'Fuel Fills',
     default_driver: 'Default Driver',
     truck_owner: 'Truck Owner (Hauler)',
-    site_owner: 'Quarry Owner',
+    site_owner: 'Site Owner',
     is_jv: 'JV 50/50',
     gps_status: 'GPS Pin'
   };
@@ -4280,7 +4280,7 @@
       if (tableKey === 'equipment') return 'Unit / Plate #';
       if (tableKey === 'drivers') return 'Driver Name';
       if (tableKey === 'customers') return 'Customer';
-      if (tableKey === 'sites') return 'Quarry / Site';
+      if (tableKey === 'sites') return 'Site';
       if (tableKey === 'products') return 'Product / Grade';
     }
     if (HUB_COL_LABELS[c]) return HUB_COL_LABELS[c];
@@ -4290,9 +4290,9 @@
   function formatSupplierRoleHtml(roleTxt) {
     const r = String(roleTxt || '').trim();
     if (!r || r === '—') return '—';
-    const cls = /Quarry \+ Hauler|Truck Owner|Hauler/i.test(r)
+    const cls = /(?:Quarry|Site) \+ Hauler|Truck Owner|Hauler/i.test(r)
       ? 'badge-brass'
-      : (/Quarry/i.test(r) ? 'badge-info' : 'badge');
+      : (/Quarry|Site|Material/i.test(r) ? 'badge-info' : 'badge');
     return `<span class="badge ${cls}">${esc(r)}</span>`;
   }
 

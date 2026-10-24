@@ -95,7 +95,7 @@ DEFAULT_USERS = [
     ("u2", "Zeinab Rkein", "zeinabrkein@bhfirms.com", "2222", "Supervisor + Entry", "WTC,BBConstruction,Lions Transport", "full", "full", "Active", ""),
     ("u3", "Sabah Kassab", "sabahkassab@bhfirms.com", "3333", "Entry", "WTC", "partial", "partial", "Active", ""),
     ("u4", "WTC Plant Weighbridge 1", "scale1.wtc@bhfirms.com", "4444", "Entry", "WTC", "none", "partial", "Active", ""),
-    ("u5", "WTC Quarry Dispatch", "quarry.wtc@bhfirms.com", "4545", "Entry", "WTC", "none", "none", "Active", ""),
+    ("u5", "WTC Site Dispatch", "quarry.wtc@bhfirms.com", "4545", "Entry", "WTC", "none", "none", "Active", ""),
     ("u6", "BBConstruction Batching Desk", "batch.bbc@bhfirms.com", "5555", "Entry", "BBConstruction", "partial", "partial", "Active", ""),
     ("u7", "BBConstruction Site Supervisor", "site.bbc@bhfirms.com", "6666", "Supervisor", "BBConstruction", "full", "full", "Active", ""),
     ("u8", "Lions Transport Fleet Controller", "fleet.lions@bhfirms.com", "7777", "Supervisor + Entry", "Lions Transport,WTC", "full", "partial", "Active", ""),

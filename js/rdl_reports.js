@@ -419,7 +419,7 @@
           voucher: r.name || r.id,
           name: r.name || '',
           staff: r.staff || 'Employee',
-          role: r.payroll_month ? `Payroll ${r.payroll_month}` : 'Plant & Quarry Staff',
+          role: r.payroll_month ? `Payroll ${r.payroll_month}` : 'Plant & Site Staff',
           type: r.method || 'Cash',
           days: 1,
           base_usd: amt,
@@ -440,8 +440,8 @@
           co: r.company || r.co || co,
           voucher: r.ticket_no || r.name || r.id,
           name: r.name || '',
-          material: r.product || r.material || 'Quarry Material',
-          supplier: r.site_owner || r.supplier || r.truck_owner || 'Quarry Supplier',
+          material: r.product || r.material || 'Raw Material',
+          supplier: r.site_owner || r.supplier || r.truck_owner || 'Material Supplier',
           driver: r.driver || r.truck_owner || '',
           plate: r.truck || '',
           qty: Number(r.qty || 0),
@@ -484,7 +484,7 @@
           voucher: s.name || s.id,
           name: s.name || '',
           material: s.notes || `Supplier Settlement (${s.method || 'Payment'})`,
-          supplier: s.supplier || 'Quarry Supplier',
+          supplier: s.supplier || 'Material Supplier',
           driver: '',
           plate: '',
           qty: 0,
@@ -953,10 +953,10 @@
       return { label: 'Product', wide: false, placeholder: 'Search product or grade…', badge: `${fmtNum(ctx.products.length)} products`, options: makeSimpleList(ctx.products, `All Products (${ctx.products.length})`, 'Product') };
     }
     if (k === 'site') {
-      return { label: 'Site', wide: false, placeholder: 'Search pouring / quarry site…', badge: `${fmtNum(ctx.sites.length)} sites`, options: makeSimpleList(ctx.sites, `All Sites (${ctx.sites.length})`, 'Site') };
+      return { label: 'Site', wide: false, placeholder: 'Search site…', badge: `${fmtNum(ctx.sites.length)} sites`, options: makeSimpleList(ctx.sites, `All Sites (${ctx.sites.length})`, 'Site') };
     }
     if (k === 'supplier') {
-      return { label: 'Supplier', wide: false, placeholder: 'Search supplier or quarry…', badge: `${fmtNum(ctx.suppliers.length)} suppliers`, options: makeSimpleList(ctx.suppliers, `All Suppliers (${ctx.suppliers.length})`, 'Supplier') };
+      return { label: 'Supplier', wide: false, placeholder: 'Search supplier…', badge: `${fmtNum(ctx.suppliers.length)} suppliers`, options: makeSimpleList(ctx.suppliers, `All Suppliers (${ctx.suppliers.length})`, 'Supplier') };
     }
     if (k === 'category') {
       return { label: 'Category', wide: false, placeholder: 'Search expense category…', badge: `${fmtNum(ctx.categories.length)} categories`, options: makeSimpleList(ctx.categories, `All Categories (${ctx.categories.length})`, 'Category') };

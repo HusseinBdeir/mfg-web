@@ -392,7 +392,7 @@
         priceMode,
         company,
         coFull,
-        title: priceMode === 'priced' ? 'RAW MATERIAL RECEIVING VOUCHER' : 'QUARRY SCALE RECEIVING SLIP',
+        title: priceMode === 'priced' ? 'RAW MATERIAL RECEIVING VOUCHER' : 'RAW MATERIAL SCALE SLIP',
         badge: priceMode === 'priced' ? 'PRICED 2-LEG VOUCHER' : 'UNPRICED SCALE SLIP',
         ticketNo,
         dateStr,
@@ -640,7 +640,7 @@
         emit(P.ALIGN_L);
       }
     } else if (d.docType === 'raw') {
-      lr('Quarry Site:', d.site);
+      lr('Site:', d.site);
       lr('Site Owner:', d.siteOwner);
       lr('Transport By:', d.transportBy);
       lr('Truck Plate:', d.truck);
@@ -665,7 +665,7 @@
         line(SEP);
         lr(`Mat. Unit Cost (${d.uom}):`, fmtMoney(d.unitCost));
         if (d.disc > 0) lr('Discount:', '-' + fmtMoney(d.disc));
-        lr('Leg 1 Material (Quarry):', fmtMoney(d.matCost));
+        lr('Leg 1 Material (Site):', fmtMoney(d.matCost));
         lr(`Haulage Rate (${d.uom}):`, fmtMoney(d.haulRate));
         lr('Leg 2 Haulage (Truck):', fmtMoney(d.haulCost));
         line(DSEP);
@@ -678,7 +678,7 @@
         emit(P.ALIGN_C, P.BOLD_ON, P.TALL_ON);
         line(`SCALE QTY: ${fmtQty(d.qty, 2)} ${d.uom}`);
         emit(P.NORMAL, P.BOLD_OFF);
-        line('UNPRICED QUARRY SCALE RECEIVING SLIP');
+        line('UNPRICED SCALE RECEIVING SLIP');
         emit(P.ALIGN_L);
       }
     } else if (d.docType === 'fuel') {
@@ -891,7 +891,7 @@
       `;
     } else if (d.docType === 'raw') {
       bodyRowsHtml = `
-        <div class="th-kv"><span>Quarry Site</span><b>${escHtml(d.site)}</b></div>
+        <div class="th-kv"><span>Site</span><b>${escHtml(d.site)}</b></div>
         <div class="th-kv"><span>Site Owner (Mat.)</span><b>${escHtml(d.siteOwner)}</b></div>
         <div class="th-kv"><span>Transport By</span><b>${escHtml(d.transportBy)}</b></div>
         <div class="th-kv"><span>Truck Plate</span><b class="mono">${escHtml(d.truck)}</b></div>
@@ -906,7 +906,7 @@
           <div class="th-sep"></div>
           <div class="th-kv"><span>Mat. Unit Cost (${escHtml(d.uom)})</span><b>${fmtMoney(d.unitCost)}</b></div>
           ${d.disc > 0 ? `<div class="th-kv"><span>Discount</span><b>-${fmtMoney(d.disc)}</b></div>` : ''}
-          <div class="th-kv"><span>Leg 1 · Material (Quarry)</span><b>${fmtMoney(d.matCost)}</b></div>
+          <div class="th-kv"><span>Leg 1 · Material (Site)</span><b>${fmtMoney(d.matCost)}</b></div>
           <div class="th-kv"><span>Haulage Rate (${escHtml(d.uom)})</span><b>${fmtMoney(d.haulRate)}</b></div>
           <div class="th-kv"><span>Leg 2 · Haulage (Truck)</span><b>${fmtMoney(d.haulCost)}</b></div>
           <div class="th-dsep"></div>
@@ -916,7 +916,7 @@
           <div class="th-dsep"></div>
           <div class="th-gatepass-box">
             <div class="th-gatepass-qty">SCALE QTY: ${fmtQty(d.qty, 2)} ${escHtml(d.uom)}</div>
-            <div class="th-gatepass-sub">UNPRICED QUARRY SCALE RECEIVING SLIP</div>
+            <div class="th-gatepass-sub">UNPRICED SCALE RECEIVING SLIP</div>
           </div>
         `}
       `;

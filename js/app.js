@@ -67,7 +67,7 @@
     { id: 'u2', full_name: 'Zeinab Rkein', email: 'zeinabrkein@bhfirms.com', pin_code: '2222', role: 'Supervisor + Entry', companies: 'WTC, BBConstruction, Lions Transport', pbi_access: 'full', statements_access: 'full', status: 'Active', last_login_at: '' },
     { id: 'u3', full_name: 'Sabah Kassab', email: 'sabahkassab@bhfirms.com', pin_code: '3333', role: 'Entry', companies: 'WTC', pbi_access: 'partial', statements_access: 'partial', status: 'Active', last_login_at: '' },
     { id: 'u4', full_name: 'WTC Plant Weighbridge 1', email: 'scale1.wtc@bhfirms.com', pin_code: '4444', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'partial', status: 'Active', last_login_at: '' },
-    { id: 'u5', full_name: 'WTC Quarry Dispatch', email: 'quarry.wtc@bhfirms.com', pin_code: '4545', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'none', status: 'Active', last_login_at: '' },
+    { id: 'u5', full_name: 'WTC Site Dispatch', email: 'quarry.wtc@bhfirms.com', pin_code: '4545', role: 'Entry', companies: 'WTC', pbi_access: 'none', statements_access: 'none', status: 'Active', last_login_at: '' },
     { id: 'u6', full_name: 'BBConstruction Batching Desk', email: 'batch.bbc@bhfirms.com', pin_code: '5555', role: 'Entry', companies: 'BBConstruction', pbi_access: 'partial', statements_access: 'partial', status: 'Active', last_login_at: '' },
     { id: 'u7', full_name: 'BBConstruction Site Supervisor', email: 'site.bbc@bhfirms.com', pin_code: '6666', role: 'Supervisor', companies: 'BBConstruction', pbi_access: 'full', statements_access: 'full', status: 'Active', last_login_at: '' },
     { id: 'u8', full_name: 'Lions Transport Fleet Controller', email: 'fleet.lions@bhfirms.com', pin_code: '7777', role: 'Supervisor + Entry', companies: 'Lions Transport, WTC', pbi_access: 'full', statements_access: 'partial', status: 'Active', last_login_at: '' },
@@ -273,7 +273,7 @@
   if (!Array.isArray(STATE.users) || !STATE.users.length) STATE.users = DEFAULT_USERS.map(u => ({ ...u }));
 
   const BASE_COMPANY_DIRECTORY = [
-    { key: 'wtc', name: 'WTC', label: 'WTC (World Trading & Construction)', industry: 'Manufacturing', sector: 'Concrete, Quarry & Batching' },
+    { key: 'wtc', name: 'WTC', label: 'WTC (World Trading & Construction)', industry: 'Manufacturing', sector: 'Concrete, Aggregates & Batching' },
     { key: 'bbconstruction', name: 'BBConstruction', label: 'BBConstruction', industry: 'Manufacturing', sector: 'Contracting & Aggregates' },
     { key: 'lionstransport', name: 'Lions Transport', label: 'Lions Transport', industry: 'Manufacturing', sector: 'Heavy Fleet & Haulage' }
   ];
@@ -2111,7 +2111,7 @@
     fuel_fills: 'Fuel Fills',
     assigned_trucks: 'Assigned Trucks',
     truck_owner: 'Truck Owner',
-    site_owner: 'Quarry Owner',
+    site_owner: 'Site Owner',
     sale_type: 'Sale Type',
     rule_type: 'Rule Type',
     customer: 'Customer',
@@ -2136,7 +2136,7 @@
     ar_balance: 'AR Balance ($)',
     ap_balance: 'AP Balance ($)',
     sales_loads: 'Sales Loads',
-    raw_loads: 'Quarry Loads',
+    raw_loads: 'Raw Loads',
     active_rules: 'Price Rules',
     total_ttc: 'Total TTC ($)',
     total: 'Total ($)',
@@ -2162,7 +2162,7 @@
     ],
     raw: [
       { key: 'company', label: 'Company' },
-      { key: 'site', label: 'Quarry Site' },
+      { key: 'site', label: 'Site' },
       { key: 'site_owner', label: 'Site Owner' },
       { key: 'truck_owner', label: 'Truck Owner' },
       { key: 'product', label: 'Product' },
@@ -2689,7 +2689,7 @@
         { key: 'trucks_list', label: 'Owned Trucks' },
         { key: 'drivers_list', label: 'Linked Drivers' },
         { key: 'haul_loads', label: 'Haul Loads', kind: 'numeric' },
-        { key: 'raw_loads', label: 'Quarry Loads', kind: 'numeric' },
+        { key: 'raw_loads', label: 'Raw Loads', kind: 'numeric' },
         { key: 'iva', label: 'IVA (VAT)' },
         { key: 'ap_balance', label: 'AP Balance ($)', kind: 'numeric' }
       ];
@@ -3327,9 +3327,9 @@
   // ---- Unified Role & Granular Custom Permission Matrix ---------------------
   const PERM_CATALOG = {
     rights: [
-      { id: 'read_ops', label: 'Read Operational Data & Registers', sub: '23 Operational Tables · Sales, Quarry, Fleet, AR/AP & Expenses', badge: 'READ OPS' },
+      { id: 'read_ops', label: 'Read Operational Data & Registers', sub: '23 Operational Tables · Sales, Raw Material, Fleet, AR/AP & Expenses', badge: 'READ OPS' },
       { id: 'read_fin', label: 'Read Confidential Financial, Payroll, GL & Sentinels', sub: '11 Financial/HR Tables · Salaries, Contracts, Loans, JV & Trial Balance', badge: 'READ FIN' },
-      { id: 'enter_dispatch', label: 'Enter Weighbridge Sales, Quarry Intake & Diesel', sub: 'New Sales Ticket, Raw Material 2-Leg Purchase & Fuel Intake', badge: 'ENTER DISPATCH' },
+      { id: 'enter_dispatch', label: 'Enter Weighbridge Sales, Raw Material Intake & Diesel', sub: 'New Sales Ticket, Raw Material 2-Leg Purchase & Fuel Intake', badge: 'ENTER DISPATCH' },
       { id: 'enter_accounting', label: 'Enter Customer Receipts, Expenses & Settlements', sub: 'FIFO Customer Receipt, Cash/Credit Expense & Oldest-Leg AP Settlement', badge: 'ENTER ACCT' },
       { id: 'enter_master', label: 'Enter Master Data, Price Rules & Attendance', sub: 'Customers, Suppliers, Products, Sites, Trucks, Drivers, Price Rules & Attendance', badge: 'ENTER MASTER' },
       { id: 'enter_payroll_jv', label: 'Enter Confidential Payroll, Loans & JV Splits', sub: 'Monthly Salaries, Contracts, Partner Loans, FX Conversions & JV Splits', badge: 'ENTER PAYROLL' },
@@ -3339,22 +3339,22 @@
     ],
     unlocks: [
       { id: 'unlock_unit_price', fields: ['f_unitprice'], label: 'Unit Price & Agreement Lock', rule: 'PRICE', sub: 'Override active Customer Price Agreement or List Price for spot-rate dispatches' },
-      { id: 'unlock_trans_price', fields: ['f_transunitprice'], label: 'Transport / Haulage Rate Lock', rule: 'HAULAGE', sub: 'Override contractual delivery or third-party quarry haulage rate per load' },
+      { id: 'unlock_trans_price', fields: ['f_transunitprice'], label: 'Transport / Haulage Rate Lock', rule: 'HAULAGE', sub: 'Override contractual delivery or third-party raw haulage rate per load' },
       { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'CAPACITY', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
       { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'UNIT', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
-      { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'METHOD', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
+      { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'METHOD', sub: 'Override Customer default Cash/Credit method or Raw Material Credit payable rule' },
       { id: 'unlock_fleet_cascade', fields: ['f_truckowner', 'f_truck', 'f_driver', 'f_metertype', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Override Truck → Truck Owner/Driver/Meter Type cascade or Expense Category → Subcategory lock' },
-      { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'QUARRY', sub: 'Override the default quarry supplier bound to a raw material origin site' },
+      { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Site Default Supplier Lock', rule: 'SITE', sub: 'Override the default supplier bound to a raw material source site' },
       { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'VAT 11%', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
       { id: 'unlock_formula_totals', fields: ['f_date', 'f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Transaction Date & Calculated Total Locks', rule: 'DATE / TOTAL', sub: 'Override locked Transaction Date or computed Material / Transport / Total USD' }
     ],
     dashboards: [
       { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Entity Comparison & Sentinels', sub: 'P01 Executive Pulse, P02 Entity Comparison & Action Items (in AI Sentinels)', badge: '3 Dashboards' },
       { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p20_recon'], count: 5, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'Sales Analytics, Pricing Spreads, AR Aging + Ticket Books & Statement Recon', badge: '5 Dashboards' },
-      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Quarry, 3-Leg AP, Inventory & Fleet', sub: 'Payables & Spend, Stock & Margin, Diesel Burn, Fleet Economics + Drivers & OT', badge: '5 Dashboards' },
+      { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Raw Material, 3-Leg AP, Inventory & Fleet', sub: 'Payables & Spend, Stock & Margin, Diesel Burn, Fleet Economics + Drivers & OT', badge: '5 Dashboards' },
       { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'Cash Flow & Till 5300 + VAT 11% (in Customers) & Change Log (in Sentinels)', badge: '3 Dashboards' },
       { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'Workforce Analytics, Site Allowances & Freelance', badge: '1 Dashboard' },
-      { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'Financial GL & Ratios + Treasury/Loans (in GL) & JV 50/50 Quarries (in Material & Transportation)', badge: '3 Dashboards' }
+      { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'Financial GL & Ratios + Treasury/Loans (in GL) & JV 50/50 Sites (in Material & Transportation)', badge: '3 Dashboards' }
     ],
     statements: [
       { id: 'stmt_digest_ops', codes: ['01', '08', '09', '11', '12'], count: 5, label: 'Executive Digest & Operational Registers', sub: '#01 Daily Operations, #08 Sales Register, #09 Expense Register, #11 Raw Material, #12 Fuel Log', badge: '5 Statements' },
@@ -3423,7 +3423,7 @@
       tierBadge: 'TIER 4 · ENTRY OPERATOR',
       badgeCls: 'badge-brass',
       defaultAccess: 'partial|partial',
-      summary: 'Enters Sales Tickets, Quarry Intake, Fuel, Expenses, Customer Receipts & Master Data (create-only; cannot modify or void records). Policy-locked fields require Admin PIN unless customized.',
+      summary: 'Enters Sales Tickets, Raw Material Intake, Fuel, Expenses, Customer Receipts & Master Data (create-only; cannot modify or void records). Policy-locked fields require Admin PIN unless customized.',
       rights: { read_ops: true, read_fin: false, enter_dispatch: true, enter_accounting: true, enter_master: true, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
       unlocks: { unlock_unit_price: false, unlock_trans_price: false, unlock_qty_cap: false, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: false, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
       dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: true, dash_expenses_vat: true, dash_payroll_hr: false, dash_financial_gl: false },
@@ -3434,7 +3434,7 @@
       tierBadge: 'TIER 4 · COMMERCIAL & AR',
       badgeCls: 'badge-info',
       defaultAccess: 'partial|full',
-      summary: 'Scoped to Sales Tickets, Customer Receipts, Price Agreements, VAT Invoices & AR Aging; hides Quarry AP, Fleet, Expenses & Payroll.',
+      summary: 'Scoped to Sales Tickets, Customer Receipts, Price Agreements, VAT Invoices & AR Aging; hides Material AP, Fleet, Expenses & Payroll.',
       rights: { read_ops: true, read_fin: false, enter_dispatch: false, enter_accounting: true, enter_master: false, enter_payroll_jv: false, modify_data: false, void_data: false, manage_users: false },
       unlocks: { unlock_unit_price: false, unlock_trans_price: false, unlock_qty_cap: false, unlock_uom: false, unlock_method: false, unlock_fleet_cascade: false, unlock_site_owner: false, unlock_vat_serial: false, unlock_formula_totals: false },
       dashboards: { dash_overview: true, dash_commercial: true, dash_plant_fleet: false, dash_expenses_vat: false, dash_payroll_hr: false, dash_financial_gl: false },
@@ -3861,7 +3861,7 @@
     const category = new Map();
     const subcategory = new Map();
     const uom = new Map([['m³', 100], ['ton', 80], ['truck', 60], ['litre', 40], ['piece', 30], ['unit', 20], ['bag', 10]]);
-    const fuelLoc = new Map([['main plant tank', 50], ['wtc quarry tank', 40], ['bbconstruction tank', 30], ['mobile bowser', 20], ['external station', 10]]);
+    const fuelLoc = new Map([['main plant tank', 50], ['wtc site tank', 40], ['wtc quarry tank', 40], ['bbconstruction tank', 30], ['mobile bowser', 20], ['external station', 10]]);
     const role = new Map();
     const counterparty = new Map();
     const region = new Map();
@@ -5001,7 +5001,7 @@
     });
 
     g += `<line class="axis" x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}"/>`;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly revenue, quarry cost, and profit trajectory">${g}</svg>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly revenue, raw material cost, and profit trajectory">${g}</svg>`;
   }
 
   function tbStatus(k) {
@@ -5072,7 +5072,7 @@
         <div class="kpi kpi-link" data-nav-jump="raw" role="button" tabindex="0" title="Open Material &amp; Transportation">
           <span class="k">Realized Gross Margin</span>
           <span class="v num">${fmtUSD(k.gross_margin, 0)}<small>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</small></span>
-          <span class="d good">Raw Quarry Cost: ${fmtUSD(rawVal, 0)}</span>
+          <span class="d good">Raw Material Cost: ${fmtUSD(rawVal, 0)}</span>
         </div>
         <div class="kpi kpi-link" data-nav-jump="expenses" role="button" tabindex="0" title="Open Expenses & Payroll">
           <span class="k">Operating Cash Profit</span>
@@ -5100,7 +5100,7 @@
       <section class="ops-strip" aria-label="Operational Unit Economics">
         <div class="ops-cell kpi-link" data-nav-jump="sales" role="button" tabindex="0"><span>Sales Loads &amp; Volume</span><b class="num">${fmtNum(k.loads)} (${fmtNum(k.tons_sold, 0)} t)</b></div>
         <div class="ops-cell kpi-link" data-nav-jump="pricing" role="button" tabindex="0"><span>Avg Selling Price (TTC)</span><b class="num">${fmtUSD(k.avg_price_ttc, 2)} / unit</b></div>
-        <div class="ops-cell kpi-link" data-nav-jump="raw" role="button" tabindex="0"><span>Raw Quarry Intake</span><b class="num">${fmtNum(k.raw_loads)} loads (${fmtUSD(k.avg_raw_cost, 2)}/u)</b></div>
+        <div class="ops-cell kpi-link" data-nav-jump="raw" role="button" tabindex="0"><span>Raw Material Intake</span><b class="num">${fmtNum(k.raw_loads)} loads (${fmtUSD(k.avg_raw_cost, 2)}/u)</b></div>
         <div class="ops-cell kpi-link" data-nav-jump="fleet" role="button" tabindex="0"><span>Active Fleet &amp; Cost/Ton</span><b class="num">${fmtNum(k.active_equip)} units · ${fmtUSD(k.cost_per_ton, 2)}/t</b></div>
         <div class="ops-cell kpi-link" data-nav-jump="pricing" role="button" tabindex="0"><span>Customer Price Matrix</span><b class="num">${fmtNum(k.active_agreements)} active rules</b></div>
         <div class="ops-cell kpi-link" data-nav-jump="suppliers" role="button" tabindex="0"><span>3-Leg AP Open Balance</span><b class="num">${fmtUSD(k.ap_balance, 0)}</b></div>
@@ -5112,12 +5112,12 @@
         <div class="panel">
           <div class="ph">
             <div>
-              <h3>Monthly Revenue, Quarry Cost &amp; Cash Profit Trajectory</h3>
+              <h3>Monthly Revenue, Raw Cost &amp; Cash Profit Trajectory</h3>
               <span class="ph-sub">${esc(COMPANY_LABELS[STATE.company])} · Tap or hover bars to inspect monthly ledger totals</span>
             </div>
             <div class="legend">
               <span><i class="sw-box s-1"></i>Sales TTC</span>
-              <span><i class="sw-box s-2"></i>Raw Quarry Cost</span>
+              <span><i class="sw-box s-2"></i>Raw Material Cost</span>
               <span><i class="sw-box s-3"></i>Operating Profit</span>
             </div>
           </div>
@@ -5137,7 +5137,7 @@
               <div class="chart-ftr">
                 <div class="chart-ftr-cell"><small>Peak Month (${esc(peakLabel)})</small><b class="num">${fmtUSD(peakM.sales_ttc || 0, 0)}</b></div>
                 <div class="chart-ftr-cell"><small>Monthly Run-Rate (last ${months.length || 12}m)</small><b class="num">${fmtUSD(avgM, 0)} / mo</b></div>
-                <div class="chart-ftr-cell"><small>Direct Quarry Ratio</small><b class="num">${cogsPct} of Net</b></div>
+                <div class="chart-ftr-cell"><small>Direct Material Ratio</small><b class="num">${cogsPct} of Net</b></div>
                 <div class="chart-ftr-cell"><small>Operating Profit %</small><b class="num">${opPctStr} (${gmPctStr} GM)</b></div>
               </div>
             `;
@@ -5266,7 +5266,7 @@
           <div class="ph">
             <div>
               <h3>Audited General Ledger Stream (Double-Entry Lebanese CoA)</h3>
-              <span class="ph-sub">Closed with the ISABI Double Rule · Every Sales Ticket, Quarry Leg, VAT 11% &amp; Settlement</span>
+              <span class="ph-sub">Closed with the ISABI Double Rule · Every Sales Ticket, Raw Material Leg, VAT 11% &amp; Settlement</span>
             </div>
             <button type="button" class="btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="ledger">Full Trial Balance</button>
           </div>
@@ -6190,7 +6190,7 @@
         if (ho) ho.haul_loads += 1;
         rawHaulerSet.add(ho ? ho.supplier : r.truck_owner);
       }
-      const st = ensureSite(r.site || '(Unassigned Quarry)');
+      const st = ensureSite(r.site || '(Unassigned Site)');
       st.raw_loads += 1;
       st.mat_qty += q;
       st.mat_credit += mat;
@@ -6336,7 +6336,7 @@
       o.sales_ttc = round2(o.sales_ttc);
       o.has_expense = Boolean(o.mat_qty > 0 || o.total_credit !== 0 || o.paid !== 0 || o.raw_loads > 0);
       if (!o.has_expense && o.sales_loads === 0 && o.sales_ttc === 0) return;
-      o.site_kind = o.is_jv ? 'JV 50/50' : ((o.raw_loads > 0 || o.mat_credit !== 0 || o.quarry_haul !== 0) ? (o.sales_loads > 0 ? 'Both' : 'Quarry') : 'Customer');
+      o.site_kind = o.is_jv ? 'JV 50/50' : ((o.raw_loads > 0 || o.mat_credit !== 0 || o.quarry_haul !== 0) ? (o.sales_loads > 0 ? 'Both' : 'Supplier') : 'Customer');
       siteAllList.push(o);
     });
     const expSiteCnt = siteAllList.filter(s => s.has_expense).length;
@@ -6382,7 +6382,7 @@
         <div class="cockpit-title-block sr-only">
           <div class="cockpit-eyebrow">MATERIAL INTAKE &amp; THIRD-PARTY TRANSPORTATION · 2-LEG PAYABLE ENGINE</div>
           <div class="cockpit-title">Material &amp; Transportation</div>
-          <div class="cockpit-sub">Unified Material &amp; 3rd-Party Haulage across Supplier Quarry Sites and Customer Delivery Sites, reconciled with Supplier Settlements &amp; Remaining Balances.</div>
+          <div class="cockpit-sub">Unified Material &amp; 3rd-Party Haulage across Supplier Sites and Customer Delivery Sites, reconciled with Supplier Settlements &amp; Remaining Balances.</div>
         </div>
         <div class="cockpit-pills insight-grid">
           ${insightCard({
@@ -6393,7 +6393,7 @@
             valCls: 'brass',
             pct: matLegPct,
             pct2: haulLegPct,
-            sub: `Mat <b>${fmtUSD(sumMat, 0)}</b> · Quarry Haul <b>${fmtUSD(sumHaul, 0)}</b> · Sales Haul <b>${fmtUSD(sumSalesHaul, 0)}</b>`,
+            sub: `Mat <b>${fmtUSD(sumMat, 0)}</b> · Supplier Haul <b>${fmtUSD(sumHaul, 0)}</b> · Sales Haul <b>${fmtUSD(sumSalesHaul, 0)}</b>`,
             tone: 'brass'
           })}
           ${insightCard({
@@ -6436,12 +6436,12 @@
         <div class="panel-card" id="rawPanel">
           <div class="table-toolbar">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              ${searchBox('Search ticket #, supplier, hauler, quarry or customer site, product...')}
+              ${searchBox('Search ticket #, supplier, hauler, site, product...')}
               <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('fleet', 'Company fleet')}${chip('third', 'Third-party')}${chip('app', 'App-entered')}</div>
             </div>
             <div style="display:flex;gap:6px">
               <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="raw" title="Open Touch Raw Material Receiving Kiosk &amp; Bluetooth Thermal Printer">${ic('printer')} Raw Kiosk</button>
-              ${exportBtn('rawPanel', 'Material_Quarry_Register')}
+              ${exportBtn('rawPanel', 'Material_Transportation_Register')}
               ${canEnterForm('raw') ? '<button class="btn btn-primary" data-open-modal="raw">+ New Raw Receipt</button>' : ''}
             </div>
           </div>
@@ -6452,7 +6452,7 @@
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(wtcR.mat, 2)}</b></span>
                 <span><small>Supplier-Site Haul</small><b>${fmtUSD(wtcR.haul, 2)}</b></span>
-                <span><small>Quarry Total</small><b class="brass">${fmtUSD(wtcR.tot, 2)}</b></span>
+                <span><small>Raw Total</small><b class="brass">${fmtUSD(wtcR.tot, 2)}</b></span>
                 ${wtcR.salesHaul > 0 ? `<span data-scroll-panel="rawSalesHaulPanel" style="cursor:pointer" title="Click to inspect itemized 3rd-party customer delivery haulage tickets (Combined Mat + All Haul = ${fmtUSD(wtcR.tot + wtcR.salesHaul, 2)})"><small>+ Customer-Site Haul ↘</small><b>${fmtUSD(wtcR.salesHaul, 2)}</b></span>` : ''}
               </div>
             </div>
@@ -6461,7 +6461,7 @@
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(bbcR.mat, 2)}</b></span>
                 <span><small>Supplier-Site Haul</small><b>${fmtUSD(bbcR.haul, 2)}</b></span>
-                <span><small>Quarry Total</small><b class="brass">${fmtUSD(bbcR.tot, 2)}</b></span>
+                <span><small>Raw Total</small><b class="brass">${fmtUSD(bbcR.tot, 2)}</b></span>
                 ${bbcR.salesHaul > 0 ? `<span data-scroll-panel="rawSalesHaulPanel" style="cursor:pointer" title="Click to inspect itemized 3rd-party customer delivery haulage tickets"><small>+ Customer-Site Haul ↘</small><b>${fmtUSD(bbcR.salesHaul, 2)}</b></span>` : ''}
               </div>
             </div>
@@ -6477,7 +6477,7 @@
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(sumMat, 2)}</b></span>
                 <span><small>Supplier-Site Haul</small><b>${fmtUSD(sumHaul, 2)}</b></span>
-                <span><small>Quarry Total</small><b class="brass">${fmtUSD(sumTot, 2)}</b></span>
+                <span><small>Raw Total</small><b class="brass">${fmtUSD(sumTot, 2)}</b></span>
                 ${sumSalesHaul > 0 ? `<span data-scroll-panel="rawSalesHaulPanel" style="cursor:pointer" title="Click to jump to the 3rd-Party Customer-Site Transportation table below"><small>+ Customer-Site Haul ↘</small><b>${fmtUSD(sumSalesHaul, 2)}</b></span>` : ''}
                 ${sumSalesHaul > 0 ? `<span title="Total Material + Supplier-Site Haulage + Customer-Site 3rd-Party Haulage"><small>Total Mat. + Haul</small><b class="brass">${fmtUSD(sumTot + sumSalesHaul, 2)}</b></span>` : ''}
               </div>
@@ -6489,7 +6489,7 @@
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('raw', 'Date', 'date')}${th('raw', 'Ticket #', 'ticket_no')}${th('raw', 'Co.', 'company')}${th('raw', 'Quarry Site', 'site')}
+                  ${th('raw', 'Date', 'date')}${th('raw', 'Ticket #', 'ticket_no')}${th('raw', 'Co.', 'company')}${th('raw', 'Site', 'site')}
                   ${th('raw', 'Site Owner', 'site_owner')}${th('raw', 'Truck Owner', 'truck_owner')}${th('raw', 'Product', 'product')}
                   ${th('raw', 'Qty', 'qty', 'r')}${th('raw', 'Mat Cost', 'cost', 'r')}${th('raw', 'Haulage', 'trans_cost', 'r')}${th('raw', 'Total ($)', 'total', 'r')}
                 </tr>
@@ -6555,7 +6555,7 @@
                     <td><span class="badge ${r.role === 'Both' ? 'badge-brass' : (r.role === 'Hauler' ? 'badge-info' : 'badge-neutral')}">${esc(r.role)}</span></td>
                     <td class="r">${r.mat_qty > 0 ? `${fmtNum(r.mat_qty, 0)} m³` : '—'}</td>
                     <td class="r">${r.mat_credit !== 0 ? fmtUSD(r.mat_credit, 2) : '—'}</td>
-                    <td class="r" title="Haulage from supplier quarry sites (${fmtNum(r.haul_loads)} total haul loads)">${r.quarry_haul !== 0 ? fmtUSD(r.quarry_haul, 2) : '—'}</td>
+                    <td class="r" title="Haulage from supplier sites (${fmtNum(r.haul_loads)} total haul loads)">${r.quarry_haul !== 0 ? fmtUSD(r.quarry_haul, 2) : '—'}</td>
                     <td class="r" title="3rd-party haulage to customer delivery sites">${r.sales_haul !== 0 ? fmtUSD(r.sales_haul, 2) : '—'}</td>
                     <td class="r">${r.total_haul !== 0 ? `<strong>${fmtUSD(r.total_haul, 2)}</strong>` : '—'}</td>
                     <td class="r"><strong>${fmtUSD(r.total_credit, 2)}</strong></td>
@@ -6636,7 +6636,7 @@
 
         <div class="panel-card" id="sitesPanel">
           <div class="panel-head" style="flex-wrap:wrap;gap:8px">
-            <div class="panel-title"><span>SITE MATERIAL, HAULAGE &amp; REMAINING EXPENSES (QUARRIES &amp; CUSTOMER SITES)</span></div>
+            <div class="panel-title"><span>SITE MATERIAL, HAULAGE &amp; REMAINING EXPENSES</span></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <div class="chip-bar">${siteChip('expense', `Material & Haul Sites (${expSiteCnt})`)}${siteChip('all', `All Sites (${siteAllList.length})`)}</div>
               <span class="panel-meta">${exportBtn('sitesPanel', 'Sites_Material_Haulage_Balances')}</span>
@@ -7069,7 +7069,7 @@
       'Transport Price (Site)': 'Transport (Site)',
       'List Price': 'List Price'
     }[t] || t);
-    const typeChips = types.length ? types.map(t => chip(t, shortRuleType(t))).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Quarry / hauler rules');
+    const typeChips = types.length ? types.map(t => chip(t, shortRuleType(t))).join('') : chip('customer', 'Customer rules') + chip('quarry', 'Site / hauler rules');
     const upRules = rules.filter(r => !isMatIndiffRule(r) && Number(r.unit_price ?? r.price ?? 0) !== 0);
     const tpRules = rules.filter(r => !isTransIndiffRule(r) && Number(r.trans_unit_price ?? r.trans_price ?? 0) > 0);
     const indRules = rules.filter(r => ruleAnyIndiffPrice(r) != null);
@@ -7131,7 +7131,7 @@
       <div class="panel-card" id="pricingPanel">
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search customer, quarry supplier, product, site, agreement code...')}
+            ${searchBox('Search customer, supplier, product, site, agreement code...')}
             <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('active', `Active (${activeCount})`)}${chip('lapsed', 'Lapsed')}${chip('indiff', `Indifference (${indiffCount})`)}${typeChips}${chip('app', 'App-entered')}</div>
           </div>
           <div style="display:flex;gap:6px">
@@ -7589,7 +7589,7 @@
             valCls: 'brass',
             pct: matLegPct,
             pct2: haulLegPct,
-            sub: `Quarry <b>${fmtUSD(k.ap_material, 0)}</b> · Hauler <b>${fmtUSD(k.ap_haulage, 0)}</b> · Expense <b>${fmtUSD(k.ap_expense, 0)}</b>`,
+            sub: `Material <b>${fmtUSD(k.ap_material, 0)}</b> · Hauler <b>${fmtUSD(k.ap_haulage, 0)}</b> · Expense <b>${fmtUSD(k.ap_expense, 0)}</b>`,
             tone: 'brass'
           })}
           ${insightCard({
@@ -7605,7 +7605,7 @@
             badgeCls: 'amber',
             val: `${fmtNum(openSupCount)} <small>Open Payees</small>`,
             valCls: 'amber',
-            sub: `Across <b>${fmtNum(supAll.length)}</b> quarry owners, haulers &amp; service vendors`,
+            sub: `Across <b>${fmtNum(supAll.length)}</b> site owners, haulers &amp; service vendors`,
             tone: 'amber'
           })}
           ${appPill('settlements', 'amount', 'settlements')}
@@ -9224,8 +9224,8 @@
             <tr><td class="mono">4427</td><td>Less: Output VAT 11% Invoiced</td><td class="r">(${fmtUSD(k.sales_vat, 2)})</td><td class="r">—</td></tr>
             <tr><td class="mono">701/706</td><td><strong>Total Sales Revenue (Ex-VAT · Mat + Trans)</strong></td><td class="r"><strong>${fmtUSD(k.gross_sales || k.net_sales, 2)}</strong></td><td class="r">—</td></tr>
             <tr><td class="mono">701</td><td><strong>Material Sales Revenue (Ex-VAT)</strong></td><td class="r"><strong>${fmtUSD(k.net_sales, 2)}</strong></td><td class="r">100.0%</td></tr>
-            <tr><td class="mono">601</td><td>Raw Material Cost (Quarry Owners)</td><td class="r">(${fmtUSD(k.raw_mat_cost, 2)})</td><td class="r">${fmtPct((k.raw_mat_cost || 0) / (k.net_sales || 1))}</td></tr>
-            <tr><td class="mono">611</td><td>Quarry Haulage Cost (Third-Party Trucks)</td><td class="r">(${fmtUSD(k.raw_haulage, 2)})</td><td class="r">${fmtPct((k.raw_haulage || 0) / (k.net_sales || 1))}</td></tr>
+            <tr><td class="mono">601</td><td>Raw Material Cost (Site Owners)</td><td class="r">(${fmtUSD(k.raw_mat_cost, 2)})</td><td class="r">${fmtPct((k.raw_mat_cost || 0) / (k.net_sales || 1))}</td></tr>
+            <tr><td class="mono">611</td><td>Raw Haulage Cost (Third-Party Trucks)</td><td class="r">(${fmtUSD(k.raw_haulage, 2)})</td><td class="r">${fmtPct((k.raw_haulage || 0) / (k.net_sales || 1))}</td></tr>
             <tr><td class="mono">GM</td><td><strong>GROSS MARGIN</strong></td><td class="r"><strong>${fmtUSD(k.gross_margin, 2)}</strong></td><td class="r"><strong>${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)}</strong></td></tr>
             <tr><td class="mono">61/62</td><td>Plant &amp; Fleet Operating Expenses</td><td class="r">(${fmtUSD(k.expenses, 2)})</td><td class="r">${fmtPct((k.expenses || 0) / (k.net_sales || 1))}</td></tr>
             <tr><td class="mono">641</td><td>Staff Salaries &amp; Workforce Wages Paid</td><td class="r">(${fmtUSD(k.salaries_paid, 2)})</td><td class="r">${fmtPct((k.salaries_paid || 0) / (k.net_sales || 1))}</td></tr>
@@ -9277,7 +9277,7 @@
     } else if (code === '08') {
       const rows = sortRows(filterRecords(SEED.records.raw_purchases, { ignoreSearch: true }), 'st08', 'date', 'desc');
       bodyHtml = stTable([
-        { label: 'Date', key: 'date', mono: true }, { label: 'Ticket', key: 'ticket_no', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Quarry Site', key: 'site' }, { label: 'Site Owner', key: 'site_owner' }, { label: 'Transport', key: 'transport_by' }, { label: 'Truck Owner', key: 'truck_owner' }, { label: 'Product', key: 'product' },
+        { label: 'Date', key: 'date', mono: true }, { label: 'Ticket', key: 'ticket_no', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Site', key: 'site' }, { label: 'Site Owner', key: 'site_owner' }, { label: 'Transport', key: 'transport_by' }, { label: 'Truck Owner', key: 'truck_owner' }, { label: 'Product', key: 'product' },
         { label: 'Qty', key: 'qty', r: true, fmt: (v, r) => fmtNum(v, 2) + ' ' + esc(r.uom || '') }, { label: 'Material', key: 'cost', r: true, fmt: C.usd2 }, { label: 'Haulage', key: 'trans_cost', r: true, fmt: C.usd2 }, { label: 'Total', key: 'total', r: true, fmt: v => `<strong>${fmtUSD(v, 2)}</strong>` }
       ], rows, [{ v: `${fmtNum(rows.length)} RECEIPTS IN THE WEB SAMPLE · BOOK TOTAL ${fmtUSD(k.raw_cost, 2)} / ${fmtNum(k.raw_loads)} LOADS`, span: 8 }, { v: fmtNum(sum(rows, 'qty'), 0), r: true }, { v: fmtUSD(sum(rows, 'cost'), 2), r: true }, { v: fmtUSD(sum(rows, 'trans_cost'), 2), r: true }, { v: fmtUSD(sum(rows, 'total'), 2), r: true }]);
     } else if (code === '09' || code === '11') {
@@ -10580,7 +10580,7 @@
       return cockpitHtml + `
         ${adminHeaderHtml}
         <div class="form-grid-3">
-          ${secHdr('1. Quarry Receipt & Haulage')}
+          ${secHdr('1. Material Receipt & Haulage')}
           ${companyField}
           ${dateField}
           ${repDateField}
@@ -10591,8 +10591,8 @@
             ['Third-party truck', 'Third-party truck (Hauler)']
           ], 'Company fleet'), { id: 'wrap_f_transportby' })}
           ${fld('Raw Material (Product) *', inp('f_product', 'text', '', 'list="dl_products" placeholder="Select or type grade..."') + dlMeta('dl_products', rawProdMeta), { id: 'wrap_f_product', hintId: 'hint_product', hint: '' })}
-          ${fld('Quarry / Source Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type quarry site..."') + dl('dl_sites', siteNames('raw')), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
-          ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames('raw_owner')), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
+          ${fld('Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames('raw')), { id: 'wrap_f_site', hintId: 'hint_site', hint: '' })}
+          ${fld('Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames('raw_owner')), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
           ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
           ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked to the active driver in the Equipment Log — update Equipment Log if absent or changed', hintId: 'hint_driver', hint: '' })}
@@ -10609,7 +10609,7 @@
           ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to Credit (2-leg AP split) by default' })}
 
           ${secHdr('3. References & Notes')}
-          ${fld('Supplier Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Quarry / hauler invoice #"'), { id: 'wrap_f_extinvoice' })}
+          ${fld('Supplier Invoice No.', inp('f_extinvoice', 'text', '', 'placeholder="Supplier / hauler invoice #"'), { id: 'wrap_f_extinvoice' })}
           ${fld('Reference', inp('f_reference', 'text', '', 'placeholder="Weighbridge / voucher ref"'), { id: 'wrap_f_reference' })}
           <div class="form-field check-field" id="wrap_dupok" hidden><input type="checkbox" id="f_dupok"><label for="f_dupok">Post anyway — duplicate ticket number confirmed</label></div>
           ${notesField}
@@ -10648,7 +10648,7 @@
     }
 
     if (fType === 'fuel') {
-      const fuelLocs = uniqSorted(['Main Plant Tank', 'WTC Quarry Tank', 'BBConstruction Tank', 'Mobile Bowser', 'External Station'].concat((SEED.records.fuel_intakes || []).map(r => r.location)), getFreqIndex().fuelLoc);
+      const fuelLocs = uniqSorted(['Main Plant Tank', 'WTC Site Tank', 'BBConstruction Tank', 'Mobile Bowser', 'External Station'].concat((SEED.records.fuel_intakes || []).map(r => r.location)), getFreqIndex().fuelLoc);
       return cockpitHtml + `
         ${adminHeaderHtml}
         <div class="form-grid-3">
@@ -11593,7 +11593,7 @@
     const siteHasOwner = !!(sInfo && sInfo.supplier);
     const ownerLocked = applyFieldLockState('f_siteowner', siteHasOwner, siteHasOwner
       ? `Locked to ${site} default supplier (${sInfo.supplier})`
-      : 'Unlocked (Quarry site has no preset default supplier)');
+      : 'Unlocked (Site has no preset default supplier)');
     if ($('f_siteowner') && !isFieldAdminUnlocked('f_siteowner')) {
       if (siteHasOwner && (ownerLocked || siteChanged || !val('f_siteowner'))) {
         $('f_siteowner').value = sInfo.supplier;
@@ -12476,7 +12476,7 @@
 
   const SUPPLIER_CATEGORIES = [
     'Hauler / Truck Owner',
-    'Quarry & Raw Materials',
+    'Site & Raw Materials',
     'Fuel & Lubricants',
     'Spare Parts & Repairs',
     'Equipment & Machinery',
@@ -12487,7 +12487,7 @@
     const s = String(raw || '').trim();
     if (!s) return '';
     if (/hauler|truck\s*owner|transport/i.test(s)) return 'Hauler / Truck Owner';
-    if (/quarry|raw\s*material|aggregate/i.test(s)) return 'Quarry & Raw Materials';
+    if (/quarry|site|raw\s*material|aggregate/i.test(s)) return 'Site & Raw Materials';
     if (/fuel|lubricant|diesel|oil|bowser/i.test(s)) return 'Fuel & Lubricants';
     if (/spare\s*part|repair|maintenance|garage|tyre|tire|workshop|tool/i.test(s)) return 'Spare Parts & Repairs';
     if (/capital\s*expenditure|minor\s*equipment|machinery|equipment/i.test(s)) return 'Equipment & Machinery';
@@ -13555,14 +13555,14 @@
       const dup = ticketExists(company, ticket, 'raw', repDate || date);
       if (dup && dup.blocked) addErr('f_ticketno', `Ticket ${ticket} is not accepted — already used on ${dup.label} ${dup.row.ticket_no} dated ${dup.dateStr} (${dup.ageDays === 0 ? 'same day' : (dup.diffDays === 1 ? 'day before' : '1 day apart')}).`);
       if (!c.product) addErr('f_product', 'Raw material is required.');
-      if (!c.site) addErr('f_site', 'Quarry site is required.');
+      if (!c.site) addErr('f_site', 'Site is required.');
       if (!(c.qty > 0)) {
         if (!val('f_truck') && $('f_qty') && $('f_qty').dataset.policyLockedNow === '1') {
           addErr('f_truck', 'Truck is required to set load capacity (or unlock Quantity).');
         }
         addErr('f_qty', 'Quantity must be above zero.');
       }
-      if (c.up > 0 && !c.owner) addErr('f_siteowner', 'Quarry site owner (material payee) is required when the material has a cost.');
+      if (c.up > 0 && !c.owner) addErr('f_siteowner', 'Site owner (material payee) is required when the material has a cost.');
       if (!val('f_truck')) addErr('f_truck', 'Truck is required.');
       if (!val('f_driver')) addErr('f_driver', 'Active driver is required (assign in Equipment Log).');
       if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) addErr('f_truckowner', 'Truck owner (haulage payee) is required for third-party haulage.');
@@ -13621,7 +13621,7 @@
       const q1v = (!isFlatIndiff && val('f_qty1')) ? num('f_qty1') : null, q2v = (!isFlatIndiff && val('f_qty2')) ? num('f_qty2') : null;
       if (val('f_enddate') && val('f_enddate') < date) addErr('f_enddate', 'End Date cannot be before the Start Date.');
       if (/Sales/.test(rt) && !val('f_customer') && !(rt === 'Sales (Delivery)' && val('f_site') && tSizeV > 0)) addErr('f_customer', 'A Sales rule needs the Customer it is agreed with.');
-      if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) addErr('f_supplier', 'A quarry Purchase / Transport rule needs the Supplier or the Site.');
+      if (/Purchase|Transport/.test(rt) && !val('f_supplier') && !val('f_site')) addErr('f_supplier', 'A Purchase / Transport rule needs the Supplier or the Site.');
       record = {
         ...base,
         name: val('f_name') || `PRC-${date.replace(/-/g, '')}-${rt.slice(0, 5).toUpperCase()}-${prod || val('f_site') || val('f_customer') || 'RULE'}`,
@@ -14206,7 +14206,7 @@
     salaries: 'Salary Payment', price_rules: 'Price & Commission Agreement', credit_terms: 'Customer Credit Policy',
     vat_invoices: 'VAT 11% Tax Invoice', customers: 'Customer 360° Master', suppliers: 'Supplier & Hauler 360° Master',
     products: 'Product & Aggregate Grade', product_types: 'Product Family', uoms: 'Unit of Measure',
-    sites: 'Quarry & Customer Site 360°', regions: 'Delivery Region / Zone', equipment: 'Equipment & Truck 360°',
+    sites: 'Site 360°', regions: 'Delivery Region / Zone', equipment: 'Equipment & Truck 360°',
     company_equipment: 'Company-Equipment Assignment', drivers: 'Driver & Operator 360°',
     company_drivers: 'Company-Driver Assignment', expense_categories: 'Expense Category',
     expense_subcategories: 'Expense Subcategory', employments: 'Staff & Employment 360°',
@@ -14310,7 +14310,7 @@
       const eq = equipInfo(row.truck);
       return {
         tone: 'info',
-        text: `Two-Leg Quarry Split (m192): Leg 1 Material ${fmtUSD(row.cost, 2)} → ${row.site_owner || row.site || 'Quarry Owner'}${matRule ? ' (Rule ' + matRule.name + ')' : ''}  |  Leg 2 Haulage ${fmtUSD(row.trans_cost, 2)} → ${row.truck_owner || row.transport_by || 'Company Fleet'}${eq ? ' · Truck ' + eq.name : ''}  |  Total Payable: ${fmtUSD(row.total, 2)} USD`
+        text: `Two-Leg Material Split: Leg 1 Material ${fmtUSD(row.cost, 2)} → ${row.site_owner || row.site || 'Site Owner'}${matRule ? ' (Rule ' + matRule.name + ')' : ''}  |  Leg 2 Haulage ${fmtUSD(row.trans_cost, 2)} → ${row.truck_owner || row.transport_by || 'Company Fleet'}${eq ? ' · Truck ' + eq.name : ''}  |  Total Payable: ${fmtUSD(row.total, 2)} USD`
       };
     }
     if (key === 'price_rules') {
@@ -14357,7 +14357,7 @@
       const rulesCnt = activeRulesCountFor('site', row.name);
       return {
         tone: 'info',
-        text: `Quarry & Site 360°: ${row.name} (${row.region || 'Lebanon'})  |  Default Quarry Owner: ${row.supplier || '—'}  |  JV 50/50 Status: ${row.is_jv ? 'Active JV Quarry' : 'Standard Site'}  |  Active Site Price Rules: ${rulesCnt}  |  GPS Pin: ${row.latitude != null ? row.latitude + ', ' + row.longitude : 'Pending coordinates'}`
+        text: `Site 360°: ${row.name} (${row.region || 'Lebanon'})  |  Default Site Owner: ${row.supplier || '—'}  |  JV 50/50 Status: ${row.is_jv ? 'Active JV Site' : 'Standard Site'}  |  Active Site Price Rules: ${rulesCnt}  |  GPS Pin: ${row.latitude != null ? row.latitude + ', ' + row.longitude : 'Pending coordinates'}`
       };
     }
     if (key === 'products') {
@@ -14446,7 +14446,7 @@
       return {
         bu, title, pill: fmtUSD(tot, 2),
         cards: [
-          { lbl: 'LEG 1 · QUARRY MATERIAL', tag: 'SITE OWNER', tone: 'good', val: fmtUSD(row.cost, 2), sub1: `Payee: ${row.site_owner || '—'} · Rate: ${fmtUSD(row.unit_cost, 2)}/${row.uom || 'm³'}`, sub2: `Quarry Site: ${row.site || '—'} · Open AP: ${fmtUSD(siSite.ap_balance || 0, 0)}`, pct: tot > 0 ? Math.round((Number(row.cost || 0) / tot) * 100) : 60 },
+          { lbl: 'LEG 1 · RAW MATERIAL', tag: 'SITE OWNER', tone: 'good', val: fmtUSD(row.cost, 2), sub1: `Payee: ${row.site_owner || '—'} · Rate: ${fmtUSD(row.unit_cost, 2)}/${row.uom || 'm³'}`, sub2: `Site: ${row.site || '—'} · Open AP: ${fmtUSD(siSite.ap_balance || 0, 0)}`, pct: tot > 0 ? Math.round((Number(row.cost || 0) / tot) * 100) : 60 },
           { lbl: 'LEG 2 · HAULAGE / FREIGHT', tag: /company/i.test(row.transport_by || '') ? 'OWN FLEET' : 'HAULER AP', tone: 'info', val: fmtUSD(row.trans_cost, 2), sub1: `Hauler: ${row.truck_owner || row.transport_by || '—'}`, sub2: `Truck: ${row.truck || '—'} · Hauler AP: ${fmtUSD(siHaul.ap_balance || 0, 0)}`, pct: tot > 0 ? Math.round((Number(row.trans_cost || 0) / tot) * 100) : 40 },
           { lbl: 'INTAKE VOLUME & TONNAGE', tag: row.uom || 'M³', tone: 'good', val: `${fmtNum(row.qty, 2)} ${row.uom || 'm³'}`, sub1: `Estimated Weight: ${fmtNum(ticketTons(row), 1)} tons`, sub2: `Grade: ${row.product || 'Raw Aggregate'}`, pct: 80 },
           { lbl: 'COMBINED LANDED COST', tag: 'M192 SPLIT', tone: 'info', val: fmtUSD(tot, 2), sub1: `Landed Unit Cost: ${row.qty > 0 ? fmtUSD(tot / row.qty, 2) : '—'}/${row.uom || 'm³'}`, sub2: `Tx Date: ${row.date || '—'} · Rep Date: ${row.rep_date || row.date || '—'}`, pct: 90 }
@@ -14485,7 +14485,7 @@
         bu: 'ALL BUs', title, pill: `AP ${fmtUSD(apBal, 2)}`,
         cards: [
           { lbl: 'NET 3-LEG AP BALANCE', tag: 'M192 ENGINE', tone: apBal > 0 ? 'warn' : 'good', val: fmtUSD(apBal, 2), sub1: `Mat: ${fmtUSD(si.ap_material || 0, 0)} · Haul: ${fmtUSD(si.ap_haulage || 0, 0)}`, sub2: `Expense Leg: ${fmtUSD(si.ap_expense || 0, 0)}`, pct: 75 },
-          { lbl: 'QUARRY & HAULAGE LOADS', tag: `${fmtNum(matLoads.length + haulLoads.length)} TICKETS`, tone: 'info', val: fmtNum(si.raw_loads || (matLoads.length + haulLoads.length)), sub1: `As Site Owner: ${fmtNum(matLoads.length)} · As Hauler: ${fmtNum(haulLoads.length)}`, sub2: `Expenses Billed: ${fmtNum(exps.length)} vouchers`, pct: 80 },
+          { lbl: 'MATERIAL & HAULAGE LOADS', tag: `${fmtNum(matLoads.length + haulLoads.length)} TICKETS`, tone: 'info', val: fmtNum(si.raw_loads || (matLoads.length + haulLoads.length)), sub1: `As Site Owner: ${fmtNum(matLoads.length)} · As Hauler: ${fmtNum(haulLoads.length)}`, sub2: `Expenses Billed: ${fmtNum(exps.length)} vouchers`, pct: 80 },
           { lbl: 'SETTLEMENTS DISBURSED', tag: `${fmtNum(spays.length)} PAYMENTS`, tone: 'good', val: fmtUSD(si.settlements_paid || spays.reduce((a, s) => a + Number(s.amount || 0), 0), 0), sub1: `${fmtNum(spays.length)} settlement vouchers in register`, sub2: `IVA Registered: ${row.iva || si.iva ? 'Yes' : 'No'}`, pct: 85 },
           { lbl: 'FLEET & AGREEMENTS', tag: row.is_truck_owner ? 'HAULER FLEET' : 'VENDOR', tone: 'info', val: `${fmtNum(row.trucks_count || (row.trucks || []).length || 0)} Trucks`, sub1: `Drivers Linked: ${fmtNum((row.drivers || []).length)}`, sub2: `Active Price Rules: ${activeRulesCountFor('supplier', name)}`, pct: 70 }
         ]
@@ -14568,14 +14568,14 @@
       if (!siteName) return;
       const si = siteInfo(siteName) || {};
       cards.push({
-        tag: 'QUICK VIEW · SITE & QUARRY',
+        tag: 'QUICK VIEW · SITE',
         targetKey: 'sites',
         targetVal: siteName,
         title: siteName,
         kvs: [
           ['Region / Zone', si.region || 'Lebanon'],
-          ['Quarry Owner', si.supplier || row.site_owner || '—'],
-          ['JV 50/50 Quarry', si.is_jv ? 'Yes (JV Partner)' : 'No'],
+          ['Site Owner', si.supplier || row.site_owner || '—'],
+          ['JV 50/50 Site', si.is_jv ? 'Yes (JV Partner)' : 'No'],
           ['Active Site Rules', fmtNum(activeRulesCountFor('site', siteName))]
         ]
       });
@@ -14625,7 +14625,7 @@
       addTruckQv(row.truck, row.driver);
     } else if (key === 'raw_purchases') {
       addSiteQv(row.site);
-      addSupplierQv(row.site_owner, 'QUARRY OWNER');
+      addSupplierQv(row.site_owner, 'SITE OWNER');
       if (row.truck_owner && row.truck_owner !== row.site_owner) addSupplierQv(row.truck_owner, 'HAULER');
       addTruckQv(row.truck, row.driver);
     } else if (key === 'fuel_intakes') {
@@ -14700,8 +14700,8 @@
       const siteLoads = (rec.raw_purchases || []).filter(t => norm(t.site) === norm(row.site) && String(t.id) !== String(row.id));
       const suppSettle = (rec.settlements || []).filter(s => (row.site_owner && norm(s.supplier) === norm(row.site_owner)) || (row.truck_owner && norm(s.supplier) === norm(row.truck_owner)));
 
-      addGrid('sg_raw_rules', `Quarry & Hauler Price Agreements (${row.site || row.site_owner})`, 'Quarry Rules', 'Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
-      addGrid('sg_site_loads', `Other Raw Material Purchases from ${row.site || 'Quarry'}`, 'Quarry Loads', 'Sibling Loads', 'raw_purchases', siteLoads, ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
+      addGrid('sg_raw_rules', `Site & Hauler Price Agreements (${row.site || row.site_owner})`, 'Site Rules', 'Rule Lookup', 'price_rules', rawRules, ['name', 'company', 'rule_type', 'supplier', 'product', 'site', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_site_loads', `Other Raw Material Purchases from ${row.site || 'Site'}`, 'Raw Loads', 'Sibling Loads', 'raw_purchases', siteLoads, ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
       addGrid('sg_supp_settle', `Supplier Settlements for ${row.site_owner || row.truck_owner}`, 'AP Settlements', '3-Leg AP Relief', 'settlements', suppSettle, ['date', 'name', 'company', 'supplier', 'method', 'amount', 'discount', 'reference'], 'amount');
     }
     else if (key === 'customers') {
@@ -14714,11 +14714,11 @@
     }
     else if (key === 'suppliers') {
       const name = row.name || row.Supplier;
-      addGrid('sg_s_mat', `Leg 1 · Quarry Material Purchases (${name})`, 'Quarry Loads', 'Site Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'product', 'truck', 'qty', 'unit_cost', 'cost', 'total'], 'cost');
+      addGrid('sg_s_mat', `Leg 1 · Raw Material Purchases (${name})`, 'Raw Loads', 'Site Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.site_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'product', 'truck', 'qty', 'unit_cost', 'cost', 'total'], 'cost');
       addGrid('sg_s_haul', `Leg 2 · Haulage Loads (${name})`, 'Haulage Loads', 'Truck Owner Leg', 'raw_purchases', (rec.raw_purchases || []).filter(r => norm(r.truck_owner) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'site_owner', 'truck', 'driver', 'qty', 'trans_cost', 'total'], 'trans_cost');
       addGrid('sg_s_exp', `Leg 3 · General & Fleet Expenses (${name})`, 'Expenses', 'Expense Leg', 'expenses', (rec.expenses || []).filter(x => norm(x.supplier) === norm(name)), ['date', 'name', 'company', 'category', 'subcategory', 'equipment', 'method', 'amount', 'reference'], 'amount');
       addGrid('sg_s_pay', `Supplier AP Settlements (${name})`, 'Settlements', 'Settlements', 'settlements', (rec.settlements || []).filter(s => norm(s.supplier) === norm(name)), ['date', 'name', 'company', 'method', 'amount', 'discount', 'raw_ticket', 'expense_record', 'reference'], 'amount');
-      addGrid('sg_s_rules', `Quarry & Transport Price Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
+      addGrid('sg_s_rules', `Site & Transport Price Agreements (${name})`, 'Price Rules', 'Price Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.supplier) === norm(name)), ['name', 'company', 'rule_type', 'product', 'site', 'unit', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
       addGrid('sg_s_eq', `Registered Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.supplier) === norm(name)), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'default_driver'], 'capacity');
       addGrid('sg_s_drv', `Registered Drivers (${name})`, 'Drivers', 'Drivers', 'drivers', (rec.drivers || []).filter(d => norm(d.truck_owner) === norm(name)), ['name', 'truck', 'phone', 'truck_owner', 'notes'], null);
     }
@@ -14735,12 +14735,12 @@
     else if (key === 'sites' || key === 'regions') {
       const name = row.name || row.Site;
       if (key === 'regions') {
-        addGrid('sg_r_sites', `Sites & Quarries in Region ${name}`, 'Sites', 'Sites', 'sites', (rec.sites || []).filter(s => norm(s.region) === norm(name)), ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'], null);
+        addGrid('sg_r_sites', `Sites in Region ${name}`, 'Sites', 'Sites', 'sites', (rec.sites || []).filter(s => norm(s.region) === norm(name)), ['name', 'region', 'supplier', 'is_jv', 'latitude', 'longitude'], null);
         addGrid('sg_r_ot', `Driver Trip & Overtime Rates (${name})`, 'Overtime Rates', 'Overtime Rates', 'overtime_rates', (rec.overtime_rates || []).filter(o => norm(o.region) === norm(name)), ['name', 'company', 'region', 'amount', 'start_date', 'end_date'], 'amount');
       } else {
         addGrid('sg_st_rules', `Price & Transport Agreements at ${name}`, 'Site Rules', 'Site Rules', 'price_rules', (rec.price_rules || []).filter(r => norm(r.site) === norm(name)), ['name', 'company', 'rule_type', 'customer', 'supplier', 'product', 'unit_price', 'indiff_price', 'trans_unit_price', 'start_date', 'end_date'], 'unit_price');
         addGrid('sg_st_sales', `Sales Deliveries to ${name}`, 'Sales Deliveries', 'Sales Deliveries', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'truck', 'qty', 'trans_price', 'total_ttc'], 'total_ttc');
-        addGrid('sg_st_raw', `Quarry Raw Material Loads from ${name}`, 'Quarry Loads', 'Quarry Loads', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
+        addGrid('sg_st_raw', `Raw Material Loads from ${name}`, 'Raw Loads', 'Raw Loads', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.site) === norm(name)), ['date', 'ticket_no', 'company', 'site_owner', 'truck_owner', 'truck', 'product', 'qty', 'cost', 'trans_cost', 'total'], 'total');
         addGrid('sg_st_jv', `JV Partnerships & Profit Split (${name})`, 'JV Partners', 'JV Partners', 'jv_partnerships', (rec.jv_partnerships || []).filter(j => norm(j.site) === norm(name)), ['name', 'company', 'partner', 'percentage', 'notes'], 'percentage');
         addGrid('sg_st_log', `Site Logistics Allowances (${name})`, 'Site Allowances', 'Site Allowances', 'logistics_allowances', (rec.logistics_allowances || []).filter(l => norm(l.site) === norm(name)), ['name', 'company', 'staff', 'equipment', 'daily_usd', 'working_days', 'start_date', 'end_date'], 'daily_usd');
       }
@@ -14759,7 +14759,7 @@
       addGrid('sg_d_co', `Company-Driver Assignments (${name})`, 'BU Assignments', 'BU Assignments', 'company_drivers', (rec.company_drivers || []).filter(cd => norm(cd.driver) === norm(name)), ['company', 'driver', 'staff', 'start_date', 'end_date', 'notes'], null);
       addGrid('sg_d_eq', `Assigned Trucks & Equipment (${name})`, 'Trucks', 'Trucks & Equipment', 'equipment', (rec.equipment || []).filter(e => norm(e.default_driver) === norm(name) || coEqNames.has(norm(e.name))), ['name', 'plate_no', 'type', 'ownership', 'capacity', 'supplier'], 'capacity');
       addGrid('sg_d_sales', `Sales Deliveries Driven by ${name}`, 'Sales Trips', 'Sales Trips', 'sales_tickets', (rec.sales_tickets || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'customer', 'product', 'site', 'truck', 'qty', 'total_ttc'], 'total_ttc');
-      addGrid('sg_d_raw', `Quarry Raw Loads Driven by ${name}`, 'Raw Trips', 'Raw Trips', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'truck', 'product', 'qty', 'total'], 'total');
+      addGrid('sg_d_raw', `Raw Loads Driven by ${name}`, 'Raw Trips', 'Raw Trips', 'raw_purchases', (rec.raw_purchases || []).filter(t => norm(t.driver) === norm(name)), ['date', 'ticket_no', 'company', 'site', 'truck', 'product', 'qty', 'total'], 'total');
       addGrid('sg_d_fuel', `Fuel Intakes Signed by ${name}`, 'Fuel Log', 'Fuel Log', 'fuel_intakes', (rec.fuel_intakes || []).filter(f => norm(f.driver) === norm(name)), ['date', 'ticket_no', 'company', 'equipment', 'item', 'litres', 'odometer'], 'litres');
     }
     else if (key === 'price_rules') {
@@ -17982,7 +17982,7 @@
     gl: 'General Ledger & SOA',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
-    reg_sites: 'Quarries & Sites',
+    reg_sites: 'Sites',
     reg_regions: 'Regions & Zones',
     reg_products: 'Products & Grades',
     reg_customers: 'Customers Registry',
@@ -18012,7 +18012,7 @@
     gl: 'General Ledger & SOA',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
-    reg_sites: 'Quarries & Sites',
+    reg_sites: 'Sites',
     reg_regions: 'Regions & Zones',
     reg_products: 'Products & Grades',
     reg_customers: 'Customers Registry',
@@ -18599,7 +18599,7 @@
       return `<strong>P&amp;L — WTC vs BBConstruction (${esc(gk.label || 'All-Time')}):</strong><br>
         • <strong>WTC</strong>: Sales TTC ${fmtUSD(w.sales_ttc, 0)} on ${fmtNum(w.loads)} loads · net ${fmtUSD(w.net_sales, 0)} · raw cost ${fmtUSD(w.raw_cost, 0)} (${fmtNum(w.raw_loads)} loads) · gross margin ${fmtUSD(w.gross_margin, 0)} (<strong>${fmtPct(w.gm_pct, w.gross_margin, w.net_sales)}</strong>) · operating cash profit <strong>${fmtUSD(w.operating_profit, 0)}</strong> (${fmtPct(w.op_margin_pct, w.operating_profit, w.net_sales)}).<br>
         • <strong>BBConstruction</strong>: Sales TTC ${fmtUSD(b.sales_ttc, 0)} on ${fmtNum(b.loads)} loads · net ${fmtUSD(b.net_sales, 0)} · raw cost ${fmtUSD(b.raw_cost, 0)} (${fmtNum(b.raw_loads)} loads) · gross margin ${fmtUSD(b.gross_margin, 0)} (<strong>${fmtPct(b.gm_pct, b.gross_margin, b.net_sales)}</strong>) · operating cash profit <strong>${fmtUSD(b.operating_profit, 0)}</strong> (${fmtPct(b.op_margin_pct, b.operating_profit, b.net_sales)}).<br>
-        • BBConstruction's higher GM comes from more own / JV pit material (lower third-party quarry royalties); its operating margin is thinner because expenses and payroll weigh more against a smaller top line.`;
+        • BBConstruction's higher GM comes from more own / JV pit material (lower third-party site royalties); its operating margin is thinner because expenses and payroll weigh more against a smaller top line.`;
     }
     if (has(/\b(ar|overdue|receivable|receivables|customer|customers|credit hold|dso)\b/)) {
       const topC = ((SEED.models[STATE.company] || SEED.models['manufacturing-group'] || {}).customers || []).slice(0, 5).map(c => `${esc(c.Customer)} (${fmtUSD(c.ar_balance, 0)}${Number(c.ar_60_plus || 0) > 0 ? ', ' + fmtUSD(c.ar_60_plus, 0) + ' past 60d' : ''})`).join(', ');
@@ -18608,9 +18608,9 @@
         • Aging: current ${fmtUSD(k.ar_current, 0)} · 1–10d ${fmtUSD(k.ar_1_10, 0)} · 11–30d ${fmtUSD(k.ar_11_30, 0)} · 31–60d ${fmtUSD(k.ar_31_60, 0)} · 60+ ${fmtUSD(k.ar_60_plus, 0)}. VAT-registered customers carry 11% inside their balance (m249).<br>
         • Largest balances: ${topC || '—'}. Credit hold candidates = anything past 60 days with no receipt this month.`;
     }
-    if (has(/\b(ap|leg|legs|quarry|quarries|supplier|suppliers|hauler|payable|payables)\b/)) {
+    if (has(/\b(ap|leg|legs|quarry|quarries|site|sites|supplier|suppliers|hauler|payable|payables)\b/)) {
       return `<strong>3-Leg Accounts Payable (m192) — ${esc(scope)}:</strong><br>
-        1. <strong>Material leg ${fmtUSD(k.ap_material, 0)}</strong> owed to quarry site owners.<br>
+        1. <strong>Material leg ${fmtUSD(k.ap_material, 0)}</strong> owed to site owners.<br>
         2. <strong>Haulage leg ${fmtUSD(k.ap_haulage, 0)}</strong> owed to truck owners ($0 on company-fleet loads).<br>
         3. <strong>Supplies &amp; services leg ${fmtUSD(k.ap_expense, 0)}</strong> from credit expenses.<br>
         Settlements paid ${fmtUSD(k.settlements_paid, 0)} · net open AP <strong>${fmtUSD(k.ap_balance, 0)}</strong>${Number(k.ap_balance || 0) < 0 ? ' (negative = prepayments / advances exceed open legs)' : ''}.`;
@@ -18869,8 +18869,8 @@
         overtime,
         ticket_no: val('f_ticketno') || nextTicketNo(company, [SEED.records.raw_purchases, STATE.customRecords.raw_purchases]) || '1001',
         product: val('f_product') || 'Raw Aggregate',
-        site: val('f_site') || 'Quarry Site',
-        site_owner: val('f_siteowner') || 'Quarry Owner',
+        site: val('f_site') || 'Site',
+        site_owner: val('f_siteowner') || 'Site Owner',
         transport_by: val('f_transportby') || 'Company fleet',
         truck_owner: isCo ? company : (val('f_truckowner') || 'Hauler'),
         truck: val('f_truck') || '—',
@@ -19472,7 +19472,7 @@
 
     const kioskTabs = [
       { id: 'sales', icon: ic('truck'), title: '1. Sales Dispatch Kiosk', sub: 'Weighbridge Ticket + Bluetooth Invoice / Gate Pass', badge: `${fmtNum(SEED.records.sales_tickets.length)} Tickets` },
-      { id: 'raw', icon: ic('quarry'), title: '2. Raw Material Kiosk', sub: 'Quarry Receiving + Bluetooth 2-Leg Voucher / Slip', badge: `${fmtNum(SEED.records.raw_purchases.length)} Intakes` },
+      { id: 'raw', icon: ic('quarry'), title: '2. Raw Material Kiosk', sub: 'Material Receiving + Bluetooth 2-Leg Voucher / Slip', badge: `${fmtNum(SEED.records.raw_purchases.length)} Intakes` },
       { id: 'fuel', icon: ic('fuel'), title: '3. Fuel & Lubricants Kiosk', sub: 'Diesel / Oil / Petrol Dispense + Meter Guard & Refill', badge: `${fmtNum(SEED.records.fuel_intakes.length)} Logs` },
       { id: 'attendance', icon: ic('kiosks'), title: '4. Attendance Biometric Kiosk', sub: 'Live 4:3 Face ID + 4-Digit PIN + Smart 16h Shift', badge: `${onSiteList.length} On Site` }
     ];
@@ -19510,7 +19510,7 @@
             <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">${ic('hauler')} Third-Party Truck (Hauler)</button>
           </div>
           <div class="kiosk-quick-group">
-            <span class="kiosk-quick-lbl">Quarry Origin Site:</span>
+            <span class="kiosk-quick-lbl">Source Site:</span>
             ${topSites.map(s => `<button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_site" data-kiosk-preset-val="${esc(s)}">${esc(s)}</button>`).join('')}
           </div>
           <div class="kiosk-quick-group">
@@ -19562,7 +19562,7 @@
       STATE.kioskAttStaff = selectedStaff;
       const nextDir = inferNextPunchDirection(selectedStaff);
       const lastPunch = STATE.kioskLastPunch || punches[0] || null;
-      const attSites = uniqSorted(['WTC Main Plant', 'WTC Quarry', 'BBConstruction Batching Plant', 'Lions Transport Garage'].concat(siteNames()));
+      const attSites = uniqSorted(['WTC Main Plant', 'WTC Site', 'BBConstruction Batching Plant', 'Lions Transport Garage'].concat(siteNames()));
 
       workspaceBodyHtml = `
         <div class="kiosk-att-grid" id="kioskAttendanceWorkspace">
@@ -19700,10 +19700,10 @@
         </div>
       `;
     } else {
-      // Kiosks 1, 2, 3: Weighbridge Sales Dispatch, Quarry Raw Material, Fuel & Lubricants
+      // Kiosks 1, 2, 3: Weighbridge Sales Dispatch, Raw Material, Fuel & Lubricants
       const kioskHeadTitles = {
         sales: '1. SALES WEIGHBRIDGE & DISPATCH TERMINAL (35 LIVE FORM RULES + BLUETOOTH ESC/POS)',
-        raw: '2. RAW MATERIAL QUARRY RECEIVING TERMINAL (2-LEG PAYABLE SPLIT + BLUETOOTH ESC/POS)',
+        raw: '2. RAW MATERIAL RECEIVING TERMINAL (2-LEG PAYABLE SPLIT + BLUETOOTH ESC/POS)',
         fuel: STATE.kioskFuelSubmode === 'refill'
           ? '3B. BULK FUEL TANK REFILL & LUBRICANT PURCHASE TERMINAL'
           : '3A. FUEL, DIESEL & LUBRICANT DISPENSE TERMINAL (M142 METER GUARD + PUMP SLIP)'
@@ -19753,7 +19753,7 @@
 
             <div class="panel-card kiosk-recent-card">
               <div class="panel-head">
-                <div class="panel-title"><span>RECENT ${kMode === 'raw' ? 'QUARRY RAW RECEIPTS' : (kMode === 'fuel' ? 'FUEL &amp; LUBE INTAKES' : 'SALES DISPATCH TICKETS')} (1-TAP REPRINT)</span></div>
+                <div class="panel-title"><span>RECENT ${kMode === 'raw' ? 'RAW MATERIAL RECEIPTS' : (kMode === 'fuel' ? 'FUEL &amp; LUBE INTAKES' : 'SALES DISPATCH TICKETS')} (1-TAP REPRINT)</span></div>
                 <span class="panel-meta">${fmtNum(activeRecentRows.length)} Recent</span>
               </div>
               <div class="table-wrap">
@@ -19761,7 +19761,7 @@
                   <thead>
                     <tr>
                       <th>Ticket</th>
-                      <th>${kMode === 'raw' ? 'Quarry / Material' : (kMode === 'fuel' ? 'Unit / Fuel' : 'Customer / Grade')}</th>
+                      <th>${kMode === 'raw' ? 'Site / Material' : (kMode === 'fuel' ? 'Unit / Fuel' : 'Customer / Grade')}</th>
                       <th class="r">Qty</th>
                       <th class="r">${kMode === 'fuel' ? 'Meter' : 'Total ($)'}</th>
                       <th>Reprint</th>
@@ -19795,7 +19795,7 @@
     return `
       <div class="cockpit-banner">
         <div class="cockpit-title-block">
-          <div class="cockpit-eyebrow">UNIFIED 4-KIOSK TERMINAL SUITE · WEIGHBRIDGE, QUARRY, FUEL DEPOT &amp; BIOMETRIC ATTENDANCE</div>
+          <div class="cockpit-eyebrow">UNIFIED 4-KIOSK TERMINAL SUITE · WEIGHBRIDGE, RAW MATERIAL, FUEL DEPOT &amp; BIOMETRIC ATTENDANCE</div>
           <div class="cockpit-title">Kiosk Terminals</div>
           <div class="cockpit-sub">Touch-first plant terminals linked directly to ISABI's 35 Dataverse form rules, 3-leg AP/AR ledgers &amp; Bluetooth ESC/POS thermal receipt printers (80mm &amp; 58mm · Priced Invoice vs Unpriced Gate Pass).</div>
         </div>
