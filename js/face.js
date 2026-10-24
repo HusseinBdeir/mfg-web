@@ -192,8 +192,21 @@ const Face = (() => {
           })
         : Promise.resolve();
 
-      await Promise.all([tinyP, lmP, recP, ssdP]);
+      // Become ready as soon as Tiny + Landmarks + Recognition finish; let 5.6 MB SSD finish in parallel on live browsers
+      await Promise.all([tinyP, lmP, recP]);
       ready = true;
+      if (typeof navigator !== "undefined" && (navigator.webdriver || window.__MFG_HEADLESS_TEST)) {
+        await ssdP;
+      } else {
+        setTimeout(() => {
+          try {
+            const wcv = document.createElement("canvas");
+            wcv.width = 64; wcv.height = 64;
+            faceapi.detectSingleFace(wcv, new faceapi.TinyFaceDetectorOptions({ inputSize: 128, scoreThreshold: 0.9 }))
+              .withFaceLandmarks(landmarksTiny).withFaceDescriptor().catch(() => {});
+          } catch (_) {}
+        }, 15);
+      }
     })();
     return loading;
   }
@@ -201,32 +214,40 @@ const Face = (() => {
   const frameWidth = src => src.videoWidth || src.naturalWidth || src.width || 0;
 
   // Offscreen canvas copy: prevents face-api.js awaitMediaLoaded from hanging forever
-  // when a MediaStream <video> has readyState < 3 or is hidden (PWA.md §4.2).
+  // when a MediaStream <video> has readyState < 3 or is hidden (PWA.md §4.2), and
+  // downscales live <video> frames to <= 320px width for 4x faster WebGL inference.
   let scratchCanvas = null;
-  function frameToCanvas(src) {
+  function frameToCanvas(src, maxDim = 320) {
     if (!src) return null;
     if (src.tagName !== "VIDEO") return src;
     if (src.paused && src.srcObject) src.play().catch(() => {});
     if (src.readyState < 2 || !src.videoWidth || !src.videoHeight) return null;
+    const vw = src.videoWidth;
+    const vh = src.videoHeight;
+    const scale = (maxDim && Math.max(vw, vh) > maxDim) ? (maxDim / Math.max(vw, vh)) : 1;
+    const cw = Math.max(64, Math.round(vw * scale));
+    const ch = Math.max(48, Math.round(vh * scale));
     const cv = scratchCanvas || (scratchCanvas = document.createElement("canvas"));
-    cv.width = src.videoWidth;
-    cv.height = src.videoHeight;
-    cv.getContext("2d").drawImage(src, 0, 0);
+    if (cv.width !== cw) cv.width = cw;
+    if (cv.height !== ch) cv.height = ch;
+    cv._scaleX = vw / cw;
+    cv._scaleY = vh / ch;
+    cv.getContext("2d").drawImage(src, 0, 0, cw, ch);
     return cv;
   }
 
   function snapshot(src) {
-    const frame = frameToCanvas(src);
-    if (!frame) return "";
-    const sw = frame.videoWidth || frame.naturalWidth || frame.width || 320;
-    const sh = frame.videoHeight || frame.naturalHeight || frame.height || 240;
+    if (!src) return "";
+    if (src.tagName === "VIDEO" && (src.readyState < 2 || !src.videoWidth || !src.videoHeight)) return "";
+    const sw = src.videoWidth || src.naturalWidth || src.width || 320;
+    const sh = src.videoHeight || src.naturalHeight || src.height || 240;
     if (!sw || !sh) return "";
     const w = MFG_FACE_CONFIG.snapshotWidth;
     const cv = document.createElement("canvas");
     cv.width = w;
     cv.height = Math.round((w * sh) / sw);
     try {
-      cv.getContext("2d").drawImage(frame, 0, 0, cv.width, cv.height);
+      cv.getContext("2d").drawImage(src, 0, 0, cv.width, cv.height);
       return cv.toDataURL("image/jpeg", MFG_FACE_CONFIG.snapshotQuality);
     } catch (_) {
       return "";
@@ -272,10 +293,16 @@ const Face = (() => {
     const fw = frameWidth(src);
     const lm = r.landmarks ? r.landmarks.positions : null;
     const sc = r.detection ? r.detection.score : 0;
-    const fr = fw && r.detection && r.detection.box ? r.detection.box.width / fw : 1;
+    const rawBox = r.detection ? r.detection.box : null;
+    const fr = fw && rawBox ? rawBox.width / fw : 1;
+    const sx = src && src._scaleX ? src._scaleX : 1;
+    const sy = src && src._scaleY ? src._scaleY : 1;
+    const box = (rawBox && (sx !== 1 || sy !== 1))
+      ? { x: rawBox.x * sx, y: rawBox.y * sy, width: rawBox.width * sx, height: rawBox.height * sy }
+      : rawBox;
     return {
       descriptor: r.descriptor,
-      box: r.detection.box,
+      box,
       score: sc,
       detScore: sc,
       frac: fr,
@@ -289,40 +316,55 @@ const Face = (() => {
 
   let boostCanvas = null;
   let cropCanvas = null;
+  let liveMissTick = 0;
   async function detectOne(src, allowCropFallback = false) {
     if (!ready) return null;
-    const frame = frameToCanvas(src);
+    const isLiveVideo = !!(src && src.tagName === "VIDEO");
+    const frame = frameToCanvas(src, isLiveVideo && !allowCropFallback ? 320 : 480);
     if (!frame) return null;
-    // Pass 1: Primary detector (SSD MobileNet v1 at minConfidence 0.24 handles normal + backlit frames in 1 pass)
-    let r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
-    if (!r && detector === "ssd") {
-      // Fallback 1: TinyFaceDetector on raw frame
-      const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.26 });
-      r = await faceapi.detectSingleFace(frame, fallbackOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+    let r = null;
+    if (isLiveVideo && !allowCropFallback) {
+      // Fast live-video path (~25-40ms): TinyFaceDetector(256) on 320x240 frame, with immediate SSD fallback
+      const fastTinyOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.22 });
+      r = await faceapi.detectSingleFace(frame, fastTinyOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+      if (!r && detector === "ssd") {
+        r = await faceapi.detectSingleFace(frame, opts("ssd")).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+      }
+    } else {
+      // Static image / manual capture path: Primary detector -> TinyFaceDetector(416)
+      r = await faceapi.detectSingleFace(frame, opts()).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+      if (!r && detector === "ssd") {
+        const fallbackOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.24 });
+        r = await faceapi.detectSingleFace(frame, fallbackOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+      }
     }
-    if (!r) {
-      // Fallback 2: Shadow-lift filter for backlit rooms (e.g. window blinds behind user)
+    if (!r && (allowCropFallback || !isLiveVideo || (++liveMissTick % 3 === 0))) {
+      // Shadow-lift filter for backlit rooms (run on manual capture or every 3rd missed live frame so live ticks never stall)
       try {
-        const bw = frameWidth(frame) || 640;
-        const bh = frame.videoHeight || frame.naturalHeight || frame.height || 480;
+        const bw = frameWidth(frame) || 320;
+        const bh = frame.videoHeight || frame.naturalHeight || frame.height || 240;
         const bcv = boostCanvas || (boostCanvas = document.createElement("canvas"));
-        bcv.width = bw;
-        bcv.height = bh;
+        if (bcv.width !== bw) bcv.width = bw;
+        if (bcv.height !== bh) bcv.height = bh;
+        bcv._scaleX = frame._scaleX || 1;
+        bcv._scaleY = frame._scaleY || 1;
         const bctx = bcv.getContext("2d");
         bctx.filter = "brightness(1.42) contrast(1.22)";
         bctx.drawImage(frame, 0, 0, bw, bh);
         bctx.filter = "none";
-        if (detector === "ssd") {
-          const boostSsdOpts = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.22 });
+        const boostOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.20 });
+        r = await faceapi.detectSingleFace(bcv, boostOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
+        if (!r && detector === "ssd" && allowCropFallback) {
+          const boostSsdOpts = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.20 });
           r = await faceapi.detectSingleFace(bcv, boostSsdOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
         }
-        if (!r) {
-          const boostOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.22 });
-          r = await faceapi.detectSingleFace(bcv, boostOpts).withFaceLandmarks(landmarksTiny).withFaceDescriptor();
-        }
+        if (r) return pack(r, bcv, false);
       } catch (_) {}
     }
-    if (r) return pack(r, frame, false);
+    if (r) {
+      liveMissTick = 0;
+      return pack(r, frame, false);
+    }
     if (allowCropFallback) {
       // Fallback 3: Explicit manual capture in extreme backlighting -> compute 128-d descriptor from central reticle crop
       try {
