@@ -3956,6 +3956,7 @@
     });
   }
   let _FLEET_IDX = null;
+  let _WIN_REV = 0;
   function getFleetIndex() {
     const eqs = SEED.records.equipment || [];
     const sales = SEED.records.sales_tickets || [];
@@ -3963,7 +3964,7 @@
     const fuels = SEED.records.fuel_intakes || [];
     const drvs = SEED.records.drivers || [];
     const sups = SEED.records.suppliers || [];
-    const key = `${eqs.length}:${sales.length}:${raws.length}:${fuels.length}:${drvs.length}:${sups.length}`;
+    const key = `${eqs.length}:${sales.length}:${raws.length}:${fuels.length}:${drvs.length}:${sups.length}:${_WIN_REV}`;
     if (_FLEET_IDX && _FLEET_IDX.key === key) return _FLEET_IDX;
     const eqByName = new Map();
     eqs.forEach(e => {
@@ -4401,14 +4402,15 @@
     for (let i = 0; i < eq.adj_windows.length; i++) {
       const w = eq.adj_windows[i];
       if (!w) continue;
-      if (side && w.side && w.side !== 'both' && w.side !== side) continue;
+      const wSide = w.side || 'both';
+      if (side && wSide !== 'both' && wSide !== 'all' && wSide !== side) continue;
       if (w.cust && (!custN || norm(w.cust) !== custN)) continue;
       if (w.site && (!siteN || norm(w.site) !== siteN)) continue;
       if (w.s && String(w.s) > refDate) continue;
       if (w.e && String(w.e) < refDate) continue;
-      const spec = (w.cust ? 8 : 0) + (w.site ? 4 : 0);
+      const spec = (w.cust ? 8 : 0) + (w.site ? 4 : 0) + (w.e ? 2 : 0);
       const sVal = String(w.s || '');
-      const tie = (coN && w.co && norm(w.co) === coN ? 2 : 0) + (side && w.side && w.side !== 'both' ? 1 : 0);
+      const tie = (coN && w.co && norm(w.co) === coN ? 2 : 0) + (side && wSide !== 'both' && wSide !== 'all' ? 1 : 0);
       if (
         spec > bestSpec ||
         (spec === bestSpec && sVal > bestStart) ||
@@ -4428,32 +4430,43 @@
     const s = String(winSpec.s || todayISO()).slice(0, 10);
     const e = String(winSpec.e || '').slice(0, 10);
     const co = String(winSpec.co || '').trim();
-    const side = String(winSpec.side || 'both').trim() || 'both';
-    const cap = Number(winSpec.cap || eq.capacity || 0);
+    const rawSide = String(winSpec.side || 'both').trim() || 'both';
+    const side = rawSide === 'all' ? 'both' : rawSide;
+    const cap = Number(winSpec.cap != null && winSpec.cap !== '' ? winSpec.cap : (eq.capacity || 0));
     const own = String(winSpec.own != null ? winSpec.own : (eq.supplier || '')).trim();
     const drv = String(winSpec.drv != null ? winSpec.drv : (eq.default_driver || '')).trim();
     const cust = String(winSpec.cust || '').trim();
     const site = String(winSpec.site || '').trim();
     const isGeneral = !cust && !site;
-    if (isGeneral && !e) {
+    if (isGeneral && e) {
+      const hasOpenBaseline = eq.adj_windows.some(w => w && !w.cust && !w.site && !w.e);
+      if (!hasOpenBaseline && (eq.default_driver || eq.supplier || Number(eq.capacity) > 0)) {
+        const baseWin = { co: co || eq.company || 'WTC', side: 'both', s: '2024-01-01', e: '', cap: Number(eq.capacity || 0) };
+        if (eq.supplier) baseWin.own = eq.supplier;
+        if (eq.default_driver) baseWin.drv = eq.default_driver;
+        eq.adj_windows.push(baseWin);
+      }
+    } else if (isGeneral && !e) {
       const prevEnd = prevDayISO(s);
       eq.adj_windows.forEach(w => {
         if (!w || w.cust || w.site) return;
         const sameCo = !co || !w.co || norm(w.co) === norm(co);
-        const sameSide = side === 'both' || !w.side || w.side === 'both' || w.side === side;
+        const wSide = w.side || 'both';
+        const sameSide = side === 'both' || wSide === 'both' || wSide === 'all' || wSide === side;
         if (sameCo && sameSide && (!w.e || w.e >= s) && (!w.s || w.s < s)) {
           w.e = prevEnd;
         }
       });
     }
     const existing = eq.adj_windows.find(w =>
-      w && norm(w.co) === norm(co) && (w.side || 'both') === side &&
-      String(w.s || '') === s && norm(w.cust) === norm(cust) && norm(w.site) === norm(site)
+      w && norm(w.co) === norm(co) && ((w.side || 'both') === 'all' ? 'both' : (w.side || 'both')) === side &&
+      String(w.s || '') === s && (e ? String(w.e || '') === e : !w.e) &&
+      norm(w.cust) === norm(cust) && norm(w.site) === norm(site)
     );
     let targetWin;
     if (existing) {
       existing.e = e;
-      if (cap > 0) existing.cap = cap;
+      if (cap > 0 || existing.cap == null) existing.cap = cap;
       if (own) existing.own = own; else delete existing.own;
       if (drv) existing.drv = drv; else delete existing.drv;
       targetWin = existing;
@@ -4467,11 +4480,13 @@
     }
     eq.adj_windows.sort((a, b) => String(a.s || '').localeCompare(String(b.s || '')) || String(a.e || '9999-12-31').localeCompare(String(b.e || '9999-12-31')));
     const today = todayISO();
-    if (isGeneral && (!s || s <= today) && (!e || e >= today)) {
+    if (isGeneral && !e && (!s || s <= today)) {
       if (cap > 0) eq.capacity = cap;
       if (own && norm(own) !== 'wtc' && norm(own) !== 'bbconstruction') eq.supplier = own;
       if (drv) eq.default_driver = drv;
     }
+    _WIN_REV++;
+    _FLEET_IDX = null;
     return targetWin;
   }
   function equipInfo(name, company, isCoFleet, winOpts) {
@@ -4544,10 +4559,10 @@
     if (!n) return null;
     return (SEED.records.drivers || []).find(d => norm(d.name) === n || norm(d.driver) === n) || null;
   }
-  function truckOptionHtml(v, company, isCoFleet) {
+  function truckOptionHtml(v, company, isCoFleet, winOpts) {
     if (typeof company !== 'string') company = '';
     isCoFleet = Boolean(isCoFleet && typeof isCoFleet === 'boolean');
-    const info = equipInfo(v, company, isCoFleet);
+    const info = equipInfo(v, company, isCoFleet, winOpts && typeof winOpts === 'object' ? winOpts : undefined);
     if (!info) return `<option value="${esc(v)}">`;
     const parts = [];
     if (info.plate_no && norm(info.plate_no) !== norm(info.name || v)) {
@@ -4631,7 +4646,10 @@
     const parts = [];
     const isDef = !!(activeTruckRow && activeTruckRow.default_driver && norm(activeTruckRow.default_driver) === norm(v));
     const isFuelOp = !isDef && !!(activeTruckRow && Array.isArray(activeTruckRow.fuel_drivers) && activeTruckRow.fuel_drivers.some(fd => norm(fd) === norm(v)));
-    if (isDef) parts.push(`★ Default Driver (${activeTruckRow.name})`);
+    if (isDef) {
+      const subW = activeTruckRow && activeTruckRow.active_window && activeTruckRow.active_window.e ? activeTruckRow.active_window : null;
+      parts.push(subW ? `Substitute Driver (${activeTruckRow.name} · ${subW.s}→${subW.e})` : `Active Equipment Driver (${activeTruckRow.name})`);
+    }
     else if (isFuelOp) parts.push(`Recent Operator (${activeTruckRow.name})`);
     const ownerLbl = (info && info.truck_owner) || activeOwner || '';
     if (ownerLbl) parts.push(ownerLbl);
@@ -10080,7 +10098,7 @@
           ${fld('Destination Site *', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames('sales')), { id: 'wrap_f_site', hidden: true, hintId: 'hint_site', hint: '' })}
           ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hidden: true, hintId: 'hint_driver', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', hidden: true, lockField: 'f_driver', lockReason: 'Locked to the active driver in the Equipment Log — update Equipment Log if absent or changed', hintId: 'hint_driver', hint: '' })}
           ${fld('Payment Method *', sel('f_method', [['Credit', 'Credit'], ['Cash', 'Cash']], 'Credit'), { id: 'wrap_f_method', lockField: 'f_method', lockReason: 'Locked to the Customer default (Cash or Credit)', hintId: 'hint_method', hint: '' })}
 
           ${secHdr('2. Quantities & Amounts')}
@@ -10135,7 +10153,7 @@
           ${fld('Quarry Site Owner (Material Payee)', inp('f_siteowner', 'text', '', 'list="dl_suppliers" placeholder="Select or type site owner..."') + dl('dl_suppliers', supplierNames('raw_owner')), { id: 'wrap_f_siteowner', lockField: 'f_siteowner', lockReason: 'Locked to the Quarry Site default supplier when configured', hintId: 'hint_owner', hint: '' })}
           ${fld('Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type truck..."') + dl('dl_equip', truckNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
           ${fld('Truck Owner (Hauler) *', inp('f_truckowner', 'text', '', 'list="dl_truckowners" placeholder="Auto-filled from Truck..."') + dl('dl_truckowners', truckOwnerNames()), { id: 'wrap_f_truckowner', hidden: true, lockField: 'f_truckowner', lockReason: 'Auto-populated from the selected Truck; auto-unlocks if truck has no registered owner', hintId: 'hint_truckowner', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Default driver auto-selected; click to switch if substitute..."') + dl('dl_drivers', []), { id: 'wrap_f_driver', hintId: 'hint_driver', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked to the active driver in the Equipment Log — update Equipment Log if absent or changed', hintId: 'hint_driver', hint: '' })}
 
           ${secHdr('2. Quantities & Costs')}
           ${fld('Discount ($)', inp('f_discount', 'number', '0.00', 'step="0.01" min="0" inputmode="decimal"'), { id: 'wrap_f_discount' })}
@@ -10200,7 +10218,7 @@
           ${fld('Ticket #', inp('f_ticketno', 'text', '', 'inputmode="numeric" placeholder="Optional ticket no."'), { id: 'wrap_f_ticketno', hintId: 'hint_ticket', hint: '' })}
           ${fld('Lubricant / Item *', inp('f_item', 'text', 'Diesel', 'list="dl_fuel_items" placeholder="Select or type lubricant / item..."') + dlMeta('dl_fuel_items', [['Diesel', 'Bulk Fuel (L)'], ['Oil 15W40', 'Engine Oil'], ['Oil 68', 'Hydraulic 68'], ['Hydraulic Oil', 'Hydraulic'], ['Grease', 'Lubricant'], ['Other lubricant', 'Lubricant']]), { id: 'wrap_f_item', hidden: true })}
           ${fld('Equipment / Truck *', inp('f_truck', 'text', '', 'list="dl_equip" placeholder="Select or type equipment..."') + dl('dl_equip', equipmentNames()), { id: 'wrap_f_truck', hintId: 'hint_truck', hint: '' })}
-          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Equipment / Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked until Equipment / Truck is selected', hintId: 'hint_driver', hint: '' })}
+          ${fld('Driver *', inp('f_driver', 'text', '', 'list="dl_drivers" placeholder="Pick Equipment / Truck first..." readonly') + dl('dl_drivers', []), { id: 'wrap_f_driver', lockField: 'f_driver', lockReason: 'Locked to the active driver in the Equipment Log — update Equipment Log if absent or changed', hintId: 'hint_driver', hint: '' })}
 
           ${secHdr('2. Intake Quantity & Meter Reading')}
           ${fld('Litres Issued (L) *', inp('f_qty', 'number', '', 'step="0.1" min="0.1" inputmode="decimal"'), { id: 'wrap_f_qty', hintId: 'hint_qty', hint: '' })}
@@ -10278,6 +10296,7 @@
     lastCompany: '', lastDate: '', lastCategory: null, catCache: null,
     lastTruck: '', lastTruckOwner: '', lastSaleType: '', lastTransportBy: '',
     lastSite: '', lastProduct: '', lastCustomer: '', lastSupplier: '', lastRuleType: '',
+    lastWinKey: '', lastFuelWinKey: '',
     adminUnlocked: {}, unlockTargetField: '', unlockNote: ''
   };
   const $ = id => document.getElementById(id);
@@ -10501,6 +10520,7 @@
         FORM_UI.methodManual = false;
         FORM_UI.uomManual = false;
         FORM_UI.qtyManual = false;
+        FORM_UI.driverManual = false;
         box.hidden = true;
         recalcForm();
         toast('All policy-locked fields restored to Dataverse rules', 'ok');
@@ -10617,7 +10637,7 @@
   function syncFleetCascade(company, isCoFleet, is3P, isUnreg, needDriver = true, winOpts = null) {
     const curTruck = val('f_truck');
     const curOwner = val('f_truckowner');
-    const winKey = winOpts ? `${winOpts.date || ''}|${winOpts.side || ''}|${norm(winOpts.customer)}|${norm(winOpts.site)}` : '';
+    const winKey = winOpts ? `${company}|${winOpts.date || ''}|${winOpts.side || ''}|${norm(winOpts.customer)}|${norm(winOpts.site)}` : '';
     const truckChanged = curTruck !== FORM_UI.lastTruck;
     const winChanged = !truckChanged && Boolean(curTruck && winKey && FORM_UI.lastWinKey !== undefined && FORM_UI.lastWinKey !== winKey);
     const ownerChanged = !truckChanged && curOwner !== FORM_UI.lastTruckOwner;
@@ -10633,7 +10653,7 @@
       if (is3P && $('f_truckowner') && !isFieldAdminUnlocked('f_truckowner') && !FORM_UI.ownerManuallyPicked) {
         $('f_truckowner').value = (tRow && tRow.supplier && !isPureOwnUnit(tRow, company)) ? tRow.supplier : '';
       }
-      if ($('f_driver') && (truckChanged || !FORM_UI.driverManual)) {
+      if ($('f_driver') && (truckChanged || winChanged || !FORM_UI.driverManual || !isFieldAdminUnlocked('f_driver'))) {
         if (!needDriver) {
           $('f_driver').value = '';
         } else if (tRow && tRow.default_driver) {
@@ -10641,7 +10661,7 @@
         } else if (tRow && tRow.supplier && is3P) {
           const oDrvs = driversForOwner(tRow.supplier, company, false, tRow);
           $('f_driver').value = oDrvs.length ? oDrvs[0] : '';
-        } else if (truckChanged) {
+        } else if (truckChanged || winChanged || !isFieldAdminUnlocked('f_driver')) {
           $('f_driver').value = '';
         }
       }
@@ -10684,29 +10704,44 @@
       ? `Locked to ${truckRow.name} registered owner (${truckRow.supplier})`
       : 'Auto-populated when a Truck with a registered owner is selected; open when truck has no preset owner');
 
+    const activeDriver = (!needDriver || !truckName)
+      ? ''
+      : ((truckRow && truckRow.default_driver) ||
+         ((is3P && truckOwner) ? (driversForOwner(truckOwner, company, false, truckRow)[0] || '') : '') ||
+         '');
+    const drvLocked = needDriver
+      ? applyFieldLockState('f_driver', true, !truckName
+          ? 'Pick Truck first'
+          : (activeDriver
+              ? `Locked to Equipment Log active driver (${activeDriver}) — update Equipment Log if absent or changed`
+              : `Locked — assign an active driver to ${truckRow ? truckRow.name : truckName} in Equipment Log`))
+      : false;
+
     const dlEq = $('dl_equip');
     const dlDrv = $('dl_drivers');
     if (dlEq) {
-      const eqPoolKey = `${isCoFleet ? 1 : 0}|${company}|${(FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? norm(truckOwner) : ''}|${getFleetIndex().key}`;
+      const eqPoolKey = `${isCoFleet ? 1 : 0}|${company}|${winOpts ? winOpts.date || '' : ''}|${(FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? norm(truckOwner) : ''}|${getFleetIndex().key}`;
       if (dlEq.dataset.poolKey !== eqPoolKey) {
         dlEq.dataset.poolKey = eqPoolKey;
         const allowedTrucks = isCoFleet
           ? trucksForOwner('', company, true)
           : ((FORM_UI.ownerManuallyPicked && truckOwner && !truckName) ? trucksForOwner(truckOwner, company, false) : []);
         const pool = isCoFleet ? allowedTrucks : (allowedTrucks.length ? allowedTrucks : truckNames());
-        dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, isCoFleet)).join('');
+        dlEq.innerHTML = pool.map(v => truckOptionHtml(v, company, isCoFleet, winOpts)).join('');
       }
     }
     const allowedDrivers = !needDriver
       ? []
-      : (isCoFleet
-          ? driversForOwner('', company, true, truckRow)
-          : (truckOwner
-              ? driversForOwner(truckOwner, company, false, truckRow)
-              : ((truckRow && truckRow.default_driver) ? [truckRow.default_driver] : [])));
+      : (drvLocked
+          ? (activeDriver ? [activeDriver] : [])
+          : (isCoFleet
+              ? driversForOwner('', company, true, truckRow)
+              : (truckOwner
+                  ? driversForOwner(truckOwner, company, false, truckRow)
+                  : driverNames())));
     if (dlDrv) {
-      // Strictly display only drivers related to the selected Truck Owner (or Company Fleet); never dump all database drivers
-      const drvPoolKey = `${needDriver ? 1 : 0}|${isCoFleet ? 1 : 0}|${company}|${norm(truckOwner)}|${truckRow ? norm(truckRow.name) : ''}|${allowedDrivers.join(',')}`;
+      // Strictly display ONLY the Equipment Log active driver while locked (or owner/company pool under Admin Override)
+      const drvPoolKey = `${needDriver ? 1 : 0}|${drvLocked ? 1 : 0}|${isCoFleet ? 1 : 0}|${company}|${norm(truckOwner)}|${truckRow ? norm(truckRow.name) : ''}|${allowedDrivers.join(',')}`;
       if (dlDrv.dataset.poolKey !== drvPoolKey) {
         dlDrv.dataset.poolKey = drvPoolKey;
         dlDrv.innerHTML = allowedDrivers.map(d => driverOptionHtml(d, truckRow, truckOwner)).join('');
@@ -10715,29 +10750,31 @@
     if (!needDriver) {
       if ($('f_driver') && $('f_driver').value) $('f_driver').value = '';
       setHint('hint_driver', '', '');
-    } else {
-      if (!FORM_UI.driverManual && $('f_driver') && !val('f_driver') && truckRow) {
-        if (truckRow.default_driver) {
-          $('f_driver').value = truckRow.default_driver;
-        } else if (allowedDrivers.length === 1) {
-          $('f_driver').value = allowedDrivers[0];
-        }
+    } else if (drvLocked) {
+      const drvEl = $('f_driver');
+      if (drvEl) {
+        drvEl.placeholder = !truckName
+          ? 'Pick Truck first...'
+          : (activeDriver ? 'Locked to Equipment Log active driver' : 'Assign active driver in Equipment Log...');
+        if (drvEl.value !== activeDriver) drvEl.value = activeDriver;
       }
-      const curDrvVal = val('f_driver');
-      const isDefaultChosen = !!(truckRow && truckRow.default_driver && norm(curDrvVal) === norm(truckRow.default_driver));
-      if (isCoFleet) {
-        setHint('hint_driver', isDefaultChosen
-          ? `Default driver for ${truckRow.name} (${allowedDrivers.length} company driver${allowedDrivers.length === 1 ? '' : 's'} — click to switch if off today)`
-          : `${allowedDrivers.length} company fleet driver${allowedDrivers.length === 1 ? '' : 's'} (${company})`, isDefaultChosen ? 'ok' : '');
-      } else if (truckOwner) {
-        setHint('hint_driver', isDefaultChosen
-          ? `Default driver for ${truckRow.name} · ${allowedDrivers.length} driver${allowedDrivers.length === 1 ? '' : 's'} under ${truckOwner} (changeable if off today)`
-          : (allowedDrivers.length
-              ? `${allowedDrivers.length} driver${allowedDrivers.length === 1 ? '' : 's'} registered to ${truckOwner}`
-              : `No drivers registered yet for ${truckOwner} — type driver name or add under Truck Owners`), isDefaultChosen ? 'ok' : (allowedDrivers.length ? '' : 'warn'));
+      if (!truckName) {
+        setHint('hint_driver', 'Pick Truck first — active driver auto-fills & locks from Equipment Log', '');
+      } else if (activeDriver) {
+        const subWin = truckRow && truckRow.active_window && truckRow.active_window.e ? truckRow.active_window : null;
+        setHint('hint_driver', subWin
+          ? `Substitute driver (${subWin.s} → ${subWin.e}) locked from Equipment Log`
+          : `Active driver for ${truckRow ? truckRow.name : truckName} locked from Equipment Log`, 'ok');
       } else {
-        setHint('hint_driver', 'Select Truck or Truck Owner first to load its drivers', '');
+        setHint('hint_driver', `No active driver in Equipment Log for ${truckRow ? truckRow.name : truckName} — assign in Equipment Log`, 'warn');
       }
+    } else {
+      if (!FORM_UI.driverManual && $('f_driver') && !val('f_driver') && activeDriver) {
+        $('f_driver').value = activeDriver;
+      }
+      setHint('hint_driver', activeDriver
+        ? `Admin override active (Equipment Log driver: ${activeDriver})`
+        : 'Admin override active', 'warn');
     }
 
     FORM_UI.lastTruck = val('f_truck');
@@ -10858,7 +10895,7 @@
     }
 
     // 4. Cascading Truck -> Truck Owner + Driver + Capacity (Date & Client/Site Window Aware)
-    const effDate = val('f_repdate') || date;
+    const effDate = (FORM_UI.repDateManual && val('f_repdate')) ? val('f_repdate') : date;
     const { truckName, truckRow, truckOwner, ownerFromTruck } = syncFleetCascade(company, isCoFleet, is3POrPickup, isUnreg, isDelivery, { date: effDate, side: 'sales', customer, site: isDelivery ? site : '' });
     setHint('hint_truckowner', is3POrPickup
       ? (ownerFromTruck
@@ -11300,7 +11337,7 @@
 
   function recalcFuel() {
     const company = val('f_company'), equipment = val('f_truck'), date = val('f_date');
-    const effDate = val('f_repdate') || date;
+    const effDate = (FORM_UI.repDateManual && val('f_repdate')) ? val('f_repdate') : date;
     const fuelType = val('f_fueltype') || 'Diesel';
     const isLubricant = fuelType === 'Lubricant';
     // Lubricant Item (f_item) is hidden when Fuel Type = Diesel or Petrol
@@ -11313,25 +11350,28 @@
 
     const companyChanged = FORM_UI.lastCompany !== '' && FORM_UI.lastCompany !== company;
     const equipChanged = equipment !== FORM_UI.lastTruck;
+    const fuelWinKey = `${company}|${effDate}`;
+    const winChanged = !equipChanged && Boolean(equipment && FORM_UI.lastFuelWinKey && FORM_UI.lastFuelWinKey !== fuelWinKey);
+    FORM_UI.lastFuelWinKey = fuelWinKey;
     const eqRow = equipment ? equipInfo(equipment, company, false, { date: effDate, side: 'fuel' }) : null;
     const defDriver = (eqRow && eqRow.default_driver) || '';
 
-    // Populate #dl_equip with equipment category + default/current driver metadata
+    // Populate #dl_equip with equipment category + active Equipment Log driver metadata
     const dlEq = $('dl_equip');
     if (dlEq) {
-      const eqPoolKey = `fuel|${company}|${getFleetIndex().key}`;
+      const eqPoolKey = `fuel|${company}|${effDate}|${getFleetIndex().key}`;
       if (dlEq.dataset.poolKey !== eqPoolKey) {
         dlEq.dataset.poolKey = eqPoolKey;
         dlEq.innerHTML = equipmentNames().map(v => equipFuelOptionHtml(v, company, effDate)).join('');
       }
     }
 
-    // Lock Driver * until Equipment / Truck * is chosen; once chosen, auto-unlock & auto-fill default/current driver
-    const drvLocked = applyFieldLockState('f_driver', !equipment, !equipment
-      ? 'Pick Equipment / Truck first to unlock Driver'
+    // Strictly policy-lock Driver * to the single active Equipment Log driver (both before & after Equipment is chosen)
+    const drvLocked = applyFieldLockState('f_driver', true, !equipment
+      ? 'Pick Equipment / Truck first'
       : (defDriver
-          ? `Unlocked — default/current driver (${defDriver}) auto-selected for ${eqRow ? eqRow.name : equipment}`
-          : `Unlocked — select or type driver for ${eqRow ? eqRow.name : equipment}`));
+          ? `Locked to Equipment Log active driver (${defDriver}) — update Equipment Log if absent or changed`
+          : `Locked — assign an active driver to ${eqRow ? eqRow.name : equipment} in Equipment Log`));
     const drvEl = $('f_driver');
     const dlDrv = $('dl_drivers');
 
@@ -11343,23 +11383,44 @@
 
     if (!equipment) {
       if (drvEl) {
-        if (drvEl.value && !isFieldAdminUnlocked('f_driver')) drvEl.value = '';
+        if (drvEl.value && drvLocked) drvEl.value = '';
         drvEl.placeholder = 'Pick Equipment / Truck first...';
       }
       if (dlDrv && dlDrv.dataset.poolKey !== 'empty') {
         dlDrv.dataset.poolKey = 'empty';
         dlDrv.innerHTML = '';
       }
-      setHint('hint_driver', drvLocked ? 'Pick an Equipment / Truck first' : 'Admin override active', '');
+      setHint('hint_driver', drvLocked ? 'Pick an Equipment / Truck first — active driver auto-fills & locks from Equipment Log' : 'Admin override active', '');
+    } else if (drvLocked) {
+      if (drvEl) {
+        drvEl.placeholder = defDriver ? 'Locked to Equipment Log active driver' : 'Assign active driver in Equipment Log...';
+        if (drvEl.value !== defDriver) drvEl.value = defDriver;
+      }
+      if (dlDrv) {
+        const eqSup = (eqRow && eqRow.supplier) || '';
+        const drvPoolKey = `fuel_locked|${company}|${norm(eqRow ? eqRow.name : equipment)}|${norm(defDriver)}|${getFleetIndex().key}`;
+        if (dlDrv.dataset.poolKey !== drvPoolKey) {
+          dlDrv.dataset.poolKey = drvPoolKey;
+          dlDrv.innerHTML = defDriver ? driverOptionHtml(defDriver, eqRow, eqSup || company) : '';
+        }
+      }
+      const subWin = eqRow && eqRow.active_window && eqRow.active_window.e ? eqRow.active_window : null;
+      const isNoMeter = equipMeterSpec(eqRow || equipment, company).type === 'none';
+      setHint('hint_driver', defDriver
+        ? (subWin
+            ? `Substitute driver (${subWin.s} → ${subWin.e}) locked from Equipment Log`
+            : `Active driver for ${eqRow ? eqRow.name : equipment} locked from Equipment Log`)
+        : (isNoMeter ? 'Non-metered item — no operator required' : `No active driver in Equipment Log for ${eqRow ? eqRow.name : equipment} — assign in Equipment Log`),
+        defDriver ? 'ok' : (isNoMeter ? '' : 'warn'));
     } else {
       if (drvEl) {
-        drvEl.placeholder = defDriver ? 'Default driver auto-selected; click to switch if substitute...' : 'Select or type driver...';
-        if (equipChanged || (companyChanged && !FORM_UI.driverManual) || (!val('f_driver') && !FORM_UI.driverManual)) {
+        drvEl.placeholder = 'Admin override — select or type driver...';
+        if (equipChanged || winChanged || (companyChanged && !FORM_UI.driverManual) || (!val('f_driver') && !FORM_UI.driverManual)) {
           drvEl.value = defDriver;
         }
       }
       if (dlDrv) {
-        const drvPoolKey = `fuel_drv|${company}|${norm(eqRow ? eqRow.name : equipment)}|${norm(defDriver)}|${getFleetIndex().key}`;
+        const drvPoolKey = `fuel_drv_open|${company}|${norm(eqRow ? eqRow.name : equipment)}|${norm(defDriver)}|${getFleetIndex().key}`;
         if (dlDrv.dataset.poolKey !== drvPoolKey) {
           dlDrv.dataset.poolKey = drvPoolKey;
           const eqFuelDrvs = (eqRow && Array.isArray(eqRow.fuel_drivers)) ? eqRow.fuel_drivers : [];
@@ -11381,14 +11442,9 @@
           dlDrv.innerHTML = orderedDrvs.map(d => driverOptionHtml(d, eqRow, eqSup || company)).join('');
         }
       }
-      const curDrvVal = val('f_driver');
-      const isDefChosen = !!(defDriver && norm(curDrvVal) === norm(defDriver));
-      setHint('hint_driver', isDefChosen
-        ? `Default / current driver for ${eqRow ? eqRow.name : equipment} (click to switch if substitute)`
-        : (defDriver && curDrvVal
-            ? `Substitute driver — default for ${eqRow ? eqRow.name : equipment} is ${defDriver}`
-            : (defDriver ? `Default driver: ${defDriver}` : 'No preset default driver — select or type driver')),
-        isDefChosen ? 'ok' : '');
+      setHint('hint_driver', defDriver
+        ? `Admin override active (Equipment Log driver: ${defDriver})`
+        : 'Admin override active', 'warn');
     }
 
     // Auto-derive and policy-lock Meter Type from Equipment Category:
@@ -11734,13 +11790,14 @@
         setHint('hint_eq_driver', hasSup
           ? (curSup
               ? (ownerDrvs.length
-                  ? `${ownerDrvs.length} driver${ownerDrvs.length === 1 ? '' : 's'} registered to ${curSup} — default driver is chosen first when this truck is selected on a ticket (changeable if off today)`
-                  : `No drivers registered to ${curSup} yet — type a driver name here to set as default & link to ${curSup}`)
-              : 'Select Truck Owner first to filter its drivers, or type a default driver name')
-          : `${ownerDrvs.length} company fleet driver${ownerDrvs.length === 1 ? '' : 's'} — auto-selected first when this unit is dispatched`, ownerDrvs.length ? 'ok' : '');
+                  ? `${ownerDrvs.length} driver${ownerDrvs.length === 1 ? '' : 's'} registered to ${curSup} — active Equipment Log driver is auto-filled & locked onto tickets`
+                  : `No drivers registered to ${curSup} yet — type a driver name here to set as active driver & link to ${curSup}`)
+              : 'Select Truck Owner first to filter its drivers, or type an active driver name')
+          : `${ownerDrvs.length} company fleet driver${ownerDrvs.length === 1 ? '' : 's'} — active Equipment Log driver is auto-filled & locked onto tickets`, ownerDrvs.length ? 'ok' : '');
         if (STATE.modalForm === 'equipment') {
           syncUniversalMainDupHint('f_truck', 'equipment', 'Equipment / Truck');
         }
+        renderModalEquipDriverLog(curTruck, company);
         return {};
       }
       if (STATE.modalForm === 'driver') {
@@ -11809,6 +11866,170 @@
       }
     }
     return res;
+  }
+
+  function persistEquipmentLogMutation(targetEq) {
+    if (!targetEq) return;
+    if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
+    const eqIdx = STATE.customRecords.equipment.findIndex(x =>
+      x && ((targetEq.id && String(x.id) === String(targetEq.id)) || norm(x.name || x.equipment) === norm(targetEq.name || targetEq.equipment))
+    );
+    if (eqIdx >= 0) Object.assign(STATE.customRecords.equipment[eqIdx], targetEq);
+    else STATE.customRecords.equipment.unshift(Object.assign({}, targetEq));
+    _WIN_REV++;
+    _FLEET_IDX = null;
+    applyCustomRecordsToSeed();
+    saveLocalAuthAndRecords();
+    renderApp();
+  }
+
+  function renderModalEquipDriverLog(curTruck, company) {
+    const logWrap = $('wrap_eq_driver_log');
+    if (!logWrap) return;
+    const targetEq = curTruck ? (getFleetIndex().eqByName.get(norm(curTruck)) || null) : null;
+    if (!targetEq) {
+      logWrap.hidden = true;
+      logWrap.dataset.logKey = '';
+      logWrap.innerHTML = '';
+      return;
+    }
+    const defCo = company || targetEq.company || defaultEntryCompany() || 'WTC';
+    const logKey = `${norm(targetEq.name)}|${defCo}|${_WIN_REV}`;
+    logWrap.hidden = false;
+    if (logWrap.dataset.logKey === logKey) return;
+    logWrap.dataset.logKey = logKey;
+
+    const wins = Array.isArray(targetEq.adj_windows) ? targetEq.adj_windows : [];
+    const today = todayISO();
+    const activeToday = equipInfo(targetEq.name, defCo, false, { date: today, side: 'fuel' });
+    const activeTodayDrv = (activeToday && activeToday.default_driver) || targetEq.default_driver || '—';
+
+    logWrap.innerHTML = `
+      <div class="pa-subgrid-box" id="eqDriverLogBox">
+        <div class="pa-subgrid-hdr">
+          <div>
+            <strong>📋 3. Equipment Driver Assignment Log (Start Date → End Date) · ${esc(targetEq.name)}</strong>
+            <span class="pa-subgrid-sub">Log a temporary substitute driver (set both Start Date &amp; End Date when regular driver is absent) or a permanent change (leave End Date blank). Sales, Raw, Lubricant &amp; Diesel tickets lock strictly to the active driver for their date.</span>
+          </div>
+          <span class="badge badge-ok">Active (${esc(today)}): ${esc(activeTodayDrv)}</span>
+        </div>
+        ${canModifyData() ? `
+          <div class="form-grid-3" style="padding:10px 12px;background:rgba(196,154,69,0.06);border-bottom:1px solid var(--line)">
+            <div class="form-field">
+              <label for="f_log_co">Company / BU</label>
+              <select id="f_log_co" data-native-select="1">
+                <option value="WTC" ${defCo === 'WTC' ? 'selected' : ''}>WTC</option>
+                <option value="BBConstruction" ${defCo === 'BBConstruction' ? 'selected' : ''}>BBConstruction</option>
+                <option value="Lions Transport" ${defCo === 'Lions Transport' ? 'selected' : ''}>Lions Transport</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="f_log_start">Start Date *</label>
+              <input type="date" id="f_log_start" value="${esc(today)}">
+            </div>
+            <div class="form-field">
+              <label for="f_log_end">End Date (Blank = Permanent · Set for Substitute)</label>
+              <input type="date" id="f_log_end" value="">
+            </div>
+            <div class="form-field" style="grid-column: span 2">
+              <label for="f_log_driver">Active / Substitute Driver *</label>
+              <input type="text" id="f_log_driver" list="dl_drivers" value="${esc(targetEq.default_driver || '')}" placeholder="Select or type active / substitute driver...">
+            </div>
+            <div class="form-field" style="display:flex;align-items:flex-end">
+              <button type="button" class="btn btn-primary" id="btnLogEquipDriver" style="width:100%">+ Log Driver Assignment</button>
+            </div>
+          </div>
+        ` : ''}
+        <div class="table-wrap" style="max-height:210px;overflow:auto">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Co.</th><th>Scope</th><th>Start Date</th><th>End Date</th><th>Active Driver</th><th>Owner</th><th class="r">Size</th><th>Status</th>${canModifyData() ? '<th></th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${wins.length ? wins.slice().reverse().map((w, rIdx) => {
+                const origIdx = wins.length - 1 - rIdx;
+                const isSub = Boolean(w.e && (!w.s || w.s <= today) && w.e >= today);
+                const isOpen = !w.e || String(w.e) >= today;
+                const sideLbl = w.side === 'sales' ? 'Sales' : (w.side === 'raw' ? 'Raw & Trans' : (w.side === 'fuel' ? 'Diesel & Lub.' : 'All Tables'));
+                return `
+                  <tr>
+                    <td>${coBadge(w.co || 'WTC')}</td>
+                    <td><span class="badge badge-info">${esc(sideLbl)}</span></td>
+                    <td class="mono">${esc(w.s || '2024-01-01')}</td>
+                    <td class="mono">${esc(w.e || 'Open')}</td>
+                    <td><strong>${esc(w.drv || targetEq.default_driver || '—')}</strong></td>
+                    <td>${esc(w.own || targetEq.supplier || '—')}</td>
+                    <td class="r">${Number(w.cap) > 0 ? `${fmtNum(w.cap, 1)} m³` : '—'}</td>
+                    <td><span class="badge ${isSub ? 'badge-brass' : (isOpen ? 'badge-ok' : 'badge-neutral')}">${isSub ? 'Substitute' : (isOpen ? 'Active' : 'Historical')}</span></td>
+                    ${canModifyData() ? `<td class="r"><button type="button" class="btn btn-sm" data-del-modal-tw-idx="${origIdx}" title="Remove window">✕</button></td>` : ''}
+                  </tr>
+                `;
+              }).join('') : `
+                <tr>
+                  <td>${coBadge(defCo)}</td>
+                  <td><span class="badge badge-info">All Tables</span></td>
+                  <td class="mono">2024-01-01</td>
+                  <td class="mono">Open</td>
+                  <td><strong>${esc(targetEq.default_driver || '—')}</strong></td>
+                  <td>${esc(targetEq.supplier || '—')}</td>
+                  <td class="r">${Number(targetEq.capacity) > 0 ? `${fmtNum(targetEq.capacity, 1)} m³` : '—'}</td>
+                  <td><span class="badge badge-ok">Baseline</span></td>
+                  ${canModifyData() ? '<td></td>' : ''}
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    wireModalSuggestions(logWrap);
+    const logBtn = $('btnLogEquipDriver');
+    if (logBtn) {
+      logBtn.addEventListener('click', ev => {
+        ev.preventDefault();
+        if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
+        const drvVal = val('f_log_driver');
+        const sVal = val('f_log_start') || todayISO();
+        const eVal = val('f_log_end') || '';
+        const logCo = val('f_log_co') || defCo;
+        if (!drvVal) { toast('Enter the Active / Substitute Driver name to log.', 'err'); return; }
+        if (eVal && eVal < sVal) { toast('End Date cannot be before Start Date.', 'err'); return; }
+        appendOrUpdateTruckWindow(targetEq, {
+          co: logCo,
+          side: 'both',
+          s: sVal,
+          e: eVal,
+          cap: Number(targetEq.capacity || 0),
+          own: targetEq.supplier || '',
+          drv: drvVal
+        });
+        if (!eVal && $('f_driver')) $('f_driver').value = drvVal;
+        persistEquipmentLogMutation(targetEq);
+        logWrap.dataset.logKey = '';
+        renderModalEquipDriverLog(curTruck, company);
+        toast(eVal
+          ? `✓ Substitute driver "${drvVal}" logged on ${targetEq.name} (${sVal} → ${eVal})`
+          : `✓ Active driver "${drvVal}" logged on ${targetEq.name} (from ${sVal} · Open)`, 'ok');
+      });
+    }
+    logWrap.querySelectorAll('[data-del-modal-tw-idx]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!canModifyData() || !Array.isArray(targetEq.adj_windows)) return;
+        const idx = Number(btn.getAttribute('data-del-modal-tw-idx'));
+        if (idx >= 0 && idx < targetEq.adj_windows.length) {
+          targetEq.adj_windows.splice(idx, 1);
+          persistEquipmentLogMutation(targetEq);
+          logWrap.dataset.logKey = '';
+          renderModalEquipDriverLog(curTruck, company);
+          toast(`✓ Removed assignment window from ${targetEq.name}`, 'ok');
+        }
+      });
+    });
   }
 
   const SUPPLIER_CATEGORIES = [
@@ -12596,6 +12817,7 @@
     FORM_UI.lastSaleType = val('f_saletype'); FORM_UI.lastTransportBy = val('f_transportby');
     FORM_UI.lastSite = val('f_site'); FORM_UI.lastProduct = val('f_product');
     FORM_UI.lastCustomer = val('f_customer'); FORM_UI.lastSupplier = val('f_supplier');
+    FORM_UI.lastWinKey = ''; FORM_UI.lastFuelWinKey = '';
 
     const addSupDrvBtn = $('btnAddSupDriver');
     if (addSupDrvBtn) {
@@ -12672,6 +12894,7 @@
           if (fid === 'f_uom') FORM_UI.uomManual = false;
           if (fid === 'f_metertype') FORM_UI.meterTypeManual = false;
           if (fid === 'f_qty') FORM_UI.qtyManual = false;
+          if (fid === 'f_driver') FORM_UI.driverManual = false;
           if (fid === 'f_date' && $('f_date')) $('f_date').value = todayISO();
           recalcForm();
           toast('Field re-locked to policy rule', 'ok');
@@ -12706,7 +12929,7 @@
         // Selecting or clearing a truck resets manual quantity, meter type & driver so the unit's category, capacity and default driver populate first
         if (el.id === 'f_truck') { FORM_UI.qtyManual = false; FORM_UI.meterTypeManual = false; FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; }
         if (el.id === 'f_truckowner' || el.id === 'f_saletype' || el.id === 'f_transportby') FORM_UI.driverManual = false;
-        if (el.id === 'f_driver') FORM_UI.driverManual = true;
+        if (el.id === 'f_driver' && (isFieldAdminUnlocked('f_driver') || el.dataset.policyLockedNow !== '1')) FORM_UI.driverManual = true;
         // Changing counterparty / product / site re-runs the agreement lookup unless Admin unlocked the price
         if (['f_customer', 'f_product', 'f_site', 'f_siteowner', 'f_truckowner', 'f_truck', 'f_company', 'f_saletype', 'f_transportby'].includes(el.id)) {
           if (!isFieldAdminUnlocked('f_unitprice')) FORM_UI.priceManual = false;
@@ -12898,6 +13121,8 @@
         addErr('f_qty', 'Quantity must be above zero.');
       }
       if (c.up > 0 && !c.owner) addErr('f_siteowner', 'Quarry site owner (material payee) is required when the material has a cost.');
+      if (!val('f_truck')) addErr('f_truck', 'Truck is required.');
+      if (!val('f_driver')) addErr('f_driver', 'Active driver is required (assign in Equipment Log).');
       if (c.transportBy !== 'Company fleet' && c.tp > 0 && !val('f_truckowner')) addErr('f_truckowner', 'Truck owner (haulage payee) is required for third-party haulage.');
       if (c.transportBy !== 'Company fleet' && val('f_truck') && val('f_truckowner')) {
         const tRow = equipInfo(val('f_truck'), company, false, { date: repDate || date, side: 'raw', site: c.site });
@@ -12913,6 +13138,7 @@
       record = { ...base, name: `RCPT ${date} ${c.customer}`, rep_date: repDate, customer: c.customer, method: val('f_method'), amount: round2(c.amount), discount: round2(c.disc), reference: val('f_reference'), ar_before: c.before };
     } else if (f === 'fuel') {
       if (!c.equipment) addErr('f_truck', 'Equipment is required.');
+      else if (c.type !== 'none' && !val('f_driver')) addErr('f_driver', 'Active driver is required (assign in Equipment Log).');
       if (!(c.litres > 0)) addErr('f_qty', 'Litres must be above zero.');
       if (c.bbcTankNegative) addErr('f_qty', 'BBConstruction diesel intakes are refused while the tank reconciliation is negative.');
       if (!c.guard.ok) addErr('f_meter', 'Meter guard: ' + c.guard.label);
@@ -13074,7 +13300,11 @@
       }
       const eqCap = num('f_capacity') || 0;
       const effFrom = val('f_effdate') || date;
-      const initWin = eqCap > 0 ? [{ co: company || 'WTC', side: 'both', s: effFrom, e: '', cap: eqCap, ...(val('f_supplier') ? { own: val('f_supplier') } : {}), ...(val('f_driver') ? { drv: val('f_driver') } : {}) }] : [];
+      const effEnd = val('f_effend') || '';
+      if (effEnd && effEnd < effFrom) addErr('f_effend', 'Effective To Date cannot be before Effective From Date.');
+      const initWin = (eqCap > 0 || val('f_driver') || val('f_supplier'))
+        ? [{ co: company || 'WTC', side: 'both', s: effFrom, e: effEnd, cap: eqCap, ...(val('f_supplier') ? { own: val('f_supplier') } : {}), ...(val('f_driver') ? { drv: val('f_driver') } : {}) }]
+        : [];
       record = { ...base, name: nm, equipment: nm, plate_no: pl, type: val('f_category') || 'Truck', capacity: eqCap, ownership: val('f_ownership') || 'Owned', supplier: val('f_supplier'), default_driver: val('f_driver'), model: val('f_model'), adj_windows: initWin };
     } else if (f === 'driver') {
       const nm = val('f_driver');
@@ -14307,13 +14537,14 @@
     const modFieldsList = key === 'price_rules'
       ? ['unit_price', 'indiff_price', 'trans_unit_price', 'truck_size', 'truck', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'start_date', 'end_date', 'notes']
       : (isEquipInspect
-          ? ['effective_from', 'capacity', 'supplier', 'default_driver', 'plate_no', 'notes']
+          ? ['effective_from', 'effective_to', 'capacity', 'supplier', 'default_driver', 'plate_no', 'notes']
           : ['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6));
     const modFieldLabels = {
       effective_from: 'Effective From Date',
+      effective_to: 'Effective To Date (Blank = Open / Substitute End)',
       capacity: 'Capacity (m³)',
       supplier: isEquipInspect ? 'Truck Owner (Supplier)' : 'Supplier / Hauler',
-      default_driver: 'Default Driver',
+      default_driver: 'Active / Default Driver (Locked onto Tickets)',
       plate_no: 'License Plate No.',
       unit_price: 'Material Unit Price ($)',
       indiff_price: 'Indifference Price ($ · Flat / Load)',
@@ -14360,8 +14591,8 @@
         <div class="form-grid-3" style="margin-top:8px">
           ${modFieldsList.map(f => {
             const isNumField = ['qty', 'unit_price', 'indiff_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2'].includes(f);
-            const isDateField = f === 'date' || f === 'start_date' || f === 'end_date' || f === 'effective_from';
-            const curV = f === 'effective_from' ? todayISO() : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : ''));
+            const isDateField = f === 'date' || f === 'start_date' || f === 'end_date' || f === 'effective_from' || f === 'effective_to';
+            const curV = f === 'effective_from' ? todayISO() : (f === 'effective_to' ? '' : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : '')));
             const lbl = modFieldLabels[f] || f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             return `
               <div class="form-field">
@@ -14459,8 +14690,8 @@
         <div class="pa-subgrid-box" id="subgrid_truck_windows" style="margin-bottom:14px">
           <div class="pa-subgrid-hdr">
             <div>
-              <strong>${ic('ruler')} Truck Size, Owner &amp; Driver Adjustment Windows (Start Date → End Date)</strong>
-              <span class="pa-subgrid-sub">Dated capacity (m³), owner, driver &amp; optional Client / Site overrides — tickets automatically resolve the window matching their Transaction / Reporting Date</span>
+              <strong>${ic('ruler')} Equipment Driver &amp; Capacity Log (Start Date → End Date)</strong>
+              <span class="pa-subgrid-sub">Active driver is strictly locked onto Sales, Raw Material, Lubricant &amp; Diesel tickets matching the ticket date. Set End Date for a 1-day or bounded absence substitute; leave End Date blank for a permanent change.</span>
             </div>
             <span class="badge badge-brass">${fmtNum(eqWindows.length)} Window${eqWindows.length === 1 ? '' : 's'}</span>
           </div>
@@ -14475,23 +14706,24 @@
                 </select>
               </div>
               <div class="form-field">
-                <label for="insp_tw_side">Applies To Side</label>
+                <label for="insp_tw_side">Applies To Tables</label>
                 <select id="insp_tw_side" data-native-select="1">
-                  <option value="both" selected>Both (Sales &amp; Raw / Transport)</option>
+                  <option value="both" selected>All Tables (Sales, Raw, Lubricant &amp; Diesel)</option>
                   <option value="sales">Sales Side Only</option>
                   <option value="raw">Raw Material &amp; Transport Side Only</option>
+                  <option value="fuel">Diesel &amp; Lubricants Only</option>
                 </select>
               </div>
               <div class="form-field">
-                <label for="insp_tw_cap">Truck Size / Capacity (m³) *</label>
-                <input type="number" step="0.5" min="1" id="insp_tw_cap" value="${esc(targetEqRow.capacity || 27)}">
+                <label for="insp_tw_cap">Truck Size / Capacity (m³)</label>
+                <input type="number" step="0.5" min="0" id="insp_tw_cap" value="${esc(Number(targetEqRow.capacity || 0))}">
               </div>
               <div class="form-field">
                 <label for="insp_tw_start">Start Date *</label>
                 <input type="date" id="insp_tw_start" value="${esc(todayISO())}">
               </div>
               <div class="form-field">
-                <label for="insp_tw_end">End Date (Blank = Open)</label>
+                <label for="insp_tw_end">End Date (Blank = Open / Substitute End)</label>
                 <input type="date" id="insp_tw_end" value="">
               </div>
               <div class="form-field">
@@ -14499,8 +14731,9 @@
                 <input type="text" id="insp_tw_own" value="${esc(targetEqRow.supplier || '')}" placeholder="e.g. Hussein Bdeir, Karim Bdeir, WTC">
               </div>
               <div class="form-field">
-                <label for="insp_tw_drv">Default Driver</label>
-                <input type="text" id="insp_tw_drv" value="${esc(targetEqRow.default_driver || '')}" placeholder="Driver name">
+                <label for="insp_tw_drv">Active / Substitute Driver *</label>
+                <input type="text" id="insp_tw_drv" list="dl_insp_drivers" value="${esc(targetEqRow.default_driver || '')}" placeholder="Driver name">
+                <datalist id="dl_insp_drivers">${driverNames().map(d => `<option value="${esc(d)}">`).join('')}</datalist>
               </div>
               <div class="form-field">
                 <label for="insp_tw_cust">Client Override (Optional)</label>
@@ -14510,7 +14743,7 @@
                 <label for="insp_tw_site">Site Override (Optional)</label>
                 <div style="display:flex;gap:6px">
                   <input type="text" id="insp_tw_site" value="" placeholder="All sites (or type site name)..." style="flex:1">
-                  <button type="button" class="btn btn-primary" id="inspAddTruckWinBtn" style="white-space:nowrap">+ Add Window</button>
+                  <button type="button" class="btn btn-primary" id="inspAddTruckWinBtn" style="white-space:nowrap">+ Add Log Entry</button>
                 </div>
               </div>
             </div>
@@ -14519,14 +14752,14 @@
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>Co.</th><th>Side</th><th>Start Date</th><th>End Date</th><th class="r">Size (m³)</th><th>Truck Owner</th><th>Driver</th><th>Client / Site Scope</th><th>Status</th>${canModifyData() ? '<th></th>' : ''}
+                  <th>Co.</th><th>Scope</th><th>Start Date</th><th>End Date</th><th class="r">Size (m³)</th><th>Truck Owner</th><th>Driver</th><th>Client / Site Scope</th><th>Status</th>${canModifyData() ? '<th></th>' : ''}
                 </tr>
               </thead>
               <tbody>
                 ${eqWindows.length ? eqWindows.slice().reverse().map((w, rIdx) => {
                   const origIdx = eqWindows.length - 1 - rIdx;
                   const isOpen = !w.e || String(w.e) >= SEED_DATE;
-                  const sideLbl = w.side === 'sales' ? 'Sales' : (w.side === 'raw' ? 'Raw & Trans' : 'Both');
+                  const sideLbl = w.side === 'sales' ? 'Sales' : (w.side === 'raw' ? 'Raw & Trans' : (w.side === 'fuel' ? 'Diesel & Lub.' : 'All Tables'));
                   const scopeLbl = [w.cust ? `Client: ${w.cust}` : '', w.site ? `Site: ${w.site}` : ''].filter(Boolean).join(' · ') || 'General (All)';
                   return `
                     <tr>
@@ -14650,11 +14883,16 @@
         const numKeys = new Set(['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2']);
         const pendingUpdates = {};
         let effFromDate = todayISO();
+        let effToDate = '';
         modDrawer.querySelectorAll('[data-mod-field]').forEach(inp => {
           const fk = inp.getAttribute('data-mod-field');
           if (!fk) return;
           if (fk === 'effective_from') {
             effFromDate = inp.value || todayISO();
+            return;
+          }
+          if (fk === 'effective_to') {
+            effToDate = inp.value || '';
             return;
           }
           const prevVal = row[fk] !== undefined ? row[fk] : (targetEqRow ? targetEqRow[fk] : undefined);
@@ -14665,6 +14903,10 @@
             pendingUpdates[fk] = nextVal;
           }
         });
+        if (effToDate && effToDate < effFromDate) {
+          toast('Effective To Date cannot be before Effective From Date.', 'err');
+          return;
+        }
         if (UNIVERSAL_MAIN_SPEC[key]) {
           const candidate = Object.assign({}, row, pendingUpdates);
           const mainVal = universalMainValue(key, candidate);
@@ -14675,7 +14917,12 @@
           }
         }
         let changedCount = 0;
+        const isBoundedEqSub = Boolean(isEquipInspect && effToDate);
         Object.entries(pendingUpdates).forEach(([fk, nextVal]) => {
+          if (isBoundedEqSub && ['capacity', 'supplier', 'default_driver'].includes(fk)) {
+            changedCount++;
+            return;
+          }
           row[fk] = nextVal;
           if (targetEqRow && targetEqRow !== row && ['capacity', 'supplier', 'default_driver', 'plate_no'].includes(fk)) {
             targetEqRow[fk] = nextVal;
@@ -14684,15 +14931,15 @@
           if (key === 'equipment' && fk === 'equipment') row.name = nextVal;
           changedCount++;
         });
-        if (isEquipInspect && targetEqRow && ('capacity' in pendingUpdates || 'supplier' in pendingUpdates || 'default_driver' in pendingUpdates)) {
+        if (isEquipInspect && targetEqRow && ('capacity' in pendingUpdates || 'supplier' in pendingUpdates || 'default_driver' in pendingUpdates || Boolean(effToDate))) {
           appendOrUpdateTruckWindow(targetEqRow, {
             co: row.company || 'WTC',
             side: 'both',
             s: effFromDate,
-            e: '',
-            cap: targetEqRow.capacity,
-            own: targetEqRow.supplier,
-            drv: targetEqRow.default_driver
+            e: effToDate,
+            cap: 'capacity' in pendingUpdates ? pendingUpdates.capacity : targetEqRow.capacity,
+            own: 'supplier' in pendingUpdates ? pendingUpdates.supplier : targetEqRow.supplier,
+            drv: 'default_driver' in pendingUpdates ? pendingUpdates.default_driver : targetEqRow.default_driver
           });
           if (targetEqRow !== row) {
             if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
@@ -14724,7 +14971,10 @@
         const capVal = Number(($('insp_tw_cap') && $('insp_tw_cap').value) || 0);
         const sVal = ($('insp_tw_start') && $('insp_tw_start').value) || todayISO();
         const eVal = ($('insp_tw_end') && $('insp_tw_end').value) || '';
-        if (!(capVal > 0)) { toast('Truck Size / Capacity (m³) must be above zero.', 'err'); return; }
+        const drvVal = (($('insp_tw_drv') && $('insp_tw_drv').value) || '').trim();
+        const isTruckCat = /^(truck|mixer)/i.test(targetEqRow.type || '');
+        if (isTruckCat && !(capVal > 0) && !drvVal) { toast('Enter Truck Capacity (m³) or Active Driver.', 'err'); return; }
+        if (!isTruckCat && !drvVal && !(capVal > 0)) { toast('Select the Active / Substitute Driver to log.', 'err'); return; }
         if (eVal && eVal < sVal) { toast('End Date cannot be before Start Date.', 'err'); return; }
         appendOrUpdateTruckWindow(targetEqRow, {
           co: ($('insp_tw_co') && $('insp_tw_co').value) || 'WTC',
@@ -14733,7 +14983,7 @@
           e: eVal,
           cap: capVal,
           own: ($('insp_tw_own') && $('insp_tw_own').value) || '',
-          drv: ($('insp_tw_drv') && $('insp_tw_drv').value) || '',
+          drv: drvVal,
           cust: ($('insp_tw_cust') && $('insp_tw_cust').value) || '',
           site: ($('insp_tw_site') && $('insp_tw_site').value) || ''
         });
@@ -14745,7 +14995,7 @@
         applyCustomRecordsToSeed();
         saveLocalAuthAndRecords();
         renderApp();
-        toast(`✓ Added dated truck window (${fmtNum(capVal, 1)} m³ · ${sVal} → ${eVal || 'Open'})`);
+        toast(`✓ Logged equipment assignment (${drvVal || (fmtNum(capVal, 1) + ' m³')} · ${sVal} → ${eVal || 'Open'})`);
         showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
       });
     }
@@ -14756,6 +15006,8 @@
       const idx = Number(btn.getAttribute('data-del-tw-idx'));
       if (idx >= 0 && idx < targetEqRow.adj_windows.length) {
         targetEqRow.adj_windows.splice(idx, 1);
+        _WIN_REV++;
+        _FLEET_IDX = null;
         if (!Array.isArray(STATE.customRecords.equipment)) STATE.customRecords.equipment = [];
         const eqIdx = STATE.customRecords.equipment.findIndex(x => String(x.id) === String(targetEqRow.id));
         if (eqIdx >= 0) Object.assign(STATE.customRecords.equipment[eqIdx], targetEqRow);
@@ -14763,7 +15015,7 @@
         applyCustomRecordsToSeed();
         saveLocalAuthAndRecords();
         renderApp();
-        toast('✓ Removed dated truck adjustment window');
+        toast('✓ Removed equipment log window');
         showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
       }
     }));

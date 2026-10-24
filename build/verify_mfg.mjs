@@ -804,17 +804,20 @@ try {
     upPill.click();
     const relockedNow = upEl.readOnly === true && upWrap.classList.contains('is-policy-locked');
 
-    // (5) Check Pick-up hides & clears Driver; Company fleet filters Truck & Driver strictly to the selected Company's own fleet trucks & drivers; label is 'Truck *'
+    // (5) Check Pick-up hides & clears Driver; Company fleet filters Truck strictly to the selected Company's own fleet trucks, and Driver is strictly policy-locked to the Equipment Log's single active driver
     const truckLabelIsTruckOnly = (document.querySelector('#wrap_f_truck .pa-fld-lbl')?.textContent || '').trim() === 'Truck *';
     set('f_company', 'WTC');
     set('f_saletype', 'Delivery');
     set('f_transportby', 'Company fleet');
+    set('f_truck', '');
     const wtcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const wtcCoFleetMetas = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.getAttribute('data-meta') || '');
-    const wtcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const wtcCoFleetScopedOk = wtcCoFleetTrucks.length === 9 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && wtcCoFleetTrucks.includes('TB8') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && !wtcCoFleetTrucks.includes('TB1') && !wtcCoFleetTrucks.includes('Tb7') && !wtcCoFleetTrucks.includes('Tb9') && wtcCoFleetDrivers.length === 25 && wtcCoFleetDrivers.includes('Ahmad Ismael') && wtcCoFleetDrivers.includes('Hussein Saleh') && wtcCoFleetDrivers.includes('Ali Saleh');
+    const wtcNoTruckDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const salesDrvStartsLocked = document.getElementById('f_driver').readOnly === true && document.getElementById('f_driver').dataset.policyLockedNow === '1' && wtcNoTruckDrivers.length === 0;
+    const wtcCoFleetScopedOk = salesDrvStartsLocked && wtcCoFleetTrucks.length === 9 && wtcCoFleetTrucks.includes('Camion Jiyeh') && wtcCoFleetTrucks.includes('TB3') && wtcCoFleetTrucks.includes('TB8') && !wtcCoFleetTrucks.includes('355948') && !wtcCoFleetTrucks.includes('MB460') && !wtcCoFleetTrucks.includes('TB5') && !wtcCoFleetTrucks.includes('TB1') && !wtcCoFleetTrucks.includes('Tb7') && !wtcCoFleetTrucks.includes('Tb9');
     set('f_truck', 'TB3');
-    const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael';
+    const wtcTb3DrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const wtcTb3DrvOk = document.getElementById('f_driver').value === 'Ismael' && document.getElementById('f_driver').readOnly === true && document.getElementById('f_driver').dataset.policyLockedNow === '1' && wtcTb3DrvOpts.length === 1 && wtcTb3DrvOpts[0] === 'Ismael';
     const wtcTb3HintTxt = (document.getElementById('hint_truck')?.textContent || '').trim();
     const coFleetTruckNoRedundantFleetBadge = wtcCoFleetMetas.every(m => !/fleet/i.test(m)) && wtcCoFleetMetas.some(m => m.includes('354578 · Hussein Saleh')) && wtcCoFleetMetas.some(m => m.includes('358943 · Ali el Hajj')) && wtcCoFleetMetas.some(m => m.includes('358599 · Ismael')) && !/fleet/i.test(wtcTb3HintTxt);
 
@@ -846,8 +849,8 @@ try {
     set('f_company', 'BBConstruction');
     const bbcCoFleetTrucks = Array.from(document.querySelectorAll('#dl_equip option')).map(o => o.value);
     const bbcCoFleetDrivers = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'Ismael';
-    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 13 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && !bbcCoFleetTrucks.includes('TB1') && !bbcCoFleetTrucks.includes('Tb7') && !bbcCoFleetTrucks.includes('Tb9') && bbcCoFleetDrivers.length === 35 && bbcCoFleetDrivers.includes('imad abdallah') && bbcCoFleetDrivers.includes('Ali Saleh') && bbcCoFleetDrivers.includes('Ahmad Ismael');
+    const bbcTb3DrvUpdatedOk = document.getElementById('f_driver').value === 'Ismael' && document.getElementById('f_driver').readOnly === true;
+    const bbcCoFleetScopedOk = bbcCoFleetTrucks.length === 13 && bbcCoFleetTrucks.includes('TB5') && !bbcCoFleetTrucks.includes('Camion Jiyeh') && !bbcCoFleetTrucks.includes('355948') && !bbcCoFleetTrucks.includes('TB1') && !bbcCoFleetTrucks.includes('Tb7') && !bbcCoFleetTrucks.includes('Tb9') && bbcCoFleetDrivers.length === 1 && bbcCoFleetDrivers[0] === 'Ismael';
     set('f_truck', 'TB5');
     set('f_company', 'WTC');
     const coSwitchClearedMismatchedFleetTruck = document.getElementById('f_truck').value === '';
@@ -858,21 +861,21 @@ try {
     set('f_truck', '355948');
     const pickupNoDriverNeeded = document.getElementById('wrap_f_driver').hidden === true && document.getElementById('f_driver').value === '' && document.getElementById('f_truckowner').value === 'Ali Khalife';
 
-    // Switch to Delivery (Third-party truck): Driver becomes visible & required, filtered to Ali Lakis's drivers, with Default Driver chosen first
+    // Switch to Delivery (Third-party truck): Driver becomes visible, strictly policy-locked to the Equipment Log's single active driver
     set('f_saletype', 'Delivery');
     set('f_transportby', 'Third-party truck');
     const delivDriverVisible = document.getElementById('wrap_f_driver').hidden === false;
     set('f_truck', 'Aahed');
     const aahedPopulatedOwner = document.getElementById('f_truckowner').value === 'Aahed';
     const aahedOwnerLocked = document.getElementById('f_truckowner').readOnly === true;
-    const aahedPopulatedDriver = document.getElementById('f_driver').value === 'Aahed';
+    const aahedPopulatedDriver = document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_driver').readOnly === true && document.getElementById('f_driver').dataset.policyLockedNow === '1';
     const aahedPopulatedQty = document.getElementById('f_qty').value === '20.00';
     const aahedDrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const driverFilteredToOwnerOnly = aahedDrvOpts.length > 0 && aahedDrvOpts.length < 25 && aahedDrvOpts[0] === 'Aahed';
+    const driverFilteredToOwnerOnly = aahedDrvOpts.length === 1 && aahedDrvOpts[0] === 'Aahed';
 
-    // Substitute driver test: if default driver is off on a specific day, clearing/changing Driver must NOT be overwritten back to default_driver
-    set('f_driver', 'Substitute Driver');
-    const substituteDriverKept = document.getElementById('f_driver').value === 'Substitute Driver';
+    // Strict lock tamper guard: attempting to change Driver without Admin Unlock or Equipment Log update snaps back to 'Aahed'
+    set('f_driver', 'Unauthorized Driver');
+    const substituteDriverKept = document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_driver').readOnly === true;
 
     // Changing Truck Owner from 'Aahed' to 'Aawad' MUST immediately clear mismatched Truck ('Aahed'), Driver, and Quantity ('20.00')
     set('f_truckowner', 'Aawad');
@@ -897,7 +900,9 @@ try {
     const rawOrderingOk = rawTransMatchesSalesOk && rawTruckLabelsMatchSalesOk && rIdx('f_siteowner') < rIdx('f_truck') && rIdx('f_truck') < rIdx('f_truckowner') && rIdx('f_truckowner') < rIdx('f_driver');
     set('f_transportby', 'Third-party truck');
     set('f_truck', 'Aahed');
-    const rawAahedCascadeOk = document.getElementById('f_truckowner').value === 'Aahed' && document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_qty').value === '20.00';
+    const rawAahedDrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    set('f_driver', 'Tamper Raw Driver');
+    const rawAahedCascadeOk = document.getElementById('f_truckowner').value === 'Aahed' && document.getElementById('f_driver').value === 'Aahed' && document.getElementById('f_driver').readOnly === true && document.getElementById('f_driver').dataset.policyLockedNow === '1' && rawAahedDrvOpts.length === 1 && rawAahedDrvOpts[0] === 'Aahed' && document.getElementById('f_qty').value === '20.00';
     set('f_truckowner', 'Aawad');
     const rawOwnerChangeClearedOk = document.getElementById('f_truck').value === '' && document.getElementById('f_driver').value === '' && document.getElementById('f_qty').value === '';
 
@@ -931,13 +936,13 @@ try {
     const supPanelTxt = document.getElementById('supOwnerDriversList')?.textContent || '';
     const supDriverStagedOk = noTruckOwnerButton && sixCleanCategoriesOk && multiCatHydratedOk && iptNormalizedOk && nonHaulerHidesDriversWrap && supDriversWrapVisible && /Karim Substitute/i.test(supPanelTxt) && /355948/.test(supPanelTxt);
 
-    // Check Truck (Equipment) form: has Default Driver location filtered to the Truck Owner's drivers
+    // Check Truck (Equipment) form: has Default Driver location filtered to the Truck Owner's drivers + inline Equipment Driver Log (#wrap_eq_driver_log)
     document.querySelector('[data-pa-group="hq"]').click();
     document.querySelector('.modal-tab[data-form="equipment"]').click();
     set('f_truck', '339216');
     const eqAutoFilledOwnerAndDefaultDrv = document.getElementById('f_supplier')?.value === 'Ibrahim Bdeir' && document.getElementById('f_driver')?.value === 'sharif al khodr';
     const eqDrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
-    const eqDriverFilteredToOwnerOk = eqAutoFilledOwnerAndDefaultDrv && eqDrvOpts.length > 0 && eqDrvOpts.length < 25 && eqDrvOpts[0] === 'sharif al khodr' && eqDrvOpts.includes('Ibrahim Barakat');
+    const eqDriverFilteredToOwnerOk = eqAutoFilledOwnerAndDefaultDrv && !document.getElementById('wrap_eq_driver_log')?.hidden && eqDrvOpts.length > 0 && eqDrvOpts.length < 25 && eqDrvOpts[0] === 'sharif al khodr' && eqDrvOpts.includes('Ibrahim Barakat');
 
     // Check Price Rule form: switching Rule Type to List Price clears hidden Customer, Site, and Tier 1/2 fields
     document.querySelector('[data-pa-group="pricing"]').click();
@@ -951,7 +956,7 @@ try {
     const priceRuleClearedHiddenOk = document.getElementById('f_customer').value === '' && document.getElementById('f_site').value === '' && document.getElementById('f_qty1').value === '' && document.getElementById('f_adj1').value === '0.00';
 
     // Return to Group 1 -> Check Fuel & Lubricant Intake form:
-    // 1. Driver * starts locked until Equipment / Truck * is chosen, then auto-unlocks & populates default/current driver (m296)
+    // 1. Driver * is strictly policy-locked BOTH before AND after Equipment / Truck * is chosen, with ONLY the Equipment Log's single active driver present (m297)
     // 2. Meter Type is policy-locked & auto-loaded from Equipment Category (Excavator/Wheel Loader/Generator PB*/Plant -> hours, Truck/Vehicle -> odometer, Sundry Other -> none) and normalises legacy WTC readings!
     document.querySelector('[data-pa-group="dispatch"]').click();
     document.querySelector('.modal-tab[data-form="fuel"]').click();
@@ -962,14 +967,19 @@ try {
     const fuelMtWrap = document.getElementById('wrap_f_metertype');
     const fuelMeterEl = document.getElementById('f_meter');
     const fuelMeterWrap = document.getElementById('wrap_f_meter');
-    const fuelDriverStartsLocked = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '');
+    const fuelDriverStartsLocked = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '' && document.querySelectorAll('#dl_drivers option').length === 0);
     const fuelMeterStartsLocked = !!(fuelMtEl && fuelMtEl.dataset.policyLockedNow === '1' && fuelMtWrap && fuelMtWrap.classList.contains('is-policy-locked') && fuelMtEl.value === '' && fuelMeterEl && fuelMeterEl.readOnly === true);
     set('f_truck', 'Mb4');
     const fuelMb4DrvOpts = Array.from(document.querySelectorAll('#dl_drivers option'));
-    const fuelMb4AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.readOnly === false && fuelDrvEl.dataset.policyLockedNow === '0' && !fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === 'ibrahim Mortada' && fuelMb4DrvOpts.length > 0 && fuelMb4DrvOpts[0].value === 'ibrahim Mortada' && (fuelMb4DrvOpts[0].getAttribute('data-meta') || '').includes('Default Driver (Mb4)'));
+    const fuelMb4AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === 'ibrahim Mortada' && fuelMb4DrvOpts.length === 1 && fuelMb4DrvOpts[0].value === 'ibrahim Mortada' && (fuelMb4DrvOpts[0].getAttribute('data-meta') || '').includes('Active Equipment Driver (Mb4)'));
     const fuelMb4HoursOk = !!(fuelMtEl && fuelMtEl.value === 'hours' && fuelMtEl.dataset.policyLockedNow === '1' && document.getElementById('lbl_meter_reading')?.textContent === 'Meter Reading (h)' && (document.getElementById('calc_prev')?.textContent || '').startsWith('16,270 h'));
-    set('f_driver', 'Substitute Fuel Driver');
-    const fuelSubstituteKeptOk = !!(fuelDrvEl && fuelDrvEl.value === 'Substitute Fuel Driver');
+    set('f_driver', 'Unauthorized Fuel Driver');
+    const fuelTamperBlockedOk = !!(fuelDrvEl && fuelDrvEl.value === 'ibrahim Mortada' && fuelDrvEl.readOnly === true);
+    set('f_fueltype', 'Lubricant');
+    const lubMb4DrvOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const lubMb4LockedOk = !!(fuelDrvEl && fuelDrvEl.value === 'ibrahim Mortada' && fuelDrvEl.readOnly === true && lubMb4DrvOpts.length === 1 && lubMb4DrvOpts[0] === 'ibrahim Mortada');
+    set('f_fueltype', 'Diesel');
+    const fuelSubstituteKeptOk = fuelTamperBlockedOk && lubMb4LockedOk;
     set('f_truck', 'Sb1');
     const fuelSb1AutoFilledOk = !!(fuelDrvEl && fuelDrvEl.value === 'Khalil Al Sharif' && fuelMtEl.value === 'hours' && (document.getElementById('calc_prev')?.textContent || '').startsWith('4,495 h'));
     set('f_truck', 'Pb1');
@@ -987,8 +997,86 @@ try {
     const fuelClearRelocksDriverOk = !!(fuelDrvEl && fuelDrvEl.readOnly === true && fuelDrvEl.dataset.policyLockedNow === '1' && fuelDrvWrap && fuelDrvWrap.classList.contains('is-policy-locked') && fuelDrvEl.value === '' && fuelMtEl.value === '' && fuelMeterEl.readOnly === true && fuelMeterWrap && fuelMeterWrap.hidden === false);
     const fuelDriverLockAndCascadeOk = fuelDriverStartsLocked && fuelMeterStartsLocked && fuelMb4AutoFilledOk && fuelMb4HoursOk && fuelSubstituteKeptOk && fuelSb1AutoFilledOk && fuelPb1AutoFilledOk && fuelCatAutoFilledOk && fuelTb7OdoOk && fuelGallonNoMeterOk && fuelClearRelocksDriverOk;
 
-    // Return to Group 1 -> Sales
+    // End-to-End Equipment Driver Assignment Log (1-Day Absence Substitute) across ALL 4 flows: Sales Delivery, Raw Material, Diesel & Lubricant
+    document.querySelector('[data-pa-group="hq"]').click();
+    document.querySelector('.modal-tab[data-form="equipment"]').click();
+    set('f_truck', 'TB3');
+    const subDay = document.getElementById('f_effdate')?.value || '2026-10-24';
+    const prevDay = '2026-10-15';
+    set('f_log_co', 'WTC');
+    set('f_log_start', subDay);
+    set('f_log_end', subDay);
+    set('f_log_driver', 'Ali Saleh');
+    document.getElementById('btnLogEquipDriver')?.click();
+
+    // 1) Sales Delivery: on subDay -> ONLY 'Ali Saleh' (locked); on prevDay -> reverts to 'Ismael' (locked)
+    document.querySelector('[data-pa-group="dispatch"]').click();
     document.querySelector('.modal-tab[data-form="sales"]').click();
+    set('f_company', 'WTC');
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Company fleet');
+    set('f_truck', 'TB3');
+    const subSalesDrv = document.getElementById('f_driver')?.value;
+    const subSalesOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    const subSalesLocked = document.getElementById('f_driver')?.readOnly === true;
+    document.getElementById('toggleRepDateBtn')?.click();
+    set('f_repdate', prevDay);
+    const revSalesDrv = document.getElementById('f_driver')?.value;
+    const revSalesOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    document.getElementById('resetRepDateBtn')?.click();
+
+    // 2) Raw Material: on subDay -> ONLY 'Ali Saleh' (locked); on prevDay -> reverts to 'Ismael'
+    document.querySelector('.modal-tab[data-form="raw"]').click();
+    set('f_company', 'WTC');
+    set('f_transportby', 'Company fleet');
+    set('f_truck', 'TB3');
+    const subRawDrv = document.getElementById('f_driver')?.value;
+    const subRawOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    document.getElementById('toggleRepDateBtn')?.click();
+    set('f_repdate', prevDay);
+    const revRawDrv = document.getElementById('f_driver')?.value;
+    document.getElementById('resetRepDateBtn')?.click();
+
+    // 3) Diesel & 4) Lubricant: on subDay -> ONLY 'Ali Saleh' (locked); on prevDay -> reverts to 'Ismael'
+    document.querySelector('.modal-tab[data-form="fuel"]').click();
+    set('f_company', 'WTC');
+    set('f_fueltype', 'Diesel');
+    set('f_truck', 'TB3');
+    const subDieselDrv = document.getElementById('f_driver')?.value;
+    const subDieselOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    set('f_fueltype', 'Lubricant');
+    const subLubDrv = document.getElementById('f_driver')?.value;
+    const subLubOpts = Array.from(document.querySelectorAll('#dl_drivers option')).map(o => o.value);
+    document.getElementById('toggleRepDateBtn')?.click();
+    set('f_repdate', prevDay);
+    const revLubDrv = document.getElementById('f_driver')?.value;
+    document.getElementById('resetRepDateBtn')?.click();
+
+    // Clean up temporary substitute window on TB3 so downstream probes see clean baseline seed state
+    document.querySelector('[data-pa-group="hq"]').click();
+    document.querySelector('.modal-tab[data-form="equipment"]').click();
+    set('f_truck', 'TB3');
+    const delSubBtn = Array.from(document.querySelectorAll('[data-del-modal-tw-idx]')).find(b => (b.closest('tr')?.textContent || '').includes('Ali Saleh'));
+    if (delSubBtn) delSubBtn.click();
+
+    // Return to Group 1 -> Sales and verify TB3 is back to baseline 'Ismael'
+    document.querySelector('[data-pa-group="dispatch"]').click();
+    document.querySelector('.modal-tab[data-form="sales"]').click();
+    set('f_company', 'WTC');
+    set('f_saletype', 'Delivery');
+    set('f_transportby', 'Company fleet');
+    set('f_truck', 'TB3');
+    const restoredSalesDrv = document.getElementById('f_driver')?.value;
+    set('f_truck', '');
+    set('f_saletype', 'Pickup');
+
+    const equipLogAbsenceSubstituteOk =
+      subSalesDrv === 'Ali Saleh' && subSalesLocked && subSalesOpts.length === 1 && subSalesOpts[0] === 'Ali Saleh' &&
+      revSalesDrv === 'Ismael' && revSalesOpts.length === 1 && revSalesOpts[0] === 'Ismael' &&
+      subRawDrv === 'Ali Saleh' && subRawOpts.length === 1 && subRawOpts[0] === 'Ali Saleh' && revRawDrv === 'Ismael' &&
+      subDieselDrv === 'Ali Saleh' && subDieselOpts.length === 1 && subDieselOpts[0] === 'Ali Saleh' &&
+      subLubDrv === 'Ali Saleh' && subLubOpts.length === 1 && subLubOpts[0] === 'Ali Saleh' && revLubDrv === 'Ismael' &&
+      restoredSalesDrv === 'Ismael';
 
     const cascadeDiag = {
       truckLabelIsTruckOnly, wtcCoFleetScopedOk, wtcTb3DrvOk, coFleetTruckNoRedundantFleetBadge, spFleetParityOk, bbcCoFleetScopedOk, bbcTb3DrvUpdatedOk, coSwitchClearedMismatchedFleetTruck,
@@ -998,7 +1086,7 @@ try {
       ownerChangeClearedTruck, ownerChangeClearedDriver, ownerChangeClearedQty, truckClearClearedAll,
       rawOrderingOk, rawAahedCascadeOk, rawOwnerChangeClearedOk,
       supDriverStagedOk, eqDriverFilteredToOwnerOk, priceRuleClearedHiddenOk,
-      fuelDriverLockAndCascadeOk
+      fuelDriverLockAndCascadeOk, equipLogAbsenceSubstituteOk
     };
     const fleetCascadeAndStaleClearOk = Object.values(cascadeDiag).every(Boolean);
 
@@ -1015,8 +1103,8 @@ try {
   intuitiveEntryProbe.orderingOk && intuitiveEntryProbe.saleTypeOrderOk && intuitiveEntryProbe.overtimeLinkedToTimeOk && intuitiveEntryProbe.delivSiteVisible && intuitiveEntryProbe.delivTransVisible && intuitiveEntryProbe.delivOwnerHiddenOnCoFleet &&
   intuitiveEntryProbe.pickupSiteHidden && intuitiveEntryProbe.pickupTransByHidden && intuitiveEntryProbe.pickupOvertimeHidden && intuitiveEntryProbe.pickupTransPriceHidden && intuitiveEntryProbe.pickupTransTotHidden && intuitiveEntryProbe.pickupTruckOwnerVisible &&
   intuitiveEntryProbe.repSynced && intuitiveEntryProbe.noInternalCodes && intuitiveEntryProbe.startsLocked && intuitiveEntryProbe.boxOpened && intuitiveEntryProbe.unlockedNow && intuitiveEntryProbe.manualPriceKept && intuitiveEntryProbe.relockedNow && intuitiveEntryProbe.fleetCascadeAndStaleClearOk
-    ? pass('entry desk · v8.3 Truck -> Truck Owner + Driver + Qty cascade, mismatch clearing, Pickup Gating, Clean UI & Admin Unlock')
-    : fail('entry desk v8.3 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
+    ? pass('entry desk · v13.6 Strict Equipment Log Driver Lock & 1-Day Absence Substitute across Sales, Raw, Lubricant & Diesel + Admin Unlock')
+    : fail('entry desk v13.6 intuitive entry probe', JSON.stringify(intuitiveEntryProbe));
 
   // 6d. Strict Multi-Column Control Box Alignment (locked + unlocked fields stay on 1-line labels with 0px vertical input offset across columns)
   const colAlignmentProbe = await evaluate(`(() => {
