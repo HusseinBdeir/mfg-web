@@ -25,16 +25,16 @@
     { id: 'p16_financial', num: '12', label: 'Financial GL & Ratios', title: 'Lebanese CoA Income Statement, Balance Sheet & Trial Balance' }
   ];
 
-  // 8 Operational Pages moved out of Analytics & Insights directly into their respective domain sidebar modules
+  // 8 Operational Pages moved out of Analytics & Insights directly into their respective domain hub sub-tabs
   const MOVED_PBI_PAGES = {
-    p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',  modSec: 'exceptions', short: 'Action Items',      targetLabel: 'AI Sentinels & Audit' },
-    p18_tickets:    { id: 'p18_tickets',    view: 'sales',      modSec: 'tickets',    short: 'Ticket Books',      targetLabel: 'Sales & Deliveries' },
-    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Sites',    targetLabel: 'Material & Transportation' },
-    p11_drivers:    { id: 'p11_drivers',    view: 'fleet',      modSec: 'drivers',    short: 'Drivers & Overtime',targetLabel: 'Fleet & Diesel Control' },
-    p13_vat:        { id: 'p13_vat',        view: 'customers',  modSec: 'vat',        short: 'VAT & Invoices',    targetLabel: 'Customers & Receivables' },
-    p15_treasury:   { id: 'p15_treasury',   view: 'ledger',     modSec: 'treasury',   short: 'Treasury & Loans',  targetLabel: 'General Ledger & SOA' },
-    p19_changelog:  { id: 'p19_changelog',  view: 'sentinels',  modSec: 'changelog',  short: 'Change Log & Drift',targetLabel: 'AI Sentinels & Audit' },
-    p20_recon:      { id: 'p20_recon',      view: 'statements', modSec: 'recon',      short: 'Statement Recon',   targetLabel: 'Statements & Reports' }
+    p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',       modSec: 'exceptions', short: 'Action Items',       targetLabel: 'AI Sentinels & Audit' },
+    p18_tickets:    { id: 'p18_tickets',    view: 'sales_analytics', modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'Sales Analytics' },
+    p17_jv:         { id: 'p17_jv',         view: 'raw_analytics',   modSec: 'jv',         short: 'JV 50/50 Sites',     targetLabel: 'JV & Stock Analytics' },
+    p11_drivers:    { id: 'p11_drivers',    view: 'fleet_analytics', modSec: 'drivers',    short: 'Drivers & Overtime', targetLabel: 'Fleet & Driver Analytics' },
+    p13_vat:        { id: 'p13_vat',        view: 'sales_vat',       modSec: 'vat',        short: 'VAT & Invoices',     targetLabel: 'VAT & Credit' },
+    p15_treasury:   { id: 'p15_treasury',   view: 'ledger_treasury', modSec: 'treasury',   short: 'Treasury & Loans',   targetLabel: 'Loans & FX Treasury' },
+    p19_changelog:  { id: 'p19_changelog',  view: 'sentinels',       modSec: 'changelog',  short: 'Change Log & Drift', targetLabel: 'AI Sentinels & Audit' },
+    p20_recon:      { id: 'p20_recon',      view: 'statements',      modSec: 'recon',      short: 'Statement Recon',    targetLabel: 'Statements & Reports' }
   };
 
   // All 34 Power Apps Sitemap Tables (m14_sitemap.py) — Universal Registries grouped in Group 3 (consistent across all BUs)
@@ -3890,11 +3890,83 @@
     return `<div id="pbiCanvasPanel" style="padding-bottom:24px">${headerHtml}${bodyHtml}</div>`;
   }
 
-  // ==================== SIDEBAR MODULE EMBEDDED ANALYTICS & MOVED PAGES ====================
+  // ==================== HUB ANALYTICS & MOVED PAGES CATALOG ====================
   const MODULE_ANALYTICS_CATALOG = {
+    sales_analytics: {
+      title: 'Sales, Weighbridge Books, Spreads & FIFO AR Analytics',
+      subtitle: '25/50-Ticket Weighbridge Book Audit, Realised Price Spreads, Destination Site Mix & FIFO AR Aging',
+      defaultSec: 'tickets',
+      sections: [
+        { id: 'tickets', label: 'Weighbridge Ticket Books (25/50-Pad Audit)', pageId: 'p18_tickets', badge: 'Moved Page' },
+        { id: 'analytics', label: 'Sales Revenue, Price Trends & Site Mix', pageId: 'p04_sales', badge: 'Analytics' },
+        { id: 'spreads', label: 'Agreed vs Realised Spreads & Commissions', pageId: 'p05_pricing', badge: 'Analytics' },
+        { id: 'aging', label: 'FIFO AR Aging & Customer Running Statement', pageId: 'p06_ar', badge: 'Analytics' }
+      ]
+    },
+    sales_vat: {
+      title: '11% VAT Position, Quarterly MOF & Tax Invoice Hygiene',
+      subtitle: 'Output/Input VAT 11%, Quarterly MOF Filing Position & VAT Invoice Ticket Linkage',
+      defaultSec: 'vat',
+      sections: [
+        { id: 'vat', label: '11% VAT Position, Quarterly MOF & Tax Invoices', pageId: 'p13_vat', badge: 'Moved Page' }
+      ]
+    },
+    raw_analytics: {
+      title: 'JV 50/50 Stock Entitlement, Unit Economics & 3-Leg AP',
+      subtitle: 'Joint Venture 50/50 Site Stock Entitlement, Unit Margin, Transport Cost Recovery & 3-Leg Payables',
+      defaultSec: 'jv',
+      sections: [
+        { id: 'jv', label: 'JV 50/50 Sites & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
+        { id: 'stock', label: 'Unit Economics & Transport Cost Recovery', pageId: 'p08_stock', badge: 'Analytics' },
+        { id: 'ap3leg', label: '3-Leg AP Schedule & Monthly Accrual vs Settlement', pageId: 'p07_ap', badge: 'Analytics' }
+      ]
+    },
+    fleet_analytics: {
+      title: 'Fleet, Drivers, Overtime & Diesel Analytics',
+      subtitle: 'Driver Trips & Night Overtime Bonus, Diesel Tank Burn & Equipment Cost per Ton',
+      defaultSec: 'drivers',
+      sections: [
+        { id: 'drivers', label: 'Drivers, Trips & Overtime Bonus', pageId: 'p11_drivers', badge: 'Moved Page' },
+        { id: 'fuel', label: 'Diesel Tank Reconciliation & L/100km Burn', pageId: 'p09_fuel', badge: 'Analytics' },
+        { id: 'econ', label: 'Equipment Economics & Cost per Ton', pageId: 'p10_fleet', badge: 'Analytics' }
+      ]
+    },
+    cashflow_analytics: {
+      title: 'Cash Flow Inflows/Outflows & Daily Till 5300 Analytics',
+      subtitle: 'Daily Physical Till 5300 Trajectory, Cash Inflows vs Outflows & Payment Method Mix',
+      defaultSec: 'cashflow',
+      sections: [
+        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till 5300', pageId: 'p14_cashflow', badge: 'Analytics' }
+      ]
+    },
+    expenses_analytics: {
+      title: 'Cost-Class Breakdown & Overhead Analytics',
+      subtitle: 'Production Cost, Operating Expense & Capital Expenditure Category Analytics',
+      defaultSec: 'costclass',
+      sections: [
+        { id: 'costclass', label: 'Expense Cost Classes & Category Breakdown', pageId: 'p07_ap', badge: 'Analytics' }
+      ]
+    },
+    payroll_analytics: {
+      title: 'Workforce Earnings Matrix, Site Allowances, Freelance & Driver OT',
+      subtitle: '16-Column Staff Earnings Matrix, Site Allowances, Freelance Shifts & Driver Overtime',
+      defaultSec: 'allowances',
+      sections: [
+        { id: 'allowances', label: 'Staff Earnings Matrix, Site Allowances & Freelance', pageId: 'p12_payroll', badge: 'Analytics' },
+        { id: 'drivers_ot', label: 'Driver Trips & Night Overtime Bonus', pageId: 'p11_drivers', badge: 'Moved Page' }
+      ]
+    },
+    ledger_treasury: {
+      title: 'Partner Treasury, Loans & USD ↔ LBP FX Conversions',
+      subtitle: 'Partner Loans, Repayments, External Movements & USD ↔ LBP Exchange Position',
+      defaultSec: 'treasury',
+      sections: [
+        { id: 'treasury', label: 'Partner Loans, External Treasury & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Moved Page' }
+      ]
+    },
     sales: {
       title: 'Sales & Weighbridge Analytics',
-      subtitle: 'Embedded from Analytics & Insights — 25/50-Ticket Weighbridge Book Audit, Realised Price Trends & Destination Site Mix',
+      subtitle: '25/50-Ticket Weighbridge Book Audit, Realised Price Trends & Destination Site Mix',
       defaultSec: 'tickets',
       sections: [
         { id: 'tickets', label: 'Weighbridge Ticket Books (25/50-Pad Audit)', pageId: 'p18_tickets', badge: 'Moved Page' },
@@ -3903,7 +3975,7 @@
     },
     raw: {
       title: 'Material, Transportation, JV 50/50 & Unit Economics',
-      subtitle: 'Embedded from Analytics & Insights — Joint Venture 50/50 Site Stock Entitlement, Unit Margin & Transport Cost Recovery',
+      subtitle: 'Joint Venture 50/50 Site Stock Entitlement, Unit Margin & Transport Cost Recovery',
       defaultSec: 'jv',
       sections: [
         { id: 'jv', label: 'JV 50/50 Sites & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
@@ -3912,17 +3984,17 @@
     },
     fleet: {
       title: 'Fleet, Drivers, Overtime & Diesel Analytics',
-      subtitle: 'Embedded from Analytics & Insights — Driver Trips & Night Overtime Bonus (m48/m93), Diesel Tank Burn & Equipment Cost/Ton',
+      subtitle: 'Driver Trips & Night Overtime Bonus, Diesel Tank Burn & Equipment Cost/Ton',
       defaultSec: 'drivers',
       sections: [
-        { id: 'drivers', label: 'Drivers, Trips & Overtime Bonus (m48/m93)', pageId: 'p11_drivers', badge: 'Moved Page' },
+        { id: 'drivers', label: 'Drivers, Trips & Overtime Bonus', pageId: 'p11_drivers', badge: 'Moved Page' },
         { id: 'fuel', label: 'Diesel Tank Reconciliation & L/100km Burn', pageId: 'p09_fuel', badge: 'Analytics' },
         { id: 'econ', label: 'Equipment Economics & Cost per Ton', pageId: 'p10_fleet', badge: 'Analytics' }
       ]
     },
     pricing: {
       title: 'Pricing Spreads, Below-Agreed Governance & Commissions',
-      subtitle: 'Embedded from Analytics & Insights — Agreed vs Realised vs List Spreads, Customer × Product Shortfalls & Commission Rules',
+      subtitle: 'Agreed vs Realised vs List Spreads, Customer × Product Shortfalls & Commission Rules',
       defaultSec: 'spreads',
       sections: [
         { id: 'spreads', label: 'Agreed vs Realised Spreads & Below-Agreed Exceptions', pageId: 'p05_pricing', badge: 'Analytics' }
@@ -3930,7 +4002,7 @@
     },
     customers: {
       title: 'Receivables Aging, Running Statement & 11% VAT Invoices',
-      subtitle: 'Embedded from Analytics & Insights — 11% Output/Input VAT & Quarterly MOF Position, FIFO AR Aging & Customer Running Sub-Ledger',
+      subtitle: '11% Output/Input VAT & Quarterly MOF Position, FIFO AR Aging & Customer Running Sub-Ledger',
       defaultSec: 'vat',
       sections: [
         { id: 'vat', label: '11% VAT Position, Quarterly MOF & Tax Invoices', pageId: 'p13_vat', badge: 'Moved Page' },
@@ -3939,7 +4011,7 @@
     },
     suppliers: {
       title: '3-Leg Accounts Payable & Supplier Accrual Analytics',
-      subtitle: 'Embedded from Analytics & Insights — Leg 1 Raw Material, Leg 2 Third-Party Haulage, Leg 3 Credit Expenses & Monthly Settlements',
+      subtitle: 'Leg 1 Raw Material, Leg 2 Third-Party Haulage, Leg 3 Credit Expenses & Monthly Settlements',
       defaultSec: 'ap3leg',
       sections: [
         { id: 'ap3leg', label: '3-Leg AP Schedule & Monthly Accrual vs Settlement', pageId: 'p07_ap', badge: 'Analytics' }
@@ -3947,7 +4019,7 @@
     },
     expenses: {
       title: 'Cost-Class Breakdown & Overhead Analytics',
-      subtitle: 'Embedded from Analytics & Insights — Production Cost, Operating Expense & Capital Expenditure Category Analytics',
+      subtitle: 'Production Cost, Operating Expense & Capital Expenditure Category Analytics',
       defaultSec: 'costclass',
       sections: [
         { id: 'costclass', label: 'Expense Cost Classes & Category Breakdown', pageId: 'p07_ap', badge: 'Analytics' }
@@ -3955,7 +4027,7 @@
     },
     payroll: {
       title: 'Workforce Earnings Matrix, Site Allowances, Freelance & Driver OT',
-      subtitle: 'Embedded from Analytics & Insights — 16-Column Staff Earnings Matrix, Site Allowances (m247), Freelance Shifts (m245) & Driver OT',
+      subtitle: '16-Column Staff Earnings Matrix, Site Allowances, Freelance Shifts & Driver OT',
       defaultSec: 'allowances',
       sections: [
         { id: 'allowances', label: 'Staff Earnings Matrix, Site Allowances & Freelance', pageId: 'p12_payroll', badge: 'Analytics' },
@@ -3964,7 +4036,7 @@
     },
     ledger: {
       title: 'Partner Treasury, Loans, FX Conversions & Cash Flow Till 5300',
-      subtitle: 'Embedded from Analytics & Insights — Partner Loans, Repayments, External Movements, USD ↔ LBP Conversions & Daily Till 5300',
+      subtitle: 'Partner Loans, Repayments, External Movements, USD ↔ LBP Conversions & Daily Till 5300',
       defaultSec: 'treasury',
       sections: [
         { id: 'treasury', label: 'Partner Loans, External Treasury & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Moved Page' },
@@ -3973,16 +4045,16 @@
     },
     sentinels: {
       title: 'Executive Action Items, Change Log & Date-Basis Parity Bridge',
-      subtitle: 'Embedded from Analytics & Insights — Action Items & Exception Queue (m284), Daily Totals Ledger & Tx vs Reporting Date Parity',
+      subtitle: 'Action Items & Exception Queue, Daily Totals Ledger & Tx vs Reporting Date Parity',
       defaultSec: 'all',
       sections: [
-        { id: 'exceptions', label: 'Action Items & Exception Queue (m284)', pageId: 'p03_exceptions', badge: 'Moved Page' },
+        { id: 'exceptions', label: 'Action Items & Exception Queue', pageId: 'p03_exceptions', badge: 'Moved Page' },
         { id: 'changelog', label: 'Change Log, Daily Totals & Date Parity Bridge', pageId: 'p19_changelog', badge: 'Moved Page' }
       ]
     },
     statements: {
       title: 'Counterparty Statement Reconciliation Bridge',
-      subtitle: 'Embedded from Analytics & Insights — Customer & Supplier Sub-Account Reconciliation vs Trial Balance',
+      subtitle: 'Customer & Supplier Sub-Account Reconciliation vs Trial Balance',
       defaultSec: 'recon',
       sections: [
         { id: 'recon', label: 'Statement Reconciliation Bridge & Sub-Account Tie', pageId: 'p20_recon', badge: 'Moved Page' }
@@ -4315,8 +4387,11 @@
   function renderUniversalRegistriesView(ctx) {
     const { STATE, SEED, filterRecords, sortRows, th, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm } = ctx;
     const univPool = TABLE_CATALOG.filter(t => t.universal);
-    const activeKey = STATE.activeUnivRegKey || 'equipment';
-    const meta = univPool.find(t => t.key === activeKey) || univPool[0];
+    const groupKeys = Array.isArray(ctx.registryGroupKeys) && ctx.registryGroupKeys.length
+      ? ctx.registryGroupKeys.filter(k => univPool.some(t => t.key === k))
+      : [];
+    const activeKey = STATE.activeUnivRegKey || (groupKeys[0] || 'equipment');
+    const meta = univPool.find(t => t.key === activeKey) || univPool.find(t => groupKeys.includes(t.key)) || univPool[0];
     STATE.activeUnivRegKey = meta.key;
     const rel = getHubRelIndex(SEED);
     const rawList = (SEED.records && SEED.records[meta.key]) || [];
@@ -4329,10 +4404,22 @@
     const rows = sortRows(filtered, 'ureg_' + meta.key, defSort, 'asc');
     const shown = rows.slice(0, shownCount('ureg_' + meta.key));
     const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
+    const groupTabsMeta = groupKeys.length > 1
+      ? groupKeys.map(gk => univPool.find(t => t.key === gk)).filter(Boolean)
+      : [];
 
     return `
       <div class="panel-card" id="univRegPanel">
         <div class="pa-hub-rel-strip">
+          ${groupTabsMeta.length > 1 ? `
+            <div class="pa-hub-views" style="padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed var(--line)">
+              <span class="pa-hub-lbl">Registries (All BUs):</span>
+              ${groupTabsMeta.map(gt => {
+                const gCnt = filterRecords((SEED.records && SEED.records[gt.key]) || [], { ignorePeriod: true, ignoreSearch: true, ignoreCompany: true, ignoreRls: true }).length;
+                return `<button type="button" class="filter-chip ${gt.key === meta.key ? 'active' : ''}" data-univ-reg-key="${esc(gt.key)}" ${gt.navView ? `data-univ-nav-view="${esc(gt.navView)}"` : ''}>${esc(gt.label)} <span class="mono" style="opacity:.75">(${fmtNum(gCnt)})</span></button>`;
+              }).join('')}
+            </div>
+          ` : ''}
           <div class="pa-hub-views">
             <span class="pa-hub-lbl">System Views:</span>
             ${views.map(vw => {

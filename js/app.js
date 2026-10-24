@@ -3634,8 +3634,157 @@
     reg_categories: 'expense_categories'
   };
 
+  const UNIV_REGISTRY_GROUPS = {
+    reg_customers: ['customers', 'products', 'product_types', 'uoms'],
+    reg_products: ['customers', 'products', 'product_types', 'uoms'],
+    reg_sites: ['sites', 'regions'],
+    reg_regions: ['sites', 'regions'],
+    reg_categories: ['expense_categories', 'expense_subcategories'],
+    reg_equipment: ['equipment'],
+    reg_drivers: ['drivers'],
+    reg_suppliers: ['suppliers']
+  };
+
+  const HUB_TITLES = {
+    overview: 'Executive Overview',
+    sales: 'Sales & Customers',
+    raw: 'Material & Suppliers',
+    fleet: 'Fleet & Diesel',
+    kiosks: 'Kiosk Terminals',
+    cashflow: 'Cash Flow & Till',
+    expenses: 'Expenses & Overhead',
+    payroll: 'Payroll & Workforce',
+    ledger: 'Ledger & Reports',
+    users: 'System & Access'
+  };
+
+  const HUB_CATALOG = [
+    {
+      id: 'overview',
+      title: HUB_TITLES.overview,
+      group: 'exec',
+      tabs: [
+        { view: 'overview', label: 'Executive Overview', icon: 'overview', pillCls: 'brass', pillFn: () => 'Live' },
+        { view: 'entities', label: 'Entity Comparison', icon: 'entities', pillFn: u => `${allowedCompanyNames(u).length} BUs` },
+        { view: 'pbi', label: 'Analytics & Insights', icon: 'pbi', pillCls: 'brass', pillFn: u => `${(window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES)) ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, u)).length : 12} Pages` },
+        { view: 'sentinels', label: 'AI Sentinels & Audit', icon: 'sentinels', pillCls: (_u, _k, sn) => (sn ? 'brass' : ''), pillFn: (_u, _k, sn) => String(sn != null ? sn : 0) }
+      ]
+    },
+    {
+      id: 'sales',
+      title: HUB_TITLES.sales,
+      group: 'dispatch',
+      tabs: [
+        { view: 'sales', label: 'Sales & Deliveries', icon: 'sales', pillFn: (_u, k) => (k && k.loads != null ? fmtNum(k.loads) : '') },
+        { view: 'customers', match: ['customers', 'ar'], label: 'Customers & Receivables', icon: 'customers', pillFn: (_u, k) => (k && k.ar_balance != null ? fmtUSDk(k.ar_balance) : '') },
+        { view: 'pricing', label: 'Pricing & Commissions', icon: 'pricing', pillFn: (_u, k) => (k && k.active_agreements != null ? fmtNum(k.active_agreements) : '') },
+        { view: 'sales_vat', label: 'VAT & Credit', icon: 'sales_vat', pillFn: () => '11% VAT' },
+        { view: 'reg_customers', match: ['reg_customers', 'reg_products'], label: 'Customers & Products', icon: 'reg_customers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'sales_analytics', label: 'Sales Analytics', icon: 'sales_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'raw',
+      title: HUB_TITLES.raw,
+      group: 'dispatch',
+      tabs: [
+        { view: 'raw', label: 'Material & Transportation', icon: 'raw', pillFn: (_u, k) => (k && k.raw_loads != null ? fmtNum(k.raw_loads) : '') },
+        { view: 'suppliers', match: ['suppliers', 'ap'], label: 'Suppliers & Payables', icon: 'suppliers', pillFn: (_u, k) => (k && k.ap_balance != null ? fmtUSDk(k.ap_balance) : '3 Legs') },
+        { view: 'reg_suppliers', label: 'Suppliers & Haulers', icon: 'reg_suppliers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'reg_sites', match: ['reg_sites', 'reg_regions'], label: 'Sites & Regions', icon: 'reg_sites', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'raw_analytics', label: 'JV & Stock Analytics', icon: 'raw_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'fleet',
+      title: HUB_TITLES.fleet,
+      group: 'dispatch',
+      tabs: [
+        { view: 'fleet', label: 'Fleet & Diesel Control', icon: 'fleet', pillFn: (_u, k) => (k && k.active_equip != null ? fmtNum(k.active_equip) : '') },
+        { view: 'reg_equipment', label: 'Equipment & Trucks', icon: 'reg_equipment', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'reg_drivers', label: 'Drivers & Operators', icon: 'reg_drivers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'fleet_analytics', label: 'Fleet & Driver Analytics', icon: 'fleet_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'kiosks',
+      title: HUB_TITLES.kiosks,
+      group: 'dispatch',
+      tabs: [
+        { view: 'kiosks', label: 'Kiosk Terminals', icon: 'kiosks', pillCls: 'brass', pillFn: () => '4 Kiosks' }
+      ]
+    },
+    {
+      id: 'cashflow',
+      title: HUB_TITLES.cashflow,
+      group: 'books',
+      tabs: [
+        { view: 'cashflow', label: 'Cash Flow & Till', icon: 'cashflow', pillFn: (_u, k) => (k ? fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) : '') },
+        { view: 'cashflow_analytics', label: 'Cash Flow Analytics', icon: 'cashflow_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'expenses',
+      title: HUB_TITLES.expenses,
+      group: 'books',
+      tabs: [
+        { view: 'expenses', label: 'Expenses & Overhead', icon: 'expenses', pillFn: (_u, k) => (k && k.expenses != null ? fmtUSDk(k.expenses) : '') },
+        { view: 'reg_categories', label: 'Expense Categories', icon: 'reg_categories', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
+        { view: 'expenses_analytics', label: 'Overhead Analytics', icon: 'expenses_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'payroll',
+      title: HUB_TITLES.payroll,
+      group: 'books',
+      tabs: [
+        { view: 'payroll', label: 'Payroll & Workforce', icon: 'payroll', pillFn: (_u, k) => (k && k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : '') },
+        { view: 'payroll_attendance', label: 'Attendance & Overtime', icon: 'payroll_attendance', pillFn: () => fmtNum(filterRecords(SEED.records.attendance).length) },
+        { view: 'payroll_contracts', label: 'Contracts & Allowances', icon: 'payroll_contracts', pillFn: () => fmtNum(filterRecords(SEED.records.employments, { ignorePeriod: true }).length) },
+        { view: 'payroll_analytics', label: 'Workforce Analytics', icon: 'payroll_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+      ]
+    },
+    {
+      id: 'ledger',
+      title: HUB_TITLES.ledger,
+      group: 'books',
+      tabs: [
+        { view: 'ledger', match: ['ledger', 'gl'], label: 'General Ledger & SOA', icon: 'ledger', pillFn: (_u, k) => (k && k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? 'TB $0' : '') },
+        { view: 'ledger_treasury', label: 'Loans & FX Treasury', icon: 'ledger_treasury', pillFn: () => fmtNum(filterRecords(SEED.records.loans, { ignorePeriod: true }).length) },
+        { view: 'statements', label: 'Statements & Reports', icon: 'statements', pillCls: 'brass', pillFn: u => `${(window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG)) ? window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, u)).length : 22} A4` }
+      ]
+    },
+    {
+      id: 'users',
+      title: HUB_TITLES.users,
+      group: 'exec',
+      tabs: [
+        { view: 'users', label: 'Team Auth & Users', icon: 'users', pillCls: 'brass', pillFn: () => `${STATE.users.length} Seats` },
+        { view: 'tables', label: 'Tables & Registers', icon: 'tables', pillFn: u => String((window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG)) ? window.MFG_PBI.TABLE_CATALOG.filter(t => canAccessTable(t.key, u)).length : 34) }
+      ]
+    }
+  ];
+
+  const VIEW_TO_HUB = {};
+  HUB_CATALOG.forEach(h => {
+    h.tabs.forEach(t => {
+      VIEW_TO_HUB[t.view] = h.id;
+      (t.match || []).forEach(mv => { VIEW_TO_HUB[mv] = h.id; });
+    });
+  });
+
   function canViewView(view, u) {
     u = u || activeUser();
+    if (view === 'entities') return canAccessPbiPage('p02_companies', u);
+    if (view === 'sales_vat') return canAccessTable('vat_invoices', u) || canAccessTable('credit_terms', u) || canAccessPbiPage('p13_vat', u);
+    if (view === 'sales_analytics') return canAccessPbiPage('p18_tickets', u) || canAccessPbiPage('p04_sales', u) || canAccessPbiPage('p05_pricing', u) || canAccessPbiPage('p06_ar', u);
+    if (view === 'raw_analytics') return canViewView('raw', u) && (canAccessPbiPage('p17_jv', u) || canAccessPbiPage('p08_stock', u) || canAccessPbiPage('p07_ap', u));
+    if (view === 'fleet_analytics') return canViewView('fleet', u) && (canAccessPbiPage('p11_drivers', u) || canAccessPbiPage('p09_fuel', u) || canAccessPbiPage('p10_fleet', u));
+    if (view === 'cashflow_analytics') return canViewView('cashflow', u) && canAccessPbiPage('p14_cashflow', u);
+    if (view === 'expenses_analytics') return canViewView('expenses', u) && canAccessPbiPage('p07_ap', u);
+    if (view === 'payroll_attendance' || view === 'payroll_contracts') return canViewView('payroll', u);
+    if (view === 'payroll_analytics') return canViewView('payroll', u) && (canAccessPbiPage('p12_payroll', u) || canAccessPbiPage('p11_drivers', u));
+    if (view === 'ledger_treasury') return canViewView('ledger', u) && (canAccessTable('loans', u) || canAccessPbiPage('p15_treasury', u));
     if (UNIV_VIEW_TO_TABLE_KEY[view]) return canAccessTable(UNIV_VIEW_TO_TABLE_KEY[view], u);
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
@@ -3667,6 +3816,28 @@
     if (view === 'payroll' || view === 'sentinels' || view === 'ledger' || view === 'gl') return (pbi === 'full' || isOwner(u)) && !/Sales/i.test(role);
     if (view === 'statements') return st !== 'none';
     return true;
+  }
+
+  function getHubDef(hubId) {
+    return HUB_CATALOG.find(h => h.id === hubId) || null;
+  }
+
+  function canViewHub(hubId, u) {
+    u = u || activeUser();
+    const h = getHubDef(hubId);
+    if (!h) return canViewView(hubId, u);
+    if (hubId === 'raw') return canViewView('raw', u) || canViewView('suppliers', u);
+    if (hubId === 'fleet') return canViewView('fleet', u);
+    if (hubId === 'expenses') return canViewView('expenses', u);
+    return h.tabs.some(t => canViewView(t.view, u));
+  }
+
+  function resolveHubView(hubId, u) {
+    u = u || activeUser();
+    const h = getHubDef(hubId);
+    if (!h) return canViewView(hubId, u) ? hubId : defaultViewFor(u);
+    const first = h.tabs.find(t => canViewView(t.view, u));
+    return first ? first.view : defaultViewFor(u);
   }
 
   function canAccessPbiPage(pageId, u) {
@@ -6006,7 +6177,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('sales')}
     `;
   }
 
@@ -6686,7 +6856,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('raw')}
     `;
   }
 
@@ -7035,7 +7204,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('fleet')}
     `;
   }
 
@@ -7192,7 +7360,7 @@
         <div class="panel-card" id="listPricePanel">
           <div class="panel-head">
             <div class="panel-title"><span>LIST PRICE BENCHMARK VS. REALIZED SELLING PRICE BY GRADE</span></div>
-            <span class="panel-meta">M281 Price vs. List ${exportBtn('listPricePanel', 'Price_Benchmark')}</span>
+            <span class="panel-meta">Price vs. List ${exportBtn('listPricePanel', 'Price_Benchmark')}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
@@ -7229,7 +7397,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('pricing')}
     `;
   }
 
@@ -7479,7 +7646,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('customers')}
     `;
   }
 
@@ -7741,7 +7907,6 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('suppliers')}
     `;
   }
 
@@ -8002,14 +8167,13 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('expenses')}
     `;
   }
 
   // ==========================================================================
   // VIEW 09B: PAYROLL, ATTENDANCE, SITE ALLOWANCES & FREELANCE COMMAND (M239/M245/M247)
   // ==========================================================================
-  function renderPayroll() {
+  function renderPayroll(subMode = 'main') {
     const k = getKPI();
     const { fleet, pricing } = sentinelSlice();
     const today = SEED_DATE;
@@ -8088,9 +8252,25 @@
     });
     const filteredSal = sortRows(salFilteredBase, 'pay_sal', 'date', 'desc');
     const shownSal = filteredSal.slice(0, shownCount('pay_sal'));
-    const filteredEmp = sortRows(empAll, 'pay_emp', 'start_date', 'desc');
+    const filteredEmpBase = empAll.filter(e => {
+      if (subMode !== 'contracts') return true;
+      const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
+      if (STATE.chipFilter === 'active_emp') return !ended;
+      if (STATE.chipFilter === 'ended_emp') return ended;
+      if (STATE.chipFilter === 'freelance_emp') return /free|daily/i.test(String(e.type || ''));
+      if (STATE.chipFilter === 'app') return isAppRecord(e);
+      return true;
+    });
+    const filteredEmp = sortRows(filteredEmpBase, 'pay_emp', 'start_date', 'desc');
     const shownEmp = filteredEmp.slice(0, shownCount('pay_emp'));
-    const filteredAtt = sortRows(attAll, 'pay_att', 'date', 'desc');
+    const filteredAttBase = attAll.filter(a => {
+      if (subMode !== 'attendance') return true;
+      if (STATE.chipFilter === 'ot_att') return Number(a.overtime_hours || 0) > 0;
+      if (STATE.chipFilter === 'absent_att') return /Absent|Sick|Leave|Unpaid/i.test(String(a.status || ''));
+      if (STATE.chipFilter === 'app') return isAppRecord(a);
+      return true;
+    });
+    const filteredAtt = sortRows(filteredAttBase, 'pay_att', 'date', 'desc');
     const shownAtt = filteredAtt.slice(0, shownCount('pay_att'));
     const filteredLog = sortRows(logAll, 'pay_log', 'start_date', 'desc');
     const shownLog = filteredLog.slice(0, shownCount('pay_log'));
@@ -8125,11 +8305,15 @@
     const totalOtHrs = filteredStaff.reduce((a, r) => a + Number(r.ot_hrs || 0), 0);
     const unmatchedUsd = Number(pricing.unmatched_salary_payments_usd || 0);
 
-    return `
+    const heroTitle = subMode === 'attendance'
+      ? 'Attendance & Overtime'
+      : (subMode === 'contracts' ? 'Contracts & Allowances' : 'Payroll & Workforce');
+
+    const bannerHtml = `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
           <div class="cockpit-eyebrow">WORKFORCE &amp; PAYROLL COMMAND</div>
-          <div class="cockpit-title">Payroll &amp; Workforce</div>
+          <div class="cockpit-title">${esc(heroTitle)}</div>
         </div>
         <div class="cockpit-pills insight-grid">
           ${insightCard({
@@ -8170,28 +8354,170 @@
           })}
           ${appPill('salaries', 'amount', 'salary payments')}
         </div>
-      </div>
+      </div>`;
+
+    if (subMode === 'attendance') {
+      return `
+        ${bannerHtml}
+        <div class="panel-card" id="payAttPanel">
+          <div class="table-toolbar">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${searchBox('Search staff member, date, status, notes...')}
+              <div class="chip-bar">
+                ${chip('all', `All (${attAll.length})`)}
+                ${chip('ot_att', `With Overtime (${attAll.filter(a => Number(a.overtime_hours || 0) > 0).length})`)}
+                ${chip('absent_att', `Absent / Leave (${attAll.filter(a => /Absent|Sick|Leave|Unpaid/i.test(String(a.status || ''))).length})`)}
+                ${chip('app', 'App-entered')}
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="attendance">${ic('kiosks')} Attendance Kiosk</button>
+              ${exportBtn('payAttPanel', 'Attendance_Records')}
+              ${canEnterForm('attendance') ? '<button type="button" class="btn btn-primary" data-open-modal="attendance">+ Log Attendance</button>' : ''}
+            </div>
+          </div>
+          ${renderColFilterBar('pay_att')}
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_att', 'Date', 'date')}${th('pay_att', 'Co.', 'company')}${th('pay_att', 'Staff', 'staff')}${th('pay_att', 'Status / Type', 'status')}${th('pay_att', 'Reg Hrs', 'regular_hours', 'r')}${th('pay_att', 'OT Hrs', 'overtime_hours', 'r')}${th('pay_att', 'Late Hrs', 'late_hours', 'r')}${th('pay_att', 'Notes', 'notes')}</tr></thead>
+              <tbody>
+                ${shownAtt.map(a => `
+                  <tr class="rrow" data-rkey="attendance" data-rid="${esc(a.id)}">
+                    <td class="mono">${esc(fmtDateDMY(a.date))}${appCell(a, 'attendance')}</td>
+                    <td>${coBadge(a.company)}</td>
+                    <td><strong>${esc(a.staff)}</strong></td>
+                    <td><span class="badge ${/Absent|Sick/i.test(a.status) ? 'badge-warn' : 'badge-ok'}">${esc(a.status || 'Present')}</span></td>
+                    <td class="r">${fmtNum(a.regular_hours, 1)}</td>
+                    <td class="r">${fmtNum(a.overtime_hours, 1)}</td>
+                    <td class="r">${fmtNum(a.late_hours, 1)}</td>
+                    <td class="mu">${esc(a.notes || '—')}</td>
+                  </tr>
+                `).join('') || emptyRow(8, 'No attendance records match filter')}
+                ${showMoreRow('pay_att', filteredAtt.length, 8)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4"><b>TOTAL (${fmtNum(filteredAtt.length)} RECORDS)</b></td>
+                  <td class="r"><b>${fmtNum(filteredAtt.reduce((a, r) => a + Number(r.regular_hours || 0), 0), 1)}</b></td>
+                  <td class="r"><b>${fmtNum(filteredAtt.reduce((a, r) => a + Number(r.overtime_hours || 0), 0), 1)}</b></td>
+                  <td class="r"><b>${fmtNum(filteredAtt.reduce((a, r) => a + Number(r.late_hours || 0), 0), 1)}</b></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    if (subMode === 'contracts') {
+      return `
+        ${bannerHtml}
+        <div class="panel-card" id="payEmpPanel">
+          <div class="table-toolbar">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${searchBox('Search staff member, contract type, status...')}
+              <div class="chip-bar">
+                ${chip('all', `All (${empAll.length})`)}
+                ${chip('active_emp', `Current (${activeEmpCount})`)}
+                ${chip('ended_emp', `Ended (${empAll.length - activeEmpCount})`)}
+                ${chip('freelance_emp', `Freelance (${empAll.filter(e => /free|daily/i.test(String(e.type || ''))).length})`)}
+                ${chip('app', 'App-entered')}
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${canEnterForm('logistics') ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="logistics">+ Site Allowance</button>' : ''}
+              ${exportBtn('payEmpPanel', 'Employment_Contracts')}
+              ${canEnterForm('employment') ? '<button type="button" class="btn btn-primary" data-open-modal="employment">+ New Contract</button>' : ''}
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr>${th('pay_emp', 'Staff', 'staff')}${th('pay_emp', 'Co.', 'company')}${th('pay_emp', 'Type', 'type')}${th('pay_emp', 'Start', 'start_date')}${th('pay_emp', 'End', 'end_date')}${th('pay_emp', 'Status', 'status')}${th('pay_emp', 'Monthly ($)', 'salary_usd', 'r')}${th('pay_emp', 'Daily ($)', 'daily_rate', 'r')}</tr></thead>
+              <tbody>
+                ${shownEmp.map(e => {
+                  const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
+                  return `
+                  <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="employments" data-rid="${esc(e.id)}">
+                    <td><strong>${esc(e.staff)}</strong>${appCell(e, 'employments')}</td>
+                    <td>${coBadge(e.company)}</td>
+                    <td>${esc(e.type || 'Regular')}</td>
+                    <td class="mono">${esc(fmtDateDMY(e.start_date))}</td>
+                    <td class="mono">${esc(e.end_date ? fmtDateDMY(e.end_date) : 'Open')}</td>
+                    <td><span class="badge ${ended ? 'badge-warn' : 'badge-ok'}">${ended ? 'Ended' : (e.status || 'Current')}</span></td>
+                    <td class="r"><strong>${fmtUSD(e.salary_usd, 2)}</strong></td>
+                    <td class="r">${e.daily_rate ? fmtUSD(e.daily_rate, 2) : '—'}</td>
+                  </tr>`;
+                }).join('') || emptyRow(8, 'No contracts match filter')}
+                ${showMoreRow('pay_emp', filteredEmp.length, 8)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6"><b>TOTAL (${fmtNum(filteredEmp.length)} CONTRACTS)</b></td>
+                  <td class="r"><b>${fmtUSD(filteredEmp.reduce((a, e) => a + Number(e.salary_usd || 0), 0), 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(filteredEmp.reduce((a, e) => a + Number(e.daily_rate || 0), 0), 2)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="split-grid-2">
+          <div class="panel-card" id="payLogPanel">
+            <div class="panel-head">
+              <div class="panel-title"><span>SITE ALLOWANCE ARRANGEMENTS (MON–SUN · ${fmtNum(logAll.length)})</span></div>
+              <span class="panel-meta">${exportBtn('payLogPanel', 'Site_Allowances')} ${canEnterForm('logistics') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="logistics">+ Allowance</button>' : ''}</span>
+            </div>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead><tr>${th('pay_log', 'Staff', 'staff')}${th('pay_log', 'Site / Location', 'site')}${th('pay_log', 'Equipment', 'equipment')}${th('pay_log', 'Start', 'start_date')}${th('pay_log', 'End', 'end_date')}${th('pay_log', 'Working Days', 'working_days')}${th('pay_log', 'Daily ($)', 'daily_usd', 'r')}</tr></thead>
+                <tbody>
+                  ${shownLog.map(l => {
+                    const ended = l.end_date && String(l.end_date) < today;
+                    return `
+                    <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="logistics_allowances" data-rid="${esc(l.id)}">
+                      <td>${relLink('employments', l.staff, l.staff, true)}${appCell(l, 'logistics_allowances')}</td>
+                      <td>${l.site ? relLink('sites', l.site) : '—'}</td>
+                      <td class="mono">${l.equipment ? relLink('equipment', l.equipment) : '—'}</td>
+                      <td class="mono">${esc(fmtDateDMY(l.start_date))}</td>
+                      <td class="mono">${esc(l.end_date ? fmtDateDMY(l.end_date) : 'Open')}</td>
+                      <td>${esc(l.working_days || 'Mon–Sat')}</td>
+                      <td class="r"><strong>${fmtUSD(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500), 2)}</strong></td>
+                    </tr>`;
+                  }).join('') || emptyRow(7, 'No site allowances match filter')}
+                  ${showMoreRow('pay_log', logAll.length, 7)}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="6"><b>TOTAL (${fmtNum(logAll.length)} ARRANGEMENTS)</b></td>
+                    <td class="r"><b>${fmtUSD(logAll.reduce((a, l) => a + Number(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500) || 0), 0), 2)} / day</b></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      ${bannerHtml}
 
       <div class="panel-card" id="paySalPanel">
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search voucher #, staff member, payroll month, contract type, site...')}
+            ${searchBox('Search voucher #, staff member, payroll month, method...')}
             <div class="chip-bar">
               ${chip('all', `All (${salAll.length})`)}
               ${chip('cash_sal', 'Cash')}
               ${chip('bank_sal', 'Bank / Transfer')}
               ${chip('unmatched_sal', `No Contract (${unmatchedRows.length})`)}
-              ${chip('salaries', `Salary Payments (${salAll.length})`)}
-              ${chip('attendance', `Attendance (${attAll.length})`)}
-              ${chip('contracts', `Contracts (${empAll.length})`)}
-              ${chip('allowances', `Site Allowances (${logAll.length})`)}
-              ${chip('register', `Staff Register (${staffRows.length})`)}
               ${chip('app', 'App-entered')}
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="10">${ic('printer')} Payroll RDL (#10)</button>
-            ${canEnterForm('attendance') ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="attendance">+ Log Attendance</button>' : ''}
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="payroll_attendance">Attendance (${fmtNum(attAll.length)}) →</button>
             ${exportBtn('paySalPanel', 'Salary_Disbursements')}
             ${canEnterForm('salary') ? '<button type="button" class="btn btn-primary" data-open-modal="salary">+ Pay Salary</button>' : ''}
           </div>
@@ -8260,45 +8586,6 @@
       </div>
 
       <div class="split-grid-2">
-        ${(['all', 'attendance', 'cash_sal', 'bank_sal', 'unmatched_sal', 'app'].includes(STATE.chipFilter)) ? `
-        <div class="panel-card" id="payAttPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>ATTENDANCE, OVERTIME &amp; LEAVE RECORDS (${fmtNum(attAll.length)})</span></div>
-            <span class="panel-meta">${exportBtn('payAttPanel', 'Attendance_Records')} ${canEnterForm('attendance') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="attendance">+ Attendance</button>' : ''}</span>
-          </div>
-          ${renderColFilterBar('pay_att')}
-          <div class="table-wrap">
-            <table class="ledger-table">
-              <thead><tr>${th('pay_att', 'Date', 'date')}${th('pay_att', 'Co.', 'company')}${th('pay_att', 'Staff', 'staff')}${th('pay_att', 'Status / Type', 'status')}${th('pay_att', 'Reg Hrs', 'regular_hours', 'r')}${th('pay_att', 'OT Hrs', 'overtime_hours', 'r')}${th('pay_att', 'Late Hrs', 'late_hours', 'r')}${th('pay_att', 'Notes', 'notes')}</tr></thead>
-              <tbody>
-                ${shownAtt.map(a => `
-                  <tr class="rrow" data-rkey="attendance" data-rid="${esc(a.id)}">
-                    <td class="mono">${esc(fmtDateDMY(a.date))}${appCell(a, 'attendance')}</td>
-                    <td>${coBadge(a.company)}</td>
-                    <td><strong>${esc(a.staff)}</strong></td>
-                    <td><span class="badge ${/Absent|Sick/i.test(a.status) ? 'badge-warn' : 'badge-ok'}">${esc(a.status || 'Present')}</span></td>
-                    <td class="r">${fmtNum(a.regular_hours, 1)}</td>
-                    <td class="r">${fmtNum(a.overtime_hours, 1)}</td>
-                    <td class="r">${fmtNum(a.late_hours, 1)}</td>
-                    <td class="mu">${esc(a.notes || '—')}</td>
-                  </tr>
-                `).join('') || emptyRow(8, 'No attendance records match filter')}
-                ${showMoreRow('pay_att', attAll.length, 8)}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="4"><b>TOTAL (${fmtNum(attAll.length)} RECORDS)</b></td>
-                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.regular_hours || 0), 0), 1)}</b></td>
-                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.overtime_hours || 0), 0), 1)}</b></td>
-                  <td class="r"><b>${fmtNum(attAll.reduce((a, r) => a + Number(r.late_hours || 0), 0), 1)}</b></td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>` : ''}
-
-        ${(['all', 'register', 'cash_sal', 'bank_sal', 'unmatched_sal', 'app'].includes(STATE.chipFilter)) ? `
         <div class="panel-card" id="payStaffRegPanel">
           <div class="panel-head">
             <div>
@@ -8358,81 +8645,8 @@
               </tfoot>
             </table>
           </div>
-        </div>` : ''}
-
-        ${(['all', 'contracts', 'cash_sal', 'bank_sal', 'unmatched_sal', 'app'].includes(STATE.chipFilter)) ? `
-        <div class="panel-card" id="payEmpPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>EMPLOYMENT &amp; FREELANCE CONTRACTS (${fmtNum(empAll.length)})</span></div>
-            <span class="panel-meta">Amber = Ended contract (m244) ${exportBtn('payEmpPanel', 'Employment_Contracts')} ${canEnterForm('employment') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="employment">+ Contract</button>' : ''}</span>
-          </div>
-          <div class="table-wrap">
-            <table class="ledger-table">
-              <thead><tr>${th('pay_emp', 'Staff', 'staff')}${th('pay_emp', 'Co.', 'company')}${th('pay_emp', 'Type', 'type')}${th('pay_emp', 'Start', 'start_date')}${th('pay_emp', 'End', 'end_date')}${th('pay_emp', 'Status', 'status')}${th('pay_emp', 'Monthly ($)', 'salary_usd', 'r')}${th('pay_emp', 'Daily ($)', 'daily_rate', 'r')}</tr></thead>
-              <tbody>
-                ${shownEmp.map(e => {
-                  const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
-                  return `
-                  <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="employments" data-rid="${esc(e.id)}">
-                    <td><strong>${esc(e.staff)}</strong>${appCell(e, 'employments')}</td>
-                    <td>${coBadge(e.company)}</td>
-                    <td>${esc(e.type || 'Regular')}</td>
-                    <td class="mono">${esc(fmtDateDMY(e.start_date))}</td>
-                    <td class="mono">${esc(e.end_date ? fmtDateDMY(e.end_date) : 'Open')}</td>
-                    <td><span class="badge ${ended ? 'badge-warn' : 'badge-ok'}">${ended ? 'Ended' : (e.status || 'Current')}</span></td>
-                    <td class="r"><strong>${fmtUSD(e.salary_usd, 2)}</strong></td>
-                    <td class="r">${e.daily_rate ? fmtUSD(e.daily_rate, 2) : '—'}</td>
-                  </tr>`;
-                }).join('') || emptyRow(8, 'No contracts match filter')}
-                ${showMoreRow('pay_emp', empAll.length, 8)}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="6"><b>TOTAL (${fmtNum(empAll.length)} CONTRACTS)</b></td>
-                  <td class="r"><b>${fmtUSD(empAll.reduce((a, e) => a + Number(e.salary_usd || 0), 0), 2)}</b></td>
-                  <td class="r"><b>${fmtUSD(empAll.reduce((a, e) => a + Number(e.daily_rate || 0), 0), 2)}</b></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>` : ''}
-
-        ${(['all', 'allowances', 'cash_sal', 'bank_sal', 'unmatched_sal', 'app'].includes(STATE.chipFilter)) ? `
-        <div class="panel-card" id="payLogPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>SITE ALLOWANCE ARRANGEMENTS (MON–SUN · ${fmtNum(logAll.length)})</span></div>
-            <span class="panel-meta">${exportBtn('payLogPanel', 'Site_Allowances')} ${canEnterForm('logistics') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="logistics">+ Allowance</button>' : ''}</span>
-          </div>
-          <div class="table-wrap">
-            <table class="ledger-table">
-              <thead><tr>${th('pay_log', 'Staff', 'staff')}${th('pay_log', 'Site / Location', 'site')}${th('pay_log', 'Equipment', 'equipment')}${th('pay_log', 'Start', 'start_date')}${th('pay_log', 'End', 'end_date')}${th('pay_log', 'Working Days', 'working_days')}${th('pay_log', 'Daily ($)', 'daily_usd', 'r')}</tr></thead>
-              <tbody>
-                ${shownLog.map(l => {
-                  const ended = l.end_date && String(l.end_date) < today;
-                  return `
-                  <tr class="rrow ${ended ? 'pbi-row-amber' : ''}" data-rkey="logistics_allowances" data-rid="${esc(l.id)}">
-                    <td>${relLink('employments', l.staff, l.staff, true)}${appCell(l, 'logistics_allowances')}</td>
-                    <td>${l.site ? relLink('sites', l.site) : '—'}</td>
-                    <td class="mono">${l.equipment ? relLink('equipment', l.equipment) : '—'}</td>
-                    <td class="mono">${esc(fmtDateDMY(l.start_date))}</td>
-                    <td class="mono">${esc(l.end_date ? fmtDateDMY(l.end_date) : 'Open')}</td>
-                    <td>${esc(l.working_days || 'Mon–Sat')}</td>
-                    <td class="r"><strong>${fmtUSD(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500), 2)}</strong></td>
-                  </tr>`;
-                }).join('') || emptyRow(7, 'No site allowances match filter')}
-                ${showMoreRow('pay_log', logAll.length, 7)}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="6"><b>TOTAL (${fmtNum(logAll.length)} ARRANGEMENTS)</b></td>
-                  <td class="r"><b>${fmtUSD(logAll.reduce((a, l) => a + Number(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500) || 0), 0), 2)} / day</b></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>` : ''}
+        </div>
       </div>
-      ${moduleAnalyticsHtml('payroll')}
     `;
   }
 
@@ -9151,7 +9365,423 @@
           </div>
         </div>
       </div>
-      ${moduleAnalyticsHtml('ledger')}
+    `;
+  }
+
+  // ==========================================================================
+  // HUB SUB-TAB DEDICATED RENDERERS (ENTITY COMPARE · VAT & CREDIT · ANALYTICS · TREASURY)
+  // ==========================================================================
+  function renderEntitiesComparison() {
+    const pbiHtml = window.MFG_PBI && typeof window.MFG_PBI.renderPbiStudio === 'function'
+      ? window.MFG_PBI.renderPbiStudio({
+          STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI,
+          filterRecords, buildSentinelItems, exportBtn, nextTicketNo,
+          canEnterForm, canAccessPbiPage, allowedCompanyNames,
+          SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog,
+          getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml
+        }, 'p02_companies', true)
+      : '';
+    return `
+      <div class="cockpit-banner">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">MULTI-ENTITY CONSOLIDATION &amp; SIDE-BY-SIDE PERFORMANCE</div>
+          <div class="cockpit-title">Entity Comparison</div>
+        </div>
+      </div>
+      <div class="panel-card" id="entitiesComparePanel" style="padding:14px 16px">
+        ${pbiHtml}
+      </div>
+    `;
+  }
+
+  function renderHubAnalyticsView(modKey) {
+    const title = VIEW_TITLES[modKey] || 'Module Analytics';
+    return `
+      <div class="cockpit-banner">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">DEDICATED MODULE ANALYTICS &amp; INSIGHTS</div>
+          <div class="cockpit-title">${esc(title)}</div>
+        </div>
+      </div>
+      ${moduleAnalyticsHtml(modKey)}
+    `;
+  }
+
+  function renderSalesVatAndCredit() {
+    const k = getKPI();
+    const today = SEED_DATE;
+    const vatBase = filterRecords(SEED.records.vat_invoices || []);
+    const credBase = filterRecords(SEED.records.credit_terms || [], { ignorePeriod: true });
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+    const vatRows = sortRows(vatBase.filter(v => {
+      if (STATE.chipFilter === 'wtc_vat') return v.company === 'WTC';
+      if (STATE.chipFilter === 'bbc_vat') return v.company === 'BBConstruction';
+      if (STATE.chipFilter === 'app') return isAppRecord(v);
+      return true;
+    }), 'vatinv', 'date', 'desc');
+    const shownVat = vatRows.slice(0, shownCount('vatinv'));
+    const credRows = sortRows(credBase, 'credterm', 'credit_limit', 'desc');
+    const shownCred = credRows.slice(0, shownCount('credterm'));
+
+    const sumNet = vatRows.reduce((a, r) => a + Number(r.net_amount || 0), 0);
+    const sumVat = vatRows.reduce((a, r) => a + Number(r.vat_amount || 0), 0);
+    const sumTtc = vatRows.reduce((a, r) => a + Number(r.total_ttc || (Number(r.net_amount || 0) + Number(r.vat_amount || 0))), 0);
+    const activeCred = credBase.filter(c => !c.end_date || String(c.end_date) >= today).length;
+    const sumLimit = credRows.reduce((a, c) => a + Number(c.credit_limit || 0), 0);
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">11% OUTPUT VAT TAX INVOICES, QUARTERLY MOF &amp; CUSTOMER CREDIT POLICIES</div>
+          <div class="cockpit-title">VAT &amp; Credit</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: '11% Output VAT (4427)',
+            badge: `${fmtNum(vatRows.length)} Tax Invoices`,
+            badgeCls: 'brass',
+            val: fmtUSD(k.sales_vat != null ? k.sales_vat : sumVat, 2),
+            valCls: 'brass',
+            sub: `Header net <b>${fmtUSD(sumNet, 0)}</b> · Header VAT <b>${fmtUSD(sumVat, 0)}</b>`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Taxable Invoiced TTC',
+            badge: '11% Statutory Rate',
+            badgeCls: 'emerald',
+            val: fmtUSD(sumTtc, 0),
+            valCls: 'emerald',
+            sub: `Across <b>${fmtNum(new Set(vatRows.map(v => v.customer).filter(Boolean)).size)}</b> VAT-registered client accounts`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'Active Credit Policies',
+            badge: `${fmtNum(activeCred)} / ${fmtNum(credBase.length)} Active`,
+            val: `${fmtNum(activeCred)} <small>Terms</small>`,
+            sub: `Authorized credit lines totaling <b>${fmtUSD(sumLimit, 0)}</b>`,
+            tone: 'steel'
+          })}
+          ${insightCard({
+            label: 'Open AR vs Credit Limit',
+            badge: `DSO ${fmtNum(k.dso_days || 0, 0)}d`,
+            badgeCls: Number(k.ar_overdue || 0) > 0 ? 'amber' : 'emerald',
+            val: fmtUSD(k.ar_balance || 0, 0),
+            valCls: Number(k.ar_overdue || 0) > 0 ? 'amber' : 'emerald',
+            sub: `Overdue &gt;30d: <b>${fmtUSD(k.ar_overdue || 0, 0)}</b>`,
+            tone: Number(k.ar_overdue || 0) > 0 ? 'amber' : 'emerald'
+          })}
+        </div>
+      </div>
+
+      <div class="panel-card" id="vatInvPanel">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search invoice #, customer, notes...')}
+            <div class="chip-bar">
+              ${chip('all', `All (${vatBase.length})`)}
+              ${chip('wtc_vat', 'WTC')}
+              ${chip('bbc_vat', 'BBConstruction')}
+              ${chip('app', 'App-entered')}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="18">${ic('printer')} VAT Return RDL (#18)</button>
+            ${canEnterForm('creditterm') ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="creditterm">+ Credit Term</button>' : ''}
+            ${exportBtn('vatInvPanel', 'VAT_11_Invoices')}
+            ${canEnterForm('vatinvoice') ? '<button type="button" class="btn btn-primary" data-open-modal="vatinvoice">+ New VAT Invoice</button>' : ''}
+          </div>
+        </div>
+        ${renderColFilterBar('vatinv')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('vatinv', 'Invoice #', 'invoice_no')}${th('vatinv', 'Date', 'date')}${th('vatinv', 'Co.', 'company')}${th('vatinv', 'Customer', 'customer')}
+                ${th('vatinv', 'Tickets', 'tickets_count', 'r')}${th('vatinv', 'Net ($)', 'net_amount', 'r')}${th('vatinv', 'VAT 11% ($)', 'vat_amount', 'r')}${th('vatinv', 'Total TTC ($)', 'total_ttc', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownVat.map(v => {
+                const ttc = Number(v.total_ttc != null ? v.total_ttc : (Number(v.net_amount || 0) + Number(v.vat_amount || 0)));
+                return `
+                  <tr class="rrow" data-rkey="vat_invoices" data-rid="${esc(v.id)}">
+                    <td class="mono"><strong>${esc(v.invoice_no || v.name || '—')}</strong>${appCell(v, 'vat_invoices')}</td>
+                    <td class="mono">${esc(fmtDateDMY(v.date))}</td>
+                    <td>${coBadge(v.company)}</td>
+                    <td>${v.customer ? relLink('customers', v.customer, v.customer, true) : '—'}</td>
+                    <td class="r">${fmtNum(v.tickets_count || 0)}</td>
+                    <td class="r">${fmtUSD(v.net_amount || 0, 2)}</td>
+                    <td class="r">${fmtUSD(v.vat_amount || 0, 2)}</td>
+                    <td class="r"><strong>${fmtUSD(ttc, 2)}</strong></td>
+                  </tr>
+                `;
+              }).join('') || emptyRow(8, 'No VAT invoices match the active filter')}
+              ${showMoreRow('vatinv', vatRows.length, 8)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4"><b>TOTAL (${fmtNum(vatRows.length)} VAT INVOICES)</b></td>
+                <td class="r"><b>${fmtNum(vatRows.reduce((a, r) => a + Number(r.tickets_count || 0), 0))}</b></td>
+                <td class="r"><b>${fmtUSD(sumNet, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumVat, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumTtc, 2)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="split-grid-2">
+        <div class="panel-card" id="creditTermsPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>CUSTOMER CREDIT TERMS &amp; LIMITS (${fmtNum(credRows.length)} POLICIES)</span></div>
+            <span class="panel-meta">${exportBtn('creditTermsPanel', 'Customer_Credit_Terms')} ${canEnterForm('creditterm') ? '<button type="button" class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="creditterm">+ Credit Term</button>' : ''}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('credterm', 'Policy', 'name')}${th('credterm', 'Co.', 'company')}${th('credterm', 'Customer', 'customer')}
+                  ${th('credterm', 'Days', 'credit_days', 'r')}${th('credterm', 'Limit ($)', 'credit_limit', 'r')}${th('credterm', 'Start', 'start_date')}<th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${shownCred.map(c => {
+                  const active = !c.end_date || String(c.end_date) >= today;
+                  return `
+                    <tr class="rrow" data-rkey="credit_terms" data-rid="${esc(c.id)}">
+                      <td class="mono"><strong>${esc(c.name || '—')}</strong>${appCell(c, 'credit_terms')}</td>
+                      <td>${coBadge(c.company)}</td>
+                      <td>${c.customer ? relLink('customers', c.customer, c.customer, true) : '—'}</td>
+                      <td class="r">${fmtNum(c.credit_days || 0)} d</td>
+                      <td class="r"><strong>${fmtUSD(c.credit_limit || 0, 0)}</strong></td>
+                      <td class="mono">${esc(fmtDateDMY(c.start_date))}</td>
+                      <td><span class="badge ${active ? 'badge-ok' : 'badge-warn'}">${active ? 'Active' : 'Ended'}</span></td>
+                    </tr>
+                  `;
+                }).join('') || emptyRow(7, 'No credit policies defined for this scope')}
+                ${showMoreRow('credterm', credRows.length, 7)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4"><b>TOTAL (${fmtNum(credRows.length)} CREDIT POLICIES)</b></td>
+                  <td class="r"><b>${fmtUSD(sumLimit, 0)}</b></td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+      ${moduleAnalyticsHtml('sales_vat')}
+    `;
+  }
+
+  function renderLedgerTreasury() {
+    const loansAll = filterRecords(SEED.records.loans || [], { ignorePeriod: true });
+    const lsetAll = filterRecords(SEED.records.loan_settlements || []);
+    const extAll = filterRecords(SEED.records.external_movements || []);
+    const fxAll = filterRecords(SEED.records.conversions || []);
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+
+    const loanRows = sortRows(loansAll.filter(l => {
+      if (STATE.chipFilter === 'in_loan') return /in|borrow|received/i.test(String(l.direction || ''));
+      if (STATE.chipFilter === 'out_loan') return /out|lend|advance/i.test(String(l.direction || ''));
+      if (STATE.chipFilter === 'app') return isAppRecord(l);
+      return true;
+    }), 'tr_loans', 'principal', 'desc');
+    const shownLoans = loanRows.slice(0, shownCount('tr_loans'));
+
+    const combinedMoves = lsetAll.map(s => ({
+      id: s.id, rkey: 'loan_settlements', date: s.date, company: s.company,
+      kind: s.type || 'Loan Settlement', party: s.loan || 'Partner Loan',
+      method: s.method || 'Cash', usd_amount: Number(s.usd_amount || 0), raw: s
+    })).concat(extAll.map(x => ({
+      id: x.id, rkey: 'external_movements', date: x.date, company: x.company,
+      kind: x.direction || 'External Treasury', party: x.counterparty || 'Partner / Bank',
+      method: x.method || 'Transfer', usd_amount: Number(x.usd_amount || 0), raw: x
+    })));
+    const moveRows = sortRows(combinedMoves, 'tr_moves', 'date', 'desc');
+    const shownMoves = moveRows.slice(0, shownCount('tr_moves'));
+
+    const fxRows = sortRows(fxAll, 'tr_fx', 'date', 'desc');
+    const shownFx = fxRows.slice(0, shownCount('tr_fx'));
+
+    const sumPrincipal = loanRows.reduce((a, l) => a + Number(l.principal || 0), 0);
+    const sumSettled = loanRows.reduce((a, l) => a + Number(l.settled_amount || 0), 0);
+    const sumMoves = moveRows.reduce((a, m) => a + Number(m.usd_amount || 0), 0);
+    const sumFxUsd = fxRows.reduce((a, f) => a + Number(f.usd_amount || 0), 0);
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">PARTNER LOANS, REPAYMENTS, EXTERNAL TREASURY &amp; USD ↔ LBP FX</div>
+          <div class="cockpit-title">Loans &amp; FX Treasury</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'Partner Loans & Advances',
+            badge: `${fmtNum(loansAll.length)} Facilities`,
+            badgeCls: 'brass',
+            val: fmtUSD(sumPrincipal, 0),
+            valCls: 'brass',
+            sub: `Settled to date <b>${fmtUSD(sumSettled, 0)}</b> · Net <b>${fmtUSD(sumPrincipal - sumSettled, 0)}</b>`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Loan Settlements',
+            badge: `${fmtNum(lsetAll.length)} Repayments`,
+            badgeCls: 'emerald',
+            val: fmtUSD(lsetAll.reduce((a, s) => a + Number(s.usd_amount || 0), 0), 0),
+            valCls: 'emerald',
+            sub: `Principal drawdowns &amp; repayments in active scope`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'External Treasury',
+            badge: `${fmtNum(extAll.length)} Movements`,
+            val: fmtUSD(extAll.reduce((a, x) => a + Number(x.usd_amount || 0), 0), 0),
+            sub: `Partner injections, withdrawals &amp; inter-account transfers`,
+            tone: 'steel'
+          })}
+          ${insightCard({
+            label: 'USD ↔ LBP FX Desk',
+            badge: `${fmtNum(fxAll.length)} Conversions`,
+            badgeCls: 'amber',
+            val: fmtUSD(sumFxUsd, 0),
+            valCls: 'amber',
+            sub: `Dual-currency treasury exchange conversions`,
+            tone: 'amber'
+          })}
+        </div>
+      </div>
+
+      <div class="panel-card" id="treasuryLoansPanel">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search loan code, counterparty, direction, notes...')}
+            <div class="chip-bar">
+              ${chip('all', `All (${loansAll.length})`)}
+              ${chip('in_loan', 'Inflow / Borrowed')}
+              ${chip('out_loan', 'Outflow / Advance')}
+              ${chip('app', 'App-entered')}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${exportBtn('treasuryLoansPanel', 'Partner_Loans')}
+            ${canEnterForm('treasury') ? '<button type="button" class="btn btn-primary" data-open-modal="treasury">+ New Treasury / Loan</button>' : ''}
+          </div>
+        </div>
+        ${renderColFilterBar('tr_loans')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('tr_loans', 'Loan / Facility', 'name')}${th('tr_loans', 'Co.', 'company')}${th('tr_loans', 'Counterparty', 'counterparty')}
+                ${th('tr_loans', 'Direction', 'direction')}${th('tr_loans', 'Principal ($)', 'principal', 'r')}${th('tr_loans', 'Settled ($)', 'settled_amount', 'r')}${th('tr_loans', 'Start Date', 'start_date')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownLoans.map(l => `
+                <tr class="rrow" data-rkey="loans" data-rid="${esc(l.id)}">
+                  <td class="mono"><strong>${esc(l.name || '—')}</strong>${appCell(l, 'loans')}</td>
+                  <td>${coBadge(l.company)}</td>
+                  <td><strong>${esc(l.counterparty || '—')}</strong></td>
+                  <td><span class="badge badge-info">${esc(l.direction || 'Loan')}</span></td>
+                  <td class="r"><strong>${fmtUSD(l.principal || 0, 2)}</strong></td>
+                  <td class="r">${fmtUSD(l.settled_amount || 0, 2)}</td>
+                  <td class="mono">${esc(fmtDateDMY(l.start_date))}</td>
+                </tr>
+              `).join('') || emptyRow(7, 'No loans or advances match the active filter')}
+              ${showMoreRow('tr_loans', loanRows.length, 7)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4"><b>TOTAL (${fmtNum(loanRows.length)} LOANS &amp; ADVANCES)</b></td>
+                <td class="r"><b>${fmtUSD(sumPrincipal, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(sumSettled, 2)}</b></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="split-grid-2">
+        <div class="panel-card" id="treasuryExtPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>LOAN SETTLEMENTS &amp; EXTERNAL MOVEMENTS (${fmtNum(moveRows.length)})</span></div>
+            <span class="panel-meta">${exportBtn('treasuryExtPanel', 'Treasury_Movements')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('tr_moves', 'Date', 'date')}${th('tr_moves', 'Co.', 'company')}${th('tr_moves', 'Type', 'kind')}
+                  ${th('tr_moves', 'Counterparty / Loan', 'party')}${th('tr_moves', 'Method', 'method')}${th('tr_moves', 'USD ($)', 'usd_amount', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${shownMoves.map(mRow => `
+                  <tr class="rrow" data-rkey="${esc(mRow.rkey)}" data-rid="${esc(mRow.id)}">
+                    <td class="mono">${esc(fmtDateDMY(mRow.date))}${appCell(mRow.raw, mRow.rkey)}</td>
+                    <td>${coBadge(mRow.company)}</td>
+                    <td><span class="badge badge-info">${esc(mRow.kind)}</span></td>
+                    <td><strong>${esc(mRow.party)}</strong></td>
+                    <td>${esc(mRow.method)}</td>
+                    <td class="r"><strong>${fmtUSD(mRow.usd_amount, 2)}</strong></td>
+                  </tr>
+                `).join('') || emptyRow(6, 'No treasury movements in this period')}
+                ${showMoreRow('tr_moves', moveRows.length, 6)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="5"><b>TOTAL (${fmtNum(moveRows.length)} MOVEMENTS)</b></td>
+                  <td class="r"><b>${fmtUSD(sumMoves, 2)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="treasuryFxPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>USD ↔ LBP FX CONVERSIONS (${fmtNum(fxRows.length)})</span></div>
+            <span class="panel-meta">${exportBtn('treasuryFxPanel', 'FX_Conversions')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('tr_fx', 'Date', 'date')}${th('tr_fx', 'Co.', 'company')}${th('tr_fx', 'Pair', 'from_currency')}
+                  ${th('tr_fx', 'USD ($)', 'usd_amount', 'r')}${th('tr_fx', 'LBP (LL)', 'lbp_amount', 'r')}${th('tr_fx', 'Rate', 'exchange_rate', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${shownFx.map(f => `
+                  <tr class="rrow" data-rkey="conversions" data-rid="${esc(f.id)}">
+                    <td class="mono">${esc(fmtDateDMY(f.date))}${appCell(f, 'conversions')}</td>
+                    <td>${coBadge(f.company)}</td>
+                    <td class="mono">${esc((f.from_currency || 'USD') + ' → ' + (f.to_currency || 'LBP'))}</td>
+                    <td class="r"><strong>${fmtUSD(f.usd_amount || 0, 2)}</strong></td>
+                    <td class="r mono">${fmtNum(f.lbp_amount || 0, 0)}</td>
+                    <td class="r mono">${fmtNum(f.exchange_rate || 89500, 0)}</td>
+                  </tr>
+                `).join('') || emptyRow(6, 'No FX conversions in this period')}
+                ${showMoreRow('tr_fx', fxRows.length, 6)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL (${fmtNum(fxRows.length)} CONVERSIONS)</b></td>
+                  <td class="r"><b>${fmtUSD(sumFxUsd, 2)}</b></td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+      ${moduleAnalyticsHtml('ledger_treasury')}
     `;
   }
 
@@ -17963,23 +18593,34 @@
   // ==========================================================================
   const VIEW_TITLES = {
     overview: 'Executive Overview',
+    entities: 'Entity Comparison',
     pbi: 'Analytics & Insights',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
     kiosks: 'Kiosk Terminals',
     sales: 'Sales & Deliveries',
+    sales_vat: 'VAT & Credit',
+    sales_analytics: 'Sales Analytics',
     raw: 'Material & Transportation',
+    raw_analytics: 'JV & Stock Analytics',
     fleet: 'Fleet & Diesel Control',
+    fleet_analytics: 'Fleet & Driver Analytics',
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
+    cashflow_analytics: 'Cash Flow Analytics',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
     ap: 'Suppliers & Payables',
     expenses: 'Expenses & Overhead',
+    expenses_analytics: 'Overhead Analytics',
     payroll: 'Payroll & Workforce',
+    payroll_attendance: 'Attendance & Overtime',
+    payroll_contracts: 'Contracts & Allowances',
+    payroll_analytics: 'Workforce Analytics',
     ledger: 'General Ledger & SOA',
     gl: 'General Ledger & SOA',
+    ledger_treasury: 'Loans & FX Treasury',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
     reg_sites: 'Sites',
@@ -17993,23 +18634,34 @@
   };
   const VIEW_MOBILE_TITLES = {
     overview: 'Executive Overview',
+    entities: 'Entity Comparison',
     pbi: 'Analytics & Insights',
     tables: 'Tables & Registers',
     sentinels: 'AI Sentinels & Audit',
     kiosks: 'Kiosk Terminals',
     sales: 'Sales & Deliveries',
+    sales_vat: 'VAT & Credit',
+    sales_analytics: 'Sales Analytics',
     raw: 'Material & Transportation',
+    raw_analytics: 'JV & Stock Analytics',
     fleet: 'Fleet & Diesel Control',
+    fleet_analytics: 'Fleet & Driver Analytics',
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
+    cashflow_analytics: 'Cash Flow Analytics',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
     ap: 'Suppliers & Payables',
     expenses: 'Expenses & Overhead',
+    expenses_analytics: 'Overhead Analytics',
     payroll: 'Payroll & Workforce',
+    payroll_attendance: 'Attendance & Overtime',
+    payroll_contracts: 'Contracts & Allowances',
+    payroll_analytics: 'Workforce Analytics',
     ledger: 'General Ledger & SOA',
     gl: 'General Ledger & SOA',
+    ledger_treasury: 'Loans & FX Treasury',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
     reg_sites: 'Sites',
@@ -18325,7 +18977,8 @@
       : `All Assigned (${allowedNames.length})`;
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
-      btn.hidden = !canViewView(btn.getAttribute('data-view'), user);
+      const hubId = btn.getAttribute('data-hub') || btn.getAttribute('data-view');
+      btn.hidden = !canViewHub(hubId, user);
     });
     if (!canViewView(STATE.view, user)) STATE.view = defaultViewFor(user);
 
@@ -18668,7 +19321,21 @@
       const kf = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? (STATE.kioskFuelSubmode === 'refill' ? 'expense' : 'fuel') : (STATE.activeKiosk === 'attendance' ? 'attendance' : 'sales'));
       if (canEnterForm(kf, user)) return kf;
     }
-    const map = { kiosks: 'sales', sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', cashflow: 'receipt', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
+    const map = {
+      kiosks: 'sales', sales: 'sales', sales_vat: 'vatinvoice', sales_analytics: 'sales',
+      raw: 'raw', raw_analytics: 'raw',
+      fleet: 'fuel', fleet_analytics: 'fuel',
+      pricing: 'pricerule',
+      cashflow: 'receipt', cashflow_analytics: 'receipt',
+      customers: 'receipt', ar: 'receipt',
+      suppliers: 'settlement', ap: 'settlement',
+      expenses: 'expense', expenses_analytics: 'expense',
+      payroll: 'salary', payroll_attendance: 'attendance', payroll_contracts: 'employment', payroll_analytics: 'salary',
+      ledger: 'treasury', gl: 'treasury', ledger_treasury: 'treasury',
+      tables: 'pricerule',
+      reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site',
+      reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense'
+    };
     let preferred = map[view] || 'sales';
     if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
       const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
@@ -18687,52 +19354,18 @@
     const el = $('mobileSubnav');
     if (!el) return;
     const v = STATE.view;
-    let group = 'exec';
-    if (['kiosks', 'sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
-    else if (['cashflow', 'customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
+    const activeHubId = VIEW_TO_HUB[v] || 'overview';
+    const activeHub = getHubDef(activeHubId) || HUB_CATALOG[0];
+    const group = (activeHub && activeHub.group) || 'exec';
 
-    const pbiCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES))
-      ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length
-      : 20;
-    const tblCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG))
-      ? window.MFG_PBI.TABLE_CATALOG.filter(t => canAccessTable(t.key, user)).length
-      : 34;
-    const stCount = (window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG))
-      ? window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, user)).length
-      : 22;
-
-    const specs = {
-      exec: [
-        { view: 'overview', label: VIEW_TITLES.overview, pill: 'Live' },
-        { view: 'pbi', label: VIEW_TITLES.pbi, pill: String(pbiCount) },
-        { view: 'tables', label: VIEW_TITLES.tables, pill: String(tblCount) },
-        { view: 'sentinels', label: VIEW_TITLES.sentinels, pill: String(sentinelsOpen) },
-        { view: 'statements', label: VIEW_TITLES.statements, pill: String(stCount) },
-        { view: 'users', label: VIEW_TITLES.users, pill: String(STATE.users.length) }
-      ],
-      dispatch: [
-        { view: 'kiosks', label: VIEW_TITLES.kiosks, pill: '4' },
-        { view: 'sales', label: VIEW_TITLES.sales, pill: k.loads != null ? fmtNum(k.loads) : '' },
-        { view: 'raw', label: VIEW_TITLES.raw, pill: k.raw_loads != null ? fmtNum(k.raw_loads) : '' },
-        { view: 'fleet', label: VIEW_TITLES.fleet, pill: k.active_equip != null ? fmtNum(k.active_equip) : '' },
-        { view: 'pricing', label: VIEW_TITLES.pricing, pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
-      ],
-      books: [
-        { view: 'cashflow', label: VIEW_TITLES.cashflow, pill: fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) },
-        { view: 'customers', match: ['customers', 'ar'], label: VIEW_TITLES.customers, pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
-        { view: 'suppliers', match: ['suppliers', 'ap'], label: VIEW_TITLES.suppliers, pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
-        { view: 'expenses', label: VIEW_TITLES.expenses, pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
-        { view: 'payroll', label: VIEW_TITLES.payroll, pill: k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : '' },
-        { view: 'ledger', match: ['ledger', 'gl'], label: VIEW_TITLES.ledger, pill: k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? '$0' : '' }
-      ]
-    };
-
-    const items = (specs[group] || specs.exec).filter(it => canViewView(it.view, user));
-    el.innerHTML = items.map(it => {
-      const on = (it.match || [it.view]).includes(v);
-      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}" title="${esc(it.label)}"><i class="m-subnav-ico" aria-hidden="true">${ic(it.view)}</i><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
+    const hubsInGroup = HUB_CATALOG.filter(h => h.group === group && canViewHub(h.id, user));
+    el.innerHTML = hubsInGroup.map(h => {
+      const on = h.id === activeHubId;
+      const firstTab = h.tabs.find(t => canViewView(t.view, user)) || h.tabs[0];
+      const rawPill = firstTab && typeof firstTab.pillFn === 'function' ? firstTab.pillFn(user, k, sentinelsOpen) : '';
+      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-hub="${esc(h.id)}" data-subnav-view="${esc(resolveHubView(h.id, user))}" title="${esc(h.title)}"><i class="m-subnav-ico" aria-hidden="true">${ic(h.id)}</i><span>${esc(h.title)}</span>${rawPill ? `<em>${esc(rawPill)}</em>` : ''}</button>`;
     }).join('');
-    el.querySelectorAll('[data-subnav-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-subnav-view'))));
+    el.querySelectorAll('[data-subnav-hub]').forEach(btn => btn.addEventListener('click', () => clickHub(btn.getAttribute('data-subnav-hub'))));
 
     // Sync Mobile Bottom Dock active states
     const dOver = $('dockBtnOverview'), dDisp = $('dockBtnDispatch'), dBooks = $('dockBtnBooks'), dEntry = $('mobileDockEntryBtn'), dEntryLbl = $('mobileDockEntryLabel');
@@ -18742,12 +19375,35 @@
     if (dEntry && dEntryLbl) {
       if (canEnterAny(user)) {
         dEntry.hidden = false;
-        const formLabels = { sales: 'Post Ticket', raw: 'Post Raw', fuel: 'Log Fuel', receipt: 'Post Receipt', settlement: 'Settle AP', expense: 'Post Expense', salary: 'Pay Salary' };
+        const formLabels = {
+          sales: 'Post Ticket', raw: 'Post Raw', fuel: 'Log Fuel', receipt: 'Post Receipt',
+          settlement: 'Settle AP', expense: 'Post Expense', salary: 'Pay Salary',
+          vatinvoice: 'Post VAT Inv', attendance: 'Log Attendance', employment: 'New Contract',
+          treasury: 'Post Treasury', pricerule: 'New Agreement'
+        };
         dEntryLbl.textContent = formLabels[contextFormForView(v, user)] || 'Post Entry';
       } else {
         dEntry.hidden = true;
       }
     }
+  }
+
+  function renderHubSubtabBar(user, k, sentinelsOpen) {
+    const hubId = VIEW_TO_HUB[STATE.view] || 'overview';
+    const hubDef = getHubDef(hubId);
+    if (!hubDef || hubId === 'kiosks') return '';
+    const permittedTabs = hubDef.tabs.filter(t => canViewView(t.view, user));
+    if (permittedTabs.length <= 1) return '';
+    const pillsHtml = permittedTabs.map(t => {
+      const matchViews = t.match || [t.view];
+      const isActive = matchViews.includes(STATE.view);
+      const lbl = t.shortLabel || t.label || VIEW_TITLES[t.view] || t.view;
+      const rawPill = typeof t.pillFn === 'function' ? t.pillFn(user, k, sentinelsOpen) : (t.pill || '');
+      const pCls = typeof t.pillCls === 'function' ? t.pillCls(user, k, sentinelsOpen) : (t.pillCls || '');
+      const pillHtml = rawPill ? `<em class="hub-subtab-pill${pCls ? ' ' + pCls : ''}">${esc(rawPill)}</em>` : '';
+      return `<button type="button" class="hub-subtab${isActive ? ' active' : ''}" data-hub-subtab="${esc(t.view)}" aria-current="${isActive ? 'page' : 'false'}"><i class="nav-ico" aria-hidden="true">${ic(t.icon || t.view)}</i><span class="hub-subtab-lbl">${esc(lbl)}</span>${pillHtml}</button>`;
+    }).join('');
+    return `<nav class="hub-subtab-bar no-print" id="hubSubtabBar" data-parent-hub="${esc(hubId)}" aria-label="${esc(hubDef.title)} Sub-Views">${pillsHtml}</nav>`;
   }
 
   function setRailWidth(w, persist = true) {
@@ -20163,11 +20819,9 @@
     const coFullLbl = COMPANY_LABELS[STATE.company] || COMPANY_BU_MATCH[STATE.company] || STATE.company || 'Manufacturing Group';
     const coMobLbl = COMPANY_MOBILE_LABELS[STATE.company] || coFullLbl;
     const isUnivView = Boolean(UNIV_VIEW_TO_TABLE_KEY[STATE.view]);
-    if (isUnivView && (!STATE.activeUnivRegKey || UNIV_VIEW_TO_TABLE_KEY[STATE.view])) {
-      const mappedKey = UNIV_VIEW_TO_TABLE_KEY[STATE.view];
-      if (!STATE.activeUnivRegKey || ['equipment', 'drivers', 'sites', 'regions', 'products', 'customers', 'suppliers', 'expense_categories'].includes(STATE.activeUnivRegKey)) {
-        STATE.activeUnivRegKey = mappedKey;
-      }
+    const univGroupKeys = isUnivView ? (UNIV_REGISTRY_GROUPS[STATE.view] || [UNIV_VIEW_TO_TABLE_KEY[STATE.view]]) : [];
+    if (isUnivView && (!STATE.activeUnivRegKey || !univGroupKeys.includes(STATE.activeUnivRegKey))) {
+      STATE.activeUnivRegKey = UNIV_VIEW_TO_TABLE_KEY[STATE.view];
     }
     if (eyeEl) {
       const eyeTxt = isUnivView
@@ -20178,7 +20832,11 @@
       eyeEl.textContent = eyeTxt;
       eyeEl.title = eyeTxt;
     }
-    const canonicalViewTitle = VIEW_TITLES[STATE.view] || VIEW_TITLES.overview;
+    let canonicalViewTitle = VIEW_TITLES[STATE.view] || VIEW_TITLES.overview;
+    if (isUnivView && window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG)) {
+      const activeUnivMeta = window.MFG_PBI.TABLE_CATALOG.find(t => t.key === STATE.activeUnivRegKey);
+      if (activeUnivMeta && activeUnivMeta.label) canonicalViewTitle = activeUnivMeta.label;
+    }
     if (titEl) {
       titEl.textContent = canonicalViewTitle;
       titEl.title = canonicalViewTitle;
@@ -20188,15 +20846,16 @@
     const aiScope = $('aiDrawerScope');
     if (aiScope) aiScope.textContent = `${String(coFullLbl).split('(')[0].trim()} · USD · ${k.label || 'All-Time'}`;
 
+    const activeHubId = VIEW_TO_HUB[STATE.view] || 'overview';
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
-      const v = btn.getAttribute('data-view');
+      const hubId = btn.getAttribute('data-hub') || btn.getAttribute('data-view');
+      const v = btn.getAttribute('data-view') || hubId;
       if (!btn.querySelector('.nav-ico') && window.MFG_ICONS) {
         btn.insertAdjacentHTML('afterbegin', window.MFG_ICONS.nav(v));
       }
-      const isMatch = v === STATE.view || (v === 'customers' && STATE.view === 'ar') || (v === 'suppliers' && STATE.view === 'ap') || (v === 'ledger' && STATE.view === 'gl');
-      btn.classList.toggle('on', isMatch);
+      btn.classList.toggle('on', hubId === activeHubId);
       const lblSpan = btn.querySelector('span');
-      const canonicalLbl = VIEW_TITLES[v] || (lblSpan ? lblSpan.textContent.trim() : '');
+      const canonicalLbl = HUB_TITLES[hubId] || VIEW_TITLES[v] || (lblSpan ? lblSpan.textContent.trim() : '');
       if (lblSpan && canonicalLbl) {
         if (lblSpan.textContent !== canonicalLbl) lblSpan.textContent = canonicalLbl;
         lblSpan.removeAttribute('title');
@@ -20208,10 +20867,10 @@
     document.querySelectorAll('#basisSwitch .basis-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-basis') === STATE.basis));
     syncTopbarDateControls();
 
-    // Rail badges follow the active scope (Universal Registries always show All-BU counts)
+    // Rail badges follow the active scope
     const setPill = (id, text) => { const el = $(id); if (el) el.textContent = text; };
     const sentinelsOpen = buildSentinelItems().filter(s => s.severity !== 'ok').length;
-    const pbiNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES)) ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length : 20;
+    const pbiNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES)) ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length : 12;
     const tblNavCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.TABLE_CATALOG)) ? window.MFG_PBI.TABLE_CATALOG.filter(t => canAccessTable(t.key, user)).length : 34;
     setPill('navCountPbi', `${pbiNavCount} Pages`);
     setPill('navCountTables', String(tblNavCount));
@@ -20226,17 +20885,18 @@
     setPill('navCountPayroll', k.salaries_paid != null ? fmtUSDk(k.salaries_paid) : fmtNum(SEED.records.employments.length));
     setPill('navCountSentinels', String(sentinelsOpen));
     setPill('navCountUsers', `${STATE.users.length} Seats`);
-    const univCnt = tk => fmtNum(((SEED.records && SEED.records[tk]) || []).filter(r => r && !r.voided).length);
-    setPill('navCountRegEquip', univCnt('equipment'));
-    setPill('navCountRegDrivers', univCnt('drivers'));
-    setPill('navCountRegSites', univCnt('sites'));
-    setPill('navCountRegRegions', univCnt('regions'));
-    setPill('navCountRegProducts', univCnt('products'));
-    setPill('navCountRegCustomers', univCnt('customers'));
-    setPill('navCountRegSuppliers', univCnt('suppliers'));
-    setPill('navCountRegCategories', univCnt('expense_categories'));
     const tbPill = $('navCountTB');
-    if (tbPill) { const tb = Number(k.tb_check); tbPill.textContent = k.tb_check == null ? 'TB —' : (Math.abs(tb) < 0.005 ? 'TB $0' : 'TB ' + fmtUSDk(tb)); tbPill.className = 'nav-pill ' + (k.tb_check == null ? '' : (Math.abs(tb) < 0.005 ? 'good' : 'brass')); }
+    if (tbPill) {
+      if (!canViewView('ledger', user)) {
+        const rdlCnt = (window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG)) ? window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, user)).length : 22;
+        tbPill.textContent = `${rdlCnt} A4`;
+        tbPill.className = 'nav-pill brass';
+      } else {
+        const tb = Number(k.tb_check);
+        tbPill.textContent = k.tb_check == null ? 'TB —' : (Math.abs(tb) < 0.005 ? 'TB $0' : 'TB ' + fmtUSDk(tb));
+        tbPill.className = 'nav-pill ' + (k.tb_check == null ? '' : (Math.abs(tb) < 0.005 ? 'good' : 'brass'));
+      }
+    }
     const snPill = $('navCountSentinels');
     if (snPill) snPill.className = 'nav-pill ' + (sentinelsOpen ? 'brass' : 'good');
 
@@ -20248,11 +20908,21 @@
     let wsHtml = '';
     switch (STATE.view) {
       case 'overview': wsHtml = renderOverview(); break;
+      case 'entities': wsHtml = renderEntitiesComparison(); break;
       case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml }) : renderOverview(); break;
       case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': wsHtml = renderSentinels(); break;
       case 'kiosks': wsHtml = renderKiosks(); break;
       case 'sales': wsHtml = renderSales(); break;
+      case 'sales_vat': wsHtml = renderSalesVatAndCredit(); break;
+      case 'sales_analytics':
+      case 'raw_analytics':
+      case 'fleet_analytics':
+      case 'cashflow_analytics':
+      case 'expenses_analytics':
+      case 'payroll_analytics':
+        wsHtml = renderHubAnalyticsView(STATE.view);
+        break;
       case 'raw': wsHtml = renderRaw(); break;
       case 'fleet': wsHtml = renderFleet(); break;
       case 'pricing': wsHtml = renderPricing(); break;
@@ -20262,9 +20932,12 @@
       case 'suppliers':
       case 'ap': wsHtml = renderAP(); break;
       case 'expenses': wsHtml = renderExpenses(); break;
-      case 'payroll': wsHtml = renderPayroll(); break;
+      case 'payroll': wsHtml = renderPayroll('main'); break;
+      case 'payroll_attendance': wsHtml = renderPayroll('attendance'); break;
+      case 'payroll_contracts': wsHtml = renderPayroll('contracts'); break;
       case 'ledger':
       case 'gl': wsHtml = renderGL(); break;
+      case 'ledger_treasury': wsHtml = renderLedgerTreasury(); break;
       case 'reg_equipment':
       case 'reg_drivers':
       case 'reg_sites':
@@ -20273,18 +20946,26 @@
       case 'reg_customers':
       case 'reg_suppliers':
       case 'reg_categories':
-        wsHtml = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle }) : renderOverview();
+        wsHtml = window.MFG_PBI ? window.MFG_PBI.renderUniversalRegistriesView({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, pageTitle: canonicalViewTitle, registryGroupKeys: univGroupKeys }) : renderOverview();
         break;
       case 'statements': wsHtml = renderStatements(); break;
       case 'users': wsHtml = renderUsers(); break;
       default: wsHtml = renderOverview();
     }
+    const subtabBarHtml = renderHubSubtabBar(user, k, sentinelsOpen);
+    wsHtml = subtabBarHtml + wsHtml;
     setContainerHtmlPreservingActiveInput(container, wsHtml);
     wireWorkspace(container, user);
   }
 
   function wireWorkspace(container, activeUserRow) {
     wireModalSuggestions(container);
+    container.querySelectorAll('[data-hub-subtab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetView = btn.getAttribute('data-hub-subtab');
+        if (targetView) setView(targetView);
+      });
+    });
     const allowedCos = getAllowedCompanyKeys(activeUserRow);
     const allowedNames = allowedCompanyNames(activeUserRow);
     const totalCatCount = getCompanyCatalog().length;
@@ -20523,7 +21204,12 @@
       const targetMeta = window.MFG_PBI && (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === targetKey);
       if (UNIV_VIEW_TO_TABLE_KEY[STATE.view] && targetMeta && targetMeta.universal) {
         STATE.activeUnivRegKey = targetKey;
-        if (targetMeta.navView && VIEW_TITLES[targetMeta.navView]) STATE.view = targetMeta.navView;
+        if (targetMeta.navView && VIEW_TITLES[targetMeta.navView]) {
+          STATE.view = targetMeta.navView;
+        } else {
+          const ownerView = Object.keys(UNIV_REGISTRY_GROUPS).find(vk => UNIV_REGISTRY_GROUPS[vk].includes(targetKey));
+          if (ownerView) STATE.view = ownerView;
+        }
       } else {
         STATE.activeTableKey = targetKey;
         if (UNIV_VIEW_TO_TABLE_KEY[STATE.view]) STATE.view = 'tables';
@@ -20967,6 +21653,12 @@
     }
   }
 
+  function clickHub(hubId) {
+    const u = activeUser();
+    const target = resolveHubView(hubId, u);
+    setView(target);
+  }
+
   function setView(view, opts = {}) {
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
@@ -21355,8 +22047,15 @@
       if (railNavEl) railNavEl.addEventListener('scroll', hideRailHoverTooltip, { passive: true });
     }
 
-    document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-view'))));
-    document.querySelectorAll('#mobileBottomDock [data-dock-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-dock-view'))));
+    document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => clickHub(btn.getAttribute('data-hub') || btn.getAttribute('data-view'))));
+    document.querySelectorAll('#mobileBottomDock [data-dock-view]').forEach(btn => btn.addEventListener('click', () => {
+      const dv = btn.getAttribute('data-dock-view');
+      const u = activeUser();
+      const grp = dv === 'overview' ? 'exec' : (dv === 'sales' ? 'dispatch' : 'books');
+      const firstHub = HUB_CATALOG.find(h => h.group === grp && canViewHub(h.id, u));
+      if (firstHub) clickHub(firstHub.id);
+      else setView(dv);
+    }));
     const brand = $('brandHomeLink');
     if (brand) brand.addEventListener('click', e => { e.preventDefault(); setView('overview'); });
 
@@ -21894,6 +22593,19 @@
       flipPunchDirection: (punchId) => flipKioskPunchDirection(punchId),
       feedKioskFaceDescriptor: (vec, opts = {}) => handleKioskAttDescriptor({ descriptor: vec, detScore: 0.96, faceSizeFrac: 0.26, multiple: false }, opts),
       setKioskLock: (locked, pin = '2401') => setKioskLockMode(locked, pin)
+    };
+
+    window.MFG_HUBS = {
+      HUB_CATALOG,
+      HUB_TITLES,
+      VIEW_TO_HUB,
+      VIEW_TITLES,
+      UNIV_REGISTRY_GROUPS,
+      canViewHub: (hubId, u) => canViewHub(hubId, u || activeUser()),
+      canViewView: (view, u) => canViewView(view, u || activeUser()),
+      resolveHubView: (hubId, u) => resolveHubView(hubId, u || activeUser()),
+      clickHub: hubId => clickHub(hubId),
+      setView: (view, opts) => setView(view, opts)
     };
 
     document.addEventListener('mousedown', () => { lastPointerDownAt = Date.now(); }, true);

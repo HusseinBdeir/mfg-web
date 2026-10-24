@@ -510,23 +510,23 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
 .rail-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 8px 12px;
+  padding: 6px 8px 10px;
   display: flex;
   flex-direction: column;
 }
 
 .rail-nav .grp {
   font-family: "Archivo", sans-serif;
-  font-size: 10px;
+  font-size: 9.8px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 13px 8px 4px;
+  padding: 11px 8px 3px;
 }
 
 .rail-nav .grp:first-child {
-  padding-top: 4px;
+  padding-top: 3px;
 }
 
 .rail-nav button.nav-item,
@@ -536,16 +536,16 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
   background: transparent;
   border: 0;
   border-left: 3px solid transparent;
-  padding: 7px 7px;
-  border-radius: 4px;
+  padding: 7.5px 8px;
+  border-radius: 5px;
   color: var(--muted);
   margin: 1px 0;
-  font-size: 12.2px;
+  font-size: 12.4px;
   font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
   min-width: 0;
   text-decoration: none;
@@ -638,12 +638,43 @@ body.is-resizing-rail .rail-resizer .rail-resizer-grip {
 
 /* Rail User Profile & RLS Footer */
 .rail-footer {
-  padding: 11px 14px 12px;
+  padding: 9px 12px 10px;
   border-top: 1px solid var(--line);
   background: var(--bg-alt);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
+}
+
+.rail-footer a.rail-showcase-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.rail-footer a.rail-showcase-link > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-footer a.rail-showcase-link:hover {
+  background: var(--brass-tint);
+  border-color: var(--brass-border);
+  color: var(--ink);
 }
 
 .rail .me {
@@ -13949,4 +13980,134 @@ svg.ic {
 }
 :root[data-theme="dark"] .pa-rec-banner-ico {
   color: var(--brass);
+}
+
+/* ============================================================================
+   BUSINESS-CYCLE HUB HORIZONTAL IN-PAGE SUB-TAB BAR (#hubSubtabBar)
+   Option A v14.0 — Consolidates 26 sidebar screens into 10 Hubs + crisp sub-tabs
+   ============================================================================ */
+.hub-subtab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  margin: 0 0 12px 0;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-bottom: 2px solid var(--brass-border);
+  border-radius: 9px;
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.hub-subtab-bar::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
+
+.hub-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: "Instrument Sans", sans-serif;
+  font-size: 12.2px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s, box-shadow 0.14s;
+}
+.hub-subtab svg.ic {
+  font-size: 13.5px;
+  opacity: 0.85;
+  vertical-align: 0;
+}
+.hub-subtab:hover {
+  background: var(--brass-tint);
+  color: var(--ink);
+}
+.hub-subtab.active {
+  background: var(--ink);
+  color: #F4F2EE;
+  border-color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(15, 30, 56, 0.16);
+}
+.hub-subtab.active svg.ic {
+  opacity: 1;
+  color: var(--brass-on-ink);
+}
+:root[data-theme="dark"] .hub-subtab.active {
+  background: var(--brass);
+  color: #0B1730;
+  border-color: var(--brass);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme="dark"] .hub-subtab.active svg.ic {
+  color: #0B1730;
+}
+
+.hub-subtab-pill {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--m-chip);
+  color: var(--muted);
+}
+.hub-subtab-pill.brass {
+  background: var(--brass-tint);
+  color: var(--brass);
+}
+.hub-subtab-pill.univ {
+  background: var(--good-bg);
+  color: var(--good);
+  letter-spacing: 0.02em;
+}
+.hub-subtab.active .hub-subtab-pill {
+  background: rgba(244, 242, 238, 0.18);
+  color: #F4F2EE;
+}
+.hub-subtab.active .hub-subtab-pill.univ {
+  background: rgba(61, 179, 106, 0.28);
+  color: #8AF0AE;
+}
+:root[data-theme="dark"] .hub-subtab.active .hub-subtab-pill {
+  background: rgba(11, 23, 48, 0.16);
+  color: #0B1730;
+}
+:root[data-theme="dark"] .hub-subtab.active .hub-subtab-pill.univ {
+  background: rgba(11, 23, 48, 0.2);
+  color: #0B1730;
+}
+
+body.kiosk-locked .hub-subtab-bar {
+  display: none !important;
+}
+@media print {
+  .hub-subtab-bar {
+    display: none !important;
+  }
+}
+@media (max-width: 860px) {
+  .hub-subtab-bar {
+    margin: 0 0 9px 0;
+    padding: 4px 5px;
+    border-radius: 8px;
+  }
+  .hub-subtab {
+    padding: 5.5px 9.5px;
+    font-size: 11.6px;
+    gap: 5px;
+  }
 }

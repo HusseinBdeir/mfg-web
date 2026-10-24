@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '13.9';
+      window.__MFG_SHELL_VER = '14.0';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=13.9">
+  <link rel="stylesheet" href="css/app.css?v=14.0">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -95,146 +95,62 @@
         </div>
       </div>
 
-      <nav class="rail-nav" id="sidebarNav" aria-label="Manufacturing Modules">
+      <nav class="rail-nav" id="sidebarNav" aria-label="Business-Cycle Modules">
         <div class="grp">Executive</div>
-        <button type="button" class="nav-item on" data-view="overview" aria-label="Executive Overview">
+        <button type="button" class="nav-item on" data-hub="overview" data-view="overview" aria-label="Executive Overview">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="8.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.6"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.6"/><rect x="3" y="14.5" width="7.5" height="6.5" rx="1.6"/></svg></i>
           <span>Executive Overview</span>
-          <em class="nav-pill brass">Live</em>
-        </button>
-        <button type="button" class="nav-item" data-view="pbi" aria-label="Analytics &amp; Insights">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/></svg></i>
-          <span>Analytics &amp; Insights</span>
-          <em class="nav-pill brass" id="navCountPbi">12 Pages</em>
-        </button>
-        <button type="button" class="nav-item" data-view="tables" aria-label="Tables &amp; Registers">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="14.8" x2="21" y2="14.8"/><line x1="9.2" y1="9" x2="9.2" y2="20.5"/></svg></i>
-          <span>Tables &amp; Registers</span>
-          <em class="nav-pill" id="navCountTables">34</em>
-        </button>
-        <button type="button" class="nav-item" data-view="sentinels" aria-label="AI Sentinels &amp; Audit">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7.5-3.8 7.5-9.5V5.4L12 2.5 4.5 5.4V12c0 5.7 7.5 9.5 7.5 9.5z"/><path d="m8.8 12 2.2 2.2 4.4-4.5"/></svg></i>
-          <span>AI Sentinels &amp; Audit</span>
-          <em class="nav-pill" id="navCountSentinels">—</em>
+          <em class="nav-pill brass" id="navCountOverview">Live</em>
         </button>
 
         <div class="grp">Plant &amp; Dispatch</div>
-        <button type="button" class="nav-item" data-view="sales" aria-label="Sales &amp; Deliveries">
+        <button type="button" class="nav-item" data-hub="sales" data-view="sales" aria-label="Sales &amp; Customers">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.7" height="11" rx="1.5"/><path d="M14.5 8.5h4.2l3.1 3.6V16h-7.3V8.5z"/><circle cx="6.2" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/></svg></i>
-          <span>Sales &amp; Deliveries</span>
+          <span>Sales &amp; Customers</span>
           <em class="nav-pill" id="navCountSales">25,884</em>
         </button>
-        <button type="button" class="nav-item" data-view="raw" aria-label="Material &amp; Transportation">
+        <button type="button" class="nav-item" data-hub="raw" data-view="raw" aria-label="Material &amp; Suppliers">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2.5 19.5 6.3-11.2 4.2 6.4 3.3-4.9 5.2 9.7H2.5z"/><path d="m11.2 9.8 2.1-3.3 4.2 6.5"/></svg></i>
-          <span>Material &amp; Transportation</span>
+          <span>Material &amp; Suppliers</span>
           <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
-        <button type="button" class="nav-item" data-view="fleet" aria-label="Fleet &amp; Diesel Control">
+        <button type="button" class="nav-item" data-hub="fleet" data-view="fleet" aria-label="Fleet &amp; Diesel">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="10" height="17" rx="1.8"/><line x1="2.5" y1="20.5" x2="15.5" y2="20.5"/><rect x="6.5" y="6.2" width="5" height="3.8" rx="0.6"/><path d="M14 8.5h2.5a2 2 0 0 1 2 2v5a1.8 1.8 0 0 0 3.6 0V9.5l-2.4-2.8"/></svg></i>
-          <span>Fleet &amp; Diesel Control</span>
+          <span>Fleet &amp; Diesel</span>
           <em class="nav-pill" id="navCountFleet">1,637</em>
         </button>
-        <button type="button" class="nav-item" data-view="pricing" aria-label="Pricing &amp; Commissions">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.8" cy="7.8" r="1.4" fill="currentColor"/></svg></i>
-          <span>Pricing &amp; Commissions</span>
-          <em class="nav-pill" id="navCountPricing">753</em>
-        </button>
-        <button type="button" class="nav-item" data-view="kiosks" aria-label="Kiosk Terminals">
+        <button type="button" class="nav-item" data-hub="kiosks" data-view="kiosks" aria-label="Kiosk Terminals">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5V5.5a2 2 0 0 1 2-2h2"/><path d="M16.5 3.5h2a2 2 0 0 1 2 2v2"/><path d="M20.5 16.5v2a2 2 0 0 1-2 2h-2"/><path d="M7.5 20.5h-2a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="2.8"/><path d="M7.6 17.6a5.2 5.2 0 0 1 8.8 0"/></svg></i>
           <span>Kiosk Terminals</span>
           <em class="nav-pill brass" id="navCountKiosks">4 Kiosks</em>
         </button>
 
-        <div class="grp">Treasury &amp; Books</div>
-        <button type="button" class="nav-item" data-view="cashflow" aria-label="Cash Flow &amp; Till">
+        <div class="grp">Treasury &amp; Governance</div>
+        <button type="button" class="nav-item" data-hub="cashflow" data-view="cashflow" aria-label="Cash Flow &amp; Till">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><circle cx="12" cy="12" r="2.8"/><line x1="6" y1="9" x2="6.01" y2="9"/><line x1="18" y1="9" x2="18.01" y2="9"/><line x1="6" y1="15" x2="6.01" y2="15"/><line x1="18" y1="15" x2="18.01" y2="15"/></svg></i>
           <span>Cash Flow &amp; Till</span>
           <em class="nav-pill good" id="navCountTill">$0 · 0 LL</em>
         </button>
-        <button type="button" class="nav-item" data-view="customers" aria-label="Customers &amp; Receivables">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="14.8" x2="11.5" y2="14.8"/></svg></i>
-          <span>Customers &amp; Receivables</span>
-          <em class="nav-pill" id="navCountAR">—</em>
-        </button>
-        <button type="button" class="nav-item" data-view="suppliers" aria-label="Suppliers &amp; Payables">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2.8 2.5 7.6 12 12.4 21.5 7.6 12 2.8"/><polyline points="2.5 12.2 12 17 21.5 12.2"/><polyline points="2.5 16.8 12 21.6 21.5 16.8"/></svg></i>
-          <span>Suppliers &amp; Payables</span>
-          <em class="nav-pill" id="navCountAP">3 Legs</em>
-        </button>
-        <button type="button" class="nav-item" data-view="expenses" aria-label="Expenses &amp; Overhead">
+        <button type="button" class="nav-item" data-hub="expenses" data-view="expenses" aria-label="Expenses &amp; Overhead">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h13v18l-2.2-1.6-2.1 1.6-2.2-1.6-2.2 1.6-2.1-1.6L5.5 21V3z"/><line x1="9" y1="8.2" x2="15" y2="8.2"/><line x1="9" y1="12.2" x2="15" y2="12.2"/><line x1="9" y1="16" x2="12.5" y2="16"/></svg></i>
           <span>Expenses &amp; Overhead</span>
           <em class="nav-pill" id="navCountExp">—</em>
         </button>
-        <button type="button" class="nav-item" data-view="payroll" aria-label="Payroll &amp; Workforce">
+        <button type="button" class="nav-item" data-hub="payroll" data-view="payroll" aria-label="Payroll &amp; Workforce">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.8" cy="7.5" r="3.6"/><path d="M21 21v-1.8a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.6 4.1a3.6 3.6 0 0 1 0 6.9"/></svg></i>
           <span>Payroll &amp; Workforce</span>
           <em class="nav-pill" id="navCountPayroll">—</em>
         </button>
-        <button type="button" class="nav-item" data-view="ledger" aria-label="General Ledger &amp; SOA">
+        <button type="button" class="nav-item" data-hub="ledger" data-view="ledger" aria-label="Ledger &amp; Reports">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 19.2A2.3 2.3 0 0 1 6.8 17H19.8"/><path d="M6.8 2.5h13v19h-13a2.3 2.3 0 0 1-2.3-2.3V4.8a2.3 2.3 0 0 1 2.3-2.3z"/><line x1="9" y1="7.5" x2="16.2" y2="7.5"/><line x1="9" y1="11.5" x2="14.5" y2="11.5"/></svg></i>
-          <span>General Ledger &amp; SOA</span>
+          <span>Ledger &amp; Reports</span>
           <em class="nav-pill good" id="navCountTB">TB —</em>
         </button>
-
-        <div class="grp">Universal Registries</div>
-        <button type="button" class="nav-item" data-view="reg_equipment" aria-label="Equipment &amp; Trucks">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6.2" cy="18" r="2.2"/><circle cx="17.8" cy="18" r="2.2"/><path d="M4 18H2.2V7.2a1.2 1.2 0 0 1 1.2-1.2h8.8l2.8 4.8h4.8a2 2 0 0 1 2 2V18H20"/><line x1="8.4" y1="18" x2="15.6" y2="18"/></svg></i>
-          <span>Equipment &amp; Trucks</span>
-          <em class="nav-pill" id="navCountRegEquip">1,637</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_drivers" aria-label="Drivers &amp; Operators">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/><line x1="12" y1="3" x2="12" y2="9.6"/><line x1="4.2" y1="16.5" x2="9.9" y2="13.2"/><line x1="19.8" y1="16.5" x2="14.1" y2="13.2"/></svg></i>
-          <span>Drivers &amp; Operators</span>
-          <em class="nav-pill" id="navCountRegDrivers">354</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_sites" aria-label="Sites">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5.8-8 11.5-8 11.5S4 15.8 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></svg></i>
-          <span>Sites</span>
-          <em class="nav-pill" id="navCountRegSites">196</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_regions" aria-label="Regions &amp; Zones">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="2.5 6 8.8 3 15.2 6 21.5 3 21.5 18 15.2 21 8.8 18 2.5 21 2.5 6"/><line x1="8.8" y1="3" x2="8.8" y2="18"/><line x1="15.2" y1="6" x2="15.2" y2="21"/></svg></i>
-          <span>Regions &amp; Zones</span>
-          <em class="nav-pill" id="navCountRegRegions">12</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_products" aria-label="Products &amp; Grades">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 16V8a2 2 0 0 0-1-1.73l-6.5-3.75a2 2 0 0 0-2 0L4.5 6.27A2 2 0 0 0 3.5 8v8a2 2 0 0 0 1 1.73l6.5 3.75a2 2 0 0 0 2 0l6.5-3.75a2 2 0 0 0 1-1.73z"/><polyline points="3.8 7 12 11.8 20.2 7"/><line x1="12" y1="21.6" x2="12" y2="11.8"/></svg></i>
-          <span>Products &amp; Grades</span>
-          <em class="nav-pill" id="navCountRegProducts">46</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_customers" aria-label="Customers Registry">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="9.5" height="18" rx="1.2"/><path d="M13.5 9h6.5v12h-6.5"/><line x1="7.2" y1="7" x2="10.3" y2="7"/><line x1="7.2" y1="11" x2="10.3" y2="11"/><line x1="7.2" y1="15" x2="10.3" y2="15"/><line x1="16.2" y1="13" x2="17.4" y2="13"/><line x1="16.2" y1="17" x2="17.4" y2="17"/></svg></i>
-          <span>Customers Registry</span>
-          <em class="nav-pill" id="navCountRegCustomers">275</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_suppliers" aria-label="Suppliers &amp; Haulers">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20.5V8.5L12 3.5l9 5v12"/><path d="M7.5 20.5v-6.5h9v6.5"/><line x1="7.5" y1="17.2" x2="16.5" y2="17.2"/></svg></i>
-          <span>Suppliers &amp; Haulers</span>
-          <em class="nav-pill" id="navCountRegSuppliers">198</em>
-        </button>
-        <button type="button" class="nav-item" data-view="reg_categories" aria-label="Expense Categories">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.5 18.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h4.8l2.2 2.8h8a2 2 0 0 1 2 2z"/></svg></i>
-          <span>Expense Categories</span>
-          <em class="nav-pill" id="navCountRegCategories">16</em>
-        </button>
-
-        <div class="grp">Governance &amp; Cloud</div>
-        <button type="button" class="nav-item" data-view="statements" aria-label="Statements &amp; Reports">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><polyline points="14 2.5 14 8 19.5 8"/><line x1="8.2" y1="12.5" x2="15.8" y2="12.5"/><line x1="8.2" y1="16.5" x2="13.8" y2="16.5"/></svg></i>
-          <span>Statements &amp; Reports</span>
-          <em class="nav-pill">A4</em>
-        </button>
-        <button type="button" class="nav-item" data-view="users" aria-label="Team Auth &amp; Users">
+        <button type="button" class="nav-item" data-hub="users" data-view="users" aria-label="System &amp; Access">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.5" cy="7.5" r="3.6"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg></i>
-          <span>Team Auth &amp; Users</span>
+          <span>System &amp; Access</span>
           <em class="nav-pill brass" id="navCountUsers">10 Seats</em>
         </button>
-        <a href="../" class="rail-showcase-link" id="railShowcaseLink" aria-label="Public Showcase">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 18 5 12 11 6"/></svg></i>
-          <span>Public Showcase</span>
-          <em class="nav-pill brass">Web</em>
-        </a>
       </nav>
 
       <div class="rail-footer">
@@ -250,6 +166,11 @@
           <span class="engine-dot"><i></i><span id="sqlStatusText">Connecting…</span></span>
           <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
         </div>
+        <a href="../" class="rail-showcase-link" id="railShowcaseLink" aria-label="Public Showcase">
+          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 18 5 12 11 6"/></svg></i>
+          <span>Public Showcase</span>
+          <em class="nav-pill brass">Web</em>
+        </a>
       </div>
       <div class="rail-resizer" id="railResizer" role="separator" aria-orientation="vertical" aria-valuemin="176" aria-valuemax="420" aria-valuenow="248" tabindex="0" aria-label="Resize left navigation sidebar" title="Drag left or right to make sidebar wider or narrower · Double-click to reset">
         <span class="rail-resizer-grip" aria-hidden="true"></span>
@@ -430,7 +351,7 @@
           </span>
           <span id="mobileDockEntryLabel">Post Entry</span>
         </button>
-        <button type="button" class="dock-btn" data-dock-view="customers" id="dockBtnBooks">
+        <button type="button" class="dock-btn" data-dock-view="cashflow" id="dockBtnBooks">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
           <span>Books</span>
         </button>
@@ -659,17 +580,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=13.9"></script>
-  <script src="js/face.js?v=13.9"></script>
-  <script src="js/endpoints.js?v=13.9"></script>
-  <script src="js/seed_data.js?v=13.9"></script>
-  <script src="js/icons.js?v=13.9"></script>
-  <script src="js/forms_engine.js?v=13.9"></script>
-  <script src="js/pbi_pages.js?v=13.9"></script>
-  <script src="js/rdl_reports.js?v=13.9"></script>
-  <script src="js/kiosk_print.js?v=13.9"></script>
-  <script src="js/table_columns.js?v=13.9"></script>
-  <script src="js/app.js?v=13.9"></script>
+  <script src="vendor/face-api.js?v=14.0"></script>
+  <script src="js/face.js?v=14.0"></script>
+  <script src="js/endpoints.js?v=14.0"></script>
+  <script src="js/seed_data.js?v=14.0"></script>
+  <script src="js/icons.js?v=14.0"></script>
+  <script src="js/forms_engine.js?v=14.0"></script>
+  <script src="js/pbi_pages.js?v=14.0"></script>
+  <script src="js/rdl_reports.js?v=14.0"></script>
+  <script src="js/kiosk_print.js?v=14.0"></script>
+  <script src="js/table_columns.js?v=14.0"></script>
+  <script src="js/app.js?v=14.0"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

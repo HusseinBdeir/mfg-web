@@ -134,36 +134,110 @@ try {
       : fail(`overflow · ${label}`, `horiz=${o.horiz}px vertRoot=${o.vertRoot}px scrollY=${o.scrollY}px shellTop=${o.shellTop}px bottomGap=${o.shellBottomGap}px`);
   };
 
-  // 2. Every view + 1-to-1 Page Title Consistency (Left Sidebar == Topbar == Page Hero Heading == Browser Tab)
-  const views = ['overview', 'pbi', 'tables', 'sentinels', 'kiosks', 'sales', 'raw', 'fleet', 'pricing', 'cashflow', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
+  // 2. Option A 10-Hub Left Sidebar Architecture + 28 Sub-Views + 1-to-1 Title & Overflow Parity
+  await evaluate(`(() => {
+    window.__navToView = function(v) {
+      const H = window.MFG_HUBS;
+      const hubId = (H && H.VIEW_TO_HUB && H.VIEW_TO_HUB[v]) || v;
+      const hubBtn = document.querySelector('#sidebarNav .nav-item[data-hub="' + hubId + '"]');
+      if (hubBtn && !hubBtn.hidden) hubBtn.click();
+      if (v === 'reg_products') {
+        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_customers"]');
+        if (sub && !sub.classList.contains('active')) sub.click();
+        const pill = document.querySelector('[data-univ-reg-key="products"]');
+        if (pill) pill.click();
+        return 1;
+      }
+      if (v === 'reg_regions') {
+        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_sites"]');
+        if (sub && !sub.classList.contains('active')) sub.click();
+        const pill = document.querySelector('[data-univ-reg-key="regions"]');
+        if (pill) pill.click();
+        return 1;
+      }
+      if (v === 'reg_customers' || v === 'reg_sites' || v === 'reg_categories') {
+        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="' + v + '"]');
+        if (sub) sub.click();
+        const defKey = v === 'reg_customers' ? 'customers' : (v === 'reg_sites' ? 'sites' : 'expense_categories');
+        const pill = document.querySelector('[data-univ-reg-key="' + defKey + '"]');
+        if (pill && !pill.classList.contains('active')) pill.click();
+        return 1;
+      }
+      const subBtn = document.querySelector('#hubSubtabBar [data-hub-subtab="' + v + '"]');
+      if (subBtn && !subBtn.classList.contains('active')) subBtn.click();
+      else if (H && H.setView && location.hash !== '#' + v) H.setView(v);
+      return 1;
+    };
+    return 1;
+  })()`);
+
+  const hubRailProbe = await evaluate(`(() => {
+    const grps = Array.from(document.querySelectorAll('#sidebarNav .grp')).map(g => g.textContent.trim());
+    const hubs = Array.from(document.querySelectorAll('#sidebarNav button.nav-item[data-hub]')).map(b => b.getAttribute('data-hub'));
+    const showcaseInFooter = Boolean(document.querySelector('.rail-footer #railShowcaseLink')) && !document.querySelector('#sidebarNav #railShowcaseLink');
+    const navEl = document.getElementById('sidebarNav');
+    const railVertScrollPx = navEl ? Math.max(0, navEl.scrollHeight - navEl.clientHeight) : 999;
+    return {
+      ok: grps.join('|') === 'Executive|Plant & Dispatch|Treasury & Governance' &&
+          hubs.join(',') === 'overview,sales,raw,fleet,kiosks,cashflow,expenses,payroll,ledger,users' &&
+          showcaseInFooter &&
+          (window.innerWidth <= 860 || railVertScrollPx <= 1),
+      grps,
+      hubs,
+      showcaseInFooter,
+      railVertScrollPx
+    };
+  })()`);
+  hubRailProbe.ok
+    ? pass('10-hub left sidebar architecture · 3 business-cycle groups, 10 parent hubs, Public Showcase in footer & 0px vertical rail scroll at 1366×768', `hubs=${hubRailProbe.hubs.length} · railScroll=${hubRailProbe.railVertScrollPx}px`)
+    : fail('10-hub left sidebar architecture', JSON.stringify(hubRailProbe));
+
+  const views = [
+    'overview', 'entities', 'pbi', 'tables', 'sentinels', 'kiosks',
+    'sales', 'customers', 'pricing', 'sales_vat', 'sales_analytics',
+    'raw', 'suppliers', 'raw_analytics',
+    'fleet', 'fleet_analytics',
+    'cashflow', 'cashflow_analytics',
+    'expenses', 'expenses_analytics',
+    'payroll', 'payroll_attendance', 'payroll_contracts', 'payroll_analytics',
+    'ledger', 'ledger_treasury', 'statements', 'users'
+  ];
   const titleMismatches = [];
   for (const v of views) {
-    await evaluate(`(() => { const b = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]'); b.click(); return 1; })()`);
-    await sleep(350);
+    await evaluate(`window.__navToView('${v}')`);
+    await sleep(260);
     const len = await evaluate(`document.getElementById('workspace').innerHTML.length`);
     len > 500 ? pass(`view ${v}`, `${len} chars`) : fail(`view ${v}`, 'empty workspace');
     const titleProbe = await evaluate(`(() => {
-      const navBtn = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]');
+      const H = window.MFG_HUBS;
+      const hubId = (H && H.VIEW_TO_HUB && H.VIEW_TO_HUB['${v}']) || 'overview';
+      const expectedHubTitle = (H && H.HUB_TITLES && H.HUB_TITLES[hubId]) || '';
+      const navBtn = document.querySelector('#sidebarNav .nav-item.on[data-hub="' + hubId + '"]');
       const navSpan = navBtn ? navBtn.querySelector('span') : null;
       const railLabel = navSpan ? navSpan.textContent.trim() : '';
       const navAriaLabel = navBtn ? (navBtn.getAttribute('aria-label') || '') : '';
       const hasNativeTitleAttr = Boolean((navBtn && navBtn.hasAttribute('title')) || (navSpan && navSpan.hasAttribute('title')));
+      const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-hub="' + hubId + '"].on span');
+      const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
       const topbarTitle = (document.getElementById('topbarTitle') || {}).textContent?.trim() || '';
       const heroEl = document.querySelector('#workspace .cockpit-title, #workspace .pbi-studio-title, #workspace .rdl-suite-title');
-      const heroTitle = heroEl ? heroEl.textContent.trim() : railLabel;
+      const heroTitle = heroEl ? heroEl.textContent.trim() : topbarTitle;
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
-      const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-view="${v}"] span');
-      const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
+      const subtabBar = document.getElementById('hubSubtabBar');
+      const activeSubtabLbl = subtabBar ? (subtabBar.querySelector('.hub-subtab.active .hub-subtab-lbl')?.textContent?.trim() || '') : topbarTitle;
+      const subtabCountOk = '${v}' === 'kiosks' ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
       const allMatch = Boolean(
         railLabel &&
-        railLabel === topbarTitle &&
-        railLabel === heroTitle &&
-        railLabel === docTitlePrefix &&
+        railLabel === expectedHubTitle &&
+        railLabel === navAriaLabel &&
         railLabel === subnavLabel &&
-        navAriaLabel === railLabel &&
-        !hasNativeTitleAttr
+        !hasNativeTitleAttr &&
+        topbarTitle &&
+        topbarTitle === heroTitle &&
+        topbarTitle === docTitlePrefix &&
+        subtabCountOk
       );
-      return { allMatch, railLabel, topbarTitle, heroTitle, docTitlePrefix, subnavLabel, navAriaLabel, hasNativeTitleAttr };
+      return { allMatch, hubId, railLabel, expectedHubTitle, subnavLabel, topbarTitle, heroTitle, docTitlePrefix, activeSubtabLbl, hasNativeTitleAttr };
     })()`);
     if (!titleProbe.allMatch) titleMismatches.push(`${v}:${JSON.stringify(titleProbe)}`);
     await overflow(v);
@@ -183,7 +257,7 @@ try {
     }
   }
   titleMismatches.length === 0
-    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 17 views)')
+    ? pass('page & hub titles · 1-to-1 identical across 10 Parent Hubs, Horizontal Sub-Tabs, Topbar, Page Hero, Mobile Subnav & Browser Tab (all 28 views)')
     : fail('page titles consistency', titleMismatches.join(' | '));
 
   // 2a-2. Left sidebar truncated (...) hover tooltip (#railHoverTooltip + title attributes)
@@ -237,20 +311,22 @@ try {
       : fail('left sidebar hover tooltip', JSON.stringify(railHoverProbe));
   }
 
-  // 2b. Operational & Financial module primary-ticket-first table order & toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll, Ledger)
+  // 2b. Operational & Financial module primary-ticket-first table order & toolbar parity (Sales, Raw, Fleet, Pricing, VAT & Credit, Customers, Suppliers, Expenses, Payroll, Ledger, Treasury)
   const moduleToolbarSpecs = [
     { view: 'sales', panel: '#salesPanel', modal: 'sales', secondPanel: '#salesProdPanel' },
     { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#rawSupPanel' },
     { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#equipPanel' },
     { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule', secondPanel: '#listPricePanel' },
+    { view: 'sales_vat', panel: '#vatInvPanel', modal: 'vatinvoice', secondPanel: '#creditTermsPanel' },
     { view: 'customers', panel: '#rcptPanel', modal: 'receipt', secondPanel: '#custPanel' },
     { view: 'suppliers', panel: '#settlePanel', modal: 'settlement', secondPanel: '#supPanel' },
     { view: 'expenses', panel: '#expPanel', modal: 'expense', secondPanel: '#expCatPanel' },
-    { view: 'payroll', panel: '#paySalPanel', modal: 'salary', secondPanel: '#payAttPanel' },
-    { view: 'ledger', panel: '#soaPanel', modal: 'treasury', secondPanel: '#glPanel' }
+    { view: 'payroll', panel: '#paySalPanel', modal: 'salary', secondPanel: '#payStaffRegPanel' },
+    { view: 'ledger', panel: '#soaPanel', modal: 'treasury', secondPanel: '#glPanel' },
+    { view: 'ledger_treasury', panel: '#treasuryLoansPanel', modal: 'treasury', secondPanel: '#treasuryExtPanel' }
   ];
   for (const spec of moduleToolbarSpecs) {
-    await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="${spec.view}"]').click()`);
+    await evaluate(`window.__navToView('${spec.view}')`);
     await sleep(220);
     const tb = await evaluate(`(() => {
       const panel = document.querySelector('${spec.panel}');
@@ -287,7 +363,7 @@ try {
   }
 
   // 3. Every PBI page + GL totals on P16 + pricing active-count on P05 + dynamic per-page slicers + header button contrast
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`);
+  await evaluate(`window.__navToView('pbi')`);
   await sleep(300);
   // Check top header button contrast (fix for white square button on dark navy header)
   const hdrBtnContrast = await evaluate(`(() => {
@@ -350,7 +426,7 @@ try {
   await evaluate(`document.getElementById('pbiResetSlicersBtn').click()`); await sleep(250);
 
   // 4. Tables hub: all 34 tables render without $1.00 booleans
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="tables"]').click()`); await sleep(300);
+  await evaluate(`window.__navToView('tables')`); await sleep(300);
   const tkeys = await evaluate(`Array.from(document.querySelectorAll('[data-table-key]')).map(b => b.getAttribute('data-table-key'))`);
   tkeys.length === 34 ? pass('tables · 34 chips') : fail('tables chips', String(tkeys.length));
   let boolMoney = 0, emptyTables = [];
@@ -367,7 +443,7 @@ try {
   /\$\d/.test(loanCell) && !/^—/.test(loanCell) ? pass('tables · loans show principal + date', loanCell.replace(/\s+/g, ' ').slice(0, 70)) : fail('tables loans', loanCell.slice(0, 80));
 
   // 5. Record inspector on a register row + full-dataset tfoot totals (no "Show more" or "SHOWN OF")
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click()`); await sleep(300);
+  await evaluate(`window.__navToView('sales')`); await sleep(300);
   const salesTotalsProbe = await evaluate(`(() => {
     const showMoreBtns = document.querySelectorAll('[data-show-more], tr.show-more-row').length;
     const tfootTxt = (document.querySelector('#salesPanel tfoot tr') || {}).innerText || '';
@@ -1227,7 +1303,7 @@ try {
   await evaluate(`document.getElementById('closeModalBtn').click()`); await sleep(150);
 
   // 7. Statements all 22
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click()`); await sleep(300);
+  await evaluate(`window.__navToView('statements')`); await sleep(300);
   const codes = await evaluate(`Array.from(document.querySelectorAll('.stmt-card[data-stmt]')).map(c => c.getAttribute('data-stmt'))`);
   let stOk = 0;
   for (const c of codes) { await evaluate(`document.querySelector('.stmt-card[data-stmt="${c}"]').click()`); await sleep(120); const n = await evaluate(`document.querySelectorAll('#printableSheet table').length`); if (n) stOk++; }
@@ -1267,7 +1343,7 @@ try {
   rdlParity.ok ? pass('statements · RDL Paginated Suite + Rev 10 searchable combobox (0 native <select>, popover strictly below input, instant name search)', `${rdlParity.salesParams} | Kenyars=${rdlParity.matchedItems}`) : fail('statements RDL parity', JSON.stringify(rdlParity));
 
   // 7b. Biometric Face ID (Attendance PWA parity: 128-d models, 3-pose enrolment, duplicate guard, 2FA step-up, 3-frame biometric sign-in)
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(250);
+  await evaluate(`window.__navToView('users')`); await sleep(250);
   const modelsLoaded = await evaluate(`(async () => { await window.Face.load('./vendor/models'); return { ready: window.Face.ready, backend: window.Face.backend }; })()`);
   modelsLoaded.ready ? pass('face-api · 128-d neural models loaded', `backend=${modelsLoaded.backend}`) : fail('face-api models', JSON.stringify(modelsLoaded));
 
@@ -1490,7 +1566,7 @@ try {
     : fail('authGate PIN-only sign-in', JSON.stringify(authFaceFlow));
 
   // 7b2. Team Seat Inspector (#seatEditorPanel) — inspect all 10 current users & update in-place
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="users"]').click()`); await sleep(200);
+  await evaluate(`window.__navToView('users')`); await sleep(200);
   const seatInspectorProbe = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
     const seatIds = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9', 'u10'];
@@ -1638,33 +1714,40 @@ try {
 
     // Switch u8 to All Assigned (2) on Sales and verify BBConstruction recon card is hidden & 0 BBConstruction rows leak
     u8GroupBtn.click();
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     const u8BbcReconHidden = (document.querySelector('.sales-recon-card[data-jump-co="bbconstruction"]') || {}).hidden === true;
     const u8SalesRows = Array.from(document.querySelectorAll('#salesPanel table.ledger-table tbody tr.rrow'));
     const u8LeakedBbcSales = u8SalesRows.some(tr => tr.children[2] && /BBConstruction/i.test(tr.children[2].textContent));
 
-    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    window.__navToView('statements');
     const u8StmtTabs = document.querySelectorAll('.stmt-card[data-stmt]').length;
 
     // 3. Test Partial Access Single-Company Entry Seat (u3: Sabah Kassab — WTC | Entry | partial|partial)
     await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
-    const u3NavPayrollHidden = (document.querySelector('#sidebarNav .nav-item[data-view="payroll"]') || {}).hidden === true;
-    const u3NavLedgerHidden = (document.querySelector('#sidebarNav .nav-item[data-view="ledger"]') || {}).hidden === true;
-    const u3NavSentinelsHidden = (document.querySelector('#sidebarNav .nav-item[data-view="sentinels"]') || {}).hidden === true;
-    const u3NavPbiText = (document.getElementById('navCountPbi') || {}).textContent || '';
+    const u3NavPayrollHidden = (document.querySelector('#sidebarNav .nav-item[data-hub="payroll"]') || {}).hidden === true;
+    const u3LedgerHubBtn = document.querySelector('#sidebarNav .nav-item[data-hub="ledger"]');
+    const u3NavLedgerVisible = Boolean(u3LedgerHubBtn && !u3LedgerHubBtn.hidden);
+    const u3NavTbPillText = (document.getElementById('navCountTB') || {}).textContent?.trim() || '';
+    if (u3LedgerHubBtn) u3LedgerHubBtn.click();
+    const u3LedgerOpensStatements = location.hash === '#statements' && !document.getElementById('hubSubtabBar') && !document.querySelector('#hubSubtabBar [data-hub-subtab="ledger"]') && !document.querySelector('#hubSubtabBar [data-hub-subtab="ledger_treasury"]');
 
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    const u3OverviewHubBtn = document.querySelector('#sidebarNav .nav-item[data-hub="overview"]');
+    if (u3OverviewHubBtn) u3OverviewHubBtn.click();
+    const u3NavSentinelsHidden = !document.querySelector('#hubSubtabBar [data-hub-subtab="sentinels"]') && !document.querySelector('#hubSubtabBar [data-hub-subtab="entities"]');
+    const u3NavPbiText = (document.querySelector('#hubSubtabBar [data-hub-subtab="pbi"] .hub-subtab-pill') || {}).textContent?.trim() || '';
+
+    window.__navToView('pbi');
     const u3PbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
 
-    document.querySelector('#sidebarNav .nav-item[data-view="tables"]').click();
+    window.__navToView('tables');
     const u3TableChips = document.querySelectorAll('[data-table-key]').length;
     const u3HasSalariesTable = !!document.querySelector('[data-table-key="salaries"]');
 
     // 4. Test Sales & AR Collector Seat (u10: WTC + BBConstruction | Sales | partial|full)
     await T.performLogin(u10Orig.email, u10Orig.pin, { bypass2FA: true });
-    const u10VisibleNavViews = Array.from(document.querySelectorAll('#sidebarNav .nav-item[data-view]'))
+    const u10VisibleNavHubs = Array.from(document.querySelectorAll('#sidebarNav .nav-item[data-hub]'))
       .filter(b => !b.hidden)
-      .map(b => b.getAttribute('data-view'));
+      .map(b => b.getAttribute('data-hub'));
     document.getElementById('newEntryBtn').click();
     const u10VisibleForms = Array.from(document.querySelectorAll('.modal-tab[data-form]'))
       .filter(b => !b.hidden)
@@ -1673,7 +1756,7 @@ try {
 
     // Restore Owner session (Hussein Bdeir), restore u8 & u10 original seats, and return to All-Time Group scope
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
-    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    window.__navToView('users');
     T.selectSeatForEdit('u8');
     document.getElementById('nu_role').value = u8Orig.role;
     document.getElementById('nu_companies').value = u8Orig.comp;
@@ -1698,11 +1781,11 @@ try {
         all100CsvCount === 100 && afterClearCount === 0,
       totalRenderedOpts, visibleOnSearch, all100CountText, all100ChipsMore,
       u8ConsistencyOk: u8CompanySwitchOk && u8BbcReconHidden && !u8LeakedBbcSales && u8StmtTabs === 13,
-      u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerHidden && u3NavSentinelsHidden &&
+      u3ConsistencyOk: u3NavPayrollHidden && u3NavLedgerVisible && u3NavTbPillText === '13 A4' && u3LedgerOpensStatements && u3NavSentinelsHidden &&
         u3NavPbiText === '9 Pages' && u3PbiTabs === 9 && u3TableChips === 23 && !u3HasSalariesTable,
-      u10ConsistencyOk: u10VisibleNavViews.filter(v => !String(v || '').startsWith('reg_') && v !== 'kiosks').join(',') === 'overview,pbi,tables,sales,pricing,customers,statements,users' &&
+      u10ConsistencyOk: u10VisibleNavHubs.join(',') === 'overview,sales,kiosks,ledger,users' &&
         u10VisibleForms.join(',') === 'sales,receipt',
-      u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3PbiTabs, u3TableChips, u10VisibleNavViews, u10VisibleForms
+      u8CompanySwitchOk, u8BbcReconHidden, u8LeakedBbcSales, u8StmtTabs, u3NavTbPillText, u3LedgerOpensStatements, u3PbiTabs, u3TableChips, u10VisibleNavViews: u10VisibleNavHubs, u10VisibleForms
     };
   })()`);
   multiCoAndAccessProbe && multiCoAndAccessProbe.selectorOk
@@ -1748,7 +1831,7 @@ try {
   // 7b-3. Roles, Check-Permissions Matrix, Custom Role Granular Checkboxes, Policy-Lock Field Unlocks & Linked Dashboards/Statements
   const customRoleProbe = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
-    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    window.__navToView('users');
     // Click the role badge button in the Team Directory for u3 (Sabah Kassab) to open its permissions matrix
     const dirRoleBtn = document.querySelector('[data-check-perms="u3"]');
     if (dirRoleBtn) dirRoleBtn.click();
@@ -1820,11 +1903,11 @@ try {
 
     // Sign in as u3 (Sabah Kassab) and verify Custom Role enforcement end-to-end
     await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    window.__navToView('pbi');
     const customPbiTabs = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
     const hasGlPage = !!document.querySelector('.pbi-page-tab[data-pbi-page="p16_financial"]');
 
-    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    window.__navToView('statements');
     const customStmtCards = document.querySelectorAll('.stmt-card[data-stmt]').length;
     const hasPlStmt = !!document.querySelector('.stmt-card[data-stmt="03"]');
 
@@ -1845,7 +1928,7 @@ try {
     document.getElementById('closeModalBtn').click();
 
     // Open Record Inspector on Sales -> verify Modify Record button is present while Void Record button is hidden
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     const firstRow = document.querySelector('#salesPanel tr.rrow[data-rid]');
     if (firstRow) firstRow.click();
     const hasModifyBtn = !!document.getElementById('inspModifyRecordBtn');
@@ -1855,7 +1938,7 @@ try {
 
     // Restore Owner session & restore u3 original seat
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
-    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    window.__navToView('users');
     T.selectSeatForEdit('u3');
     document.getElementById('nu_role').value = u3Orig.role;
     document.getElementById('nu_role').dispatchEvent(new Event('change', { bubbles: true }));
@@ -1883,7 +1966,7 @@ try {
     : fail('roles, permissions & linked dashboards', JSON.stringify(customRoleProbe));
 
   // 7c. Full 2024–2026 Historical Transactions + Power BI Date Grain/Range Slicer + Compact Paginated Tables
-  await evaluate(`document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click()`); await sleep(200);
+  await evaluate(`window.__navToView('pbi')`); await sleep(200);
   await evaluate(`document.querySelector('[data-pbi-page="p06_ar"]').click()`); await sleep(250);
   const pbiHistoryProbe = await evaluate(`(() => {
     const rec = window.MFG_SEED.records;
@@ -1994,26 +2077,32 @@ try {
     ? pass('pbi P04 · all tables have sticky tfoot TOTAL row & zero mid-word wrapping', `${p04LayoutAndFoot.tableCount} tables · ${p04LayoutAndFoot.sampleFoot.slice(0, 70)}`)
     : fail('pbi P04 tfoot / wrapping', JSON.stringify(p04LayoutAndFoot));
 
-  // 7d-2. Analytics & Insights Rename + 8 Moved Pages & Domain Analytics Embedded in Sidebar Views
+  // 7d-2. Analytics & Insights Rename + 8 Moved Pages & Dedicated Horizontal Analytics Sub-Tabs (Zero Stacked Analytics on Operational Registers)
   const modAnalyticsProbe = await evaluate(`(() => {
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    window.__navToView('pbi');
     const pbiTitle = (document.querySelector('.pbi-studio-title') || {}).textContent || '';
     const pbiTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
     const pbiPageCount = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
     const movedJumpCount = document.querySelectorAll('.pbi-studio-hdr [data-pbi-jump]').length;
 
-    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales & Deliveries)
+    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales Analytics sub-tab)
     const jumpTickets = document.querySelector('.pbi-studio-hdr [data-pbi-jump="p18_tickets"]');
     if (jumpTickets) jumpTickets.click();
     const afterJumpTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
-    const salesHubPresent = !!document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+    const salesHubPresent = !!document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
 
-    // Verify all 11 domain sidebar views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
-    const modViews = ['sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'sentinels', 'statements'];
+    // Verify operational register tabs have ZERO stacked .mod-analytics-hub at the bottom
+    const opsViews = ['sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger'];
+    const noStackedOnOps = opsViews.every(v => {
+      window.__navToView(v);
+      return !document.querySelector('#workspace .mod-analytics-hub');
+    });
+
+    // Verify all 10 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
+    const modViews = ['sales_analytics', 'sales_vat', 'raw_analytics', 'fleet_analytics', 'cashflow_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
     const modResults = [];
     for (const v of modViews) {
-      const btn = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
-      if (btn) btn.click();
+      window.__navToView(v);
       const hub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="' + v + '"]');
       const kpis = hub ? hub.querySelectorAll('.pbi-kpi-card').length : 0;
       const panels = hub ? hub.querySelectorAll('.pbi-panel').length : 0;
@@ -2022,18 +2111,18 @@ try {
     }
     const allModsOk = modResults.every(r => r.hasHub && r.kpis >= 4 && r.panels >= 1 && r.overflow === 0);
 
-    // Verify Collapse -> Expand Insights toggle round-trip & last-section restoration on #sales
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
-    const secAnalyticsBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"] [data-mod-sec="analytics"]');
+    // Verify Collapse -> Expand Insights toggle round-trip & last-section restoration on #sales_analytics
+    window.__navToView('sales_analytics');
+    const secAnalyticsBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"] [data-mod-sec="analytics"]');
     if (secAnalyticsBtn) secAnalyticsBtn.click();
-    const collapseBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"] [data-mod-toggle="collapse"]');
+    const collapseBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"] [data-mod-toggle="collapse"]');
     if (collapseBtn) collapseBtn.click();
-    const collapsedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+    const collapsedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
     const collapsedBodyAbsent = !!(collapsedHub && !collapsedHub.querySelector('.mod-analytics-body'));
     const expandBtn = collapsedHub ? collapsedHub.querySelector('[data-mod-toggle="expand"]') : null;
     const expandBtnText = expandBtn ? expandBtn.textContent.trim() : '';
     if (expandBtn) expandBtn.click();
-    const expandedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales"]');
+    const expandedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
     const expandedBodyPresent = !!(expandedHub && expandedHub.querySelector('.mod-analytics-body'));
     const restoredAnalyticsPane = !!(expandedHub && expandedHub.querySelector('[data-mod-sec-pane="analytics"]'));
     const expandedKpis = expandedHub ? expandedHub.querySelectorAll('.pbi-kpi-card').length : 0;
@@ -2046,13 +2135,13 @@ try {
     return {
       ok: pbiTitle === 'Analytics & Insights' && pbiTopTitle === 'Analytics & Insights' &&
           pbiPageCount === 12 && movedJumpCount === 8 &&
-          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && allModsOk && expandToggleOk,
-      pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, expandToggleOk, modResults
+          afterJumpTopTitle === 'Sales Analytics' && salesHubPresent && noStackedOnOps && allModsOk && expandToggleOk,
+      pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, noStackedOnOps, expandToggleOk, modResults
     };
   })()`);
   modAnalyticsProbe && modAnalyticsProbe.ok
-    ? pass('Analytics & Insights · 12 core pages + 8 moved pages & domain analytics embedded across 11 sidebar views', `studio=${modAnalyticsProbe.pbiPageCount} pages · moved=${modAnalyticsProbe.movedJumpCount} · hubs=${modAnalyticsProbe.modResults.length}/11`)
-    : fail('Analytics & Insights + embedded module hubs', JSON.stringify(modAnalyticsProbe));
+    ? pass('Analytics & Insights · 12 core pages + 8 moved pages routed to dedicated Analytics sub-tabs (0 stacked analytics on operational registers)', `studio=${modAnalyticsProbe.pbiPageCount} pages · moved=${modAnalyticsProbe.movedJumpCount} · hubs=${modAnalyticsProbe.modResults.length}/10`)
+    : fail('Analytics & Insights + dedicated analytics sub-tabs', JSON.stringify(modAnalyticsProbe));
 
   if (!MOBILE) {
     const railToggleProbe = await evaluate(`(() => {
@@ -2141,9 +2230,10 @@ try {
     const btn = document.getElementById('${MOBILE ? 'mobileThemeBtn' : 'themeToggleBtn'}');
     if (document.documentElement.getAttribute('data-theme') !== 'light' && btn) btn.click();
 
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    window.__navToView('pbi');
     const pbiLight = {
       rail: lum(getComputedStyle(document.getElementById('sidebar')).backgroundColor),
+      hubSubtabBar: lum(getComputedStyle(document.getElementById('hubSubtabBar')).backgroundColor),
       pbiHdr: lum(getComputedStyle(document.querySelector('.pbi-studio-hdr')).backgroundColor),
       pbiTab: lum(getComputedStyle(document.querySelector('.pbi-page-tab:not(.active)')).backgroundColor),
       pbiDateBar: lum(getComputedStyle(document.querySelector('.pbi-date-slicer-row')).backgroundColor),
@@ -2151,16 +2241,16 @@ try {
       aiDrawer: lum(getComputedStyle(document.getElementById('aiDrawer')).backgroundColor),
       authCard: lum(getComputedStyle(document.querySelector('.auth-card')).backgroundColor)
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     const salesLight = {
       cockpitBanner: lum(getComputedStyle(document.querySelector('.cockpit-banner')).backgroundColor)
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    window.__navToView('statements');
     const rdlLight = {
       rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
       rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="users"]').click();
+    window.__navToView('users');
     const usersLight = {
       enrolViewport: lum(getComputedStyle(document.querySelector('.enrol-cam-viewport')).backgroundColor),
       enrolPlaceholderTitle: lum(getComputedStyle(document.querySelector('.enrol-cam-placeholder-title')).color) < 60 ? 250 : 0
@@ -2171,18 +2261,19 @@ try {
       enrolViewport: lum(getComputedStyle(document.querySelector('.enrol-cam-viewport')).backgroundColor),
       enrolPlaceholderTitle: lum(getComputedStyle(document.querySelector('.enrol-cam-placeholder-title')).color) > 200 ? 15 : 255
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="statements"]').click();
+    window.__navToView('statements');
     const rdlDark = {
       rdlHdr: lum(getComputedStyle(document.querySelector('.rdl-suite-hdr')).backgroundColor),
       rdlTabs: lum(getComputedStyle(document.querySelector('.rdl-tab-bar')).backgroundColor)
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     const salesDark = {
       cockpitBanner: lum(getComputedStyle(document.querySelector('.cockpit-banner')).backgroundColor)
     };
-    document.querySelector('#sidebarNav .nav-item[data-view="pbi"]').click();
+    window.__navToView('pbi');
     const pbiDark = {
       rail: lum(getComputedStyle(document.getElementById('sidebar')).backgroundColor),
+      hubSubtabBar: lum(getComputedStyle(document.getElementById('hubSubtabBar')).backgroundColor),
       pbiHdr: lum(getComputedStyle(document.querySelector('.pbi-studio-hdr')).backgroundColor),
       pbiTab: lum(getComputedStyle(document.querySelector('.pbi-page-tab:not(.active)')).backgroundColor),
       pbiDateBar: lum(getComputedStyle(document.querySelector('.pbi-date-slicer-row')).backgroundColor),
@@ -2192,7 +2283,7 @@ try {
     };
 
     if (btn) btn.click(); // restore Light mode
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
 
     const lightVals = { ...pbiLight, ...salesLight, ...rdlLight, ...usersLight };
     const darkVals = { ...pbiDark, ...salesDark, ...rdlDark, ...usersDark };
@@ -2204,27 +2295,46 @@ try {
     ? pass('theme parity · Light mode vs Dark mode across rail, PBI studio, slicers, module banners, RDL suite, AI drawer & auth card', `light minLum=${Math.round(Math.min(...Object.values(themeParity.lightVals)))} (>220) · dark maxLum=${Math.round(Math.max(...Object.values(themeParity.darkVals)))} (<50)`)
     : fail('theme parity · Light vs Dark', JSON.stringify(themeParity));
 
-  // 7c. Universal Registries dedicated section, tabs, All-BU consistency & form separation
+  // 7c. Contextual Universal Registries ("All BUs" sub-tabs + inline registry pills), All-BU consistency & form separation
   const univProbe = await evaluate(`(() => {
-    // 1. Sidebar has dedicated "Universal Registries" section with 8 individual tabs
+    // 1. Sidebar retired separate "Universal Registries" section; all 8 reg_* views + 3 inline registries live inside contextual parent hubs
     const navGrps = Array.from(document.querySelectorAll('#sidebarNav .grp')).map(g => g.textContent.trim());
-    const hasUnivSection = navGrps.includes('Universal Registries');
+    const hasUnivSection = !navGrps.includes('Universal Registries');
     const regViews = ['reg_equipment', 'reg_drivers', 'reg_sites', 'reg_regions', 'reg_products', 'reg_customers', 'reg_suppliers', 'reg_categories'];
     const allSidebarTabsExist = regViews.every(v => {
-      const btn = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
-      if (!btn) return false;
-      btn.click();
-      const railLabel = (btn.querySelector('span')?.textContent || '').trim();
+      window.__navToView(v);
+      const expectedKey = v === 'reg_equipment' ? 'equipment'
+        : v === 'reg_drivers' ? 'drivers'
+        : v === 'reg_sites' ? 'sites'
+        : v === 'reg_regions' ? 'regions'
+        : v === 'reg_products' ? 'products'
+        : v === 'reg_customers' ? 'customers'
+        : v === 'reg_suppliers' ? 'suppliers'
+        : 'expense_categories';
+      const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === expectedKey);
       const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
-      const noTopBloat = !document.querySelector('#workspace .cockpit-banner') && !document.getElementById('univRegTabBar') && !document.getElementById('fleetCounterpartyGuide') && document.querySelector('#workspace > :first-child')?.id === 'univRegPanel';
-      const subnavBtn = document.querySelector('#mobileSubnav [data-subnav-view="' + v + '"] span');
-      const subnavLabel = subnavBtn ? subnavBtn.textContent.trim() : railLabel;
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
-      return railLabel && railLabel === topbarTitle && noTopBloat && railLabel === subnavLabel && railLabel === docTitlePrefix;
+      const firstPanel = document.querySelector('#workspace .panel-card');
+      const subBar = document.getElementById('hubSubtabBar');
+      const noTopBloat = Boolean(subBar && firstPanel && firstPanel.id === 'univRegPanel' && !document.querySelector('#workspace .cockpit-banner') && !document.getElementById('univRegTabBar') && !document.getElementById('fleetCounterpartyGuide'));
+      return Boolean(meta && topbarTitle === meta.label && docTitlePrefix === meta.label && noTopBloat);
     });
+    // Also verify the 3 inline registry pills (product_types, uoms, expense_subcategories)
+    window.__navToView('reg_customers');
+    const ptPill = document.querySelector('[data-univ-reg-key="product_types"]');
+    if (ptPill) ptPill.click();
+    const ptTitleOk = (document.getElementById('topbarTitle')?.textContent || '').trim() === ((window.MFG_PBI.TABLE_CATALOG.find(t => t.key === 'product_types') || {}).label || '');
+    const uomPill = document.querySelector('[data-univ-reg-key="uoms"]');
+    if (uomPill) uomPill.click();
+    const uomTitleOk = (document.getElementById('topbarTitle')?.textContent || '').trim() === ((window.MFG_PBI.TABLE_CATALOG.find(t => t.key === 'uoms') || {}).label || '');
+    window.__navToView('reg_categories');
+    const subcatPill = document.querySelector('[data-univ-reg-key="expense_subcategories"]');
+    if (subcatPill) subcatPill.click();
+    const subcatTitleOk = (document.getElementById('topbarTitle')?.textContent || '').trim() === ((window.MFG_PBI.TABLE_CATALOG.find(t => t.key === 'expense_subcategories') || {}).label || '');
+    const inlinePillsOk = ptTitleOk && uomTitleOk && subcatTitleOk;
 
     // 2. Fleet & Diesel Control (#fleet) no longer mixes Universal Equipment & Driver Registry onto a BU page
-    document.querySelector('#sidebarNav .nav-item[data-view="fleet"]').click();
+    window.__navToView('fleet');
     const fleetHasOldUnivPanel = Boolean(document.getElementById('driverPanel')) || /UNIVERSAL EQUIPMENT & DRIVER REGISTRY/i.test(document.getElementById('workspace').innerText);
     const fleetHasBuAssignPanel = Boolean(document.getElementById('coFleetAssignPanel'));
 
@@ -2236,7 +2346,7 @@ try {
       !univGroupTables.includes('company_equipment') && !univGroupTables.includes('company_drivers');
 
     // 4. Universal Registries stay 100% consistent across BU switches (WTC vs BBConstruction vs All Group) with table panel directly at top
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     const noRedundantBoxes = !document.querySelector('#workspace .cockpit-banner') && !document.getElementById('univRegTabBar') && !document.getElementById('fleetCounterpartyGuide');
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
     const wtcCountTxt = document.querySelector('#univRegPanel [data-tbl-view="all"]')?.textContent || '';
@@ -2303,11 +2413,12 @@ try {
     const univDupGuardOk = supLiveDupHint && supDupBlocked && supCountBefore >= 1166 && supCountAfter === supCountBefore && aahedRows.length === 1 && custDupBlocked && eqDupBlocked && drvDupBlocked;
 
     document.getElementById('closeModalBtn').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
 
     return {
       hasUnivSection,
-      allSidebarTabsExist,
+      allSidebarTabsExist: allSidebarTabsExist && inlinePillsOk,
+      inlinePillsOk,
       fleetHasOldUnivPanel,
       fleetHasBuAssignPanel,
       catalogGroupedCleanly,
@@ -2404,7 +2515,7 @@ try {
     // Reset to Sales Kiosk 80mm Priced & return to Overview
     K.setPrintConfig({ paperWidth: 80, priceMode: 'priced' });
     K.switchKiosk('sales');
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
 
     return {
       ok: salesTabsCount === 4 && sales80PricedHasWidth && sales58UnpricedClass &&
@@ -2442,7 +2553,7 @@ try {
   // 7f. Search-box & combobox first-click stability (no 120ms blur-timer closeAll race across sequential fields + DOM node preservation on #tableSearchInput)
   const searchFocusStability = await evaluate(`(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     await wait(80);
 
     // 1. Verify #tableSearchInput keeps exact DOM node reference & activeElement focus across debounced typing re-renders
@@ -2504,7 +2615,7 @@ try {
     const siteStayedOpenAfter180ms = !siteMenu.hidden && document.activeElement === fSite;
 
     document.getElementById('closeModalBtn').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
 
     return {
       ok: sameSearchDomNode && prodOpenedFirstClick && custOpenedImmediately && custStayedOpenAfter180ms && siteOpenedImmediately && siteStayedOpenAfter180ms,
@@ -2550,7 +2661,7 @@ try {
 
     // Verify Entry seat (u3) renders 0 row-hover void buttons and 0 Record Inspector void buttons
     await T.performLogin('sabahkassab@bhfirms.com', '3333', { bypass2FA: true });
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     const entryRow = document.querySelector('#univRegPanel tbody tr.rrow[data-rid]');
     const entryHasNoRowVoidBtn = !(entryRow && entryRow.querySelector('.void-btn'));
     if (entryRow) entryRow.click();
@@ -2561,7 +2672,7 @@ try {
     // Restore Owner session (u1) and test 2-click Void/Delete + 1-click Undo restore
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
     document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     const countBefore = (window.MFG_SEED.records.equipment || []).length;
     const firstRow = document.querySelector('#univRegPanel tbody tr.rrow[data-rid]');
     const hasRowHoverVoidBtn = !!(firstRow && firstRow.querySelector('.void-btn[data-void="equipment"]'));
@@ -2583,7 +2694,7 @@ try {
     const countAfterUndo = (window.MFG_SEED.records.equipment || []).length;
     const restoredOk = countAfterUndo === countBefore;
     const roleGatesOk = ownerCanVoid && supEntryCanVoid && supOnlyCanVoid && entryBlocked && salesBlocked && entryHasNoRowVoidBtn && entryHasNoInspVoidBtns;
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     return {
       ok: roleGatesOk && hasRowHoverVoidBtn && hasBothInspectorVoidBtns && armedOk && voidDecremented && hasUndoBtn && restoredOk,
       roleGatesOk, ownerCanVoid, supEntryCanVoid, supOnlyCanVoid, entryBlocked, salesBlocked, entryHasNoRowVoidBtn, entryHasNoInspVoidBtns,
@@ -2596,7 +2707,7 @@ try {
 
   // 7i. Interactive Table Column Manager (Hide / Show columns, Widen / Narrow columns, tfoot colspan sync, 1-click Default reset & automatic revert on view switch)
   const tableColMgrProbe = await evaluate(`(() => {
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     const panel = document.getElementById('univRegPanel');
     const tbl = panel ? panel.querySelector('table.ledger-table') : null;
     if (!tbl || !window.MFG_TABLE_COLS) return { ok: false, reason: 'missing table or MFG_TABLE_COLS' };
@@ -2655,13 +2766,13 @@ try {
     window.MFG_TABLE_COLS.nudgeColumnWidth(tbl, 0, 48);
     const customizedBeforeNav = tbl.querySelectorAll('.tbl-col-hidden').length > 0 && tbl.classList.contains('has-col-resize');
 
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_drivers"]').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_drivers');
+    window.__navToView('reg_equipment');
 
     const tblAfterNav = document.querySelector('#univRegPanel table.ledger-table');
     const autoRevertedOnNav = tblAfterNav && tblAfterNav.querySelectorAll('.tbl-col-hidden').length === 0 && !tblAfterNav.classList.contains('has-col-resize') && Number(tblAfterNav.querySelector('tfoot tr td:first-child').getAttribute('colspan')) === origTfootColspan;
 
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     return {
       ok: hasResizersAndTools && popOpened && col1Hidden && col2Hidden && bodyCellsHidden &&
           origTfootColspan >= 3 && tfootSpanAfterHide2 === origTfootColspan - 2 &&
@@ -2680,7 +2791,7 @@ try {
   // 7j. Multi-Column Filter Engine, Clean Equipment Search ("truck"), Smart Sort Direction & Computed Column Sorting
   const multiColFilterProbe = await evaluate(`(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     await wait(60);
 
     // 1. Verify zero "(m89)" / "Merged trucks" internal migration tags remain in equipment notes
@@ -2762,7 +2873,7 @@ try {
     const resetRestoredAll = restoredAllFoot.includes('TOTAL (' + expectedTotalEq);
 
     // 7b. Verify Suppliers & Haulers logical columns, role badges, 6 System Views, no redundant header/guide boxes, clean header hover, wide search box & custom pill popover
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_suppliers"]').click();
+    window.__navToView('reg_suppliers');
     await wait(60);
     const noGuideOrBanner = !document.getElementById('fleetCounterpartyGuide') && !document.getElementById('univRegTabBar') && !document.querySelector('#workspace .cockpit-banner');
     const supViews = document.querySelectorAll('#univRegPanel [data-tbl-view]');
@@ -2805,7 +2916,7 @@ try {
     // 8. Verify Column Filter Bar on Operational Sales & Deliveries (#sales):
     // NEVER render the redundant "FILTER BY COLUMN [Company ▾] [Sale Type ▾]..." row (columns already have .th-filter-btn);
     // keep .col-filter-bar hidden when unfiltered and show ONLY .cf-active-strip when a column filter is active.
-    document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
+    window.__navToView('sales');
     await wait(60);
     const salesFilterBarBefore = document.querySelector('#salesPanel .col-filter-bar');
     const salesHasFilterBar = !!salesFilterBarBefore;
@@ -2826,7 +2937,7 @@ try {
     const salesClearBtn = document.querySelector('#salesPanel [data-cf-clear-all]');
     if (salesClearBtn) salesClearBtn.click();
 
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     return {
       ok: dirtyNotesCount === 0 && ownSearchOnlyTrucks && allSearchOnlyTrucks &&
           typeSortedAscFirst && loadsSortedDescNumerically &&
@@ -2856,7 +2967,7 @@ try {
     };
 
     // 1. Open Truck 360° Inspector for Tb7 (364656) and verify Dated Adjustment Windows panel + adding a window
-    document.querySelector('#sidebarNav .nav-item[data-view="reg_equipment"]').click();
+    window.__navToView('reg_equipment');
     await wait(80);
     const allViewBtn = document.querySelector('#univRegPanel [data-tbl-view="all"]');
     if (allViewBtn) allViewBtn.click();
@@ -3075,7 +3186,7 @@ try {
     };
 
     // 1. Navigate to #pricing and verify Indifference ($) column & Indifference filter chip
-    document.querySelector('#sidebarNav .nav-item[data-view="pricing"]').click();
+    window.__navToView('pricing');
     await wait(120);
     const prHeaders = Array.from(document.querySelectorAll('#pricingPanel table.ledger-table thead th')).map(th => (th.dataset.colCleanLabel || th.textContent || '').trim());
     const hasIndiffCol = prHeaders.some(h => /Indifference/i.test(h));
@@ -3167,8 +3278,7 @@ try {
   // 7o. Entity Split & Reconciliation Card Parity across Multi-Group (2 cards) and Single-Group (structured .sales-recon-card.single-card with 6 stacked metric columns & inline header reset button)
   const singleGroupReconProbe = await evaluate(`(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const navSales = document.querySelector('#sidebarNav .nav-item[data-view="sales"]');
-    if (navSales) navSales.click();
+    window.__navToView('sales');
     const grpBtn = document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]');
     if (grpBtn) grpBtn.click();
     await wait(30);
@@ -3262,7 +3372,7 @@ try {
 
     // 1. WTC All-Time on Executive Overview + Custom Range (2024-01-01 .. 2026-09-30 on Rep Date)
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     const grainAllBtn = document.querySelector('#dateGrainBar [data-grain="all"]');
     if (grainAllBtn) grainAllBtn.click();
     await wait(30);
@@ -3293,7 +3403,7 @@ try {
     await wait(30);
 
     // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity & Physical Drawer Check
-    document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]').click();
+    window.__navToView('cashflow');
     await wait(40);
     const wtcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcSalesTfoot = (document.querySelector('#cfSalesPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
@@ -3319,7 +3429,7 @@ try {
 
     // 4. Entry User Access: u4 (scale1.wtc@bhfirms.com, Entry, pbi_access: 'none') & u6 (batch.bbc@bhfirms.com, Entry, BBConstruction)
     await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
-    const u4NavBtn = document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]');
+    const u4NavBtn = document.querySelector('#sidebarNav .nav-item[data-hub="cashflow"]');
     const u4NavVisible = Boolean(u4NavBtn && !u4NavBtn.hidden);
     if (u4NavBtn) u4NavBtn.click();
     await wait(30);
@@ -3328,7 +3438,7 @@ try {
     const u4TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
 
     await T.performLogin('batch.bbc@bhfirms.com', '5555', { bypass2FA: true });
-    const u6NavBtn = document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]');
+    const u6NavBtn = document.querySelector('#sidebarNav .nav-item[data-hub="cashflow"]');
     if (u6NavBtn) u6NavBtn.click();
     await wait(30);
     const u6TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
@@ -3336,7 +3446,7 @@ try {
     // Restore Owner & Group All-Time
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
     document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     await wait(30);
 
     const wtcZeroOk = /\\$0\\.00/.test(wtcAllText) && /0 LL/.test(wtcAllText) && /\\$0\\.00/.test(wtcCustomText) && /0 LL/.test(wtcCustomText) && wtcNavPillAll === '$0 · 0 LL';
@@ -3360,17 +3470,18 @@ try {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const hasIconsApi = Boolean(window.MFG_ICONS && typeof window.MFG_ICONS.svg === 'function' && typeof window.MFG_ICONS.nav === 'function');
     const navBtns = Array.from(document.querySelectorAll('#sidebarNav button.nav-item'));
-    const allNavHaveSvg = navBtns.length >= 24 && navBtns.every(b => {
+    const allNavHaveSvg = navBtns.length === 10 && navBtns.every(b => {
       const ico = b.querySelector('i.nav-ico svg.ic');
       const sp = b.querySelector('span');
       return Boolean(ico && sp && sp.textContent.trim().length > 0 && !b.hasAttribute('title') && !sp.hasAttribute('title'));
     });
     const showcaseHasSvg = Boolean(document.querySelector('#railShowcaseLink i.nav-ico svg.ic'));
 
-    // Navigate to #fleet and verify Ticket column parity + thermal preview click
-    const fleetBtn = document.querySelector('#sidebarNav .nav-item[data-view="fleet"]');
-    if (fleetBtn) fleetBtn.click();
+    // Navigate to #fleet and verify sub-tabs SVGs + Ticket column parity + thermal preview click
+    window.__navToView('fleet');
     await wait(40);
+    const subBtns = Array.from(document.querySelectorAll('#hubSubtabBar button.hub-subtab'));
+    const allSubHaveSvg = subBtns.length === 4 && subBtns.every(b => Boolean(b.querySelector('i.nav-ico svg.ic')));
     const fuelTd = document.querySelector('#fuelPanel table.ledger-table tbody tr.rrow td:nth-child(2)');
     const fuelInline = fuelTd ? fuelTd.querySelector('.tkt-cell-inline') : null;
     const fuelNum = fuelInline ? fuelInline.querySelector('strong.tkt-no-num') : null;
@@ -3397,24 +3508,22 @@ try {
     // Verify zero ugly bare monochrome dingbats (U+1F5A8 without FE0F, U+1F5D1, U+1F5D4) across key modules
     let uglyGlyphHits = [];
     for (const v of ['sales', 'raw', 'fleet', 'kiosks', 'statements', 'users']) {
-      const b = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
-      if (b && !b.hidden) {
-        b.click();
-        await wait(25);
-        const wsTxt = document.getElementById('workspace')?.textContent || '';
-        if (/[\u{1F5A8}\u{1F5D1}\u{1F5D4}]/u.test(wsTxt)) uglyGlyphHits.push(v);
-      }
+      window.__navToView(v);
+      await wait(25);
+      const wsTxt = document.getElementById('workspace')?.textContent || '';
+      if (/[\u{1F5A8}\u{1F5D1}\u{1F5D4}]/u.test(wsTxt)) uglyGlyphHits.push(v);
     }
 
-    const ovBtn = document.querySelector('#sidebarNav .nav-item[data-view="overview"]');
-    if (ovBtn) ovBtn.click();
+    window.__navToView('overview');
     await wait(20);
 
     return {
-      ok: Boolean(hasIconsApi && allNavHaveSvg && showcaseHasSvg && fuelInline && fuelNum && fuelPrintBtn && fuelPrintSvg && noUnstyledBtn && fuelNowrap && numBeforeBtn && modalOpenedForFuel && uglyGlyphHits.length === 0),
+      ok: Boolean(hasIconsApi && allNavHaveSvg && allSubHaveSvg && showcaseHasSvg && fuelInline && fuelNum && fuelPrintBtn && fuelPrintSvg && noUnstyledBtn && fuelNowrap && numBeforeBtn && modalOpenedForFuel && uglyGlyphHits.length === 0),
       hasIconsApi,
       navCount: navBtns.length,
+      subCount: subBtns.length,
       allNavHaveSvg,
+      allSubHaveSvg,
       showcaseHasSvg,
       noUnstyledBtn,
       fuelNowrap,
@@ -3424,20 +3533,21 @@ try {
     };
   })()`);
   iconSystemProbe && iconSystemProbe.ok
-    ? pass('Institutional Vector Icon System & #fleet thermal ticket button parity (24+ rail SVGs, .tkt-print-mini click -> modal, 0 monochrome dingbats)', `nav=${iconSystemProbe.navCount} SVGs · fleetNowrap=${iconSystemProbe.fuelNowrap} · modalOpened=${iconSystemProbe.modalOpenedForFuel}`)
+    ? pass('Institutional Vector Icon System & #fleet thermal ticket button parity (10 rail SVGs + horizontal sub-tab SVGs, .tkt-print-mini click -> modal, 0 monochrome dingbats)', `nav=${iconSystemProbe.navCount} SVGs · sub=${iconSystemProbe.subCount} SVGs · fleetNowrap=${iconSystemProbe.fuelNowrap} · modalOpened=${iconSystemProbe.modalOpenedForFuel}`)
     : fail('Institutional Vector Icon System & #fleet thermal ticket button parity', JSON.stringify(iconSystemProbe));
 
   // 7r. Material & Transportation 4-Table Suite & WTC Old Stock Penny Parity (#raw)
   const matTransProbe = await evaluate(`(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const rawBtn = document.querySelector('#sidebarNav .nav-item[data-view="raw"]');
+    const rawBtn = document.querySelector('#sidebarNav .nav-item[data-hub="raw"]');
     const navLabel = (rawBtn?.querySelector('span')?.textContent || '').trim();
-    if (rawBtn) rawBtn.click();
+    window.__navToView('raw');
     await wait(35);
 
+    const activeSubLabel = (document.querySelector('#hubSubtabBar .hub-subtab.active .hub-subtab-lbl')?.textContent || '').trim();
     const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
     const cockpitTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
-    const namingOk = navLabel === 'Material & Transportation' && topbarTitle === 'Material & Transportation' && cockpitTitle === 'Material & Transportation';
+    const namingOk = navLabel === 'Material & Suppliers' && activeSubLabel === 'Material & Transportation' && topbarTitle === 'Material & Transportation' && cockpitTitle === 'Material & Transportation';
 
     // Apply WTC + 2024-01-01 .. 2026-09-30 + Rep Date (exact WTC Old Stock screenshot baseline)
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
@@ -3501,7 +3611,7 @@ try {
     const grainAllBtn = document.querySelector('#dateGrainBar [data-grain="all"]');
     if (grainAllBtn) grainAllBtn.click();
     document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
-    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    window.__navToView('overview');
     await wait(30);
 
     return {

@@ -13,12 +13,23 @@
   const ICONS = {
     // ---- Executive & Governance ----
     overview: s('<rect x="3" y="3" width="7.5" height="8.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.6"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.6"/><rect x="3" y="14.5" width="7.5" height="6.5" rx="1.6"/>'),
+    entities: s('<rect x="3" y="4" width="8" height="16" rx="1.4"/><rect x="13" y="8" width="8" height="12" rx="1.4"/><line x1="6" y1="8" x2="8" y2="8"/><line x1="6" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="18" y2="12"/>'),
     pbi: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
     tables: s('<rect x="3" y="3.5" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="14.8" x2="21" y2="14.8"/><line x1="9.2" y1="9" x2="9.2" y2="20.5"/>'),
     sentinels: s('<path d="M12 21.5s7.5-3.8 7.5-9.5V5.4L12 2.5 4.5 5.4V12c0 5.7 7.5 9.5 7.5 9.5z"/><path d="m8.8 12 2.2 2.2 4.4-4.5"/>'),
     statements: s('<path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><polyline points="14 2.5 14 8 19.5 8"/><line x1="8.2" y1="12.5" x2="15.8" y2="12.5"/><line x1="8.2" y1="16.5" x2="13.8" y2="16.5"/>'),
     users: s('<path d="M16 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.5" cy="7.5" r="3.6"/><path d="M19 8v6"/><path d="M22 11h-6"/>'),
     showcase: s('<line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 18 5 12 11 6"/>'),
+    sales_vat: s('<path d="M5.5 3h13v18l-2.2-1.6-2.1 1.6-2.2-1.6-2.2 1.6-2.1-1.6L5.5 21V3z"/><line x1="9" y1="9" x2="15" y2="15"/><circle cx="9.5" cy="9.5" r="1"/><circle cx="14.5" cy="14.5" r="1"/>'),
+    sales_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    raw_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    fleet_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    cashflow_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    expenses_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    payroll_attendance: s('<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>'),
+    payroll_contracts: s('<path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><polyline points="14 2.5 14 8 19.5 8"/><path d="m9 14.5 2 2 4-4"/>'),
+    payroll_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
+    ledger_treasury: s('<polyline points="17 2.5 21 6.5 17 10.5"/><line x1="3" y1="6.5" x2="21" y2="6.5"/><polyline points="7 21.5 3 17.5 7 13.5"/><line x1="21" y1="17.5" x2="3" y2="17.5"/>'),
 
     // ---- Plant, Dispatch & Kiosks ----
     sales: s('<rect x="1.8" y="5" width="12.7" height="11" rx="1.5"/><path d="M14.5 8.5h4.2l3.1 3.6V16h-7.3V8.5z"/><circle cx="6.2" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/>'),
