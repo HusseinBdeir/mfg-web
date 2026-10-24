@@ -3112,7 +3112,7 @@
       { id: 'unlock_qty_cap', fields: ['f_qty'], label: 'Quantity & Truck Capacity Lock', rule: 'CAPACITY', sub: 'Override auto-filled truck m³ capacity or 1-load Truck UoM quantity lock' },
       { id: 'unlock_uom', fields: ['f_uom'], label: 'Unit of Measure (UoM) Lock', rule: 'UNIT', sub: 'Switch ticket billing unit between m³, Ton, Truck load, Bag or Piece' },
       { id: 'unlock_method', fields: ['f_method'], label: 'Payment Method Lock (Cash / Credit)', rule: 'METHOD', sub: 'Override Customer default Cash/Credit method or Quarry Credit payable rule' },
-      { id: 'unlock_fleet_cascade', fields: ['f_truckowner', 'f_truck', 'f_driver', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Override Truck → Truck Owner/Driver cascade or Expense Category → Subcategory lock' },
+      { id: 'unlock_fleet_cascade', fields: ['f_truckowner', 'f_truck', 'f_driver', 'f_metertype', 'f_subcategory'], label: 'Cascading Fleet, Driver & Category Locks', rule: 'CASCADE', sub: 'Override Truck → Truck Owner/Driver/Meter Type cascade or Expense Category → Subcategory lock' },
       { id: 'unlock_site_owner', fields: ['f_siteowner'], label: 'Quarry Site Default Supplier Lock', rule: 'QUARRY', sub: 'Override the default quarry supplier bound to a raw material origin site' },
       { id: 'unlock_vat_serial', fields: ['f_vatinvoice'], label: 'Statutory VAT Invoice Serial Lock', rule: 'VAT 11%', sub: 'Manually bind or override a statutory 11% VAT invoice serial number' },
       { id: 'unlock_formula_totals', fields: ['f_date', 'f_mat_total', 'f_trans_total', 'f_total_usd'], label: 'Transaction Date & Calculated Total Locks', rule: 'DATE / TOTAL', sub: 'Override locked Transaction Date or computed Material / Transport / Total USD' }
@@ -3144,6 +3144,7 @@
     f_truckowner: 'unlock_fleet_cascade',
     f_truck: 'unlock_fleet_cascade',
     f_driver: 'unlock_fleet_cascade',
+    f_metertype: 'unlock_fleet_cascade',
     f_subcategory: 'unlock_fleet_cascade',
     f_siteowner: 'unlock_site_owner',
     f_vatinvoice: 'unlock_vat_serial',
@@ -4366,11 +4367,66 @@
     if (Number(info.capacity) > 0) parts.push(`${Number(info.capacity)} m³`);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
   }
+  // Canonical Equipment Category → Meter Type rule:
+  // - Excavator, Wheel Loader, Generator (PB*), Plant (Crushers/Washers/Batching) → Hour meter (h)
+  // - Truck, Vehicle, Mixer → Odometer (km)
+  // - Other → Machinery (Baldouzar, Compressor, Rotary) = Hour meter (h); Cars = Odometer (km); Sundry/Storage/Gallon/Site buckets = No meter
+  function equipMeterSpec(eqOrName, company) {
+    const eq = (eqOrName && typeof eqOrName === 'object')
+      ? eqOrName
+      : (eqOrName ? equipInfo(eqOrName, company || '', false, { side: 'fuel' }) : null);
+    const nm = String((eq && (eq.name || eq.equipment || eq.Equipment)) || (typeof eqOrName === 'string' ? eqOrName : '') || '').trim();
+    if (!eq && !nm) {
+      return { type: '', unit: '', label: '— Select Equipment first —', category: '' };
+    }
+    const cat = String((eq && (eq.type || eq.Type || eq.category)) || '').trim();
+    const catL = cat.toLowerCase();
+    const nmL = nm.toLowerCase();
+    if (catL === 'excavator' || catL === 'wheel loader' || catL === 'generator' || catL === 'plant') {
+      return { type: 'hours', unit: 'h', label: 'Hour meter (h)', category: cat || 'Machinery' };
+    }
+    if (catL === 'truck' || catL === 'vehicle' || catL === 'mixer') {
+      return { type: 'odometer', unit: 'km', label: 'Odometer (km)', category: cat || 'Truck' };
+    }
+    if (catL === 'other') {
+      if (/baldouzar|bulldozer|compressor|kombrasor|rotary|rotare|bobcat|loader|excavator|generator|mowaled|mwaled/i.test(nmL)) {
+        return { type: 'hours', unit: 'h', label: 'Hour meter (h)', category: 'Other (Machinery)' };
+      }
+      if (/corolla|\bcar\b|pickup|hilux|rapide/i.test(nmL)) {
+        return { type: 'odometer', unit: 'km', label: 'Odometer (km)', category: 'Other (Vehicle)' };
+      }
+      return { type: 'none', unit: '', label: 'No meter', category: 'Other (Non-metered)' };
+    }
+    if (/^(pb\d|mb\d|mbs\d|sb\d|cat\b|caterpillar|volvo|bobcat|kasara|kassara|maghsal|mowaled|mwaled|welding|baldouzar|kombrasor|compressor)/i.test(nmL)) {
+      return { type: 'hours', unit: 'h', label: 'Hour meter (h)', category: cat || 'Machinery' };
+    }
+    return { type: 'odometer', unit: 'km', label: 'Odometer (km)', category: cat || 'Truck' };
+  }
+
+  // Normalise historical fuel intake meter readings by Equipment Category:
+  // WTC's legacy Excel Diesel sheet had a single Odometer column where Hour-Meter machinery
+  // (Caterpillar, MB*, PB*, SB*) recorded engine working hours; resolve them to { reading, type: 'hours', unit: 'h' }
+  // matching Power BI m18a_tables.py COALESCE([RawHrs],[RawOdo]) for Excavator/Wheel Loader/Generator/Plant.
+  function effectiveFuelMeter(f) {
+    if (!f) return { reading: null, type: 'none', unit: '' };
+    const spec = equipMeterSpec(f.equipment, f.company);
+    const rawOdo = f.odometer != null && f.odometer !== '' ? Number(f.odometer) : null;
+    const rawHrs = f.hours != null && f.hours !== '' ? Number(f.hours) : null;
+    if (spec.type === 'hours') {
+      const r = rawHrs != null && isFinite(rawHrs) ? rawHrs : (rawOdo != null && isFinite(rawOdo) ? rawOdo : null);
+      return { reading: r, type: 'hours', unit: 'h' };
+    }
+    if (rawOdo != null && isFinite(rawOdo)) return { reading: rawOdo, type: 'odometer', unit: 'km' };
+    if (rawHrs != null && isFinite(rawHrs)) return { reading: rawHrs, type: 'hours', unit: 'h' };
+    return { reading: null, type: spec.type || 'none', unit: spec.unit || '' };
+  }
+
   function equipFuelOptionHtml(v, company, effDate) {
     const info = equipInfo(v, company || '', false, { date: effDate || '', side: 'fuel' });
     if (!info) return `<option value="${esc(v)}">`;
+    const mSpec = equipMeterSpec(info, company);
     const parts = [];
-    if (info.type) parts.push(info.type);
+    if (info.type) parts.push(`${info.type}${mSpec.unit ? ' (' + mSpec.unit + ')' : (mSpec.type === 'none' ? ' (No meter)' : '')}`);
     if (info.default_driver) parts.push(info.default_driver);
     else if (info.supplier) parts.push(info.supplier);
     return `<option value="${esc(v)}"${parts.length ? ` data-meta="${esc(parts.join(' · '))}"` : ''}>`;
@@ -5139,7 +5195,7 @@
       filterRecords, buildSentinelItems, exportBtn, nextTicketNo,
       canEnterForm, canAccessPbiPage, allowedCompanyNames,
       SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog,
-      getScopedMonthly, setDateFilter, ticketTons, renderDateSegPillHtml
+      getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml
     });
   }
 
@@ -5344,7 +5400,17 @@
     const isSalesFiltered = Boolean(periodRange(STATE.period) || STATE.search.trim() || STATE.chipFilter !== 'all' || hasActiveColFilters('sales'));
     const mdlProds = getModel().products || [];
     const mdlSites = getModel().sites || [];
-    const allProds = !isSalesFiltered ? mdlProds : (() => {
+    const allProds = !isSalesFiltered ? mdlProds.map(p => {
+      const m3 = productMeters(p.Product, p.qty_sold, p.UoM);
+      const rawM3 = productMeters(p.Product, p.raw_qty, p.UoM);
+      return Object.assign({}, p, {
+        native_qty_sold: p.qty_sold,
+        qty_sold: m3,
+        raw_qty: rawM3,
+        avg_price_net: m3 > 0 && p.net_sales != null ? round2(Number(p.net_sales) / m3) : p.avg_price_net,
+        avg_price_ttc: m3 > 0 && p.sales_ttc != null ? round2(Number(p.sales_ttc) / m3) : p.avg_price_ttc
+      });
+    }) : (() => {
       const map = new Map();
       rows.forEach(r => {
         const name = r.product || '(Unspecified)';
@@ -5356,24 +5422,29 @@
             'Material Family': ref['Material Family'] || ref.type || 'Aggregate',
             UoM: ref.UoM || ref.uom || r.uom || 'm³',
             list_price: ref.list_price != null ? ref.list_price : listPrice(name),
-            loads: 0, qty_sold: 0, tons_sold: 0, net_sum: 0, sales_ttc: 0
+            loads: 0, qty_sold: 0, native_qty_sold: 0, tons_sold: 0, net_sum: 0, sales_ttc: 0
           };
           map.set(name, cur);
         }
         const sgn = ticketSign(r);
-        const q = sgn * ticketProductQty(r);
+        const q = sgn * ticketMeters(r);
+        const rawQ = sgn * Number(r.qty || 0);
         const ttc = sgn * Number(r.total_ttc != null ? r.total_ttc : r.total || 0);
         const net = sgn * Number(r.total != null ? r.total : (Number(r.total_ttc || 0) - Number(r.vat || 0)));
         if (sgn === 1) cur.loads += 1;
         cur.qty_sold += q;
+        cur.native_qty_sold += rawQ;
         cur.tons_sold += sgn * ticketTons(r);
         cur.net_sum += net;
         cur.sales_ttc += ttc;
       });
-      return Array.from(map.values()).map(p => Object.assign(p, {
-        avg_price_net: p.qty_sold > 0 ? round2(p.net_sum / p.qty_sold) : 0,
-        avg_price_ttc: p.qty_sold > 0 ? round2(p.sales_ttc / p.qty_sold) : 0
-      }));
+      return Array.from(map.values()).map(p => {
+        const denom = p.qty_sold > 0 ? p.qty_sold : p.native_qty_sold;
+        return Object.assign(p, {
+          avg_price_net: denom > 0 ? round2(p.net_sum / denom) : 0,
+          avg_price_ttc: denom > 0 ? round2(p.sales_ttc / denom) : 0
+        });
+      });
     })();
     const allSites = !isSalesFiltered ? mdlSites : (() => {
       const map = new Map();
@@ -5571,7 +5642,7 @@
                   <td>${relLink('products', r.product)}</td>
                   <td>${r.site ? relLink('sites', r.site) : '—'}</td>
                   <td class="td-truck-drv"><span class="mono">${r.truck ? relLink('equipment', r.truck) : esc(r.transport_by === 'Third-party truck' ? '3rd-party' : (r.transport_by || '—'))}</span>${r.driver ? `<div class="drv-sub">${relLink('drivers', r.driver)}</div>` : ''}</td>
-                  <td class="r">${qFmt} ${esc(r.uom)}</td>
+                  <td class="r">${fmtTicketQtyCell(r, sgn, true)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.price || 0), 2)}</td>
                   <td class="r">${fmtUSD(sgn * Number(r.trans_price || 0), 2)}</td>
                   <td class="r"><strong>${fmtUSD(netVal, 2)}</strong></td>
@@ -5588,7 +5659,7 @@
                 <td colspan="8">
                   <b>TOTAL (${fmtNum(saleLoads)} LOADS)</b>
                 </td>
-                <td class="r"><b>${fmtNum(sumQty, 1)}</b></td>
+                <td class="r"><b>${fmtNum(sumQty, 0)} m³</b></td>
                 <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(sumTr, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(sumNet, 2)}</b></td>
@@ -5612,7 +5683,7 @@
               <thead>
                 <tr>
                   ${th('sprod', 'Product / Grade', 'Product')}${th('sprod', 'Family', 'Material Family')}${th('sprod', 'UoM', 'UoM')}${th('sprod', 'Loads', 'loads', 'r')}
-                  ${th('sprod', 'Qty Sold', 'qty_sold', 'r')}${th('sprod', 'Tons Sold', 'tons_sold', 'r')}${th('sprod', 'List Price', 'list_price', 'r')}${th('sprod', 'Avg Net', 'avg_price_net', 'r')}${th('sprod', 'Avg TTC', 'avg_price_ttc', 'r')}${th('sprod', 'Sales TTC ($)', 'sales_ttc', 'r')}
+                  ${th('sprod', 'Qty (m³)', 'qty_sold', 'r')}${th('sprod', 'Tons Sold', 'tons_sold', 'r')}${th('sprod', 'List Price', 'list_price', 'r')}${th('sprod', 'Avg Net', 'avg_price_net', 'r')}${th('sprod', 'Avg TTC', 'avg_price_ttc', 'r')}${th('sprod', 'Sales TTC ($)', 'sales_ttc', 'r')}
                 </tr>
               </thead>
               <tbody>
@@ -5622,7 +5693,7 @@
                     <td>${esc(p['Material Family'] || 'Aggregate')}</td>
                     <td class="mono">${esc(p.UoM || 'm³')}</td>
                     <td class="r">${fmtNum(p.loads)}</td>
-                    <td class="r">${fmtNum(p.qty_sold, 0)}</td>
+                    <td class="r">${p.qty_sold > 0 ? fmtNum(p.qty_sold, 0) + ' m³' : `<span class="muted" title="Non-material unit (${fmtNum(p.native_qty_sold || 0, 0)} ${esc(p.UoM || '')})">—</span>`}</td>
                     <td class="r">${fmtNum(p.tons_sold, 0)}</td>
                     <td class="r">${p.list_price != null ? fmtUSD(p.list_price, 2) : '—'}</td>
                     <td class="r">${fmtUSD(p.avg_price_net, 2)}</td>
@@ -5635,7 +5706,7 @@
                 <tr>
                   <td colspan="3"><b>TOTAL (${fmtNum(allProds.length)} GRADES)</b></td>
                   <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
-                  <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.qty_sold || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.qty_sold || 0), 0), 0)} m³</b></td>
                   <td class="r"><b>${fmtNum(allProds.reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
                   <td class="r">—</td>
                   <td class="r"><b>${fmtUSD(prodAvgNet, 2)}</b></td>
@@ -5742,6 +5813,21 @@
     });
     const wtcR = byCo.WTC;
     const bbcR = byCo.BBConstruction;
+    wtcR.salesHaul = 0;
+    bbcR.salesHaul = 0;
+    let sumSalesHaul = 0;
+    if (!STATE.search.trim() && STATE.chipFilter !== 'fleet' && !hasActiveColFilters('raw')) {
+      filterRecords(SEED.records.sales_tickets, { ignoreSearch: true }).forEach(s => {
+        if (s.transport_by !== 'Third-party truck') return;
+        const mth = String(s.method || '').trim();
+        if (mth !== 'Credit' && mth !== 'CR Return' && mth !== 'Credit Return') return;
+        const sgn = ticketSign(s);
+        const tp = sgn * Number(s.trans_price || 0);
+        if (!tp) return;
+        sumSalesHaul += tp;
+        if (byCo[s.company]) byCo[s.company].salesHaul += tp;
+      });
+    }
     const isGroupScope = STATE.company === 'manufacturing-group';
     const rawSites = (m.sites || []).filter(s => !STATE.search || Object.values(s).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
     const costPerTon = sumTons > 0 ? (sumTot / sumTons) : 0;
@@ -5830,19 +5916,21 @@
           ${isGroupScope ? `
           <div class="sales-entity-recon">
             <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
-              <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>${fmtNum(wtcR.loads)} Loads (${fmtNum(wtcR.tons, 0)} t)</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+              <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>${fmtNum(wtcR.loads)} Loads (${fmtNum(wtcR.qty, 0)} m³ · ${fmtNum(wtcR.tons, 0)} t)</b><span class="sales-recon-act">Filter WTC Only →</span></div>
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(wtcR.mat, 2)}</b></span>
                 <span><small>Haulage Leg</small><b>${fmtUSD(wtcR.haul, 2)}</b></span>
                 <span><small>Total Raw Cost</small><b class="brass">${fmtUSD(wtcR.tot, 2)}</b></span>
+                ${wtcR.salesHaul > 0 ? `<span title="3rd-party truck haulage on Credit Customer Sales Deliveries (included in WTC Old Stock Trans Credit · combined = ${fmtUSD(wtcR.tot + wtcR.salesHaul, 2)})"><small>+ Sales 3rd-Party Haul</small><b>${fmtUSD(wtcR.salesHaul, 2)}</b></span>` : ''}
               </div>
             </div>
             <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
-              <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>${fmtNum(bbcR.loads)} Loads (${fmtNum(bbcR.tons, 0)} t)</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+              <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>${fmtNum(bbcR.loads)} Loads (${fmtNum(bbcR.qty, 0)} m³ · ${fmtNum(bbcR.tons, 0)} t)</b><span class="sales-recon-act">Filter BBC Only →</span></div>
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(bbcR.mat, 2)}</b></span>
                 <span><small>Haulage Leg</small><b>${fmtUSD(bbcR.haul, 2)}</b></span>
                 <span><small>Total Raw Cost</small><b class="brass">${fmtUSD(bbcR.tot, 2)}</b></span>
+                ${bbcR.salesHaul > 0 ? `<span title="3rd-party truck haulage on Credit Customer Sales Deliveries"><small>+ Sales 3rd-Party Haul</small><b>${fmtUSD(bbcR.salesHaul, 2)}</b></span>` : ''}
               </div>
             </div>
           </div>
@@ -5851,13 +5939,14 @@
             <div class="sales-recon-card single-card sales-recon-single" data-co="${esc(STATE.company)}">
               <div class="sales-recon-head">
                 <span class="badge ${STATE.company === 'bbconstruction' ? 'badge-info' : 'badge-brass'}">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span>
-                <b>${fmtNum(rows.length)} Loads (${fmtNum(sumTons, 0)} t)</b>
+                <b>${fmtNum(rows.length)} Loads (${fmtNum(sumQty, 0)} m³ · ${fmtNum(sumTons, 0)} t)</b>
                 <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
               </div>
               <div class="sales-recon-metrics">
                 <span><small>Material Leg</small><b>${fmtUSD(sumMat, 2)}</b></span>
                 <span><small>Haulage Leg</small><b>${fmtUSD(sumHaul, 2)}</b></span>
                 <span><small>Total Raw Cost</small><b class="brass">${fmtUSD(sumTot, 2)}</b></span>
+                ${sumSalesHaul > 0 ? `<span title="3rd-party truck haulage on Credit Customer Sales Deliveries (included in WTC Old Stock Trans Credit · combined = ${fmtUSD(sumTot + sumSalesHaul, 2)})"><small>+ Sales 3rd-Party Haul</small><b>${fmtUSD(sumSalesHaul, 2)}</b></span>` : ''}
               </div>
             </div>
           </div>
@@ -5882,7 +5971,7 @@
                     <td>${r.site_owner ? relLink('suppliers', r.site_owner) : '—'}</td>
                     <td>${r.truck_owner ? relLink('suppliers', r.truck_owner) : esc(r.transport_by === 'Company fleet' ? 'Company fleet' : (r.transport_by || '—'))}</td>
                     <td>${relLink('products', r.product)}</td>
-                    <td class="r">${Math.abs(Number(r.qty || 0) - Math.round(Number(r.qty || 0))) < 0.005 ? fmtNum(r.qty, 0) : fmtNum(r.qty, 2)} ${esc(r.uom)}</td>
+                    <td class="r">${fmtTicketQtyCell(r, 1, false)}</td>
                     <td class="r">${fmtUSD(r.cost, 2)}</td>
                     <td class="r">${fmtUSD(r.trans_cost, 2)}</td>
                     <td class="r"><strong>${fmtUSD(r.total, 2)}</strong></td>
@@ -5895,7 +5984,7 @@
                   <td colspan="7">
                     <b>TOTAL (${fmtNum(rows.length)} RECEIPTS · ${fmtNum(sumTons, 0)} TONS)</b>
                   </td>
-                  <td class="r"><b>${fmtNum(sumQty, 1)}</b></td>
+                  <td class="r"><b>${fmtNum(sumQty, 1)} m³</b></td>
                   <td class="r"><b>${fmtUSD(sumMat, 2)}</b></td>
                   <td class="r"><b>${fmtUSD(sumHaul, 2)}</b></td>
                   <td class="r"><b>${fmtUSD(sumTot, 2)}</b></td>
@@ -5972,11 +6061,13 @@
       let prev = null;
       list.forEach(f => {
         let flag = { cls: 'badge-ok', label: '● OK' };
-        const cur = f.odometer != null ? Number(f.odometer) : (f.hours != null ? Number(f.hours) : null);
-        const pv = prev ? (prev.odometer != null ? Number(prev.odometer) : (prev.hours != null ? Number(prev.hours) : null)) : null;
-        const isHours = f.odometer == null && f.hours != null;
+        const curM = effectiveFuelMeter(f);
+        const cur = curM.reading;
+        const pvM = prev ? effectiveFuelMeter(prev) : null;
+        const pv = pvM ? pvM.reading : null;
+        const isHours = curM.type === 'hours';
         if (cur == null) flag = { cls: '', label: 'No meter' };
-        else if (pv != null) {
+        else if (pv != null && pvM && pvM.type === curM.type) {
           if (cur < pv) flag = { cls: 'badge-err', label: '▼ Backwards' };
           else if (!isHours && cur - pv > 5000) flag = { cls: 'badge-warn', label: '▲ +' + fmtNum(cur - pv, 0) + ' km' };
           else if (isHours && cur - pv > 500) flag = { cls: 'badge-warn', label: '▲ +' + fmtNum(cur - pv, 0) + ' h' };
@@ -6173,6 +6264,7 @@
             <tbody>
               ${shownFuel.map(f => {
                 const g = guards.get(f.id) || { cls: 'badge-ok', label: '● OK' };
+                const effM = effectiveFuelMeter(f);
                 return `
                 <tr class="rrow" data-rkey="fuel_intakes" data-rid="${esc(f.id)}">
                   <td class="mono">${esc(recordDateDMY(f))}${appCell(f, 'fuel_intakes')}</td>
@@ -6182,7 +6274,7 @@
                   <td>${f.driver ? relLink('drivers', f.driver) : '—'}</td>
                   <td>${relLink('products', f.item || f.fuel_type || 'Diesel')}</td>
                   <td class="r"><strong>${fmtNum(f.litres, 1)} L</strong></td>
-                  <td class="r">${f.odometer != null && f.odometer !== '' ? fmtNum(f.odometer, 0) + ' km' : (f.hours != null && f.hours !== '' ? fmtNum(f.hours, 1) + ' h' : '—')}</td>
+                  <td class="r">${effM.reading != null ? fmtNum(effM.reading, effM.type === 'hours' && effM.reading % 1 !== 0 ? 1 : 0) + ' ' + effM.unit : '—'}</td>
                   <td><span class="badge ${g.cls}">${esc(g.label)}</span></td>
                 </tr>`;
               }).join('') || emptyRow(9, periodEmptyMsg(SEED.records.fuel_intakes, 'fuel intakes'))}
@@ -9366,15 +9458,15 @@
 
           ${secHdr('2. Intake Quantity & Meter Reading')}
           ${fld('Litres Issued (L) *', inp('f_qty', 'number', '', 'step="0.1" min="0.1" inputmode="decimal"'), { id: 'wrap_f_qty', hintId: 'hint_qty', hint: '' })}
-          ${fld('Meter Type', sel('f_metertype', [['odometer', 'Odometer (km)'], ['hours', 'Hour meter (h)'], ['none', 'No meter']], 'odometer'), { id: 'wrap_f_metertype' })}
-          ${fld('Meter Reading', inp('f_meter', 'number', '', 'step="1" min="0" inputmode="numeric"'), { id: 'wrap_f_meter', hintId: 'hint_meter', hint: '' })}
+          ${fld('Meter Type', sel('f_metertype', [['', '— Select Equipment first —'], ['odometer', 'Odometer (km)'], ['hours', 'Hour meter (h)'], ['none', 'No meter']], ''), { id: 'wrap_f_metertype', lockField: 'f_metertype', lockReason: 'Auto-loaded and locked from the selected Equipment category', hintId: 'hint_metertype', hint: '' })}
+          ${fld('<span id="lbl_meter_reading">Meter Reading</span>', inp('f_meter', 'number', '', 'step="1" min="0" inputmode="numeric" readonly placeholder="Pick Equipment first..."'), { id: 'wrap_f_meter', hintId: 'hint_meter', hint: '' })}
           ${fld('Tank / Location', inp('f_location', 'text', 'Main Plant Tank', 'list="dl_fuel_locs" placeholder="Select or type tank / location..."') + dl('dl_fuel_locs', fuelLocs), { id: 'wrap_f_location' })}
           ${notesField}
         </div>
         <div class="live-calc">
           <div><small>Previous reading</small><b id="calc_prev">—</b></div>
-          <div><small>Distance / hours since</small><b id="calc_delta">—</b></div>
-          <div><small>Consumption</small><b id="calc_rate">—</b></div>
+          <div><small id="lbl_calc_delta">Distance / hours since</small><b id="calc_delta">—</b></div>
+          <div><small id="lbl_calc_rate">Consumption</small><b id="calc_rate">—</b></div>
           <div><small>Guard</small><b id="calc_total">—</b></div>
         </div>
       `;
@@ -9433,7 +9525,7 @@
 
   // ---- live rule & policy-lock engine -----------------------------------------
   const FORM_UI = {
-    priceManual: false, transManual: false, methodManual: false, uomManual: false,
+    priceManual: false, transManual: false, methodManual: false, uomManual: false, meterTypeManual: false,
     otManual: false, ticketManual: false, qtyManual: false, repDateManual: false, showRepDate: false,
     ownerManuallyPicked: false, driverManual: false, postAttempted: false,
     stagedOwnerDrivers: [],
@@ -10500,6 +10592,7 @@
     if (equipChanged) {
       FORM_UI.lastTruck = equipment;
       FORM_UI.driverManual = false;
+      FORM_UI.meterTypeManual = false;
     }
 
     if (!equipment) {
@@ -10552,43 +10645,75 @@
         isDefChosen ? 'ok' : '');
     }
 
-    const type = val('f_metertype') || 'odometer';
-    // Hide and clear Meter Reading column when Meter Type = none
-    setFieldVisible('wrap_f_meter', type !== 'none');
+    // Auto-derive and policy-lock Meter Type from Equipment Category:
+    // Excavator / Wheel Loader / Generator (PB*) / Plant -> Hour meter (h); Truck / Vehicle -> Odometer (km); Sundry Other -> No meter
+    const mSpec = equipment ? equipMeterSpec(eqRow || equipment, company) : equipMeterSpec('', company);
+    const mtLocked = applyFieldLockState('f_metertype', true, !equipment
+      ? 'Pick Equipment / Truck first — Meter Type auto-loads from equipment category'
+      : `Locked to ${mSpec.label} for ${mSpec.category || 'Equipment'} (${eqRow ? eqRow.name : equipment})`);
+    const mtEl = $('f_metertype');
+    if (mtEl && (mtLocked || !FORM_UI.meterTypeManual)) {
+      const targetMt = equipment ? (mSpec.type || 'odometer') : '';
+      if (mtEl.value !== targetMt) mtEl.value = targetMt;
+    }
+    const rawType = val('f_metertype');
+    const type = rawType || (equipment ? (mSpec.type || 'odometer') : '');
+    setHint('hint_metertype', !equipment
+      ? ''
+      : (mtLocked
+          ? `${mSpec.category || 'Equipment'} → ${mSpec.label}`
+          : `Admin override active (category default: ${mSpec.label})`),
+      !equipment ? '' : (mtLocked ? 'ok' : 'warn'));
+
+    // Hide and clear Meter Reading column when Meter Type = none; lock until Equipment is picked
+    const showMeterReading = type !== 'none';
+    setFieldVisible('wrap_f_meter', showMeterReading);
+    setText('lbl_meter_reading', type === 'hours' ? 'Meter Reading (h)' : (type === 'odometer' ? 'Meter Reading (km)' : 'Meter Reading'));
+    setText('lbl_calc_delta', type === 'hours' ? 'Hours since last fill' : (type === 'odometer' ? 'Distance since last fill' : 'Distance / hours since'));
+    setText('lbl_calc_rate', type === 'hours' ? 'Burn rate (L / h)' : (type === 'odometer' ? 'Consumption (L / 100 km)' : 'Consumption'));
     const mEl = $('f_meter');
     if (mEl) {
-      mEl.disabled = type === 'none';
-      if (type === 'none' && mEl.value) mEl.value = '';
+      const waitEquip = !equipment && !isFieldAdminUnlocked('f_metertype');
+      mEl.disabled = !showMeterReading;
+      mEl.readOnly = showMeterReading && waitEquip;
+      mEl.step = type === 'hours' ? '0.1' : '1';
+      mEl.placeholder = waitEquip
+        ? 'Pick Equipment first...'
+        : (type === 'hours' ? 'Optional engine hours (h)...' : 'Optional odometer (km)...');
+      if ((!showMeterReading || waitEquip) && mEl.value) mEl.value = '';
     }
-    const reading = type !== 'none' && mEl && val('f_meter') !== '' ? num('f_meter') : null;
+    const reading = showMeterReading && type !== '' && mEl && !mEl.readOnly && val('f_meter') !== '' ? num('f_meter') : null;
     const litres = num('f_qty');
     FORM_UI.lastCompany = company;
 
     const prev = equipment ? lastMeter(company, equipment, date || undefined) : null;
-    const prevVal = prev ? (prev.odometer != null ? Number(prev.odometer) : Number(prev.hours)) : null;
-    const prevType = prev ? (prev.odometer != null ? 'odometer' : 'hours') : null;
-    setText('calc_prev', prev ? `${fmtNum(prevVal, 0)} ${prevType === 'hours' ? 'h' : 'km'} on ${String(prev.date).slice(0, 10)}` : (equipment ? 'No prior reading' : '—'));
+    const prevEff = prev ? effectiveFuelMeter(prev) : null;
+    const prevVal = prevEff ? prevEff.reading : null;
+    const prevType = prevEff ? prevEff.type : null;
+    setText('calc_prev', prev && prevVal != null
+      ? `${fmtNum(prevVal, prevType === 'hours' && prevVal % 1 !== 0 ? 1 : 0)} ${prevType === 'hours' ? 'h' : 'km'} on ${String(prev.date).slice(0, 10)}`
+      : (equipment ? (type === 'none' ? 'Non-metered item' : 'No prior reading') : '—'));
     let guard = { ok: true, label: 'OK', cls: '' };
     let delta = null;
-    if (type !== 'none' && reading != null) {
+    if (showMeterReading && type !== '' && reading != null) {
       if (reading <= 0) guard = { ok: false, label: 'Reading must be above zero', cls: 'crit' };
       else if (type === 'odometer' && reading > 1000000) guard = { ok: false, label: 'Over 1,000,000 km — typo?', cls: 'crit' };
       else if (type === 'hours' && reading > 100000) guard = { ok: false, label: 'Over 100,000 h — typo?', cls: 'crit' };
-      else if (prev && prevType === type) {
+      else if (prev && prevVal != null && prevType === type) {
         delta = reading - prevVal;
-        if (delta < 0) guard = { ok: false, label: `Backwards by ${fmtNum(-delta, 0)} ${type === 'hours' ? 'h' : 'km'} vs the last intake`, cls: 'crit' };
+        if (delta < 0) guard = { ok: false, label: `Backwards by ${fmtNum(-delta, type === 'hours' && (-delta) % 1 !== 0 ? 1 : 0)} ${type === 'hours' ? 'h' : 'km'} vs the last intake`, cls: 'crit' };
         else if (type === 'odometer' && delta > 5000) guard = { ok: true, label: `Jump of ${fmtNum(delta, 0)} km — confirm in notes`, cls: 'warn' };
-        else if (type === 'hours' && delta > 500) guard = { ok: true, label: `Jump of ${fmtNum(delta, 0)} h — confirm in notes`, cls: 'warn' };
+        else if (type === 'hours' && delta > 500) guard = { ok: true, label: `Jump of ${fmtNum(delta, delta % 1 !== 0 ? 1 : 0)} h — confirm in notes`, cls: 'warn' };
       }
     }
     setHint('hint_meter', guard.label === 'OK' ? '' : guard.label, guard.cls);
-    setText('calc_delta', delta == null ? '—' : fmtNum(delta, 0) + (type === 'hours' ? ' h' : ' km'));
+    setText('calc_delta', delta == null ? '—' : fmtNum(delta, type === 'hours' && delta % 1 !== 0 ? 1 : 0) + (type === 'hours' ? ' h' : ' km'));
     setText('calc_rate', delta && delta > 0 && litres > 0 ? (type === 'hours' ? fmtNum(litres / delta, 2) + ' L/h' : fmtNum(litres / delta * 100, 1) + ' L/100km') : '—');
     setText('calc_total', guard.ok ? (guard.cls === 'warn' ? 'CHECK' : 'PASS') : 'BLOCKED');
     const known = !!(eqRow && equipmentNames().some(n => norm(n) === norm(equipment)));
     setHint('hint_truck', equipment
       ? (known
-          ? `${(eqRow && eqRow.type) || 'Equipment'}${defDriver ? ' · Default driver: ' + defDriver : ''}${eqRow && eqRow.supplier ? ' · Owner: ' + eqRow.supplier : ''}`
+          ? `${(eqRow && eqRow.type) || 'Equipment'}${mSpec.unit ? ' (' + mSpec.unit + ')' : (mSpec.type === 'none' ? ' (No meter)' : '')}${defDriver ? ' · Default driver: ' + defDriver : ''}${eqRow && eqRow.supplier ? ' · Owner: ' + eqRow.supplier : ''}`
           : 'Not in the equipment registry — check the plate')
       : '', equipment ? (known ? 'ok' : 'warn') : '');
     const bbcTankNegative = company === 'BBConstruction' && (fuelType === 'Diesel' || /diesel/i.test(val('f_item'))) && Number((((SEED.sentinels.fleet_fuel_overtime_auditor || {}).by_model || {}).BBConstruction || {}).diesel_stock_balance_l || 0) < 0;
@@ -11715,7 +11840,7 @@
     const body = activeFormHost();
     if (!body) return;
     clearTimeout(modalFocusTimer);
-    FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false;
+    FORM_UI.priceManual = false; FORM_UI.transManual = false; FORM_UI.methodManual = false; FORM_UI.uomManual = false; FORM_UI.meterTypeManual = false;
     FORM_UI.otManual = false; FORM_UI.ticketManual = false; FORM_UI.qtyManual = false; FORM_UI.repDateManual = false; FORM_UI.showRepDate = false;
     FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; FORM_UI.postAttempted = false;
     FORM_UI.stagedOwnerDrivers = [];
@@ -11799,6 +11924,7 @@
           if (fid === 'f_transunitprice') FORM_UI.transManual = false;
           if (fid === 'f_method') FORM_UI.methodManual = false;
           if (fid === 'f_uom') FORM_UI.uomManual = false;
+          if (fid === 'f_metertype') FORM_UI.meterTypeManual = false;
           if (fid === 'f_qty') FORM_UI.qtyManual = false;
           if (fid === 'f_date' && $('f_date')) $('f_date').value = todayISO();
           recalcForm();
@@ -11822,6 +11948,7 @@
         if (el.id === 'f_transunitprice' && (isFieldAdminUnlocked('f_transunitprice') || el.dataset.policyLockedNow !== '1')) FORM_UI.transManual = true;
         if (el.id === 'f_method' && (isFieldAdminUnlocked('f_method') || el.dataset.policyLockedNow !== '1')) FORM_UI.methodManual = true;
         if (el.id === 'f_uom' && (isFieldAdminUnlocked('f_uom') || el.dataset.policyLockedNow !== '1')) FORM_UI.uomManual = true;
+        if (el.id === 'f_metertype' && (isFieldAdminUnlocked('f_metertype') || el.dataset.policyLockedNow !== '1')) FORM_UI.meterTypeManual = true;
         if (el.id === 'f_qty') FORM_UI.qtyManual = !!el.value;
         if (el.id === 'f_repdate') {
           FORM_UI.repDateManual = val('f_repdate') !== val('f_date');
@@ -11830,8 +11957,8 @@
         if (el.id === 'f_time') FORM_UI.otManual = false;
         if (el.id === 'f_overtime') FORM_UI.otManual = true;
         if (el.id === 'f_ticketno') FORM_UI.ticketManual = !!el.value;
-        // Selecting or clearing a truck resets manual quantity & driver so the truck's capacity and default driver populate first
-        if (el.id === 'f_truck') { FORM_UI.qtyManual = false; FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; }
+        // Selecting or clearing a truck resets manual quantity, meter type & driver so the unit's category, capacity and default driver populate first
+        if (el.id === 'f_truck') { FORM_UI.qtyManual = false; FORM_UI.meterTypeManual = false; FORM_UI.ownerManuallyPicked = false; FORM_UI.driverManual = false; }
         if (el.id === 'f_truckowner' || el.id === 'f_saletype' || el.id === 'f_transportby') FORM_UI.driverManual = false;
         if (el.id === 'f_driver') FORM_UI.driverManual = true;
         // Changing counterparty / product / site re-runs the agreement lookup unless Admin unlocked the price
@@ -12042,7 +12169,6 @@
       if (!c.equipment) addErr('f_truck', 'Equipment is required.');
       if (!(c.litres > 0)) addErr('f_qty', 'Litres must be above zero.');
       if (c.bbcTankNegative) addErr('f_qty', 'BBConstruction diesel intakes are refused while the tank reconciliation is negative.');
-      if (c.type !== 'none' && c.reading == null) addErr('f_meter', 'Meter reading is required (or choose "No meter").');
       if (!c.guard.ok) addErr('f_meter', 'Meter guard: ' + c.guard.label);
       if (c.guard.cls === 'warn' && !notes) addErr('f_notes', 'Large meter jump — add a note to confirm the reading.');
       const ticket = val('f_ticketno');
@@ -12802,9 +12928,11 @@
     }
     if (key === 'equipment') {
       const lm = lastMeter(null, row.name, null);
+      const lmEff = lm ? effectiveFuelMeter(lm) : null;
+      const mSpec = equipMeterSpec(row, row.company);
       return {
         tone: 'info',
-        text: `Universal Fleet Registry (m99): Unit ${row.name} (${row.type || 'Truck'} · ${row.ownership || 'Transporter'})  |  Capacity: ${row.capacity ? fmtNum(row.capacity, 1) + ' m³' : 'Standard'}  |  Owner: ${row.supplier || 'Company Fleet'}  |  Default Driver: ${row.default_driver || '—'}  |  Last M142 Meter: ${lm ? (lm.odometer ? fmtNum(lm.odometer, 0) + ' km' : fmtNum(lm.hours, 1) + ' hrs') + ' (' + lm.date + ')' : 'No meter log'}`
+        text: `Universal Fleet Registry: Unit ${row.name} (${row.type || 'Truck'} · ${mSpec.label} · ${row.ownership || 'Transporter'})  |  Capacity: ${row.capacity ? fmtNum(row.capacity, 1) + ' m³' : 'Standard'}  |  Owner: ${row.supplier || 'Company Fleet'}  |  Default Driver: ${row.default_driver || '—'}  |  Last Meter: ${lm && lmEff && lmEff.reading != null ? fmtNum(lmEff.reading, lmEff.type === 'hours' && lmEff.reading % 1 !== 0 ? 1 : 0) + ' ' + lmEff.unit + ' (' + lm.date + ')' : 'No meter log'}`
       };
     }
     if (key === 'sites') {
@@ -13004,6 +13132,7 @@
       if (!trkName || trkName === 'Pickup') return;
       const eq = equipInfo(trkName) || {};
       const lm = lastMeter(row.company, trkName, row.date);
+      const lmEff = lm ? effectiveFuelMeter(lm) : null;
       cards.push({
         tag: 'QUICK VIEW · TRUCK & FLEET',
         targetKey: 'equipment',
@@ -13013,7 +13142,7 @@
           ['Ownership / Type', `${eq.ownership || 'Third-Party'} · ${eq.type || 'Truck'}`],
           ['Box Capacity', eq.capacity ? `${fmtNum(eq.capacity, 1)} m³` : 'Standard'],
           ['Owner / Hauler', eq.supplier || row.truck_owner || 'Company Fleet'],
-          ['Driver / Meter', `${drvName || eq.default_driver || '—'}${lm && lm.odometer ? ' · ' + fmtNum(lm.odometer, 0) + ' km' : ''}`]
+          ['Driver / Meter', `${drvName || eq.default_driver || '—'}${lmEff && lmEff.reading != null ? ' · ' + fmtNum(lmEff.reading, lmEff.type === 'hours' && lmEff.reading % 1 !== 0 ? 1 : 0) + ' ' + lmEff.unit : ''}`]
         ]
       });
     };
@@ -17334,7 +17463,8 @@
           notes
         };
       }
-      const mType = val('f_metertype') || 'odometer';
+      const eqDraftName = val('f_truck');
+      const mType = val('f_metertype') || (eqDraftName ? equipMeterSpec(eqDraftName, company).type : 'odometer');
       const mVal = val('f_meter') ? num('f_meter') : null;
       const fType = val('f_fueltype') || 'Diesel';
       return {
@@ -18197,7 +18327,7 @@
                           <div class="drv-sub">${esc(kMode === 'raw' ? (r.product || '') : (kMode === 'fuel' ? (r.item || r.fuel_type || 'Diesel') : (r.product || '')))}</div>
                         </td>
                         <td class="r mono">${kMode === 'fuel' ? `${fmtNum(r.litres, 0)} L` : `${fmtNum(r.qty, 1)} ${esc(r.uom || 'm³')}`}</td>
-                        <td class="r mono">${kMode === 'fuel' ? (r.odometer ? fmtNum(r.odometer, 0) : '—') : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 0)}</td>
+                        <td class="r mono">${kMode === 'fuel' ? (() => { const em = effectiveFuelMeter(r); return em.reading != null ? fmtNum(em.reading, em.type === 'hours' && em.reading % 1 !== 0 ? 1 : 0) + ' ' + em.unit : '—'; })() : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 0)}</td>
                         <td class="kiosk-rec-print-cell">
                           <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">💲</button>
                           <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">🚛</button>
@@ -18665,7 +18795,7 @@
     let wsHtml = '';
     switch (STATE.view) {
       case 'overview': wsHtml = renderOverview(); break;
-      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, renderDateSegPillHtml }) : renderOverview(); break;
+      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml }) : renderOverview(); break;
       case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': wsHtml = renderSentinels(); break;
       case 'kiosks': wsHtml = renderKiosks(); break;

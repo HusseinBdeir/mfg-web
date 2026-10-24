@@ -225,6 +225,7 @@
     });
     (rec.equipment || []).forEach(eq => {
       const ee = ensure(rel.equipByName, eq.name, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
+      if (ee && eq.type) ee.type = eq.type;
       if (ee && eq.plate_no && norm(eq.plate_no) !== norm(eq.name)) {
         rel.equipByName[norm(eq.plate_no)] = ee;
       }
@@ -397,6 +398,17 @@
         .replace(/\[wb:[^\]]+\]/gi, '')
         .trim();
       return cleaned || null;
+    }
+    if (tableKey === 'fuel_intakes' && (c === 'odometer' || c === 'hours')) {
+      const eqEntry = rel.equipByName[norm(r.equipment)];
+      const eqCatL = String((eqEntry && eqEntry.type) || '').trim().toLowerCase();
+      const isHourCat = eqCatL === 'excavator' || eqCatL === 'wheel loader' || eqCatL === 'generator' || eqCatL === 'plant' ||
+        (eqCatL === 'other' && /baldouzar|bulldozer|compressor|kombrasor|rotary|rotare/i.test(String(r.equipment || '')));
+      if (isHourCat) {
+        if (c === 'odometer') return null;
+        const hv = (r.hours != null && r.hours !== '') ? r.hours : ((r.odometer != null && r.odometer !== '') ? r.odometer : null);
+        return hv;
+      }
     }
     if (tableKey === 'price_rules' && c === 'indiff_price') {
       const iv = r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price;
@@ -1256,7 +1268,7 @@
   let _pbiBaseCacheVal = null;
 
   function renderPbiStudio(ctx, overridePageId, bodyOnly) {
-    const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, ticketTons } = ctx;
+    const { STATE, SEED, COMPANY_LABELS, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, ticketTons, ticketMeters, productMeters } = ctx;
     _activePbiState = STATE;
     const m = getModel();
     const k = getKPI();
@@ -1309,7 +1321,18 @@
       const baseFuelRows = filterRecords(rec.fuel_intakes, { ignoreSearch: true });
       const sampleAllTtc = baseSalesRows.reduce((a, r) => a + Number(r.total_ttc || 0), 0) || 1;
 
-      let baseProds = m.products || [];
+      let baseProds = (m.products || []).map(p => {
+        if (!productMeters) return p;
+        const m3 = productMeters(p.Product, p.qty_sold, p.UoM);
+        const rawM3 = productMeters(p.Product, p.raw_qty, p.UoM);
+        return Object.assign({}, p, {
+          qty_sold: round2(m3),
+          raw_qty: round2(rawM3),
+          avg_price_ttc: m3 > 0 && p.sales_ttc != null ? round2(Number(p.sales_ttc) / m3) : p.avg_price_ttc,
+          avg_price_net: m3 > 0 && p.net_sales != null ? round2(Number(p.net_sales) / m3) : p.avg_price_net,
+          avg_raw_cost: rawM3 > 0 && p.raw_cost != null ? round2(Number(p.raw_cost) / rawM3) : p.avg_raw_cost
+        });
+      });
       let baseCusts = m.customers || [];
       let baseSupps = m.suppliers || [];
       const baseSites = m.sites || [];
@@ -1318,8 +1341,8 @@
         baseSalesRows.forEach(s => {
           const pk = norm(s.product);
           if (!pk) return;
-          const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
-          const q = Number(s.qty || 0);
+          const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+          const q = ticketMeters ? ticketMeters(s) : Number(s.qty || 0);
           const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
           const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
           cur.loads += 1;
@@ -1330,8 +1353,16 @@
           cur.trans_rev += Number(s.trans_price || 0);
           pMap.set(pk, cur);
         });
+        baseRawRows.forEach(r => {
+          const pk = norm(r.product);
+          if (!pk) return;
+          const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+          cur.raw_qty += ticketMeters ? ticketMeters(r) : Number(r.qty || 0);
+          cur.raw_cost += Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0)));
+          pMap.set(pk, cur);
+        });
         baseProds = baseProds.map(p => {
-          const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+          const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
           return Object.assign({}, p, {
             loads: st.loads,
             qty_sold: round2(st.qty_sold),
@@ -1339,8 +1370,11 @@
             sales_ttc: round2(st.sales_ttc),
             net_sales: round2(st.net_sales),
             trans_rev: round2(st.trans_rev),
+            raw_qty: round2(st.raw_qty),
+            raw_cost: round2(st.raw_cost),
             avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
-            avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net
+            avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
+            avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
           });
         });
 
@@ -1511,8 +1545,8 @@
       salesRows.forEach(s => {
         const pk = norm(s.product);
         if (!pk) return;
-        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
-        const q = Number(s.qty || 0);
+        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+        const q = ticketMeters ? ticketMeters(s) : Number(s.qty || 0);
         const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
         const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
         cur.loads += 1;
@@ -1523,8 +1557,16 @@
         cur.trans_rev += Number(s.trans_price || 0);
         pMap.set(pk, cur);
       });
+      rawRows.forEach(r => {
+        const pk = norm(r.product);
+        if (!pk) return;
+        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+        cur.raw_qty += ticketMeters ? ticketMeters(r) : Number(r.qty || 0);
+        cur.raw_cost += Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0)));
+        pMap.set(pk, cur);
+      });
       baseProds = (m.products || []).map(p => {
-        const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0 };
+        const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
         return Object.assign({}, p, {
           loads: st.loads,
           qty_sold: round2(st.qty_sold),
@@ -1532,8 +1574,11 @@
           sales_ttc: round2(st.sales_ttc),
           net_sales: round2(st.net_sales),
           trans_rev: round2(st.trans_rev),
+          raw_qty: round2(st.raw_qty),
+          raw_cost: round2(st.raw_cost),
           avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
-          avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net
+          avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
+          avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
         });
       });
 
@@ -1826,8 +1871,8 @@
             { label: 'Sales Ex-VAT (Mat + Trans)', value: fmtUSD(sc(k.gross_sales || k.net_sales), 0), sub: 'Mat ' + fmtUSDk(sc(k.net_sales)) + ' + Trans ' + fmtUSDk(sc(k.trans_rev)), navPage: 'p04_sales' },
             { label: 'Transport Revenue', value: fmtUSD(sc(k.trans_rev), 0), sub: fmtNum(sc(k.delivery_loads), 0) + ' delivery loads', navPage: 'p08_stock' },
             { label: 'Output VAT (11%)', value: fmtUSD(sc(k.sales_vat), 0), sub: 'Account 4427 invoiced', navPage: 'p13_vat' },
-            { label: 'Tons Sold', value: fmtNum(sc(k.tons_sold), 0) + ' t', sub: fmtNum(sc(k.qty_sold), 0) + ' billed units', navPage: 'p04_sales' },
-            { label: 'Avg Price / Unit (TTC)', value: fmtUSD(k.avg_price_ttc, 2), sub: 'Net: ' + fmtUSD(k.avg_price_net, 2) + '/u', navPage: 'p05_pricing' }
+            { label: 'Tons Sold', value: fmtNum(sc(k.tons_sold), 0) + ' t', sub: fmtNum(sc(k.qty_sold), 0) + ' m³ sold', navPage: 'p04_sales' },
+            { label: 'Avg Price / m³ (TTC)', value: fmtUSD(k.avg_price_ttc, 2), sub: 'Net: ' + fmtUSD(k.avg_price_net, 2) + '/m³', navPage: 'p05_pricing' }
           ])}
           ${kpiBand('2 · Direct Costs, Expenses, Payroll & Margins', [
             { label: 'Raw Material Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: 'Mat ' + fmtUSDk(sc(k.raw_mat_cost)) + ' + Haul ' + fmtUSDk(sc(k.raw_haulage)), navPage: 'p08_stock' },
@@ -2125,9 +2170,9 @@
             { label: 'Total Loads', value: fmtNum(sc(k.loads), 0), sub: fmtNum(salesRows.length) + ' in web sample' },
             { label: 'Delivery Loads', value: fmtNum(sc(k.delivery_loads), 0), sub: fmtPct(null, k.delivery_loads, k.loads) + ' delivered' },
             { label: 'Pick-up Loads', value: fmtNum(sc(k.pickup_loads), 0), sub: 'Material only (customer truck)' },
-            { label: 'Quantity Sold (Units)', value: fmtNum(sc(k.qty_sold), 0), sub: 'Mixed m³ and Ton' },
+            { label: 'Quantity Sold (m³)', value: fmtNum(sc(k.qty_sold), 0) + ' m³', sub: 'Converted to m³ (1 Truck = 27 m³)' },
             { label: 'Tons Sold (Converted)', value: fmtNum(sc(k.tons_sold), 0) + ' t', sub: 'Using grade ton_factor', tone: 'good' },
-            { label: 'Avg Realised Price', value: fmtUSD(k.avg_price_ttc, 2), sub: 'Ex-VAT: ' + fmtUSD(k.avg_price_net, 2) + '/u', tone: 'brass' }
+            { label: 'Avg Realised Price', value: fmtUSD(k.avg_price_ttc, 2), sub: 'Ex-VAT: ' + fmtUSD(k.avg_price_net, 2) + '/m³', tone: 'brass' }
           ])}
         </div>
 
@@ -2144,15 +2189,15 @@
 
         <div class="pbi-grid-3">
           ${pbiPanel('Sales by material', buildHorizontalBarChart(prodRows, 'Product', 'sales_ttc', v => fmtUSD(v, 0), { color: '#2B5C8F', maxItems: 8 }), { subtitle: 'Gross revenue TTC ($)' })}
-          ${pbiPanel('Quantity sold by material', buildHorizontalBarChart(prodRows, 'Product', 'qty_sold', (v, r) => fmtNum(v, 0) + ' ' + (r.UoM || 'm³'), { color: '#8A94A6', maxItems: 8 }), { subtitle: 'Billed volume in native UoM' })}
-          ${pbiPanel('Average price per unit by material', buildHorizontalBarChart(prodRows, 'Product', 'avg_price_net', v => fmtUSD(v, 2), { color: '#B8883B', maxItems: 8 }), { subtitle: 'Realised ex-VAT $/unit' })}
+          ${pbiPanel('Quantity sold by material (m³)', buildHorizontalBarChart(prodRows, 'Product', 'qty_sold', v => fmtNum(v, 0) + ' m³', { color: '#8A94A6', maxItems: 8 }), { subtitle: 'Volume converted to m³ (1 Truck = 27 m³)' })}
+          ${pbiPanel('Average price per m³ by material', buildHorizontalBarChart(prodRows, 'Product', 'avg_price_net', v => fmtUSD(v, 2), { color: '#B8883B', maxItems: 8 }), { subtitle: 'Realised ex-VAT $/m³' })}
         </div>
 
         <div class="pbi-grid-2">
           ${pbiTable('Products — volume, revenue, list vs realised price', [
             { label: 'Product / Grade', key: 'Product', fmt: (v, r) => `<b>${esc(v || '—')}</b>${r && r['Material Family'] && r['Material Family'] !== v ? ` <span class="mu">· ${esc(r['Material Family'])}</span>` : ''}` },
             { label: 'Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
-            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: (v, r) => `${fmtNum(v, 0)}${r && r.UoM ? ' ' + esc(r.UoM) : ''}` },
+            { label: 'Qty (m³)', key: 'qty_sold', r: true, fmt: v => v > 0 ? `${fmtNum(v, 0)} m³` : '—' },
             { label: 'Tons', key: 'tons_sold', r: true, fmt: v => fmtNum(v, 0) },
             { label: 'List ($)', key: 'list_price', r: true, fmt: v => v != null ? fmtUSD(v, 2) : '—' },
             { label: 'Avg Net ($)', key: 'avg_price_net', r: true, fmt: v => fmtUSD(v, 2) },
@@ -2573,8 +2618,8 @@
             { label: 'Total Raw Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' quarry loads', tone: 'brass' },
             { label: 'Material Cost (Site Owners)', value: fmtUSD(sc(k.raw_mat_cost), 0), sub: fmtPct(null, k.raw_mat_cost, k.raw_cost) + ' of raw cost' },
             { label: 'Haulage Cost (3rd-Party)', value: fmtUSD(sc(k.raw_haulage), 0), sub: fmtPct(null, k.raw_haulage, k.raw_cost) + ' of raw cost' },
-            { label: 'Raw Tons Purchased', value: fmtNum(k.raw_tons, 0) + ' t', sub: fmtNum(k.raw_qty, 0) + ' native units', tone: 'good' },
-            { label: 'Avg Raw Cost / Unit', value: fmtUSD(k.avg_raw_cost, 2), sub: 'Sell price: ' + fmtUSD(k.avg_price_net, 2) + '/u' },
+            { label: 'Raw Tons Purchased', value: fmtNum(k.raw_tons, 0) + ' t', sub: fmtNum(k.raw_qty, 0) + ' m³ purchased', tone: 'good' },
+            { label: 'Avg Raw Cost / m³', value: fmtUSD(k.avg_raw_cost, 2), sub: 'Sell price: ' + fmtUSD(k.avg_price_net, 2) + '/m³' },
             { label: 'Transport Cost Recovery', value: fmtPct(costRecPct), sub: 'Trans Rev ' + fmtUSDk(k.trans_rev) + ' ÷ Haul ' + fmtUSDk(k.raw_haulage), tone: costRecPct >= 1 ? 'good' : 'warn' }
           ])}
         </div>
@@ -2609,9 +2654,9 @@
 
           ${pbiTable('Products — sold vs purchased unit economics', [
             { label: 'Product / Grade', key: 'Product', bold: true },
-            { label: 'Qty Sold', key: 'qty_sold', r: true, fmt: (v, r) => `${fmtNum(v, 0)}${r && r.UoM ? ' ' + esc(r.UoM) : ''}` },
+            { label: 'Qty Sold (m³)', key: 'qty_sold', r: true, fmt: v => v > 0 ? `${fmtNum(v, 0)} m³` : '—' },
             { label: 'Avg Sell ($)', key: 'avg_price_net', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'Raw Qty', key: 'raw_qty', r: true, fmt: v => fmtNum(v, 0) },
+            { label: 'Raw Qty (m³)', key: 'raw_qty', r: true, fmt: v => v > 0 ? `${fmtNum(v, 0)} m³` : '—' },
             { label: 'Avg Raw ($)', key: 'avg_raw_cost', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' },
             { label: 'Raw Cost ($)', key: 'raw_cost', r: true, bar: true, fmt: v => fmtUSD(v, 0) }
           ], prodRows, { subtitle: 'Comparison of sales volume vs raw quarry intake by aggregate grade', unitLabel: 'products' })}
