@@ -240,7 +240,7 @@ try {
   // 2b. Operational & Financial module primary-ticket-first table order & toolbar parity (Sales, Raw, Fleet, Pricing, Customers, Suppliers, Expenses, Payroll, Ledger)
   const moduleToolbarSpecs = [
     { view: 'sales', panel: '#salesPanel', modal: 'sales', secondPanel: '#salesProdPanel' },
-    { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#sitesPanel' },
+    { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#rawSupPanel' },
     { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#equipPanel' },
     { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule', secondPanel: '#listPricePanel' },
     { view: 'customers', panel: '#rcptPanel', modal: 'receipt', secondPanel: '#custPanel' },
@@ -3404,6 +3404,93 @@ try {
   iconSystemProbe && iconSystemProbe.ok
     ? pass('Institutional Vector Icon System & #fleet thermal ticket button parity (24+ rail SVGs, .tkt-print-mini click -> modal, 0 monochrome dingbats)', `nav=${iconSystemProbe.navCount} SVGs · fleetNowrap=${iconSystemProbe.fuelNowrap} · modalOpened=${iconSystemProbe.modalOpenedForFuel}`)
     : fail('Institutional Vector Icon System & #fleet thermal ticket button parity', JSON.stringify(iconSystemProbe));
+
+  // 7r. Material & Transportation 4-Table Suite & WTC Old Stock Penny Parity (#raw)
+  const matTransProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const rawBtn = document.querySelector('#sidebarNav .nav-item[data-view="raw"]');
+    const navLabel = (rawBtn?.querySelector('span')?.textContent || '').trim();
+    if (rawBtn) rawBtn.click();
+    await wait(35);
+
+    const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
+    const cockpitTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
+    const namingOk = navLabel === 'Material & Transportation' && topbarTitle === 'Material & Transportation' && cockpitTitle === 'Material & Transportation';
+
+    // Apply WTC + 2024-01-01 .. 2026-09-30 + Rep Date (exact WTC Old Stock screenshot baseline)
+    document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
+    const setDate = (id, v) => {
+      const inp = document.getElementById(id);
+      if (!inp) return;
+      inp.value = v;
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setDate('dateFromInput', '2024-01-01');
+    setDate('dateToInput', '2026-09-30');
+    const repBtn = document.querySelector('#basisSwitch [data-basis="rep"]');
+    if (repBtn) repBtn.click();
+    await wait(50);
+
+    const panelIds = Array.from(document.querySelectorAll('#workspace .panel-card')).map(p => p.id);
+    const fourPanelsOk = panelIds.length === 4 && panelIds[0] === 'rawPanel' && panelIds[1] === 'rawSupPanel' && panelIds[2] === 'rawSalesHaulPanel' && panelIds[3] === 'sitesPanel';
+
+    const rawTfoot = (document.querySelector('#rawPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const supTfoot = (document.querySelector('#rawSupPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const shTfoot = (document.querySelector('#rawSalesHaulPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const siteTfoot = (document.querySelector('#sitesPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+
+    const rawIntakeOk = rawTfoot.includes('19,936') && rawTfoot.includes('$2,993,037.79') && rawTfoot.includes('$332,592.25') && rawTfoot.includes('$3,325,630.04');
+    const supParityOk =
+      supTfoot.includes('$2,993,037.79') &&
+      supTfoot.includes('$332,592.25') &&
+      supTfoot.includes('$19,414.72') &&
+      supTfoot.includes('$352,006.97') &&
+      supTfoot.includes('$3,345,044.76') &&
+      supTfoot.includes('$4,020,861.84') &&
+      (supTfoot.includes('-$675,817.08') || supTfoot.includes('−$675,817.08'));
+    const salesHaulOk = shTfoot.includes('283 LOADS') && shTfoot.includes('$19,414.72') && shTfoot.includes('$19,614.72');
+    const siteParityOk =
+      siteTfoot.includes('$2,993,037.79') &&
+      siteTfoot.includes('$332,592.25') &&
+      siteTfoot.includes('$19,414.72') &&
+      siteTfoot.includes('$3,345,044.76') &&
+      siteTfoot.includes('$4,020,861.84') &&
+      (siteTfoot.includes('-$675,817.08') || siteTfoot.includes('−$675,817.08'));
+
+    // Test chip filters on #rawSupPanel & #rawSalesHaulPanel + jump button on #rawPanel
+    document.querySelector('[data-rawsup-chip="haul"]')?.click();
+    await wait(25);
+    const haulOnlyTfoot = (document.querySelector('#rawSupPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const haulChipOk = haulOnlyTfoot.includes('$332,592.25') && haulOnlyTfoot.includes('$19,414.72') && haulOnlyTfoot.includes('$352,006.97');
+    document.querySelector('[data-rawsup-chip="all"]')?.click();
+
+    document.querySelector('[data-saleshaul-chip="credit"]')?.click();
+    await wait(25);
+    const shCreditTfoot = (document.querySelector('#rawSalesHaulPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const shCreditChipOk = shCreditTfoot.includes('281 LOADS') && shCreditTfoot.includes('$19,414.72') && !shCreditTfoot.includes('$19,614.72');
+    document.querySelector('[data-saleshaul-chip="all"]')?.click();
+
+    const jumpBtn = document.querySelector('#rawPanel [data-scroll-panel="rawSalesHaulPanel"]');
+    const hasJumpBtn = Boolean(jumpBtn);
+
+    // Restore Group + All-Time + Tx Date + Overview
+    const txBtn = document.querySelector('#basisSwitch [data-basis="tx"]');
+    if (txBtn) txBtn.click();
+    const grainAllBtn = document.querySelector('#dateGrainBar [data-grain="all"]');
+    if (grainAllBtn) grainAllBtn.click();
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    await wait(30);
+
+    return {
+      ok: Boolean(namingOk && fourPanelsOk && rawIntakeOk && supParityOk && salesHaulOk && siteParityOk && haulChipOk && shCreditChipOk && hasJumpBtn),
+      namingOk, fourPanelsOk, rawIntakeOk, supParityOk, salesHaulOk, siteParityOk, haulChipOk, shCreditChipOk, hasJumpBtn,
+      panelIds, supTfoot, shTfoot, siteTfoot
+    };
+  })()`);
+  matTransProbe && matTransProbe.ok
+    ? pass('Material & Transportation 4-table suite & WTC Old Stock penny parity (#rawPanel, #rawSupPanel, #rawSalesHaulPanel, #sitesPanel · Credit $3,345,044.76 · Paid $4,020,861.84 · Rem -$675,817.08 · 283 3rd-party customer loads)', `panels=${matTransProbe.panelIds.join('→')}`)
+    : fail('Material & Transportation 4-table suite & WTC Old Stock penny parity', JSON.stringify(matTransProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

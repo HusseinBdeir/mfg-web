@@ -10321,7 +10321,9 @@ table.ledger-table td.td-truck-drv {
 #salesPanel table.ledger-table thead th:nth-child(2),
 #salesPanel table.ledger-table tbody td:nth-child(2),
 #rawPanel table.ledger-table thead th:nth-child(2),
-#rawPanel table.ledger-table tbody td:nth-child(2) {
+#rawPanel table.ledger-table tbody td:nth-child(2),
+#rawSalesHaulPanel table.ledger-table thead th:nth-child(2),
+#rawSalesHaulPanel table.ledger-table tbody td:nth-child(2) {
   white-space: nowrap;
 }
 #salesPanel table.ledger-table thead th:nth-child(3),

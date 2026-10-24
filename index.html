@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '13.6';
+      window.__MFG_SHELL_VER = '13.7';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=13.6">
+  <link rel="stylesheet" href="css/app.css?v=13.7">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -124,9 +124,9 @@
           <span>Sales &amp; Deliveries</span>
           <em class="nav-pill" id="navCountSales">25,884</em>
         </button>
-        <button type="button" class="nav-item" data-view="raw" aria-label="Quarries &amp; Raw Intake">
+        <button type="button" class="nav-item" data-view="raw" aria-label="Material &amp; Transportation">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2.5 19.5 6.3-11.2 4.2 6.4 3.3-4.9 5.2 9.7H2.5z"/><path d="m11.2 9.8 2.1-3.3 4.2 6.5"/></svg></i>
-          <span>Quarries &amp; Raw Intake</span>
+          <span>Material &amp; Transportation</span>
           <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
         <button type="button" class="nav-item" data-view="fleet" aria-label="Fleet &amp; Diesel Control">
@@ -659,17 +659,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=13.6"></script>
-  <script src="js/face.js?v=13.6"></script>
-  <script src="js/endpoints.js?v=13.6"></script>
-  <script src="js/seed_data.js?v=13.6"></script>
-  <script src="js/icons.js?v=13.6"></script>
-  <script src="js/forms_engine.js?v=13.6"></script>
-  <script src="js/pbi_pages.js?v=13.6"></script>
-  <script src="js/rdl_reports.js?v=13.6"></script>
-  <script src="js/kiosk_print.js?v=13.6"></script>
-  <script src="js/table_columns.js?v=13.6"></script>
-  <script src="js/app.js?v=13.6"></script>
+  <script src="vendor/face-api.js?v=13.7"></script>
+  <script src="js/face.js?v=13.7"></script>
+  <script src="js/endpoints.js?v=13.7"></script>
+  <script src="js/seed_data.js?v=13.7"></script>
+  <script src="js/icons.js?v=13.7"></script>
+  <script src="js/forms_engine.js?v=13.7"></script>
+  <script src="js/pbi_pages.js?v=13.7"></script>
+  <script src="js/rdl_reports.js?v=13.7"></script>
+  <script src="js/kiosk_print.js?v=13.7"></script>
+  <script src="js/table_columns.js?v=13.7"></script>
+  <script src="js/app.js?v=13.7"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

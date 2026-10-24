@@ -29,7 +29,7 @@
   const MOVED_PBI_PAGES = {
     p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',  modSec: 'exceptions', short: 'Action Items',      targetLabel: 'AI Sentinels & Audit' },
     p18_tickets:    { id: 'p18_tickets',    view: 'sales',      modSec: 'tickets',    short: 'Ticket Books',      targetLabel: 'Sales & Deliveries' },
-    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Quarries', targetLabel: 'Quarries & Raw Intake' },
+    p17_jv:         { id: 'p17_jv',         view: 'raw',        modSec: 'jv',         short: 'JV 50/50 Quarries', targetLabel: 'Material & Transportation' },
     p11_drivers:    { id: 'p11_drivers',    view: 'fleet',      modSec: 'drivers',    short: 'Drivers & Overtime',targetLabel: 'Fleet & Diesel Control' },
     p13_vat:        { id: 'p13_vat',        view: 'customers',  modSec: 'vat',        short: 'VAT & Invoices',    targetLabel: 'Customers & Receivables' },
     p15_treasury:   { id: 'p15_treasury',   view: 'ledger',     modSec: 'treasury',   short: 'Treasury & Loans',  targetLabel: 'General Ledger & SOA' },
@@ -2663,7 +2663,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${movedRegisterBanner('Quarry Raw Material Purchases Register & JV 50/50 Quarry Ledger', 'Individual 2-leg quarry tickets (Site Owner + Truck Owner) and Joint Venture 50/50 quarry stock entitlements live directly inside Quarries & Raw Intake.', 'raw', 'Quarries & Raw Intake', 'jv')}
+          ${movedRegisterBanner('Quarry Raw Material Purchases Register & JV 50/50 Quarry Ledger', 'Individual 2-leg quarry tickets (Site Owner + Truck Owner), 3rd-party customer-site transportation, supplier remaining expenses, and Joint Venture 50/50 quarry stock entitlements live directly inside Material & Transportation.', 'raw', 'Material & Transportation', 'jv')}
         </div>
       `;
     }
@@ -3902,7 +3902,7 @@
       ]
     },
     raw: {
-      title: 'Quarry Intake, JV 50/50 & Unit Economics',
+      title: 'Material, Transportation, JV 50/50 & Unit Economics',
       subtitle: 'Embedded from Analytics & Insights — Joint Venture 50/50 Quarry Stock Entitlement, Unit Margin & Transport Cost Recovery',
       defaultSec: 'jv',
       sections: [
