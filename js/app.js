@@ -775,31 +775,82 @@
     return _prodByName.get(norm(name));
   }
 
-  // Tonnage rule of the semantic models (m167): Qty when the product's UoM is Ton, else Qty x the product's ton factor.
-  // A product without a factor carries no tonnage (the bundle stores a missing factor as 1.0, so 1.0 == "not set").
+  // Effective ton factor (m167 + sand/fill fallbacks for Trab Mrml, Raml Bab Thani & trab).
+  function effectiveTonFactor(p, r) {
+    const f = Number(p && p.ton_factor != null ? p.ton_factor : (r && r.ton_factor != null ? r.ton_factor : 0));
+    if (f > 0 && f !== 1) return f;
+    const pn = norm((p && p.name) || (r && r.product) || '');
+    if (pn === 'trab mrml' || pn === 'raml bab thani') return 1.7;
+    if (pn === 'trab') return 1.5;
+    return 0;
+  }
+
+  // Tonnage rule of the semantic models (m167): Qty when the ticket's UoM is Ton, else m³ x the product's ton factor (1 Truck = 27 m³).
   function ticketTons(r) {
     if (!r) return 0;
     const q = Number(r.qty || 0);
+    if (!q) return 0;
     const p = productByName(r.product);
-    const uom = String((p && p.uom) || r.uom || '').trim();
+    const uom = String(r.uom || (p && p.uom) || '').trim();
     if (/^ton/i.test(uom)) return q;
-    const f = Number(p && p.ton_factor != null ? p.ton_factor : (r.ton_factor != null ? r.ton_factor : 0));
-    return (f > 0 && f !== 1) ? q * f : 0;
+    const f = effectiveTonFactor(p, r);
+    if (!(f > 0)) return 0;
+    const pType = String((p && p.type) || '').trim().toLowerCase();
+    if (/^truck/i.test(uom) || (/^unit/i.test(uom) && pType === 'material')) return q * 27 * f;
+    return q * f;
   }
 
-  // m222: Product-unit Qty converts loads ticketed in another unit (Ton <-> m3) via the product's ton_factor.
-  function ticketProductQty(r) {
+  // Canonical Meter conversion rule: all material volume totals are in cubic meters (m³).
+  // - m³ / Meter: q
+  // - Ton: q / ton_factor (snapping within 0.01 of 0.5 for exact weighbridge load conversions)
+  // - Truck or Material Unit: 1 unit / 1 truck = 27 m³ (q * 27)
+  // - Non-material units (Litre, Remove, Spare Parts, equipment units): 0 m³
+  function ticketMeters(r) {
     if (!r) return 0;
     const q = Number(r.qty || 0);
+    if (!q) return 0;
     const p = productByName(r.product);
-    const pUom = String((p && p.uom) || '').trim().toLowerCase();
-    const tUom = String(r.uom || '').trim().toLowerCase();
-    const f = Number(p && p.ton_factor != null ? p.ton_factor : (r.ton_factor != null ? r.ton_factor : 0));
-    if (!pUom || !tUom || pUom === tUom || !(f > 0 && f !== 1)) return q;
-    if (pUom === 'm3' && tUom === 'ton') return q / f;
-    if (pUom === 'ton' && tUom === 'm3') return q * f;
-    return q;
+    const pName = norm((p && p.name) || r.product || '');
+    if (pName === 'remove') return 0;
+    const tUom = String(r.uom || (p && p.uom) || '').trim().toLowerCase();
+    const pType = String((p && p.type) || '').trim().toLowerCase();
+    if (tUom === 'm³' || tUom === 'm3' || tUom === 'meter' || tUom === 'meters') return q;
+    if (tUom === 'ton' || tUom === 'tons') {
+      const f = effectiveTonFactor(p, r);
+      if (!(f > 0)) return 0;
+      const rawM3 = q / f;
+      const halfSnap = Math.round(rawM3 * 2) / 2;
+      return Math.abs(rawM3 - halfSnap) < 0.01 ? halfSnap : round2(rawM3);
+    }
+    if (tUom === 'truck' || tUom === 'trucks' || (tUom === 'unit' && pType === 'material')) {
+      return q * 27;
+    }
+    return 0;
   }
+
+  function productMeters(prodName, qty, uomHint) {
+    const q = Number(qty || 0);
+    if (!q) return 0;
+    const p = productByName(prodName);
+    return ticketMeters({ product: prodName, qty: q, uom: uomHint || (p && p.uom) || 'm³' });
+  }
+
+  function fmtTicketQtyCell(r, sgn = 1, compact = false) {
+    const rawQ = sgn * Number((r && r.qty) || 0);
+    const rawFmt = Math.abs(rawQ - Math.round(rawQ)) < 0.005 ? fmtNum(rawQ, 0) : fmtNum(rawQ, 2);
+    const uom = String((r && r.uom) || 'm³').trim();
+    const uLow = uom.toLowerCase();
+    if (uLow === 'm³' || uLow === 'm3') return `${rawFmt} m³`;
+    const m3 = sgn * ticketMeters(r);
+    if (m3 !== 0) {
+      const m3Fmt = Math.abs(m3 - Math.round(m3)) < 0.005 ? fmtNum(m3, 0) : fmtNum(m3, 1);
+      if (compact) return `<span title="Ticketed: ${esc(rawFmt + ' ' + uom)} → ${esc(m3Fmt + ' m³')}">${m3Fmt} m³</span>`;
+      return `<span title="Ticketed: ${esc(rawFmt + ' ' + uom)} → ${esc(m3Fmt + ' m³')}">${m3Fmt} m³ <small class="muted">(${rawFmt} ${esc(uom)})</small></span>`;
+    }
+    return `<span class="muted" title="Non-material unit (excluded from m³ total)">${rawFmt} ${esc(uom)}</span>`;
+  }
+
+  const ticketProductQty = ticketMeters;
 
   // m18a / m272: Sale = +1 (Cash / Credit / Barter), Return = -1 (C Return / CR Return / Cash Return / Credit Return), Free / Remove / Config = 0
   function ticketSign(r) {
@@ -1035,8 +1086,8 @@
     const mRow = (m.monthly || []).find(r => r['Year Month'] === ymLabel);
     if (!mRow) return k;
     const MAP = { sales_ttc: 'sales_ttc', gross_sales: 'gross_sales', net_sales: 'net_sales', trans_rev: 'trans_rev', sales_vat: 'sales_vat', cash_sales: 'cash_sales', credit_sales: 'credit_sales',
-      loads: 'loads', delivery_loads: 'delivery_loads', pickup_loads: 'pickup_loads', tons_sold: 'tons', qty_sold: 'qty_sold',
-      raw_cost: 'raw_cost', raw_mat_cost: 'raw_mat_cost', raw_haulage: 'raw_haulage', raw_loads: 'raw_loads', raw_qty: 'raw_qty',
+      loads: 'loads', delivery_loads: 'delivery_loads', pickup_loads: 'pickup_loads', tons_sold: 'tons',
+      raw_cost: 'raw_cost', raw_mat_cost: 'raw_mat_cost', raw_haulage: 'raw_haulage', raw_loads: 'raw_loads',
       expenses: 'expenses', cash_expenses: 'cash_expenses', credit_expenses: 'credit_expenses', salaries_paid: 'salaries',
       gross_margin: 'gross_margin', operating_profit: 'operating_profit', receipts: 'receipts', settlements_paid: 'settlements_paid' };
     Object.keys(MAP).forEach(key => { if (mRow[MAP[key]] != null) k[key] = Number(mRow[MAP[key]]); });
@@ -1071,15 +1122,25 @@
     let anchor = null;
     if (!range) anchor = periods.all ? Object.assign({}, periods.all, { label: 'All-Time (2024–2030)' }) : null;
     else if (range.daxKey && periods[range.daxKey]) anchor = Object.assign({}, periods[range.daxKey], { label: range.label || periods[range.daxKey].label });
-    if ((STATE.basis === 'tx' || (!range && !(STATE.customRecords.sales_tickets || []).length)) && anchor) return Object.assign({}, anchor, { sales_rep_date: anchor.sales_ttc, raw_rep_date: anchor.raw_cost, exp_rep_date: anchor.expenses, op_profit_rep_date: anchor.operating_profit, basis: STATE.basis });
     const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : MAX_DATE;
     const cacheKey = `${coKey}|${allowedCompanyNames().join(',')}|${STATE.basis}|${STATE.period}|${f}|${t}|${SEED._customRev || 0}|${(STATE.customRecords.sales_tickets || []).length}`;
     if (_kpiRangeCacheMap.has(cacheKey)) return _kpiRangeCacheMap.get(cacheKey);
 
     const txRaw = computeLocalKPI(m, range, 'tx', coKey);
-    const txFinal = anchor || applyMonthlyDax(Object.assign({}, txRaw), m, range);
-    const computed = STATE.basis === 'rep' ? bridgeKpiToBasis(txFinal, txRaw, computeLocalKPI(m, range, 'rep', coKey)) : txFinal;
+    if (anchor) {
+      anchor.qty_sold = txRaw.qty_sold;
+      anchor.raw_qty = txRaw.raw_qty;
+      anchor.tons_sold = txRaw.tons_sold || anchor.tons_sold;
+      anchor.raw_tons = txRaw.raw_tons || anchor.raw_tons;
+      finishKpiRatios(anchor);
+    }
+    const txFinal = anchor
+      ? Object.assign({}, anchor, { sales_rep_date: anchor.sales_ttc, raw_rep_date: anchor.raw_cost, exp_rep_date: anchor.expenses, op_profit_rep_date: anchor.operating_profit, basis: STATE.basis })
+      : applyMonthlyDax(Object.assign({}, txRaw), m, range);
+    const computed = (STATE.basis === 'rep' && (range || (STATE.customRecords.sales_tickets || []).length))
+      ? bridgeKpiToBasis(txFinal, txRaw, computeLocalKPI(m, range, 'rep', coKey))
+      : txFinal;
 
     if (_kpiRangeCacheMap.size > 64) _kpiRangeCacheMap.clear();
     _kpiRangeCacheMap.set(cacheKey, computed);
@@ -2553,9 +2614,8 @@
     const filteredCount = activeEntries.length ? applyColFiltersForView(pool, view).length : pool.length;
 
     return `
-      <div class="col-filter-bar${activeEntries.length ? ' has-active' : ''}" data-cf-bar="${esc(view)}">
-        <div class="cf-controls">
-          <span class="cf-bar-lbl">${TH_FUNNEL_SVG}<span>Filter by Column</span></span>
+      <div class="col-filter-bar${activeEntries.length ? ' has-active' : ''}" data-cf-bar="${esc(view)}" ${activeEntries.length ? '' : 'hidden'}>
+        <div class="cf-controls" hidden aria-hidden="true">
           ${defs.map(def => {
             const curVal = String(cf[def.key] || '');
             const isNum = def.kind === 'numeric' || isNumericColKey(def.key);
@@ -2566,12 +2626,7 @@
             const hasCurInOpts = !curVal || opts.some(o => o.v === curVal);
             const humanVal = curVal ? formatFilterSpecHuman(curVal) : 'All';
             return `
-              <div class="cf-item${curVal ? ' is-active active' : ''}">
-                <button type="button" class="cf-pill-trigger${curVal ? ' is-active active' : ''}" data-th-filter-view="${esc(view)}" data-th-filter-key="${esc(def.key)}" data-th-filter-label="${esc(def.label)}" title="Filter by ${esc(def.label)}">
-                  <span class="cf-pill-lbl">${esc(def.label)}</span>
-                  ${curVal ? `<span class="cf-pill-val">${esc(humanVal)}</span>` : ''}
-                  <span class="cf-pill-caret">▾</span>
-                </button>
+              <div class="cf-item${curVal ? ' is-active active' : ''}" hidden>
                 <select class="cf-select${curVal ? ' is-active' : ''}" data-native-select="1" data-cf-view="${esc(view)}" data-cf-key="${esc(def.key)}" aria-label="Filter by ${esc(def.label)}" hidden aria-hidden="true" tabindex="-1">
                   <option value="">${esc(def.label)}: All</option>
                   ${!hasCurInOpts ? `<option value="${esc(curVal)}" selected>${esc(def.label)}: ${esc(humanVal)}</option>` : ''}

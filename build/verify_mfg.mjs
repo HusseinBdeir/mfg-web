@@ -2658,8 +2658,8 @@ try {
       methodTools && getComputedStyle(methodTools).opacity === '0' &&
       thAllSingleLine && thMaxTopDelta <= 1.5
     );
-    const trucksPillBtn = document.querySelector('#univRegPanel .cf-pill-trigger[data-th-filter-key="trucks_list"]');
-    if (trucksPillBtn) trucksPillBtn.click();
+    const trucksThBtn = document.querySelector('#univRegPanel .th-filter-btn[data-th-filter-key="trucks_list"]');
+    if (trucksThBtn) trucksThBtn.click();
     const supPop = document.getElementById('colFilterPopover');
     const supPopInputsCount = supPop ? supPop.querySelectorAll('input').length : 0;
     const supPopOptTexts = supPop ? Array.from(supPop.querySelectorAll('.cf-pop-opt-lbl')).map(el => el.textContent.trim()) : [];
@@ -2677,12 +2677,25 @@ try {
       !supHeaders.some(h => /Official Name/i.test(h)) &&
       supSearchPlaceholderClean && supSearchWidthOk && headerNoJamOk && supPopTokenizedOk;
 
-    // 8. Verify Column Filter Bar on Operational Sales & Deliveries (#sales) + search syntax "co:WTC method:Cash"
+    // 8. Verify Column Filter Bar on Operational Sales & Deliveries (#sales):
+    // NEVER render the redundant "FILTER BY COLUMN [Company ▾] [Sale Type ▾]..." row (columns already have .th-filter-btn);
+    // keep .col-filter-bar hidden when unfiltered and show ONLY .cf-active-strip when a column filter is active.
     document.querySelector('#sidebarNav .nav-item[data-view="sales"]').click();
     await wait(60);
-    const salesHasFilterBar = !!document.querySelector('#salesPanel .col-filter-bar');
+    const salesFilterBarBefore = document.querySelector('#salesPanel .col-filter-bar');
+    const salesHasFilterBar = !!salesFilterBarBefore;
+    const noRedundantFilterByColBar =
+      document.querySelectorAll('.cf-bar-lbl, .cf-pill-trigger').length === 0 &&
+      Boolean(salesFilterBarBefore && salesFilterBarBefore.hidden && getComputedStyle(salesFilterBarBefore).display === 'none');
     const salesCoSel = document.querySelector('#salesPanel .cf-select[data-cf-key="company"]');
     if (salesCoSel) { salesCoSel.value = 'BBConstruction'; salesCoSel.dispatchEvent(new Event('change', { bubbles: true })); }
+    const salesFilterBarAfter = document.querySelector('#salesPanel .col-filter-bar');
+    const salesActiveStripOnlyOk = Boolean(
+      salesFilterBarAfter && !salesFilterBarAfter.hidden &&
+      getComputedStyle(salesFilterBarAfter).display !== 'none' &&
+      salesFilterBarAfter.querySelector('.cf-active-strip') &&
+      getComputedStyle(salesFilterBarAfter.querySelector('.cf-controls')).display === 'none'
+    );
     const salesRowsBbc = Array.from(document.querySelectorAll('#salesPanel tbody tr.rrow'));
     const salesBbcFilteredOk = salesRowsBbc.length > 0 && salesRowsBbc.every(tr => /BBC/i.test(tr.children[2].textContent));
     const salesClearBtn = document.querySelector('#salesPanel [data-cf-clear-all]');
@@ -2693,16 +2706,18 @@ try {
       ok: dirtyNotesCount === 0 && ownSearchOnlyTrucks && allSearchOnlyTrucks &&
           typeSortedAscFirst && loadsSortedDescNumerically &&
           multiAllMatch && activePillsCount === 3 && popOpened && capFilterOk &&
-          resetRestoredAll && supLogicalOk && salesHasFilterBar && salesBbcFilteredOk,
+          resetRestoredAll && supLogicalOk && salesHasFilterBar &&
+          noRedundantFilterByColBar && salesActiveStripOnlyOk && salesBbcFilteredOk,
       dirtyNotesCount, ownSearchOnlyTrucks, allSearchOnlyTrucks,
       firstTypeAfterClick, firstLoadsTxt,
       multiCount: multiRows.length, activePillsCount, popOpened, cap25Count: rowsCap25.length,
-      resetRestoredAll, supLogicalOk, salesHasFilterBar, salesBbcFilteredOk
+      resetRestoredAll, supLogicalOk, salesHasFilterBar,
+      noRedundantFilterByColBar, salesActiveStripOnlyOk, salesBbcFilteredOk
     };
   })()`);
   multiColFilterProbe && multiColFilterProbe.ok
-    ? pass('multi-column filter engine & equipment search fix · "truck" returns 100% Truck rows (23 Co Fleet / 1,533 All) + TYPE sorts A→Z + LOADS HAULED sorts numerically + multi-column filter bar & popover', `CoFleet=${multiColFilterProbe.ownSearchOnlyTrucks ? 23 : 'err'} · WTC+Own+Truck=${multiColFilterProbe.multiCount} · Cap>=25=${multiColFilterProbe.cap25Count}`)
-    : fail('multi-column filter engine & equipment search fix', JSON.stringify(multiColFilterProbe));
+    ? pass('column header filter engine & zero redundant "Filter by Column" bar · "truck" returns 100% Truck rows + TYPE sorts A→Z + LOADS HAULED sorts numerically + header .th-filter-btn popover & active-only strip', `noRedundantBar=${multiColFilterProbe.noRedundantFilterByColBar} · WTC+Own+Truck=${multiColFilterProbe.multiCount} · Cap>=25=${multiColFilterProbe.cap25Count}`)
+    : fail('column header filter engine & zero redundant "Filter by Column" bar', JSON.stringify(multiColFilterProbe));
 
   // 7g. Dated Truck Adjustment Windows (Start Date -> End Date) + Client/Site Truck Size Overrides on Price Agreements (Sales & Raw/Transport)
   const truckSizeWindowsAndAgreementProbe = await evaluate(`(async () => {
@@ -3067,6 +3082,52 @@ try {
   singleGroupReconProbe && singleGroupReconProbe.ok
     ? pass('entity recon card parity · Multi-Group (2 structured cards) & Single-Group (structured .sales-recon-card.single-card with 6 stacked metric columns & inline header Show All Group button)', `multi=${singleGroupReconProbe.multiCount} cards · single=${singleGroupReconProbe.singleMetricCount} metrics · sameHeaderRow=${singleGroupReconProbe.sameHeaderRow}`)
     : fail('entity recon card parity (Multi-Group vs Single-Group)', JSON.stringify(singleGroupReconProbe));
+
+  // 7p. iOS Standalone & Mobile Bottom Dock Flush Viewport Parity (PWA.md §3.1 — zero dead bottom rectangle)
+  const iosStandaloneDockProbe = await evaluate(`(() => {
+    const de = document.documentElement;
+    const hadStandalone = de.classList.contains('ios-standalone');
+    de.classList.add('ios-standalone');
+    const sh = document.getElementById('appShell');
+    const ma = document.querySelector('.main-area');
+    const dock = document.getElementById('mobileBottomDock');
+    const shCs = getComputedStyle(sh);
+    const shRect = sh.getBoundingClientRect();
+    const maRect = ma.getBoundingClientRect();
+    const dockRect = dock ? dock.getBoundingClientRect() : null;
+    const dockCs = dock ? getComputedStyle(dock) : null;
+    let standaloneRuleHasDvh = false;
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules = [];
+      try { rules = Array.from(sheet.cssRules || []); } catch (_) {}
+      for (const r of rules) {
+        if (r.selectorText && r.selectorText.includes('html.ios-standalone') && !r.selectorText.includes(':not(.ios-standalone)')) {
+          const txt = r.cssText || '';
+          if (/height\\s*:\\s*100dvh/i.test(txt)) standaloneRuleHasDvh = true;
+        }
+      }
+    }
+    const shPos = shCs.position;
+    const dockPadBottom = dockCs ? dockCs.paddingBottom : null;
+    const isMobile = window.innerWidth <= 860;
+    const shellFlush = Math.abs(Math.round(shRect.bottom) - window.innerHeight) <= 1 && Math.abs(Math.round(maRect.bottom) - window.innerHeight) <= 1 && shPos === 'fixed';
+    const dockFlush = !isMobile || (dockRect && Math.abs(Math.round(dockRect.bottom) - window.innerHeight) <= 1 && dockPadBottom === '22px');
+    if (!hadStandalone) de.classList.remove('ios-standalone');
+    return {
+      ok: Boolean(!standaloneRuleHasDvh && shellFlush && dockFlush),
+      standaloneRuleHasDvh,
+      shellFlush,
+      dockFlush,
+      shPos,
+      shBottom: Math.round(shRect.bottom),
+      dockBottom: dockRect ? Math.round(dockRect.bottom) : null,
+      dockPadBottom,
+      vh: window.innerHeight
+    };
+  })()`);
+  iosStandaloneDockProbe && iosStandaloneDockProbe.ok
+    ? pass('iOS standalone & mobile bottom dock flush parity (PWA.md §3.1 — 100vh shell, 0px bottom gap, 22px dock home-indicator clearance)', `pos=${iosStandaloneDockProbe.shPos} · bottom=${iosStandaloneDockProbe.shBottom}/${iosStandaloneDockProbe.vh}px · dockPadBottom=${iosStandaloneDockProbe.dockPadBottom}`)
+    : fail('iOS standalone & mobile bottom dock flush parity', JSON.stringify(iosStandaloneDockProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
