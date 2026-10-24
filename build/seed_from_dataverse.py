@@ -1599,14 +1599,22 @@ def fetch_dataverse_records():
     external_movements = []
     for ex in ext_raw:
         bu = ID_TO_BU.get((ex.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        flow = fmt_val(ex, "_bhf_flow_value", "")
+        raw_dir = fmt_val(ex, "bhf_direction", "") or fmt_val(ex, "bhf_type", "")
+        if flow:
+            direction = "Outflow" if ("Expense" in flow or "Outflow" in flow) else "Inflow"
+        else:
+            direction = "Outflow" if "out" in raw_dir.lower() else "Inflow"
         external_movements.append({
             "id": ex["bhf_externalid"],
             "name": ex.get("bhf_name") or "",
             "company": bu,
             "date": str(ex.get("bhf_transactiondate") or "")[:10],
-            "direction": fmt_val(ex, "bhf_direction", "") or fmt_val(ex, "bhf_type", "Inflow"),
-            "counterparty": fmt_val(ex, "_bhf_partner_value", "") or fmt_val(ex, "_bhf_supplier_value", "") or ex.get("bhf_counterparty") or "",
-            "method": fmt_val(ex, "_bhf_method_value", "Cash"),
+            "flow": flow,
+            "kind": "Extended" if "Extended" in flow else "External",
+            "direction": direction,
+            "counterparty": fmt_val(ex, "_bhf_company_value", "") or fmt_val(ex, "_bhf_partner_value", "") or fmt_val(ex, "_bhf_supplier_value", "") or ex.get("bhf_counterparty") or "",
+            "method": fmt_val(ex, "_bhf_method_value", "") or flow or "Cash",
             "usd_amount": ex.get("bhf_usdamount"),
             "lbp_amount": ex.get("bhf_lbpamount"),
             "amount": float(ex.get("bhf_usdvalue") or 0),
@@ -1622,7 +1630,11 @@ def fetch_dataverse_records():
             "id": ln["bhf_borrowingagreementid"],
             "name": ln.get("bhf_name") or "",
             "company": bu,
-            "lender": fmt_val(ln, "_bhf_partner_value", "") or fmt_val(ln, "_bhf_supplier_value", "") or ln.get("bhf_lender") or "",
+            "lender": fmt_val(ln, "_bhf_staff_value", "") or fmt_val(ln, "_bhf_company_value", "") or fmt_val(ln, "_bhf_partner_value", "") or fmt_val(ln, "_bhf_supplier_value", "") or ln.get("bhf_lender") or "",
+            "direction": fmt_val(ln, "bhf_direction", ""),
+            "opening_balance": bool(ln.get("bhf_openingbalance")),
+            "usd_amount": ln.get("bhf_usdamount"),
+            "lbp_amount": ln.get("bhf_lbpamount"),
             "principal": float(ln.get("bhf_principal") or ln.get("bhf_usdvalue") or ln.get("bhf_amount") or 0),
             "interest_rate": float(ln.get("bhf_interestrate") or 0),
             "start_date": str(ln.get("bhf_startdate") or "")[:10],
@@ -1634,14 +1646,17 @@ def fetch_dataverse_records():
     loan_settlements = []
     for ls in lns_raw:
         bu = ID_TO_BU.get((ls.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        ls_method = fmt_val(ls, "_bhf_method_value", "") or fmt_val(ls, "bhf_type", "Outflow")
+        ls_type = "Drawdown" if ls_method == "Inflow" else ("Config" if ls_method == "Config" else "Repayment")
         loan_settlements.append({
             "id": ls["bhf_borrowingid"],
             "name": ls.get("bhf_name") or "",
             "company": bu,
             "date": str(ls.get("bhf_transactiondate") or "")[:10],
             "loan": fmt_val(ls, "_bhf_agreement_value", "") or fmt_val(ls, "_bhf_borrowingagreement_value", ""),
-            "type": fmt_val(ls, "bhf_type", "Repayment"),
-            "method": fmt_val(ls, "_bhf_method_value", "Cash"),
+            "borrower": fmt_val(ls, "_bhf_staff_value", "") or fmt_val(ls, "_bhf_purpose_value", ""),
+            "type": ls_type,
+            "method": ls_method or "Cash",
             "usd_amount": ls.get("bhf_usdamount"),
             "lbp_amount": ls.get("bhf_lbpamount"),
             "amount": float(ls.get("bhf_usdvalue") or 0),
@@ -2170,10 +2185,481 @@ def build_sqlite_and_postgres(snapshot):
     print(f"  SQLite DB created -> {db_path} ({db_path.stat().st_size // 1024} KB)", flush=True)
 
 
+LEGACY_CF_MODELS = {
+    "wtc": ("WTC", "04a3eb0b-2c3f-431f-8104-a2510e0ab9fb", "41071fac-d1fb-48e4-95f9-fac5fcf06578"),
+    "bbconstruction": ("BBConstruction", "42f6db4a-8083-417b-ab51-a322e259cd75", "c3570df5-82d1-4dbb-bf5c-ea0835dc047c"),
+}
+
+
+def _leg_dax(ws, ds, query):
+    for attempt in range(5):
+        try:
+            return sa.dax(ws, ds, query)
+        except Exception as e:
+            if "429" in str(e) and attempt < 4:
+                time.sleep(20 * (attempt + 1))
+                continue
+            raise
+
+
+def _num(v):
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _leg_first_ok(ws, ds, queries):
+    last_err = None
+    for q in queries:
+        try:
+            return _leg_dax(ws, ds, q)
+        except Exception as e:
+            last_err = e
+    raise last_err
+
+
+def _fetch_single_legacy_cf(model_key):
+    co, ws, ds = LEGACY_CF_MODELS[model_key]
+    bb = co == "BBConstruction"
+    print(f"  Querying SharePoint Cash Flow & Till parity for {co}...", flush=True)
+
+    head = _leg_dax(ws, ds, 'EVALUATE ROW("iu",[Cash Inflow $],"ou",[Cash Outflow $],"nu",[Net CF $],"il",[Cash Inflow LL],"ol",[Cash Outflow LL],"nl",[Net CF LL],"net",[Net Cash Flow],"r",[Latest Rate LBP])')[0]
+    rate_lbp = int(round(_num(head.get("[r]")) or 89500))
+    live_usd = round(_num(head.get("[nu]")), 2)
+    live_lbp = int(round(_num(head.get("[nl]"))))
+    if abs(live_usd) < 0.005:
+        live_usd = 0.0
+    if abs(live_lbp) <= 1:
+        live_lbp = 0
+    live_tot = round(live_usd + (live_lbp / rate_lbp), 2)
+
+    daily_raw = _leg_dax(ws, ds, """
+        EVALUATE FILTER(
+            SUMMARIZECOLUMNS(Dates[Date], "iu", [Cash Inflow $], "ou", [Cash Outflow $], "il", [Cash Inflow LL], "ol", [Cash Outflow LL]),
+            ABS([iu]) > 0.001 || ABS([ou]) > 0.001 || ABS([il]) > 0.5 || ABS([ol]) > 0.5
+        ) ORDER BY Dates[Date] ASC
+    """)
+    daily = []
+    for r in daily_raw:
+        d_iso = str(r.get("Dates[Date]") or "")[:10]
+        if not d_iso:
+            continue
+        daily.append([
+            d_iso,
+            round(_num(r.get("[iu]")), 2),
+            round(_num(r.get("[ou]")), 2),
+            int(round(_num(r.get("[il]")))),
+            int(round(_num(r.get("[ol]")))),
+        ])
+
+    # 1. Sales CF
+    sales_raw = _leg_dax(ws, ds, 'EVALUATE FILTER(SUMMARIZECOLUMNS(Sales[Customer], "u", [Sales CF], "l", [Sales CF LL]), ABS([u]) > 0.005 || ABS([l]) > 0.5)')
+    sales_tot = _leg_dax(ws, ds, 'EVALUATE ROW("u", [Sales CF], "l", [Sales CF LL])')[0]
+    sales_rows = sorted([
+        {"name": str(r.get("Sales[Customer]") or "(Unspecified)"), "usd": round(_num(r.get("[u]")), 2), "lbp": int(round(_num(r.get("[l]"))))}
+        for r in sales_raw
+    ], key=lambda x: abs(x["usd"]) + abs(x["lbp"]) / rate_lbp, reverse=True)
+
+    # 2. Expenses CF
+    sup_col = "Suppliers[Supplier]"
+    exp_raw = _leg_dax(ws, ds, f'EVALUATE FILTER(SUMMARIZECOLUMNS({sup_col}, "u", [TE CF $], "l", [Expenses CF LL]), ABS([u]) > 0.005 || ABS([l]) > 0.5)')
+    exp_tot = _leg_dax(ws, ds, 'EVALUATE ROW("u", [TE CF $], "l", [Expenses CF LL])')[0]
+    exp_rows = sorted([
+        {"name": str(r.get(sup_col) or "(Unspecified)"), "usd": round(_num(r.get("[u]")), 2), "lbp": int(round(_num(r.get("[l]"))))}
+        for r in exp_raw
+    ], key=lambda x: abs(x["usd"]) + abs(x["lbp"]) / rate_lbp, reverse=True)
+
+    # 3. Borrowing CF
+    bor_paid_u = "[Borrow Gave $]" if bb else "[Borrow Gave A $]"
+    bor_paid_l = "[Borrow Gave LL Link]" if bb else "[Borrow Gave LL]"
+    bor_raw = _leg_dax(ws, ds, f'EVALUATE FILTER(SUMMARIZECOLUMNS(Borrowing[Borrower], "ru", [Borrow Received $], "rl", [Borrow Received LL], "pu", {bor_paid_u}, "pl", {bor_paid_l}), ABS([ru])>0.005 || ABS([rl])>0.5 || ABS([pu])>0.005 || ABS([pl])>0.5)')
+    bor_tot = _leg_dax(ws, ds, f'EVALUATE ROW("ru", [Borrow Received $], "rl", [Borrow Received LL], "pu", {bor_paid_u}, "pl", {bor_paid_l})')[0]
+    bor_rows = sorted([
+        {
+            "name": str(r.get("Borrowing[Borrower]") or "(Unspecified)"),
+            "rec_usd": round(_num(r.get("[ru]")), 2),
+            "rec_lbp": int(round(_num(r.get("[rl]")))),
+            "paid_usd": round(_num(r.get("[pu]")), 2),
+            "paid_lbp": int(round(_num(r.get("[pl]")))),
+        }
+        for r in bor_raw
+    ], key=lambda x: abs(x["rec_usd"]) + abs(x["paid_usd"]) + (abs(x["rec_lbp"]) + abs(x["paid_lbp"])) / rate_lbp, reverse=True)
+
+    # 4. Salary CF
+    sal_raw = _leg_first_ok(ws, ds, [
+        'EVALUATE FILTER(SUMMARIZECOLUMNS(Staff[Staff], "u", [Staff Payment A $], "l", [Staff Payment A LL]), ABS([u]) > 0.005 || ABS([l]) > 0.5)',
+        'EVALUATE FILTER(SUMMARIZECOLUMNS(Staff[Staff], "u", [Staff Payment A $ Link], "l", [Staff Payment A LL Link]), ABS([u]) > 0.005 || ABS([l]) > 0.5)',
+    ])
+    sal_tot = _leg_first_ok(ws, ds, [
+        'EVALUATE ROW("u", [Staff Payment A $], "l", [Staff Payment A LL])',
+        'EVALUATE ROW("u", [Staff Payment A $ Link], "l", [Staff Payment A LL Link])',
+    ])[0]
+    sal_rows = sorted([
+        {"name": str(r.get("Staff[Staff]") or "(Unspecified)"), "usd": round(_num(r.get("[u]")), 2), "lbp": int(round(_num(r.get("[l]"))))}
+        for r in sal_raw
+    ], key=lambda x: abs(x["usd"]) + abs(x["lbp"]) / rate_lbp, reverse=True)
+
+    # 5. External CF
+    ext_col = "External[Company]" if bb else "Stakeholders[Stakeholder]"
+    ext_exp_u = "[External Expense $]" if bb else "[External Expenses $]"
+    ext_raw = _leg_dax(ws, ds, f'EVALUATE FILTER(SUMMARIZECOLUMNS({ext_col}, "eu", {ext_exp_u}, "el", [External Expenses LL], "ru", [External Revenue $], "rl", [External Revenue LL]), ABS([eu])>0.005 || ABS([el])>0.5 || ABS([ru])>0.005 || ABS([rl])>0.5)')
+    ext_tot = _leg_dax(ws, ds, f'EVALUATE ROW("eu", {ext_exp_u}, "el", [External Expenses LL], "ru", [External Revenue $], "rl", [External Revenue LL])')[0]
+    ext_rows = sorted([
+        {
+            "name": str(r.get(ext_col) or "(Unspecified)"),
+            "exp_usd": round(_num(r.get("[eu]")), 2),
+            "exp_lbp": int(round(_num(r.get("[el]")))),
+            "rev_usd": round(_num(r.get("[ru]")), 2),
+            "rev_lbp": int(round(_num(r.get("[rl]")))),
+        }
+        for r in ext_raw
+    ], key=lambda x: abs(x["exp_usd"]) + abs(x["rev_usd"]) + (abs(x["exp_lbp"]) + abs(x["rev_lbp"])) / rate_lbp, reverse=True)
+
+    # 6. Extended CF
+    if bb:
+        extd_rows, extd_tot_u, extd_tot_l = [], 0.0, 0
+    else:
+        extd_raw = _leg_dax(ws, ds, 'EVALUATE FILTER(SUMMARIZECOLUMNS(Extended[Stakeholder], "u", [Extended Owes $], "l", [Extended Owes LL]), ABS([u])>0.005 || ABS([l])>0.5)')
+        extd_tot = _leg_dax(ws, ds, 'EVALUATE ROW("u", [Extended Owes $], "l", [Extended Owes LL])')[0]
+        extd_rows = sorted([
+            {"name": str(r.get("Extended[Stakeholder]") or "(Unspecified)"), "usd": round(_num(r.get("[u]")), 2), "lbp": int(round(_num(r.get("[l]"))))}
+            for r in extd_raw
+        ], key=lambda x: abs(x["usd"]) + abs(x["lbp"]) / rate_lbp, reverse=True)
+        extd_tot_u = round(_num(extd_tot.get("[u]")), 2)
+        extd_tot_l = int(round(_num(extd_tot.get("[l]"))))
+
+    # 7. Conversion CF
+    conv_raw = _leg_dax(ws, ds, 'EVALUATE SUMMARIZECOLUMNS(Conversion[Type], "from", SUM(Conversion[From]), "to", SUM(Conversion[To]))')
+    conv_rows = []
+    for r in conv_raw:
+        tp = str(r.get("Conversion[Type]") or "")
+        if not tp:
+            continue
+        conv_rows.append({
+            "type": tp,
+            "from_amt": round(_num(r.get("[from]")), 2),
+            "to_amt": round(_num(r.get("[to]")), 2),
+        })
+    conv_rows.sort(key=lambda x: 0 if "USD to LBP" in x["type"] else 1)
+
+    return {
+        "rate_lbp": rate_lbp,
+        "live_till": {
+            "usd": live_usd,
+            "lbp": live_lbp,
+            "total": live_tot,
+            "rate_lbp": rate_lbp,
+            "in_usd": round(_num(head.get("[iu]")), 2),
+            "out_usd": round(_num(head.get("[ou]")), 2),
+            "in_lbp": int(round(_num(head.get("[il]")))),
+            "out_lbp": int(round(_num(head.get("[ol]")))),
+        },
+        "daily": daily,
+        "tables": {
+            "sales": {"rows": sales_rows, "totals": {"usd": round(_num(sales_tot.get("[u]")), 2), "lbp": int(round(_num(sales_tot.get("[l]"))))}},
+            "expenses": {"rows": exp_rows, "totals": {"usd": round(_num(exp_tot.get("[u]")), 2), "lbp": int(round(_num(exp_tot.get("[l]"))))}},
+            "borrowing": {
+                "rows": bor_rows,
+                "totals": {
+                    "rec_usd": round(_num(bor_tot.get("[ru]")), 2),
+                    "rec_lbp": int(round(_num(bor_tot.get("[rl]")))),
+                    "paid_usd": round(_num(bor_tot.get("[pu]")), 2),
+                    "paid_lbp": int(round(_num(bor_tot.get("[pl]")))),
+                },
+            },
+            "salary": {"rows": sal_rows, "totals": {"usd": round(_num(sal_tot.get("[u]")), 2), "lbp": int(round(_num(sal_tot.get("[l]"))))}},
+            "external": {
+                "rows": ext_rows,
+                "totals": {
+                    "exp_usd": round(_num(ext_tot.get("[eu]")), 2),
+                    "exp_lbp": int(round(_num(ext_tot.get("[el]")))),
+                    "rev_usd": round(_num(ext_tot.get("[ru]")), 2),
+                    "rev_lbp": int(round(_num(ext_tot.get("[rl]")))),
+                },
+            },
+            "extended": {"rows": extd_rows, "totals": {"usd": extd_tot_u, "lbp": extd_tot_l}},
+            "conversion": {
+                "rows": conv_rows,
+                "totals": {
+                    "from_amt": round(sum(x["from_amt"] for x in conv_rows), 2),
+                    "to_amt": round(sum(x["to_amt"] for x in conv_rows), 2),
+                },
+            },
+        },
+    }
+
+
+def _merge_cf_sheets(sheets, rate_lbp=89500):
+    by_day = defaultdict(lambda: [0.0, 0.0, 0, 0])
+    live_in_u = live_out_u = 0.0
+    live_in_l = live_out_l = 0
+    live_usd = 0.0
+    live_lbp = 0
+    for sh in sheets:
+        lt = sh["live_till"]
+        live_in_u += lt["in_usd"]
+        live_out_u += lt["out_usd"]
+        live_in_l += lt["in_lbp"]
+        live_out_l += lt["out_lbp"]
+        live_usd += lt["usd"]
+        live_lbp += lt["lbp"]
+        for d, iu, ou, il, ol in sh["daily"]:
+            acc = by_day[d]
+            acc[0] += iu
+            acc[1] += ou
+            acc[2] += il
+            acc[3] += ol
+    daily = [[d, round(v[0], 2), round(v[1], 2), int(round(v[2])), int(round(v[3]))] for d, v in sorted(by_day.items())]
+
+    def _merge_2col(tkey):
+        acc = defaultdict(lambda: [0.0, 0])
+        tu = 0.0
+        tl = 0
+        for sh in sheets:
+            t = sh["tables"][tkey]
+            tu += t["totals"]["usd"]
+            tl += t["totals"]["lbp"]
+            for r in t["rows"]:
+                acc[r["name"]][0] += r["usd"]
+                acc[r["name"]][1] += r["lbp"]
+        rows = sorted([{"name": k, "usd": round(v[0], 2), "lbp": int(round(v[1]))} for k, v in acc.items()], key=lambda x: abs(x["usd"]) + abs(x["lbp"]) / rate_lbp, reverse=True)
+        return {"rows": rows, "totals": {"usd": round(tu, 2), "lbp": int(round(tl))}}
+
+    bor_acc = defaultdict(lambda: [0.0, 0, 0.0, 0])
+    btot = {"rec_usd": 0.0, "rec_lbp": 0, "paid_usd": 0.0, "paid_lbp": 0}
+    for sh in sheets:
+        t = sh["tables"]["borrowing"]
+        for k in btot:
+            btot[k] += t["totals"][k]
+        for r in t["rows"]:
+            b = bor_acc[r["name"]]
+            b[0] += r["rec_usd"]; b[1] += r["rec_lbp"]; b[2] += r["paid_usd"]; b[3] += r["paid_lbp"]
+    bor_rows = sorted([{"name": k, "rec_usd": round(v[0], 2), "rec_lbp": int(round(v[1])), "paid_usd": round(v[2], 2), "paid_lbp": int(round(v[3]))} for k, v in bor_acc.items()], key=lambda x: abs(x["rec_usd"]) + abs(x["paid_usd"]) + (abs(x["rec_lbp"]) + abs(x["paid_lbp"])) / rate_lbp, reverse=True)
+
+    ext_acc = defaultdict(lambda: [0.0, 0, 0.0, 0])
+    etot = {"exp_usd": 0.0, "exp_lbp": 0, "rev_usd": 0.0, "rev_lbp": 0}
+    for sh in sheets:
+        t = sh["tables"]["external"]
+        for k in etot:
+            etot[k] += t["totals"][k]
+        for r in t["rows"]:
+            e = ext_acc[r["name"]]
+            e[0] += r["exp_usd"]; e[1] += r["exp_lbp"]; e[2] += r["rev_usd"]; e[3] += r["rev_lbp"]
+    ext_rows = sorted([{"name": k, "exp_usd": round(v[0], 2), "exp_lbp": int(round(v[1])), "rev_usd": round(v[2], 2), "rev_lbp": int(round(v[3]))} for k, v in ext_acc.items()], key=lambda x: abs(x["exp_usd"]) + abs(x["rev_usd"]) + (abs(x["exp_lbp"]) + abs(x["rev_lbp"])) / rate_lbp, reverse=True)
+
+    conv_acc = defaultdict(lambda: [0.0, 0.0])
+    for sh in sheets:
+        for r in sh["tables"]["conversion"]["rows"]:
+            conv_acc[r["type"]][0] += r["from_amt"]
+            conv_acc[r["type"]][1] += r["to_amt"]
+    conv_rows = [{"type": k, "from_amt": round(v[0], 2), "to_amt": round(v[1], 2)} for k, v in conv_acc.items()]
+    conv_rows.sort(key=lambda x: 0 if "USD to LBP" in x["type"] else 1)
+
+    live_usd = round(live_usd, 2)
+    live_lbp = int(round(live_lbp))
+    return {
+        "rate_lbp": rate_lbp,
+        "live_till": {
+            "usd": live_usd,
+            "lbp": live_lbp,
+            "total": round(live_usd + live_lbp / rate_lbp, 2),
+            "rate_lbp": rate_lbp,
+            "in_usd": round(live_in_u, 2),
+            "out_usd": round(live_out_u, 2),
+            "in_lbp": int(round(live_in_l)),
+            "out_lbp": int(round(live_out_l)),
+        },
+        "daily": daily,
+        "tables": {
+            "sales": _merge_2col("sales"),
+            "expenses": _merge_2col("expenses"),
+            "borrowing": {"rows": bor_rows, "totals": {k: (round(v, 2) if "usd" in k else int(round(v))) for k, v in btot.items()}},
+            "salary": _merge_2col("salary"),
+            "external": {"rows": ext_rows, "totals": {k: (round(v, 2) if "usd" in k else int(round(v))) for k, v in etot.items()}},
+            "extended": _merge_2col("extended"),
+            "conversion": {"rows": conv_rows, "totals": {"from_amt": round(sum(x["from_amt"] for x in conv_rows), 2), "to_amt": round(sum(x["to_amt"] for x in conv_rows), 2)}},
+        },
+    }
+
+
+def apply_cashflow_till_parity(models):
+    try:
+        wtc_cf = _fetch_single_legacy_cf("wtc")
+        bbc_cf = _fetch_single_legacy_cf("bbconstruction")
+    except Exception as e:
+        print(f"  [WARN] Legacy Cash Flow parity query skipped ({e}); retaining existing cash_flow_sheet if present.", flush=True)
+        return
+
+    empty_cf = _merge_cf_sheets([], 89500)
+    grp_cf = _merge_cf_sheets([wtc_cf, bbc_cf], wtc_cf["rate_lbp"])
+    cf_by_key = {
+        "wtc": wtc_cf,
+        "bbconstruction": bbc_cf,
+        "lionstransport": empty_cf,
+        "manufacturing-group": grp_cf,
+    }
+
+    period_bounds = {
+        "mtd": ("2026-10-01", "2026-10-31"),
+        "sep2026": ("2026-09-01", "2026-09-30"),
+        "aug2026": ("2026-08-01", "2026-08-31"),
+        "q3_2026": ("2026-07-01", "2026-09-30"),
+        "ytd": ("2026-01-01", "2026-12-31"),
+        "fy2025": ("2025-01-01", "2025-12-31"),
+        "fy2024": ("2024-01-01", "2024-12-31"),
+        "all": ("2024-01-01", "2030-12-31"),
+    }
+
+    for mkey, cf in cf_by_key.items():
+        m_obj = models.get(mkey)
+        if not m_obj:
+            continue
+        m_obj["cash_flow_sheet"] = cf
+        if mkey == "lionstransport":
+            continue
+        rate = cf["rate_lbp"]
+        lt = cf["live_till"]
+        daily = cf["daily"]
+
+        # Patch pre-computed period buckets
+        periods = m_obj.get("periods") or {}
+        for pk, (d0, d1) in period_bounds.items():
+            p = periods.get(pk)
+            if not p:
+                continue
+            if pk == "all":
+                iu, ou, il, ol = lt["in_usd"], lt["out_usd"], lt["in_lbp"], lt["out_lbp"]
+                cu, cl = lt["usd"], lt["lbp"]
+            else:
+                iu = round(sum(r[1] for r in daily if d0 <= r[0] <= d1), 2)
+                ou = round(sum(r[2] for r in daily if d0 <= r[0] <= d1), 2)
+                il = int(round(sum(r[3] for r in daily if d0 <= r[0] <= d1)))
+                ol = int(round(sum(r[4] for r in daily if d0 <= r[0] <= d1)))
+                cu = round(sum(r[1] - r[2] for r in daily if r[0] <= d1), 2)
+                cl = int(round(sum(r[3] - r[4] for r in daily if r[0] <= d1)))
+                if abs(cu) < 0.005:
+                    cu = 0.0
+                if abs(cl) <= 1:
+                    cl = 0
+            nu = round(iu - ou, 2)
+            nl = int(round(il - ol))
+            if abs(nu) < 0.005:
+                nu = 0.0
+            if abs(nl) <= 1:
+                nl = 0
+            p["rate_lbp"] = rate
+            p["cash_till"] = lt["total"]
+            p["cash_till_usd"] = lt["usd"]
+            p["cash_till_lbp"] = lt["lbp"]
+            p["period_till"] = round(cu + cl / rate, 2)
+            p["period_till_usd"] = cu
+            p["period_till_lbp"] = cl
+            p["cash_in_usd"] = iu
+            p["cash_out_usd"] = ou
+            p["net_cash_usd"] = nu
+            p["cash_in_lbp"] = il
+            p["cash_out_lbp"] = ol
+            p["net_cash_lbp"] = nl
+            p["cash_inflow"] = round(iu + il / rate, 2)
+            p["cash_outflow"] = round(ou + ol / rate, 2)
+            p["net_cash_flow"] = round(nu + nl / rate, 2)
+
+        # Patch monthly progression rows
+        cum_u = 0.0
+        cum_l = 0
+        by_ym = defaultdict(lambda: [0.0, 0.0, 0, 0])
+        for d, iu, ou, il, ol in daily:
+            ym = int(d[:4]) * 100 + int(d[5:7])
+            acc = by_ym[ym]
+            acc[0] += iu; acc[1] += ou; acc[2] += il; acc[3] += ol
+        # Seed any pre-2024 daily rows into opening cumulative if present
+        for d, iu, ou, il, ol in daily:
+            if int(d[:4]) * 100 + int(d[5:7]) < 202401:
+                cum_u += iu - ou
+                cum_l += il - ol
+        for mrow in sorted(m_obj.get("monthly") or [], key=lambda x: int(x.get("YearMonthNo") or 0)):
+            ym = int(mrow.get("YearMonthNo") or 0)
+            iu, ou, il, ol = by_ym[ym]
+            iu = round(iu, 2); ou = round(ou, 2); il = int(round(il)); ol = int(round(ol))
+            nu = round(iu - ou, 2)
+            nl = int(round(il - ol))
+            cum_u = round(cum_u + nu, 2)
+            cum_l = int(round(cum_l + nl))
+            if abs(cum_u) < 0.005:
+                cum_u = 0.0
+            if abs(cum_l) <= 1:
+                cum_l = 0
+            mrow["cash_in_usd"] = iu
+            mrow["cash_out_usd"] = ou
+            mrow["net_cash_usd"] = nu
+            mrow["till_usd"] = cum_u
+            mrow["cash_in_lbp"] = il
+            mrow["cash_out_lbp"] = ol
+            mrow["net_cash_lbp"] = nl
+            mrow["till_lbp"] = cum_l
+            mrow["cash_in"] = round(iu + il / rate, 2)
+            mrow["cash_out"] = round(ou + ol / rate, 2)
+            mrow["net_cash"] = round(nu + nl / rate, 2)
+            mrow["cash_till"] = round(cum_u + cum_l / rate, 2)
+
+    print(
+        f"  Cash Till Parity -> WTC: ${wtc_cf['live_till']['usd']:,.2f} & {wtc_cf['live_till']['lbp']:,} LL "
+        f"| BBC: ${bbc_cf['live_till']['usd']:,.2f} & {bbc_cf['live_till']['lbp']:,} LL "
+        f"| Group: ${grp_cf['live_till']['usd']:,.2f} & {grp_cf['live_till']['lbp']:,} LL",
+        flush=True,
+    )
+
+
 def main():
     t0 = time.time()
-    skip_dax = "--skip-dax" in sys.argv
+    cf_only = "--cf-only" in sys.argv
+    skip_dax = "--skip-dax" in sys.argv or cf_only
     snap_path = DATA_DIR / "mfg_snapshot.json"
+    if cf_only and snap_path.exists():
+        print("== Fast Cash Flow & Till Parity Patch (--cf-only) ==", flush=True)
+        packed_payload = json.loads(snap_path.read_text(encoding="utf-8"))
+        apply_cashflow_till_parity(packed_payload.get("models") or {})
+        packed_payload["generated_at"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        snap_path.write_text(json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)
+        unpacker_js = (
+            "// Auto-generated from live Manufacturing Operations Dataverse + Semantic Models (Full 2024-2026 History)\n"
+            "(function(){\n"
+            "const P=" + json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")) + ";\n"
+            "const S=P._s||[],R={};\n"
+            "for(const[k,t]of Object.entries(P.records||{})){\n"
+            "  if(!t||!t.c){R[k]=t||[];continue;}\n"
+            "  const cols=t.c,sc=t.sc,pf=t.p,hr=t.hr,isSales=k==='sales_tickets',isRaw=k==='raw_purchases';\n"
+            "  R[k]=t.r.map((row,idx)=>{\n"
+            "    const o=pf?{id:pf+idx}:{};\n"
+            "    for(let i=0;i<row.length;i++){\n"
+            "      let v=row[i];\n"
+            "      if(v===null||v===undefined)continue;\n"
+            "      if(sc[i]&&typeof v==='number')v=S[v];\n"
+            "      o[cols[i]]=v;\n"
+            "    }\n"
+            "    if(hr&&!o.rep_date&&o.date)o.rep_date=o.date;\n"
+            "    if(o.amount!==undefined&&o.usd_amount===undefined&&!o.lbp_amount)o.usd_amount=o.amount;\n"
+            "    if(isSales){\n"
+            "      if(o.vat==null)o.vat=0;\n"
+            "      if(o.total_ttc==null&&o.total!=null)o.total_ttc=o.total;\n"
+            "      if(!o.sale_type)o.sale_type='Delivery';\n"
+            "      if(!o.method)o.method='Credit';\n"
+            "    }\n"
+            "    if(isRaw&&!o.method)o.method='Credit';\n"
+            "    if(pf&&!o.name)o.name=o.ticket_no?('#'+o.ticket_no+' · '+(o.date||'')):(pf.toUpperCase()+'-'+idx);\n"
+            "    return o;\n"
+            "  });\n"
+            "}\n"
+            "window.MFG_SEED={generated_at:P.generated_at,models:P.models,records:R,sentinels:P.sentinels};\n"
+            "})();\n"
+        )
+        js_path = JS_DIR / "seed_data.js"
+        js_path.write_text(unpacker_js, encoding="utf-8")
+        print(f"  Browser bundle saved -> {js_path} ({js_path.stat().st_size // 1024} KB)", flush=True)
+        print(f"\nALL DONE in {time.time() - t0:.1f}s!", flush=True)
+        return
     if skip_dax and snap_path.exists():
         print("== Stage 1: Reusing fresh DAX models from mfg_snapshot.json ==", flush=True)
         models = json.loads(snap_path.read_text(encoding="utf-8")).get("models", {})
@@ -2188,6 +2674,7 @@ def main():
             if str(eqRow.get("Equipment") or "").strip().lower() in ("tb1", "tb7", "tb9"):
                 eqRow["Ownership"] = "Third Party"
 
+    apply_cashflow_till_parity(models)
     records = fetch_dataverse_records()
 
     sentinels_path = Path(r"C:\Users\HusseinBdeir\bhfirms\manufacturing-operations\exports\m280_ai_sentinels_report.json")
@@ -2229,7 +2716,7 @@ def main():
                 continue
             if k == "notes" and isinstance(v, str):
                 v = _clean_notes(v)
-            if k == "usd_amount" and v == row.get("amount"):
+            if k == "usd_amount" and v == row.get("amount") and not row.get("lbp_amount"):
                 continue
             if v is None or v == "" or v == [] or v == {} or v is False or v == 0 or v == 0.0:
                 if k not in ("total", "total_ttc", "amount", "qty", "litres"):
@@ -2351,7 +2838,7 @@ def main():
         "      o[cols[i]]=v;\n"
         "    }\n"
         "    if(hr&&!o.rep_date&&o.date)o.rep_date=o.date;\n"
-        "    if(o.amount!==undefined&&o.usd_amount===undefined)o.usd_amount=o.amount;\n"
+        "    if(o.amount!==undefined&&o.usd_amount===undefined&&!o.lbp_amount)o.usd_amount=o.amount;\n"
         "    if(isSales){\n"
         "      if(o.vat==null)o.vat=0;\n"
         "      if(o.total_ttc==null&&o.total!=null)o.total_ttc=o.total;\n"

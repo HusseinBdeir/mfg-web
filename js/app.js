@@ -11,6 +11,8 @@
 (function () {
   'use strict';
 
+  const ic = (name, cls) => (window.MFG_ICONS ? window.MFG_ICONS.svg(name, cls) : '');
+
   const SEED = window.MFG_SEED || {};
   SEED.models = SEED.models || {};
   SEED.records = SEED.records || {};
@@ -418,6 +420,33 @@
     if (a >= 1e6) return (n < 0 ? '-' : '') + '$' + (a / 1e6).toFixed(1) + 'M';
     if (a >= 1e3) return (n < 0 ? '-' : '') + '$' + (a / 1e3).toFixed(1) + 'k';
     return fmtUSD(n, 0);
+  }
+
+  function fmtLBP(v) {
+    const n = Math.round(Number(v || 0));
+    if (Math.abs(n) <= 1) return '0 LL';
+    const s = Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return (n < 0 ? '-' : '') + s + ' LL';
+  }
+
+  function fmtLBPk(v) {
+    const n = Math.round(Number(v || 0));
+    const a = Math.abs(n);
+    if (a <= 1) return '0 LL';
+    if (a >= 1e9) return (n < 0 ? '-' : '') + (a / 1e9).toFixed(2) + 'B LL';
+    if (a >= 1e6) return (n < 0 ? '-' : '') + (a / 1e6).toFixed(1) + 'M LL';
+    if (a >= 1e3) return (n < 0 ? '-' : '') + (a / 1e3).toFixed(0) + 'k LL';
+    return fmtLBP(n);
+  }
+
+  function fmtTillPair(usd, lbp, compact = false) {
+    const u = Number(usd || 0);
+    const l = Math.round(Number(lbp || 0));
+    if (compact) {
+      const uTxt = Math.abs(u) < 0.005 ? '$0' : fmtUSDk(u);
+      return `${uTxt} · ${fmtLBPk(l)}`;
+    }
+    return `${fmtUSD(Math.abs(u) < 0.005 ? 0 : u, 2)} · ${fmtLBP(l)}`;
   }
 
   function fmtNum(v, decimals = 0) {
@@ -915,10 +944,11 @@
   }
 
   // Keys that are plain sums over records (safe to shift by a per-record delta); ratios are recomputed afterwards.
+  // Note: Cash Flow & Till (cash_inflow, cash_outflow, net_cash_flow, cash_till) are physical Transaction-Date movements and never shift on Rep Date.
   const KPI_ADDITIVE_KEYS = ['sales_ttc', 'gross_sales', 'net_sales', 'trans_rev', 'sales_vat', 'loads', 'delivery_loads', 'pickup_loads', 'unregistered_loads',
     'tons_sold', 'qty_sold', 'cash_sales', 'credit_sales', 'raw_cost', 'raw_mat_cost', 'raw_haulage', 'raw_loads', 'raw_tons', 'raw_qty',
     'expenses', 'cash_expenses', 'credit_expenses', 'salaries_paid', 'gross_margin', 'operating_profit', 'receipts', 'settlements_paid',
-    'cash_inflow', 'cash_outflow', 'net_cash_flow', 'diesel_litres', 'own_fleet_loads'];
+    'diesel_litres', 'own_fleet_loads'];
 
   function finishKpiRatios(k) {
     k.avg_price_ttc = k.qty_sold > 0 ? round2(k.sales_ttc / k.qty_sold) : 0;
@@ -1011,7 +1041,7 @@
     let ext_in = 0, ext_out = 0;
     exts.forEach(ex => {
       const a = Number(ex.amount || 0);
-      if (/out/i.test(String(ex.direction || ''))) ext_out += a;
+      if (/out|expense/i.test(String(ex.direction || ex.flow || ''))) ext_out += a;
       else ext_in += a;
     });
 
@@ -1113,6 +1143,167 @@
     return finishKpiRatios(out);
   }
 
+  function computeCustomCashDeltas(coKey, range) {
+    const cr = STATE.customRecords || {};
+    const allowed = allowedCompanyNames();
+    const matchCo = r => {
+      if (!r || r.voided) return false;
+      const c = String(r.company || 'WTC');
+      if (allowed.length && !allowed.includes(c)) return false;
+      if (coKey === 'wtc') return c === 'WTC';
+      if (coKey === 'bbconstruction') return c === 'BBConstruction';
+      if (coKey === 'lionstransport') return c === 'Lions Transport';
+      return true;
+    };
+    const inWin = d => {
+      if (!range) return true;
+      const iso = String(d || '').slice(0, 10);
+      return (!range.from || iso >= range.from) && (!range.to || iso <= range.to);
+    };
+    const upToEnd = d => {
+      if (!range || !range.to) return true;
+      return String(d || '').slice(0, 10) <= range.to;
+    };
+    let liveInU = 0, liveOutU = 0, liveInL = 0, liveOutL = 0;
+    let perInU = 0, perOutU = 0, perInL = 0, perOutL = 0;
+    let endNetU = 0, endNetL = 0;
+    const addMove = (dt, iu, ou, il, ol) => {
+      liveInU += iu; liveOutU += ou; liveInL += il; liveOutL += ol;
+      if (inWin(dt)) { perInU += iu; perOutU += ou; perInL += il; perOutL += ol; }
+      if (upToEnd(dt)) { endNetU += (iu - ou); endNetL += (il - ol); }
+    };
+    (cr.sales_tickets || []).filter(matchCo).forEach(s => {
+      const mth = String(s.method || '');
+      if (mth === 'Cash' || mth === 'C Return' || mth === 'Cash Return') {
+        const sgn = ticketSign(s);
+        const net = Number(s.total != null ? s.total : (Number(s.total_ttc || 0) - Number(s.vat || 0))) * sgn;
+        const vat = Number(s.vat || 0) * sgn;
+        addMove(s.date, net >= 0 ? net : 0, net < 0 ? -net : 0, vat >= 0 ? Math.round(vat * 89500) : 0, vat < 0 ? Math.round(-vat * 89500) : 0);
+      }
+    });
+    (cr.receipts || []).filter(matchCo).forEach(r => {
+      const knd = receiptKind(r);
+      const lbp = Number(r.lbp_amount || 0);
+      const usd = lbp ? Number(r.usd_amount || 0) : Number(r.usd_amount != null ? r.usd_amount : r.amount || 0);
+      if (knd === 'Settlement') addMove(r.date, usd, 0, lbp, 0);
+      else if (knd === 'VAT received') addMove(r.date, 0, 0, lbp || Math.round(Number(r.amount || 0) * 89500), 0);
+    });
+    (cr.expenses || []).filter(matchCo).forEach(x => {
+      const sgn = expenseSign(x);
+      if (sgn === 0 || isCreditExpense(x)) return;
+      const lbp = Number(x.lbp_amount || 0) * sgn;
+      const usd = (lbp ? Number(x.usd_amount || 0) : Number(x.amount || 0)) * sgn;
+      addMove(x.date, usd < 0 ? -usd : 0, usd >= 0 ? usd : 0, lbp < 0 ? -lbp : 0, lbp >= 0 ? lbp : 0);
+    });
+    (cr.settlements || []).filter(matchCo).forEach(s => {
+      const knd = settlementKind(s);
+      const lbp = Number(s.lbp_amount || 0);
+      const usd = lbp ? Number(s.usd_amount || 0) : Number(s.usd_amount != null ? s.usd_amount : s.amount || 0);
+      if (knd === 'Payment') addMove(s.date, 0, usd, 0, lbp);
+      else if (knd === 'VAT paid') addMove(s.date, 0, 0, 0, lbp || Math.round(Number(s.amount || 0) * 89500));
+    });
+    (cr.salaries || []).filter(matchCo).forEach(s => {
+      const lbp = Number(s.lbp_amount || 0);
+      const usd = lbp ? Number(s.usd_amount || 0) : Number(s.usd_amount != null ? s.usd_amount : s.amount || 0);
+      addMove(s.date, 0, usd, 0, lbp);
+    });
+    (cr.external_movements || []).filter(matchCo).forEach(ex => {
+      const lbp = Number(ex.lbp_amount || 0);
+      const usd = lbp ? Number(ex.usd_amount || 0) : Number(ex.usd_amount != null ? ex.usd_amount : ex.amount || 0);
+      const isOut = /out|expense/i.test(String(ex.direction || ex.flow || ''));
+      addMove(ex.date, isOut ? 0 : usd, isOut ? usd : 0, isOut ? 0 : lbp, isOut ? lbp : 0);
+    });
+    (cr.loan_settlements || []).filter(matchCo).forEach(ls => {
+      const lbp = Number(ls.lbp_amount || 0);
+      const usd = lbp ? Number(ls.usd_amount || 0) : Number(ls.usd_amount != null ? ls.usd_amount : ls.amount || 0);
+      const isIn = /inflow|drawdown/i.test(String(ls.method || ls.type || ''));
+      addMove(ls.date, isIn ? usd : 0, isIn ? 0 : usd, isIn ? lbp : 0, isIn ? 0 : lbp);
+    });
+    (cr.conversions || []).filter(matchCo).forEach(cv => {
+      const u = Number(cv.usd_amount || 0);
+      const l = Number(cv.lbp_amount || 0);
+      if (String(cv.from_currency || 'USD').toUpperCase() === 'USD') addMove(cv.date, 0, u, l, 0);
+      else addMove(cv.date, u, 0, 0, l);
+    });
+    return { liveInU, liveOutU, liveInL, liveOutL, perInU, perOutU, perInL, perOutL, endNetU, endNetL };
+  }
+
+  function applyCashFlowParityToKpi(k, m, range, coKey) {
+    const cf = m && m.cash_flow_sheet;
+    if (!cf || !cf.live_till) return k;
+    const rate = Number(cf.rate_lbp || 89500);
+    const lt = cf.live_till;
+    const daily = cf.daily || [];
+    const cd = computeCustomCashDeltas(coKey, range);
+
+    let iu = 0, ou = 0, il = 0, ol = 0, endU = 0, endL = 0;
+    if (!range) {
+      iu = Number(lt.in_usd || 0);
+      ou = Number(lt.out_usd || 0);
+      il = Number(lt.in_lbp || 0);
+      ol = Number(lt.out_lbp || 0);
+      endU = Number(lt.usd || 0);
+      endL = Number(lt.lbp || 0);
+    } else {
+      const f = range.from || MIN_DATE;
+      const t = range.to || MAX_DATE;
+      for (let i = 0; i < daily.length; i++) {
+        const row = daily[i];
+        const d = row[0];
+        if (d <= t) {
+          endU += Number(row[1] || 0) - Number(row[2] || 0);
+          endL += Number(row[3] || 0) - Number(row[4] || 0);
+          if (d >= f) {
+            iu += Number(row[1] || 0);
+            ou += Number(row[2] || 0);
+            il += Number(row[3] || 0);
+            ol += Number(row[4] || 0);
+          }
+        }
+      }
+    }
+    iu = round2(iu + cd.perInU);
+    ou = round2(ou + cd.perOutU);
+    il = Math.round(il + cd.perInL);
+    ol = Math.round(ol + cd.perOutL);
+    let nu = round2(iu - ou);
+    let nl = Math.round(il - ol);
+    if (Math.abs(nu) < 0.005) nu = 0;
+    if (Math.abs(nl) <= 1) nl = 0;
+
+    let liveU = round2(Number(lt.usd || 0) + (cd.liveInU - cd.liveOutU));
+    let liveL = Math.round(Number(lt.lbp || 0) + (cd.liveInL - cd.liveOutL));
+    if (Math.abs(liveU) < 0.005) liveU = 0;
+    if (Math.abs(liveL) <= 1) liveL = 0;
+
+    let perTillU = round2(endU + cd.endNetU);
+    let perTillL = Math.round(endL + cd.endNetL);
+    if (Math.abs(perTillU) < 0.005) perTillU = 0;
+    if (Math.abs(perTillL) <= 1) perTillL = 0;
+
+    k.rate_lbp = rate;
+    k.cash_till_usd = liveU;
+    k.cash_till_lbp = liveL;
+    k.cash_till = round2(liveU + liveL / rate);
+    k.live_in_usd = round2(Number(lt.in_usd || 0) + cd.liveInU);
+    k.live_out_usd = round2(Number(lt.out_usd || 0) + cd.liveOutU);
+    k.live_in_lbp = Math.round(Number(lt.in_lbp || 0) + cd.liveInL);
+    k.live_out_lbp = Math.round(Number(lt.out_lbp || 0) + cd.liveOutL);
+    k.period_till_usd = perTillU;
+    k.period_till_lbp = perTillL;
+    k.period_till = round2(perTillU + perTillL / rate);
+    k.cash_in_usd = iu;
+    k.cash_out_usd = ou;
+    k.net_cash_usd = nu;
+    k.cash_in_lbp = il;
+    k.cash_out_lbp = ol;
+    k.net_cash_lbp = nl;
+    k.cash_inflow = round2(iu + il / rate);
+    k.cash_outflow = round2(ou + ol / rate);
+    k.net_cash_flow = round2(k.cash_inflow - k.cash_outflow);
+    return k;
+  }
+
   function getKPI(coOverride) {
     const rawKey = coOverride || STATE.company;
     const coKey = resolveEffectiveModelKey(rawKey);
@@ -1124,7 +1315,8 @@
     else if (range.daxKey && periods[range.daxKey]) anchor = Object.assign({}, periods[range.daxKey], { label: range.label || periods[range.daxKey].label });
     const f = range ? range.from : MIN_DATE;
     const t = range ? range.to : MAX_DATE;
-    const cacheKey = `${coKey}|${allowedCompanyNames().join(',')}|${STATE.basis}|${STATE.period}|${f}|${t}|${SEED._customRev || 0}|${(STATE.customRecords.sales_tickets || []).length}`;
+    const crCount = Object.values(STATE.customRecords || {}).reduce((a, arr) => a + (Array.isArray(arr) ? arr.length : 0), 0);
+    const cacheKey = `${coKey}|${allowedCompanyNames().join(',')}|${STATE.basis}|${STATE.period}|${f}|${t}|${SEED._customRev || 0}|${crCount}`;
     if (_kpiRangeCacheMap.has(cacheKey)) return _kpiRangeCacheMap.get(cacheKey);
 
     const txRaw = computeLocalKPI(m, range, 'tx', coKey);
@@ -1141,6 +1333,7 @@
     const computed = (STATE.basis === 'rep' && (range || (STATE.customRecords.sales_tickets || []).length))
       ? bridgeKpiToBasis(txFinal, txRaw, computeLocalKPI(m, range, 'rep', coKey))
       : txFinal;
+    applyCashFlowParityToKpi(computed, m, range, coKey);
 
     if (_kpiRangeCacheMap.size > 64) _kpiRangeCacheMap.clear();
     _kpiRangeCacheMap.set(cacheKey, computed);
@@ -1661,10 +1854,10 @@
 
       <div class="df-mode-bar">
         <div class="df-tabs" role="tablist" aria-label="Date Picker View">
-          <button type="button" role="tab" aria-selected="${tab === 'day'}" class="df-tab ${tab === 'day' ? 'active' : ''}" data-df-switch-tab="day">📅 Day</button>
-          <button type="button" role="tab" aria-selected="${tab === 'month'}" class="df-tab ${tab === 'month' ? 'active' : ''}" data-df-switch-tab="month">🗓️ Month</button>
-          <button type="button" role="tab" aria-selected="${tab === 'week'}" class="df-tab ${tab === 'week' ? 'active' : ''}" data-df-switch-tab="week">📆 Week</button>
-          <button type="button" role="tab" aria-selected="${tab === 'year'}" class="df-tab ${tab === 'year' ? 'active' : ''}" data-df-switch-tab="year">📊 Year</button>
+          <button type="button" role="tab" aria-selected="${tab === 'day'}" class="df-tab ${tab === 'day' ? 'active' : ''}" data-df-switch-tab="day">${ic('calendar')} Day</button>
+          <button type="button" role="tab" aria-selected="${tab === 'month'}" class="df-tab ${tab === 'month' ? 'active' : ''}" data-df-switch-tab="month">${ic('calendar_grid')} Month</button>
+          <button type="button" role="tab" aria-selected="${tab === 'week'}" class="df-tab ${tab === 'week' ? 'active' : ''}" data-df-switch-tab="week">${ic('calendar_week')} Week</button>
+          <button type="button" role="tab" aria-selected="${tab === 'year'}" class="df-tab ${tab === 'year' ? 'active' : ''}" data-df-switch-tab="year">${ic('pbi')} Year</button>
         </div>
         <div class="df-target-group" role="group" aria-label="Selection Target">
           <button type="button" class="df-target-btn ${tm === 'from' ? 'active' : ''}" data-df-target="from" title="Click picks From Date (Start)">From: <b>${esc(fp.dd)}-${esc(fp.mmm)}-${esc(fp.yyyy)}</b></button>
@@ -2947,7 +3140,7 @@
   }
 
   function exportBtn(panelId, name) {
-    return `<button type="button" class="btn" data-export-csv="${esc(panelId)}" data-export-name="${esc(name)}" title="Download the rows shown as CSV (Excel, UTF-8)">⬇ CSV</button>`;
+    return `<button type="button" class="btn" data-export-csv="${esc(panelId)}" data-export-name="${esc(name)}" title="Download the rows shown as CSV (Excel, UTF-8)">${ic('download')} CSV</button>`;
   }
 
   function searchBox(placeholder) {
@@ -3418,6 +3611,7 @@
       const anyDash = Object.values(p.dashboards).some(Boolean);
       const anyStmt = Object.values(p.statements).some(Boolean);
       if (view === 'kiosks') return !!(p.rights.enter_dispatch || p.rights.enter_accounting || p.rights.enter_master || p.rights.read_ops);
+      if (view === 'cashflow') return !!(p.rights.read_ops || p.rights.read_fin || p.rights.enter_accounting || p.rights.enter_dispatch || p.dashboards.dash_financial_gl || p.dashboards.dash_expenses_vat);
       if (view === 'overview' || view === 'pbi') return anyDash;
       if (view === 'statements') return anyStmt;
       if (view === 'payroll') return !!(p.rights.read_fin || p.dashboards.dash_payroll_hr || p.rights.enter_payroll_jv);
@@ -3428,6 +3622,7 @@
       return true;
     }
     if (view === 'kiosks') return true;
+    if (view === 'cashflow') return !/Sales/i.test(role);
     if (view === 'overview' || view === 'pbi') return pbi !== 'none';
     if (view === 'expenses') return pbi !== 'none' && !/Sales/i.test(role);
     if (view === 'raw' || view === 'fleet' || view === 'suppliers' || view === 'ap') return !/Sales/i.test(role);
@@ -4828,10 +5023,10 @@
           <span class="v num">${fmtUSD(opProfit, 0)}<small>${fmtPct(k.op_margin_pct, opProfit, k.net_sales)}</small></span>
           <span class="d">Expenses: ${fmtUSD(expVal, 0)} · Payroll: ${fmtUSD(k.salaries_paid, 0)}</span>
         </div>
-        <div class="kpi kpi-link" data-nav-jump="ledger" role="button" tabindex="0" title="Open the General Ledger & till">
+        <div class="kpi kpi-link" data-nav-jump="cashflow" role="button" tabindex="0" title="Open Cash Flow &amp; Till">
           <span class="k">Cash Till &amp; Net Flow (5300)</span>
-          <span class="v num">${fmtUSD(k.cash_till, 2)}</span>
-          <span class="d">In: ${fmtUSD(k.cash_inflow, 0)} · Out: ${fmtUSD(k.cash_outflow, 0)}</span>
+          <span class="v num">${fmtUSD(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till, 2)}<small>${fmtLBP(k.cash_till_lbp || 0)}</small></span>
+          <span class="d good">Total: ${fmtUSD(k.cash_till, 2)} · In: ${fmtUSDk(k.cash_inflow)} / Out: ${fmtUSDk(k.cash_outflow)}</span>
         </div>
         <div class="kpi kpi-link" data-nav-jump="customers" role="button" tabindex="0" title="Open Customers & AR Aging">
           <span class="k">Open AR Receivables (FIFO)</span>
@@ -5557,7 +5752,7 @@
             </div>
           </div>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="sales" title="Open Touch Sales Dispatch Kiosk &amp; Bluetooth Thermal Printer">🖨️ Sales Kiosk</button>
+            <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="sales" title="Open Touch Sales Dispatch Kiosk &amp; Bluetooth Thermal Printer">${ic('printer')} Sales Kiosk</button>
             ${exportBtn('salesPanel', 'Sales_Register')}
             ${canEnterForm('sales') ? '<button class="btn btn-primary" data-open-modal="sales">+ New Sales Ticket</button>' : ''}
           </div>
@@ -5635,7 +5830,7 @@
                 return `
                 <tr class="rrow" data-rkey="sales_tickets" data-rid="${esc(r.id)}">
                   <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'sales_tickets')}</td>
-                  <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '—')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">🖨️</button>${r.overtime ? '<span class="badge badge-warn tkt-ot-badge" title="Overtime load">OT</span>' : ''}</span></td>
+                  <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '—')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Ticket #${esc(r.ticket_no || '')}">${ic('printer')}</button>${r.overtime ? '<span class="badge badge-warn tkt-ot-badge" title="Overtime load">OT</span>' : ''}</span></td>
                   <td>${coBadge(r.company)}</td>
                   <td>${r.sale_type === 'Unregistered' ? '<span title="Unregistered">Unreg.<span class="sr-only">istered</span></span>' : esc(r.sale_type)}</td>
                   <td>${relLink('customers', r.customer, r.customer, true)}</td>
@@ -5908,7 +6103,7 @@
               <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('fleet', 'Company fleet')}${chip('third', 'Third-party')}${chip('app', 'App-entered')}</div>
             </div>
             <div style="display:flex;gap:6px">
-              <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="raw" title="Open Touch Raw Material Receiving Kiosk &amp; Bluetooth Thermal Printer">🖨️ Raw Kiosk</button>
+              <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="raw" title="Open Touch Raw Material Receiving Kiosk &amp; Bluetooth Thermal Printer">${ic('printer')} Raw Kiosk</button>
               ${exportBtn('rawPanel', 'Raw_Register')}
               ${canEnterForm('raw') ? '<button class="btn btn-primary" data-open-modal="raw">+ New Raw Receipt</button>' : ''}
             </div>
@@ -5965,7 +6160,7 @@
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="raw_purchases" data-rid="${esc(r.id)}">
                     <td class="mono">${esc(recordDateDMY(r))}${appCell(r, 'raw_purchases')}</td>
-                    <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '(no number)')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">🖨️</button></span></td>
+                    <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ticket_no || '(no number)')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="raw" data-print-id="${esc(r.id)}" title="Bluetooth Thermal Print / Preview Raw Ticket #${esc(r.ticket_no || '')}">${ic('printer')}</button></span></td>
                     <td>${coBadge(r.company)}</td>
                     <td>${relLink('sites', r.site, r.site || '—', true)}</td>
                     <td>${r.site_owner ? relLink('suppliers', r.site_owner) : '—'}</td>
@@ -6212,7 +6407,7 @@
             <div class="chip-bar">${chip('all', `All Intakes (${base.length})`)}${chip('diesel', 'Diesel')}${chip('lube', 'Lubricants')}${chip('flag', `Guard flags (${flagged})`)}${chip('own', `Own Fleet (${ownCount})`)}${chip('transporter', `Transporter (${transCount})`)}${chip('truck', 'Trucks')}${chip('machinery', 'Machinery')}${chip('app', 'App-entered')}</div>
           </div>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="fuel" title="Open Touch Fuel &amp; Lubricants Kiosk">⛽ Fuel Kiosk</button>
+            <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="fuel" title="Open Touch Fuel &amp; Lubricants Kiosk">${ic('fuel')} Fuel Kiosk</button>
             ${exportBtn('fuelPanel', 'Fuel_Intakes')}
             ${canEnterForm('fuel') ? '<button class="btn btn-primary" data-open-modal="fuel">+ New Fuel Ticket</button>' : ''}
           </div>
@@ -6268,7 +6463,7 @@
                 return `
                 <tr class="rrow" data-rkey="fuel_intakes" data-rid="${esc(f.id)}">
                   <td class="mono">${esc(recordDateDMY(f))}${appCell(f, 'fuel_intakes')}</td>
-                  <td class="mono"><button type="button" class="tbl-print-icon" data-print-ticket="fuel" data-rid="${esc(f.id)}" title="Print Thermal Fuel Slip">🖨</button>${esc(f.ticket_no || '—')}</td>
+                  <td class="mono"><span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(f.ticket_no || '—')}</strong><button type="button" class="tkt-print-mini" data-print-ticket="fuel" data-print-id="${esc(f.id)}" title="Bluetooth Thermal Print / Preview Fuel Slip #${esc(f.ticket_no || '')}">${ic('printer')}</button></span></td>
                   <td>${coBadge(f.company)}</td>
                   <td class="mono">${relLink('equipment', f.equipment, f.equipment, true)}</td>
                   <td>${f.driver ? relLink('drivers', f.driver) : '—'}</td>
@@ -7535,7 +7730,7 @@
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="10">🖨 Payroll RDL (#10)</button>
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="10">${ic('printer')} Payroll RDL (#10)</button>
             ${canEnterForm('attendance') ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="attendance">+ Log Attendance</button>' : ''}
             ${exportBtn('paySalPanel', 'Salary_Disbursements')}
             ${canEnterForm('salary') ? '<button type="button" class="btn btn-primary" data-open-modal="salary">+ Pay Salary</button>' : ''}
@@ -7782,6 +7977,557 @@
   }
 
   // ==========================================================================
+  // VIEW 9B: CASH FLOW & TILL (DUAL-CURRENCY USD & LBP PLANT TILL + DRAWER CHECK)
+  // ==========================================================================
+  function computeDrawerStatusHtml(coKey, expUsd, expLbp) {
+    const store = STATE.tillCheck || {};
+    const entry = store[coKey] || {};
+    const rawU = entry.usd == null ? '' : String(entry.usd).trim();
+    const rawL = entry.lbp == null ? '' : String(entry.lbp).trim();
+    if (rawU === '' && rawL === '') {
+      return `<span class="badge badge-ok" id="tillVarianceBadge">Book Till: ${fmtUSD(expUsd, 2)} · ${fmtLBP(expLbp)}</span>`;
+    }
+    const cntU = rawU === '' ? expUsd : (Number(rawU.replace(/,/g, '')) || 0);
+    const cntL = rawL === '' ? expLbp : Math.round(Number(rawL.replace(/,/g, '')) || 0);
+    const diffU = round2(cntU - expUsd);
+    const diffL = Math.round(cntL - expLbp);
+    const okU = Math.abs(diffU) < 0.01;
+    const okL = Math.abs(diffL) <= 100;
+    if (okU && okL) {
+      return `<span class="badge badge-ok" id="tillVarianceBadge">✓ Exact Match — Drawer Verified (${fmtUSD(cntU, 2)} · ${fmtLBP(cntL)})</span>`;
+    }
+    const uPart = okU ? '$0.00 USD' : `${diffU > 0 ? '+' : ''}${fmtUSD(diffU, 2)} USD`;
+    const lPart = okL ? '0 LL' : `${diffL > 0 ? '+' : ''}${fmtLBP(diffL)}`;
+    return `<span class="badge badge-crit" id="tillVarianceBadge">⚠ Variance: ${uPart} · ${lPart}</span>`;
+  }
+
+  function renderCashFlowTill() {
+    const u = activeUser();
+    const effKey = resolveEffectiveModelKey(STATE.company);
+    const m = getModel();
+    const k = getKPI();
+    const cf = (m && m.cash_flow_sheet) || { rate_lbp: 89500, live_till: { usd: 0, lbp: 0, total: 0, in_usd: 0, out_usd: 0, in_lbp: 0, out_lbp: 0 }, tables: {} };
+    const rate = Number(k.rate_lbp || cf.rate_lbp || 89500);
+    const liveUsd = Number(k.cash_till_usd != null ? k.cash_till_usd : 0);
+    const liveLbp = Math.round(Number(k.cash_till_lbp != null ? k.cash_till_lbp : 0));
+    const liveTot = Number(k.cash_till != null ? k.cash_till : 0);
+    const q = STATE.search.trim().toLowerCase();
+    const fullFin = isOwner(u) || u.pbi_access === 'full' || (u.custom_perms && u.custom_perms.rights && u.custom_perms.rights.read_fin);
+
+    if (!STATE.tillCheck) STATE.tillCheck = {};
+    const curCheck = STATE.tillCheck[effKey] || { usd: '', lbp: '' };
+
+    const allowedNames = allowedCompanyNames(u);
+    const showGroupSplit = STATE.company === 'manufacturing-group' && allowedNames.includes('WTC') && allowedNames.includes('BBConstruction');
+    const wtcK = showGroupSplit ? getKPI('wtc') : null;
+    const bbcK = showGroupSplit ? getKPI('bbconstruction') : null;
+
+    // Recent physical cash drawer movements from live registers (scoped to active entity & date window)
+    const cashMoves = [];
+    filterRecords(SEED.records.sales_tickets, { ignoreSearch: true, basis: 'tx' }).forEach(s => {
+      if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') {
+        const sgn = ticketSign(s);
+        if (!sgn) return;
+        const net = Number(s.total != null ? s.total : (Number(s.total_ttc || 0) - Number(s.vat || 0))) * sgn;
+        const vatL = Math.round(Number(s.vat || 0) * sgn * rate);
+        cashMoves.push({ id: s.id, rkey: 'sales_tickets', date: s.date, company: s.company, cat: 'Sales (Cash)', party: s.customer || 'Walk-in', ref: s.ticket_no ? `#${s.ticket_no}` : s.name, method: s.method, usd: net, lbp: vatL, raw: s });
+      }
+    });
+    filterRecords(SEED.records.receipts, { ignoreSearch: true, basis: 'tx' }).forEach(r => {
+      const knd = receiptKind(r);
+      if (knd !== 'Settlement' && knd !== 'VAT received') return;
+      const lbp = Math.round(Number(r.lbp_amount || (knd === 'VAT received' ? Number(r.amount || 0) * rate : 0)));
+      const usd = knd === 'VAT received' ? 0 : (r.lbp_amount ? Number(r.usd_amount || 0) : Number(r.amount || 0));
+      cashMoves.push({ id: r.id, rkey: 'receipts', date: r.date, company: r.company, cat: knd === 'VAT received' ? 'Sales VAT (LL)' : 'AR Receipt', party: r.customer || '—', ref: r.reference || r.name, method: r.method || 'Payment', usd, lbp, raw: r });
+    });
+    filterRecords(SEED.records.expenses, { ignoreSearch: true, basis: 'tx' }).forEach(x => {
+      const sgn = expenseSign(x);
+      if (!sgn || isCreditExpense(x)) return;
+      const lbp = -Math.round(Number(x.lbp_amount || 0) * sgn);
+      const usd = -(x.lbp_amount ? Number(x.usd_amount || 0) : Number(x.amount || 0)) * sgn;
+      cashMoves.push({ id: x.id, rkey: 'expenses', date: x.date, company: x.company, cat: 'Cash Expense', party: x.supplier || x.subcategory || x.category || 'Plant', ref: x.invoice || x.reference || x.name, method: x.method || 'Cash', usd, lbp, raw: x });
+    });
+    filterRecords(SEED.records.settlements, { ignoreSearch: true, basis: 'tx' }).forEach(s => {
+      const knd = settlementKind(s);
+      if (knd !== 'Payment' && knd !== 'VAT paid') return;
+      const lbp = -Math.round(Number(s.lbp_amount || (knd === 'VAT paid' ? Number(s.amount || 0) * rate : 0)));
+      const usd = knd === 'VAT paid' ? 0 : -(s.lbp_amount ? Number(s.usd_amount || 0) : Number(s.amount || 0));
+      cashMoves.push({ id: s.id, rkey: 'settlements', date: s.date, company: s.company, cat: knd === 'VAT paid' ? 'Expense VAT (LL)' : 'AP Settlement', party: s.supplier || '—', ref: s.reference || s.name, method: s.method || 'Payment', usd, lbp, raw: s });
+    });
+    filterRecords(SEED.records.conversions, { ignoreSearch: true, basis: 'tx' }).forEach(cv => {
+      const u2l = String(cv.from_currency || 'USD').toUpperCase() === 'USD';
+      const u = Number(cv.usd_amount || 0) * (u2l ? -1 : 1);
+      const l = Math.round(Number(cv.lbp_amount || 0)) * (u2l ? 1 : -1);
+      cashMoves.push({ id: cv.id, rkey: 'conversions', date: cv.date, company: cv.company, cat: 'FX Conversion', party: u2l ? 'USD → LBP' : 'LBP → USD', ref: cv.name, method: `@ ${fmtNum(cv.exchange_rate || rate, 0)}`, usd: u, lbp: l, raw: cv });
+    });
+
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+    const filteredMoves = cashMoves.filter(mRow => {
+      if (STATE.chipFilter === 'cf_sales' && mRow.cat !== 'Sales (Cash)' && mRow.cat !== 'AR Receipt' && mRow.cat !== 'Sales VAT (LL)') return false;
+      if (STATE.chipFilter === 'cf_exp' && mRow.cat !== 'Cash Expense' && mRow.cat !== 'AP Settlement' && mRow.cat !== 'Expense VAT (LL)') return false;
+      if (STATE.chipFilter === 'cf_fx' && mRow.cat !== 'FX Conversion') return false;
+      if (q && !`${mRow.date} ${mRow.company} ${mRow.cat} ${mRow.party} ${mRow.ref} ${mRow.method}`.toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const shownMoves = filteredMoves.slice(0, shownCount('cf_moves', 30));
+    const mvUsdSum = round2(filteredMoves.reduce((a, r) => a + Number(r.usd || 0), 0));
+    const mvLbpSum = Math.round(filteredMoves.reduce((a, r) => a + Number(r.lbp || 0), 0));
+
+    const tbls = cf.tables || {};
+    const tSales = tbls.sales || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tExps = tbls.expenses || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tBor = tbls.borrowing || { rows: [], totals: { rec_usd: 0, rec_lbp: 0, paid_usd: 0, paid_lbp: 0 } };
+    const tSal = tbls.salary || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tExt = tbls.external || { rows: [], totals: { exp_usd: 0, exp_lbp: 0, rev_usd: 0, rev_lbp: 0 } };
+    const tExtd = tbls.extended || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tConv = tbls.conversion || { rows: [], totals: { from_amt: 0, to_amt: 0 } };
+
+    const filtName = rows => !q ? rows : rows.filter(r => String(r.name || r.type || '').toLowerCase().includes(q));
+    const u2lRow = (tConv.rows || []).find(r => /USD to LBP/i.test(r.type)) || { from_amt: 0, to_amt: 0 };
+    const l2uRow = (tConv.rows || []).find(r => /LBP to USD/i.test(r.type)) || { from_amt: 0, to_amt: 0 };
+
+    const summaryRows = [
+      { cat: 'Sales & Customer Receipts', inU: tSales.totals.usd, outU: 0, inL: tSales.totals.lbp, outL: 0 },
+      { cat: 'Expenses & Supplier Settlements', inU: 0, outU: tExps.totals.usd, inL: 0, outL: tExps.totals.lbp },
+      { cat: 'Borrowing & Staff Advances', inU: tBor.totals.paid_usd, outU: tBor.totals.rec_usd, inL: tBor.totals.paid_lbp, outL: tBor.totals.rec_lbp },
+      { cat: 'Salary & Workforce Payments', inU: 0, outU: tSal.totals.usd, inL: 0, outL: tSal.totals.lbp },
+      { cat: 'External Treasury', inU: tExt.totals.rev_usd, outU: tExt.totals.exp_usd, inL: tExt.totals.rev_lbp, outL: tExt.totals.exp_lbp },
+      { cat: 'Extended Counterparties', inU: tExtd.totals.usd < 0 ? -tExtd.totals.usd : 0, outU: tExtd.totals.usd > 0 ? tExtd.totals.usd : 0, inL: tExtd.totals.lbp < 0 ? -tExtd.totals.lbp : 0, outL: tExtd.totals.lbp > 0 ? tExtd.totals.lbp : 0 },
+      { cat: 'Currency Conversions (USD ↔ LBP)', inU: l2uRow.to_amt, outU: u2lRow.from_amt, inL: u2lRow.to_amt, outL: l2uRow.from_amt }
+    ];
+
+    const salesShown = filtName(tSales.rows || []).slice(0, shownCount('cf_sales_t', 20));
+    const expsShown = filtName(tExps.rows || []).slice(0, shownCount('cf_exps_t', 20));
+    const borShown = filtName(tBor.rows || []).slice(0, shownCount('cf_bor_t', 15));
+    const salShown = filtName(tSal.rows || []).slice(0, shownCount('cf_sal_t', 15));
+    const extShown = filtName(tExt.rows || []).slice(0, shownCount('cf_ext_t', 15));
+    const extdShown = filtName(tExtd.rows || []);
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">PHYSICAL DRAWER RECONCILIATION &amp; DUAL-CURRENCY CASH FLOW (5300)</div>
+          <div class="cockpit-title">Cash Flow &amp; Till</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'USD Cash Till ($)',
+            badge: Math.abs(liveUsd) < 0.005 ? 'Balanced $0' : 'Live Drawer',
+            badgeCls: 'emerald',
+            val: `${fmtUSD(liveUsd, 2)} <small>USD</small>`,
+            valCls: 'emerald',
+            pct: 100,
+            sub: `In <b>${fmtUSDk(k.live_in_usd != null ? k.live_in_usd : k.cash_in_usd)}</b> · Out <b>${fmtUSDk(k.live_out_usd != null ? k.live_out_usd : k.cash_out_usd)}</b>`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'LBP Cash Till (LL)',
+            badge: Math.abs(liveLbp) <= 1 ? 'Balanced 0 LL' : 'Pounds',
+            badgeCls: 'emerald',
+            val: `${fmtLBP(liveLbp)}`,
+            valCls: 'emerald',
+            pct: 100,
+            sub: `In <b>${fmtLBPk(k.live_in_lbp != null ? k.live_in_lbp : k.cash_in_lbp)}</b> · Out <b>${fmtLBPk(k.live_out_lbp != null ? k.live_out_lbp : k.cash_out_lbp)}</b>`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'Combined Cash Flow (5300)',
+            badge: `@ ${fmtNum(rate, 0)} LL/$`,
+            badgeCls: 'brass',
+            val: `${fmtUSD(liveTot, 2)} <small>TOTAL</small>`,
+            valCls: 'brass',
+            sub: `USD <b>${fmtUSD(liveUsd, 2)}</b> + LBP <b>${fmtLBP(liveLbp)}</b> ÷ ${fmtNum(rate, 0)}`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Selected Period Cash Flow',
+            badge: esc(k.label || 'All-Time'),
+            val: `${fmtUSD(k.net_cash_flow, 2)}`,
+            sub: `USD <b>${fmtUSD(k.net_cash_usd, 2)}</b> · LBP <b>${fmtLBPk(k.net_cash_lbp)}</b> · End Till <b>${fmtUSD(k.period_till, 2)}</b>`,
+            tone: 'steel'
+          })}
+        </div>
+      </div>
+
+      ${showGroupSplit ? `
+      <div class="sales-entity-recon" role="region" aria-label="Cash Till by Entity" style="margin-bottom:12px">
+        <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
+          <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+          <div class="sales-recon-metrics">
+            <span><small>USD Till ($)</small><b>${fmtUSD(wtcK.cash_till_usd, 2)}</b></span>
+            <span><small>LBP Till (LL)</small><b>${fmtLBP(wtcK.cash_till_lbp)}</b></span>
+            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(wtcK.cash_till, 2)}</b></span>
+          </div>
+        </div>
+        <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+          <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+          <div class="sales-recon-metrics">
+            <span><small>USD Till ($)</small><b>${fmtUSD(bbcK.cash_till_usd, 2)}</b></span>
+            <span><small>LBP Till (LL)</small><b>${fmtLBP(bbcK.cash_till_lbp)}</b></span>
+            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(bbcK.cash_till, 2)}</b></span>
+          </div>
+        </div>
+      </div>` : (allowedNames.length > 1 ? `
+      <div class="sales-entity-recon single" style="margin-bottom:12px">
+        <div class="sales-recon-card single-card sales-recon-single" data-co="${esc(STATE.company)}">
+          <div class="sales-recon-head">
+            <span class="badge ${STATE.company === 'bbconstruction' ? 'badge-info' : 'badge-brass'}">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span>
+            <b>Active Plant Cash Till</b>
+            <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
+          </div>
+          <div class="sales-recon-metrics">
+            <span><small>USD Till ($)</small><b>${fmtUSD(liveUsd, 2)}</b></span>
+            <span><small>LBP Till (LL)</small><b>${fmtLBP(liveLbp)}</b></span>
+            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(liveTot, 2)}</b></span>
+          </div>
+        </div>
+      </div>` : '')}
+
+      <div class="panel-card" id="tillVerifyPanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>PHYSICAL CASH DRAWER VERIFICATION (${esc(COMPANY_LABELS[STATE.company] || 'Active Plant')})</span></div>
+          <span class="panel-meta" id="tillVarianceStatus" data-exp-usd="${liveUsd}" data-exp-lbp="${liveLbp}" data-co-key="${esc(effKey)}">${computeDrawerStatusHtml(effKey, liveUsd, liveLbp)}</span>
+        </div>
+        <div style="padding:12px 16px;display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap">
+          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <label for="tillCountUsdInput" style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Counted USD ($) · Expected ${fmtUSD(liveUsd, 2)}</label>
+              <input type="text" inputmode="decimal" id="tillCountUsdInput" class="search-input" style="width:170px;font-family:var(--font-mono);font-weight:700" placeholder="${fmtUSD(liveUsd, 2)}" value="${esc(curCheck.usd)}">
+            </div>
+            <div>
+              <label for="tillCountLbpInput" style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Counted LBP (LL) · Expected ${fmtLBP(liveLbp)}</label>
+              <input type="text" inputmode="numeric" id="tillCountLbpInput" class="search-input" style="width:190px;font-family:var(--font-mono);font-weight:700" placeholder="${fmtLBP(liveLbp)}" value="${esc(curCheck.lbp)}">
+            </div>
+            <button type="button" class="btn btn-ghost-bar" id="tillMatchBtn">✓ Confirm Exact (${fmtTillPair(liveUsd, liveLbp, true)})</button>
+            <button type="button" class="btn btn-ghost-bar" id="tillClearBtn">Reset</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${canEnterForm('sales', u) ? '<button type="button" class="btn btn-primary" data-open-modal="sales">+ Cash Sale</button>' : ''}
+            ${canEnterForm('receipt', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="receipt">+ AR Receipt</button>' : ''}
+            ${canEnterForm('expense', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="expense">+ Cash Expense</button>' : ''}
+            ${canEnterForm('settlement', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="settlement">+ AP Settlement</button>' : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-card" id="tillBridgePanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>CUMULATIVE BOOK TILL RECONCILIATION BY CATEGORY (USD &amp; LBP)</span></div>
+          <span class="panel-meta">${exportBtn('tillBridgePanel', 'Cash_Till_Reconciliation')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Cash Flow Category</th>
+                <th class="r">USD In ($)</th>
+                <th class="r">USD Out ($)</th>
+                <th class="r">Net USD ($)</th>
+                <th class="r">LBP In (LL)</th>
+                <th class="r">LBP Out (LL)</th>
+                <th class="r">Net LBP (LL)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summaryRows.map(sr => {
+                const nU = round2(sr.inU - sr.outU);
+                const nL = Math.round(sr.inL - sr.outL);
+                return `
+                  <tr>
+                    <td><strong>${esc(sr.cat)}</strong></td>
+                    <td class="r">${sr.inU ? fmtUSD(sr.inU, 2) : '—'}</td>
+                    <td class="r">${sr.outU ? fmtUSD(sr.outU, 2) : '—'}</td>
+                    <td class="r"><strong style="color:${nU < -0.005 ? 'var(--crit)' : (nU > 0.005 ? 'var(--good)' : 'inherit')}">${fmtUSD(nU, 2)}</strong></td>
+                    <td class="r">${sr.inL ? fmtLBP(sr.inL) : '—'}</td>
+                    <td class="r">${sr.outL ? fmtLBP(sr.outL) : '—'}</td>
+                    <td class="r"><strong style="color:${nL < -1 ? 'var(--crit)' : (nL > 1 ? 'var(--good)' : 'inherit')}">${fmtLBP(nL)}</strong></td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><b>CLOSING BOOK CASH TILL (5300)</b></td>
+                <td class="r"><b>${fmtUSD(cf.live_till.in_usd, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(cf.live_till.out_usd, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(liveUsd, 2)}</b></td>
+                <td class="r"><b>${fmtLBP(cf.live_till.in_lbp)}</b></td>
+                <td class="r"><b>${fmtLBP(cf.live_till.out_lbp)}</b></td>
+                <td class="r"><b>${fmtLBP(liveLbp)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="split-grid-2" style="margin-bottom:14px">
+        <div class="panel-card" id="cfSalesPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>SALES CASH FLOW (${fmtNum((tSales.rows || []).length)} CUSTOMERS)</span></div>
+            <span class="panel-meta">${exportBtn('cfSalesPanel', 'Cash_Flow_Sales')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Customer</th><th class="r">Amount ($)</th><th class="r">Amount (LL)</th></tr></thead>
+              <tbody>
+                ${salesShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.usd ? fmtUSD(r.usd, 2) : '—'}</td>
+                    <td class="r">${r.lbp ? fmtLBP(r.lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(3, 'No cash sales / receipts for this entity')}
+                ${showMoreRow('cf_sales_t', filtName(tSales.rows || []).length, 3)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL SALES CF</b></td>
+                  <td class="r"><b>${fmtUSD(tSales.totals.usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tSales.totals.lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="cfExpPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>EXPENSES CASH FLOW (${fmtNum((tExps.rows || []).length)} SUPPLIERS)</span></div>
+            <span class="panel-meta">${exportBtn('cfExpPanel', 'Cash_Flow_Expenses')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Supplier</th><th class="r">Expenses ($)</th><th class="r">Expenses (LL)</th></tr></thead>
+              <tbody>
+                ${expsShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.usd ? fmtUSD(r.usd, 2) : '—'}</td>
+                    <td class="r">${r.lbp ? fmtLBP(r.lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(3, 'No cash expenses / settlements for this entity')}
+                ${showMoreRow('cf_exps_t', filtName(tExps.rows || []).length, 3)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL EXPENSES CF</b></td>
+                  <td class="r"><b>${fmtUSD(tExps.totals.usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tExps.totals.lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      ${fullFin ? `
+      <div class="split-grid-2" style="margin-bottom:14px">
+        <div class="panel-card" id="cfBorPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>BORROWING (${fmtNum((tBor.rows || []).length)} BORROWERS)</span></div>
+            <span class="panel-meta">${exportBtn('cfBorPanel', 'Cash_Flow_Borrowing')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Borrower</th><th class="r">Rec ($)</th><th class="r">Rec (LL)</th><th class="r">Paid ($)</th><th class="r">Paid (LL)</th></tr></thead>
+              <tbody>
+                ${borShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.rec_usd ? fmtUSD(r.rec_usd, 0) : '—'}</td>
+                    <td class="r">${r.rec_lbp ? fmtLBP(r.rec_lbp) : '—'}</td>
+                    <td class="r">${r.paid_usd ? fmtUSD(r.paid_usd, 0) : '—'}</td>
+                    <td class="r">${r.paid_lbp ? fmtLBP(r.paid_lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(5, 'No borrowing rows')}
+                ${showMoreRow('cf_bor_t', filtName(tBor.rows || []).length, 5)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL</b></td>
+                  <td class="r"><b>${fmtUSD(tBor.totals.rec_usd, 0)}</b></td>
+                  <td class="r"><b>${fmtLBP(tBor.totals.rec_lbp)}</b></td>
+                  <td class="r"><b>${fmtUSD(tBor.totals.paid_usd, 0)}</b></td>
+                  <td class="r"><b>${fmtLBP(tBor.totals.paid_lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="cfSalPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>SALARY (${fmtNum((tSal.rows || []).length)} STAFF)</span></div>
+            <span class="panel-meta">${exportBtn('cfSalPanel', 'Cash_Flow_Salary')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Staff</th><th class="r">Payment ($)</th><th class="r">Payment (LL)</th></tr></thead>
+              <tbody>
+                ${salShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.usd ? fmtUSD(r.usd, 2) : '—'}</td>
+                    <td class="r">${r.lbp ? fmtLBP(r.lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(3, 'No salary payments')}
+                ${showMoreRow('cf_sal_t', filtName(tSal.rows || []).length, 3)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL SALARY CF</b></td>
+                  <td class="r"><b>${fmtUSD(tSal.totals.usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tSal.totals.lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-grid-2" style="margin-bottom:14px">
+        <div class="panel-card" id="cfExtPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>EXTERNAL (${fmtNum((tExt.rows || []).length)} STAKEHOLDERS)</span></div>
+            <span class="panel-meta">${exportBtn('cfExtPanel', 'Cash_Flow_External')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Stakeholder</th><th class="r">Exp ($)</th><th class="r">Exp (LL)</th><th class="r">Rev ($)</th><th class="r">Rev (LL)</th></tr></thead>
+              <tbody>
+                ${extShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.exp_usd ? fmtUSD(r.exp_usd, 2) : '—'}</td>
+                    <td class="r">${r.exp_lbp ? fmtLBP(r.exp_lbp) : '—'}</td>
+                    <td class="r">${r.rev_usd ? fmtUSD(r.rev_usd, 2) : '—'}</td>
+                    <td class="r">${r.rev_lbp ? fmtLBP(r.rev_lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(5, 'No external treasury rows')}
+                ${showMoreRow('cf_ext_t', filtName(tExt.rows || []).length, 5)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL</b></td>
+                  <td class="r"><b>${fmtUSD(tExt.totals.exp_usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tExt.totals.exp_lbp)}</b></td>
+                  <td class="r"><b>${fmtUSD(tExt.totals.rev_usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tExt.totals.rev_lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="cfExtdConvPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>EXTENDED &amp; CURRENCY CONVERSIONS (USD ↔ LBP)</span></div>
+            <span class="panel-meta">${exportBtn('cfExtdConvPanel', 'Cash_Flow_Conversions')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead><tr><th>Extended Stakeholder</th><th class="r">Owes ($)</th><th class="r">Owes (LL)</th></tr></thead>
+              <tbody>
+                ${extdShown.map(r => `
+                  <tr>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="r">${r.usd ? fmtUSD(r.usd, 2) : '—'}</td>
+                    <td class="r">${r.lbp ? fmtLBP(r.lbp) : '—'}</td>
+                  </tr>`).join('') || emptyRow(3, 'No extended balances for this entity')}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL EXTENDED</b></td>
+                  <td class="r"><b>${fmtUSD(tExtd.totals.usd, 2)}</b></td>
+                  <td class="r"><b>${fmtLBP(tExtd.totals.lbp)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="table-wrap" style="border-top:1px solid var(--line)">
+            <table class="ledger-table">
+              <thead><tr><th>Conversion Direction</th><th class="r">From</th><th class="r">To</th></tr></thead>
+              <tbody>
+                ${(tConv.rows || []).map(r => {
+                  const isU2L = /USD to LBP/i.test(r.type);
+                  return `
+                  <tr>
+                    <td><strong>${esc(r.type)}</strong></td>
+                    <td class="r mono">${isU2L ? fmtUSD(r.from_amt, 2) : fmtLBP(r.from_amt)}</td>
+                    <td class="r mono">${isU2L ? fmtLBP(r.to_amt) : fmtUSD(r.to_amt, 2)}</td>
+                  </tr>`;
+                }).join('') || emptyRow(3, 'No currency conversions')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>` : `
+      <div class="panel-card" id="cfConvOnlyPanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>CURRENCY CONVERSIONS SUMMARY (USD ↔ LBP)</span></div>
+          <span class="panel-meta">${exportBtn('cfConvOnlyPanel', 'Cash_Flow_Conversions')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead><tr><th>Conversion Direction</th><th class="r">Sold From Drawer</th><th class="r">Received Into Drawer</th></tr></thead>
+            <tbody>
+              ${(tConv.rows || []).map(r => {
+                const isU2L = /USD to LBP/i.test(r.type);
+                return `
+                <tr>
+                  <td><strong>${esc(r.type)}</strong></td>
+                  <td class="r mono">${isU2L ? fmtUSD(r.from_amt, 2) : fmtLBP(r.from_amt)}</td>
+                  <td class="r mono">${isU2L ? fmtLBP(r.to_amt) : fmtUSD(r.to_amt, 2)}</td>
+                </tr>`;
+              }).join('') || emptyRow(3, 'No currency conversions')}
+            </tbody>
+          </table>
+        </div>
+      </div>`}
+
+      <div class="panel-card" id="tillRecentPanel">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search customer, supplier, ticket #, receipt, conversion...')}
+            <div class="chip-bar">
+              ${chip('all', `All Cash Entries (${fmtNum(cashMoves.length)})`)}
+              ${chip('cf_sales', 'Sales & AR In')}
+              ${chip('cf_exp', 'Expenses & AP Out')}
+              ${chip('cf_fx', 'FX Conversions')}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px">
+            ${exportBtn('tillRecentPanel', 'Daily_Cash_Till_Movements')}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Co.</th><th>Category</th><th>Counterparty</th><th>Ref / Method</th><th class="r">USD ($)</th><th class="r">LBP (LL)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${shownMoves.map(r => `
+                <tr class="rrow" data-rkey="${esc(r.rkey)}" data-rid="${esc(r.id)}">
+                  <td class="mono">${esc(fmtDateDMY(r.date))}</td>
+                  <td>${coBadge(r.company)}</td>
+                  <td><span class="badge badge-info">${esc(r.cat)}</span></td>
+                  <td><strong>${esc(r.party)}</strong>${appCell(r.raw, r.rkey)}</td>
+                  <td class="mono">${esc(r.ref || '—')} <span class="mu">· ${esc(r.method)}</span></td>
+                  <td class="r"><strong style="color:${r.usd < -0.005 ? 'var(--crit)' : (r.usd > 0.005 ? 'var(--good)' : 'inherit')}">${r.usd ? fmtUSD(r.usd, 2) : '—'}</strong></td>
+                  <td class="r"><strong style="color:${r.lbp < -1 ? 'var(--crit)' : (r.lbp > 1 ? 'var(--good)' : 'inherit')}">${r.lbp ? fmtLBP(r.lbp) : '—'}</strong></td>
+                </tr>`).join('') || emptyRow(7, 'No cash movements match the active filter')}
+              ${showMoreRow('cf_moves', filteredMoves.length, 7)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5"><b>FILTERED REGISTER TOTAL (${fmtNum(filteredMoves.length)} ENTRIES)</b></td>
+                <td class="r"><b>${fmtUSD(mvUsdSum, 2)}</b></td>
+                <td class="r"><b>${fmtLBP(mvLbpSum)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==========================================================================
   // VIEW 10: GENERAL LEDGER & TRIAL BALANCE (LEBANESE COA CLASSES 1–7)
   // ==========================================================================
   function renderGL() {
@@ -7867,7 +8613,7 @@
             <div class="chip-bar">${chip('all', `All Legs (${soaAll.length})`)}${chip('soa_sales', 'Sales & Revenue')}${chip('soa_raw', 'Purchases & AP')}${chip('soa_rcpt', 'Customer Receipts')}${chip('soa_pay', 'Supplier Settlements')}${chip('soa_exp', 'Expenses & Payroll')}${chip('soa_treas', 'Treasury & Partners')}</div>
           </div>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="06">🖨 General Journal RDL (#06)</button>
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="06">${ic('printer')} General Journal RDL (#06)</button>
             ${exportBtn('soaPanel', 'SOA_Journal_Stream')}
             ${canEnterForm('treasury') ? '<button type="button" class="btn btn-primary" data-open-modal="treasury">+ New Treasury / Loan</button>' : ''}
           </div>
@@ -8502,7 +9248,7 @@
       <span class="role-posture-pill ${canEnter ? 'on' : 'off'}">${canEnter ? '✓ Enter New Data' : 'Read-Only'}</span>
       <span class="role-posture-pill ${canModify ? 'on' : 'off'}">${canModify ? '✓ Modify Data' : 'No Modify'}</span>
       <span class="role-posture-pill ${canVoidRec ? 'on' : 'off'}">${canVoidRec ? '✓ Void Entries' : 'No Void'}</span>
-      <span class="role-posture-pill ${m.unlockCount ? 'brass' : 'off'}">🔓 ${m.unlockCount}/${m.unlockTotal} Policy Locks</span>
+      <span class="role-posture-pill ${m.unlockCount ? 'brass' : 'off'}">${ic('unlock')} ${m.unlockCount}/${m.unlockTotal} Policy Locks</span>
     `;
   }
 
@@ -8511,9 +9257,9 @@
     const m = countPermissionMetrics(perms, previewUser);
     const isCustomAcc = curAccess === 'custom|custom' || perms.isCustomRole;
     return `
-      <span class="role-posture-pill ${isCustomAcc ? 'brass' : 'linked'}">${isCustomAcc ? '⚙️ Custom Matrix' : '🔗 Linked to Role'}</span>
-      <span class="role-posture-pill ${m.pbiPageCount ? 'on' : 'off'}">📊 ${m.pbiPageCount}/${m.pbiPageTotal} PBI Dashboards</span>
-      <span class="role-posture-pill ${m.stmtCount ? 'on' : 'off'}">📄 ${m.stmtCount}/${m.stmtTotal} A4 Statements</span>
+      <span class="role-posture-pill ${isCustomAcc ? 'brass' : 'linked'}">${isCustomAcc ? `${ic('sliders')} Custom Matrix` : `${ic('link')} Linked to Role`}</span>
+      <span class="role-posture-pill ${m.pbiPageCount ? 'on' : 'off'}">${ic('pbi')} ${m.pbiPageCount}/${m.pbiPageTotal} PBI Dashboards</span>
+      <span class="role-posture-pill ${m.stmtCount ? 'on' : 'off'}">${ic('statements')} ${m.stmtCount}/${m.stmtTotal} A4 Statements</span>
     `;
   }
 
@@ -8527,7 +9273,7 @@
       { key: 'Supervisor + Entry', label: 'Supervisor + Entry' },
       { key: 'Full Access (Owner)', label: 'Admin / Owner' },
       { key: 'Sales', label: 'Sales & AR' },
-      { key: 'Custom', label: '⚙️ Custom Role' }
+      { key: 'Custom', label: 'Custom Role', icon: 'sliders' }
     ];
     if (!isOpen) {
       return `
@@ -8539,8 +9285,8 @@
             </span>
           </div>
           <div class="perm-collapsed-actions">
-            <button type="button" class="btn btn-brass" style="padding:4px 10px;font-size:11px" id="expandPermMatrixBtn">🛡️ Check Role Permissions &amp; Locks</button>
-            <button type="button" class="btn" style="padding:4px 10px;font-size:11px" id="quickSwitchCustomRoleBtn">⚙️ Customize Role</button>
+            <button type="button" class="btn btn-brass" style="padding:4px 10px;font-size:11px" id="expandPermMatrixBtn">${ic('shield')} Check Role Permissions &amp; Locks</button>
+            <button type="button" class="btn" style="padding:4px 10px;font-size:11px" id="quickSwitchCustomRoleBtn">${ic('sliders')} Customize Role</button>
           </div>
         </div>
       `;
@@ -8564,7 +9310,7 @@
             <div class="perm-role-switcher" role="tablist" aria-label="Inspect or switch role preset">
               ${roleTabs.map(rt => `
                 <button type="button" class="perm-role-tab ${perms.roleKey === rt.key ? 'active' : ''} ${rt.key === 'Custom' ? 'custom-tab' : ''}" data-matrix-role="${esc(rt.key)}">
-                  ${esc(rt.label)}
+                  ${rt.icon ? ic(rt.icon) + ' ' : ''}${esc(rt.label)}
                 </button>
               `).join('')}
             </div>
@@ -8652,7 +9398,7 @@
                       <div class="perm-item-title">
                         <b>${esc(item.label)}</b>
                         <span class="perm-rule-code">${esc(item.rule)}</span>
-                        <span class="perm-state-pill ${checked ? 'brass' : 'off'}">${checked ? '🔓 CAN UNLOCK' : '🔒 PIN 2401 REQ'}</span>
+                        <span class="perm-state-pill ${checked ? 'brass' : 'off'}">${checked ? `${ic('unlock')} CAN UNLOCK` : `${ic('lock')} PIN 2401 REQ`}</span>
                       </div>
                       <small>${esc(item.sub)}</small>
                     </div>
@@ -8745,7 +9491,7 @@
               <span class="seat-collapsed-sub">— Check and update Full Name, Login Email, PIN, Role, Assigned Companies (RLS) &amp; Dashboards for any of the ${uCount} current users.</span>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button type="button" class="btn btn-brass" id="openSeatInspectorBtn">✎ Check / Update Current Users (${uCount})</button>
+              <button type="button" class="btn btn-brass" id="openSeatInspectorBtn">${ic('edit')} Check / Update Current Users (${uCount})</button>
               <button type="button" class="btn btn-primary" id="openNewSeatBarBtn">+ New Team Login</button>
             </div>
           </div>
@@ -8830,7 +9576,7 @@
               <div class="field-lbl-with-btn">
                 <label for="nu_role">Role &amp; Permissions *</label>
                 <button type="button" class="role-inspect-btn ${STATE.showRolePermMatrix ? 'active' : ''}" id="checkRolePermsBtn" title="Inspect or customize Read, Enter, Modify, Policy-Lock Unlocks & Executive Access for this role">
-                  ${curRole === 'Custom' ? '⚙️ Configure Custom Matrix' : '🛡️ Check Permissions &amp; Locks'}
+                  ${curRole === 'Custom' ? `${ic('sliders')} Configure Custom Matrix` : `${ic('shield')} Check Permissions &amp; Locks`}
                 </button>
               </div>
               <select id="nu_role">
@@ -8848,7 +9594,7 @@
               <div class="field-lbl-with-btn">
                 <label for="nu_access">Executive Dashboards &amp; Statements</label>
                 <button type="button" class="role-inspect-btn ${STATE.showRolePermMatrix ? 'active' : ''}" id="checkDashAccessBtn" title="Inspect or customize which of the 20 Power BI Dashboards and 22 Printable Statements this seat can open">
-                  📊 Check Dashboards &amp; Statements
+                  ${ic('pbi')} Check Dashboards &amp; Statements
                 </button>
               </div>
               <select id="nu_access">
@@ -8922,7 +9668,7 @@
         <td>
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             <span class="badge badge-brass">${esc(u.role)}</span>
-            <span class="badge badge-info" title="${pm.rightsCount}/${pm.rightsTotal} Data Rights · ${pm.unlockCount}/9 Policy Locks Unlockable">🔓 ${pm.unlockCount}/9</span>
+            <span class="badge badge-info" title="${pm.rightsCount}/${pm.rightsTotal} Data Rights · ${pm.unlockCount}/9 Policy Locks Unlockable">${ic('unlock')} ${pm.unlockCount}/9</span>
           </div>
         </td>
         <td title="${esc(compBadge.fullTitle)}">
@@ -8936,8 +9682,8 @@
         <td class="mono" style="font-size:10.5px">${esc(u.last_login_at || 'Never')}</td>
         <td class="user-actions-cell">
           <div class="user-actions-wrap">
-            ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 7px;font-size:10px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">✎ Edit</button>` : ''}
-            ${owner ? `<button type="button" class="btn ${isEditing && STATE.showRolePermMatrix ? 'btn-brass' : ''}" style="padding:3px 7px;font-size:10px" data-check-perms="${esc(u.id)}" title="Check & configure ${esc(u.full_name)}'s Role Permissions, Policy-Lock Unlocks & Executive Dashboards">🛡️ Perms</button>` : ''}
+            ${owner ? `<button type="button" class="btn ${isEditing ? 'btn-primary' : ''}" style="padding:3px 7px;font-size:10px" data-edit-user="${esc(u.id)}" title="Inspect and update ${esc(u.full_name)}'s name, email, PIN, role, companies & dashboard access">${ic('edit')} Edit</button>` : ''}
+            ${owner ? `<button type="button" class="btn ${isEditing && STATE.showRolePermMatrix ? 'btn-brass' : ''}" style="padding:3px 7px;font-size:10px" data-check-perms="${esc(u.id)}" title="Check & configure ${esc(u.full_name)}'s Role Permissions, Policy-Lock Unlocks & Executive Dashboards">${ic('shield')} Perms</button>` : ''}
             ${(owner || idx === STATE.activeUserIdx) ? `<button type="button" class="btn ${isTarget ? 'btn-brass' : ''}" style="padding:3px 7px;font-size:10px" data-enrol-user="${esc(u.id)}" title="Enrol or update Face ID for ${esc(u.full_name)}">Face ID</button>` : ''}
             ${owner ? `
               <button type="button" class="btn" style="padding:3px 6px;font-size:10px" data-sim-user="${idx}" title="Open the app as this seat to check their RLS scope">${STATE.activeUserIdx === idx ? '● Active' : 'Impersonate'}</button>
@@ -9247,7 +9993,7 @@
   }
   function fld(label, inner, opts = {}) {
     const lockAttr = opts.lockField ? ` data-policy-lock="${esc(opts.lockField)}" data-lock-reason="${esc(opts.lockReason || 'Locked by business rule')}"` : '';
-    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">🔒 LOCKED</span>` : '';
+    const lockPill = opts.lockField ? `<span class="pa-lock-pill locked" data-lock-pill="${esc(opts.lockField)}" data-toggle-field-lock="${esc(opts.lockField)}" title="${esc(opts.lockReason || 'Locked by policy')}">${ic('lock')} LOCKED</span>` : '';
     return `<div class="form-field${opts.span ? ' span-3' : ''}${opts.cls ? ' ' + opts.cls : ''}${opts.lockField ? ' is-policy-locked' : ''}"${opts.id ? ` id="${opts.id}"` : ''}${lockAttr}${opts.hidden ? ' hidden' : ''}><label><span class="pa-fld-lbl">${label}</span>${lockPill}</label>${inner}${opts.afterHtml || ''}${opts.hint != null ? `<span class="hint"${opts.hintId ? ` id="${opts.hintId}"` : ''}>${opts.hint}</span>` : ''}</div>`;
   }
   function inp(id, type, value, attrs = '') {
@@ -9284,7 +10030,7 @@
       id: 'wrap_f_date',
       lockField: 'f_date',
       lockReason: 'Locked to entry date for Cash Flow accuracy — use Reporting Date for report adjustments',
-      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">📅 Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
+      afterHtml: `<div class="repdate-bar"><button type="button" class="repdate-toggle-btn" id="toggleRepDateBtn">${ic('calendar')} Different Reporting Date?</button><span class="hint" id="hint_date"></span></div>`
     });
     const repDateField = fld('Reporting Date *', inp('f_repdate', 'date', today, dateAttrs), {
       id: 'wrap_f_repdate',
@@ -9295,7 +10041,7 @@
     const initOt = isOvertimeTime(initTime);
     const timeField = (initCoFleet = true) => fld('Dispatch Time *', inp('f_time', 'time', initTime), {
       id: 'wrap_f_time',
-      afterHtml: `<div class="repdate-bar time-ot-bar"><div id="wrap_f_overtime" class="ot-inline-wrap"${initCoFleet ? '' : ' hidden'}><input type="checkbox" id="f_overtime" ${initCoFleet && initOt ? 'checked' : ''} hidden><button type="button" class="repdate-toggle-btn overtime-toggle-btn${initCoFleet && initOt ? ' active is-overtime' : ''}" id="toggleOvertimeBtn" aria-pressed="${initCoFleet && initOt ? 'true' : 'false'}">${initOt ? '✓ Overtime Registered (18:00–05:59) · × Clear' : '☀️ Day Shift (06:00–17:59) · + Overtime?'}</button></div><span class="hint" id="hint_time"></span></div>`
+      afterHtml: `<div class="repdate-bar time-ot-bar"><div id="wrap_f_overtime" class="ot-inline-wrap"${initCoFleet ? '' : ' hidden'}><input type="checkbox" id="f_overtime" ${initCoFleet && initOt ? 'checked' : ''} hidden><button type="button" class="repdate-toggle-btn overtime-toggle-btn${initCoFleet && initOt ? ' active is-overtime' : ''}" id="toggleOvertimeBtn" aria-pressed="${initCoFleet && initOt ? 'true' : 'false'}">${initOt ? `${ic('check_circle')} Overtime Registered (18:00–05:59) · × Clear` : `${ic('sun')} Day Shift (06:00–17:59) · + Overtime?`}</button></div><span class="hint" id="hint_time"></span></div>`
     });
     const notesField = fld('Notes', inp('f_notes', 'text', '', 'placeholder="Required for back-dated entries or discounts above 20%"'), { id: 'wrap_f_notes', span: true });
     const cockpitHtml = '';
@@ -9573,7 +10319,7 @@
       el.dataset.policyLockedNow = '0';
       if (pill) {
         pill.className = 'pa-lock-pill unlocked';
-        pill.textContent = '🔓 ADMIN OVERRIDE';
+        pill.innerHTML = `${ic('unlock')} ADMIN OVERRIDE`;
         pill.title = 'Unlocked via Admin / Role Privilege — click to re-lock to policy rule';
       }
       return false; // not locked
@@ -9589,7 +10335,7 @@
       el.dataset.lockedValue = el.value;
       if (pill) {
         pill.className = 'pa-lock-pill locked';
-        pill.textContent = isAdmin ? '🔒 LOCKED · Unlock' : (roleCanUnlock ? '🔒 LOCKED · Role' : '🔒 LOCKED');
+        pill.innerHTML = isAdmin ? `${ic('lock')} LOCKED · Unlock` : (roleCanUnlock ? `${ic('lock')} LOCKED · Role` : `${ic('lock')} LOCKED`);
         pill.title = reason + ((isAdmin || roleCanUnlock) ? ' — Click to open Admin Privilege Unlock Process' : ' — Requires Admin PIN (2401)');
       }
       return true; // locked
@@ -9602,7 +10348,7 @@
       el.dataset.policyLockedNow = '0';
       if (pill) {
         pill.className = 'pa-lock-pill auto-open';
-        pill.textContent = '⚡ AUTO-OPEN';
+        pill.innerHTML = `${ic('bolt')} AUTO-OPEN`;
         pill.title = reason;
       }
       return false;
@@ -9663,7 +10409,7 @@
     box.hidden = false;
     box.innerHTML = `
       <div class="pa-admin-unlock-hdr">
-        <strong>🛡️ Admin Privilege Unlock Process · <span id="paUnlockTargetLabel">${esc(target.label)}</span></strong>
+        <strong>${ic('shield')} Admin Privilege Unlock Process · <span id="paUnlockTargetLabel">${esc(target.label)}</span></strong>
         <span class="pa-admin-badge">${canUnlockTarget ? (isAdmin ? 'ADMIN PRIVILEGE VERIFIED · ' + esc(who.full_name) : 'ROLE UNLOCK AUTHORIZED · ' + esc(who.full_name)) : 'PIN AUTHORIZATION REQUIRED (2401)'}</span>
       </div>
       <div class="pa-admin-unlock-desc">
@@ -9678,9 +10424,9 @@
         </select>
         ${!canUnlockTarget ? `<input type="password" id="paAdminPinInput" placeholder="Admin PIN (2401)..." style="max-width:150px">` : ''}
         <input type="text" id="paAdminUnlockNote" value="${esc(FORM_UI.unlockNote || '')}" placeholder="Optional override reason (e.g. GM spot rate)...">
-        <button type="button" class="pa-admin-btn" id="paConfirmFieldUnlockBtn">🔓 Authorize &amp; Unlock "${esc(target.label)}"</button>
-        <button type="button" class="pa-admin-btn" id="paConfirmAllUnlockBtn">🔓 ${isAdmin || roleUnlockableFields.length === fields.length ? `Unlock All Policy Fields (${fields.length})` : (roleUnlockableFields.length ? `Unlock Role-Authorized Fields (${roleUnlockableFields.length})` : `Unlock All Policy Fields (${fields.length})`)}</button>
-        ${unlockedList.length ? `<button type="button" class="pa-admin-btn secondary" id="paRelockAllBtn">🔒 Re-Lock All (${unlockedList.length})</button>` : ''}
+        <button type="button" class="pa-admin-btn" id="paConfirmFieldUnlockBtn">${ic('unlock')} Authorize &amp; Unlock "${esc(target.label)}"</button>
+        <button type="button" class="pa-admin-btn" id="paConfirmAllUnlockBtn">${ic('unlock')} ${isAdmin || roleUnlockableFields.length === fields.length ? `Unlock All Policy Fields (${fields.length})` : (roleUnlockableFields.length ? `Unlock Role-Authorized Fields (${roleUnlockableFields.length})` : `Unlock All Policy Fields (${fields.length})`)}</button>
+        ${unlockedList.length ? `<button type="button" class="pa-admin-btn secondary" id="paRelockAllBtn">${ic('lock')} Re-Lock All (${unlockedList.length})</button>` : ''}
         <button type="button" class="pa-admin-btn secondary" id="paCancelUnlockBtn">Cancel</button>
       </div>
     `;
@@ -9782,7 +10528,7 @@
       setFieldVisible('wrap_f_repdate', showRep);
       const tBtn = $('toggleRepDateBtn');
       if (tBtn) {
-        tBtn.textContent = showRep ? `📅 Reporting Date (${repEl.value})` : '📅 Different Reporting Date?';
+        tBtn.innerHTML = showRep ? `${ic('calendar')} Reporting Date (${esc(repEl.value)})` : `${ic('calendar')} Different Reporting Date?`;
         tBtn.classList.toggle('active', showRep);
       }
       const gap = daysBetween(d, repEl.value);
@@ -9819,14 +10565,14 @@
       otBtn.classList.toggle('is-overtime', isOt);
       otBtn.setAttribute('aria-pressed', isOt ? 'true' : 'false');
       if (isOt) {
-        otBtn.textContent = otByTime
-          ? '✓ Overtime Registered (18:00–05:59) · × Clear'
-          : '✓ Overtime Registered (Manual) · × Clear';
+        otBtn.innerHTML = otByTime
+          ? `${ic('check_circle')} Overtime Registered (18:00–05:59) · × Clear`
+          : `${ic('check_circle')} Overtime Registered (Manual) · × Clear`;
         otBtn.title = 'Overtime driver allowance is registered for this load — click to clear overtime';
       } else {
-        otBtn.textContent = otByTime
-          ? '☀️ No Overtime (Cleared) · + Register Overtime?'
-          : '☀️ Day Shift (06:00–17:59) · + Overtime?';
+        otBtn.innerHTML = otByTime
+          ? `${ic('sun')} No Overtime (Cleared) · + Register Overtime?`
+          : `${ic('sun')} Day Shift (06:00–17:59) · + Overtime?`;
         otBtn.title = 'No overtime allowance on this load — click to register overtime';
       }
     }
@@ -11187,7 +11933,7 @@
 
     const trucksStripHtml = ownerTrucks.length ? `
       <div class="pa-owner-trucks-strip">
-        <span class="pa-owner-trucks-lbl">🚚 <b>${ownerTrucks.length}</b> Registered Truck${ownerTrucks.length === 1 ? '' : 's'} under ${esc(supName)}:</span>
+        <span class="pa-owner-trucks-lbl">${ic('truck')} <b>${ownerTrucks.length}</b> Registered Truck${ownerTrucks.length === 1 ? '' : 's'} under ${esc(supName)}:</span>
         <div class="pa-owner-trucks-badges">
           ${ownerTrucks.slice(0, 14).map(t => {
             const eq = equipInfo(t);
@@ -11215,7 +11961,7 @@
         ${rows.map(r => `
           <div class="pa-owner-drv-chip ${r.staged ? 'is-staged' : ''}">
             <div class="pa-owner-drv-main">
-              <b>👤 ${esc(r.name)}</b>
+              <b>${ic('user')} ${esc(r.name)}</b>
               ${r.truck ? `<span class="badge badge-brass">Truck ${esc(r.truck)}</span>` : ''}
               ${r.phone ? `<span class="muted">${esc(r.phone)}</span>` : ''}
               ${r.staged ? `<span class="badge badge-ok">NEW</span>` : `<span class="badge">REGISTERED</span>`}
@@ -12070,7 +12816,7 @@
         wrap.appendChild(span);
       }
       const existingName = universalMainValue(crKey, dup) || v;
-      span.textContent = `⚠️ "${existingName}" already exists in the Universal ${label} Registry — duplicates are blocked on post.`;
+      span.innerHTML = `${ic('warn')} "${esc(existingName)}" already exists in the Universal ${esc(label)} Registry — duplicates are blocked on post.`;
     } else if (span) {
       span.remove();
     }
@@ -13596,19 +14342,19 @@
           `).join('')}
         </div>
         <div class="pa-cmd-actions">
-          ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">✎ Modify Record</button>` : ''}
-          ${isEquipInspect ? `<button type="button" class="pa-cmd-btn" data-insp-scroll-sg="truck_windows">📏 Truck Size Windows (${eqWindows.length})</button>` : ''}
-          ${!row.voided && canVoid() ? `<button type="button" class="pa-cmd-btn pa-cmd-btn-danger" id="inspCmdVoidBtn" title="Void or delete this record (2-click confirmation)">🗑 Void / Delete</button>` : ''}
-          ${['sales_tickets', 'raw_purchases', 'fuel_intakes'].includes(key) ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspThermalPrintBtn">🖨️ Thermal Receipt (80/58mm)</button>` : ''}
+          ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">${ic('edit')} Modify Record</button>` : ''}
+          ${isEquipInspect ? `<button type="button" class="pa-cmd-btn" data-insp-scroll-sg="truck_windows">${ic('ruler')} Truck Size Windows (${eqWindows.length})</button>` : ''}
+          ${!row.voided && canVoid() ? `<button type="button" class="pa-cmd-btn pa-cmd-btn-danger" id="inspCmdVoidBtn" title="Void or delete this record (2-click confirmation)">${ic('trash')} Void / Delete</button>` : ''}
+          ${['sales_tickets', 'raw_purchases', 'fuel_intakes'].includes(key) ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspThermalPrintBtn">${ic('printer')} Thermal Receipt (80/58mm)</button>` : ''}
           <button type="button" class="pa-cmd-btn" data-insp-open-hub="${esc(key)}">⊞ Open ${esc(INSPECT_LABELS[key] || key)} Table</button>
-          <button type="button" class="pa-cmd-btn" id="inspPrintBtn">🖨 Print Form</button>
+          <button type="button" class="pa-cmd-btn" id="inspPrintBtn">${ic('printer')} Print Form</button>
         </div>
       </div>
 
       <!-- Inline Record Modification Drawer (Gated by Role Modify Data Permission) -->
       <div class="insp-modify-drawer" id="inspModifyDrawer" hidden>
         <div class="insp-modify-hdr">
-          <strong>✎ Inline Record Modification · Authorized by ${esc(activeUser().role)} (${esc(activeUser().full_name)})</strong>
+          <strong>${ic('edit')} Inline Record Modification · Authorized by ${esc(activeUser().role)} (${esc(activeUser().full_name)})</strong>
           <span class="badge badge-brass">MODIFY DATA PRIVILEGE VERIFIED</span>
         </div>
         <div class="form-grid-3" style="margin-top:8px">
@@ -13633,7 +14379,7 @@
 
       <!-- Live Contextual Notification Bar (Screenshot 2 top bar) -->
       <div class="pa-rec-banner ${esc(banner.tone || '')}" id="inspLiveBanner">
-        <span class="pa-rec-banner-ico">ℹ️</span>
+        <span class="pa-rec-banner-ico">${ic('info')}</span>
         <span>${esc(banner.text)}</span>
       </div>
 
@@ -13713,7 +14459,7 @@
         <div class="pa-subgrid-box" id="subgrid_truck_windows" style="margin-bottom:14px">
           <div class="pa-subgrid-hdr">
             <div>
-              <strong>📏 Truck Size, Owner &amp; Driver Adjustment Windows (Start Date → End Date)</strong>
+              <strong>${ic('ruler')} Truck Size, Owner &amp; Driver Adjustment Windows (Start Date → End Date)</strong>
               <span class="pa-subgrid-sub">Dated capacity (m³), owner, driver &amp; optional Client / Site overrides — tickets automatically resolve the window matching their Transaction / Reporting Date</span>
             </div>
             <span class="badge badge-brass">${fmtNum(eqWindows.length)} Window${eqWindows.length === 1 ? '' : 's'}</span>
@@ -13811,14 +14557,14 @@
       <div class="modal-foot">
         <span class="form-note">${app ? `Posted by <b>${esc(row.entered_by || '—')}</b> · ${esc(row.entered_at || '')}${row.voided ? ' · <b>VOIDED</b>' : ''}` : 'Click any blue lookup pill or related subgrid row to navigate across connected Dataverse records.'}</span>
         <div>
-          ${!row.voided && canVoid() ? `<button type="button" class="btn btn-danger-outline" id="inspectorVoidBtn">🗑 Void / Delete Record</button>` : ''}
+          ${!row.voided && canVoid() ? `<button type="button" class="btn btn-danger-outline" id="inspectorVoidBtn">${ic('trash')} Void / Delete Record</button>` : ''}
           <button type="button" class="btn btn-brass" id="inspectorDoneBtn">Close</button>
         </div>
       </div>
     `;
 
     $('inspectorDoneBtn').addEventListener('click', closeRecordInspector);
-    const wireInspectorVoidBtn = (btn, defaultText) => {
+    const wireInspectorVoidBtn = (btn, defaultHtml) => {
       if (!btn) return;
       btn.addEventListener('click', () => {
         if (btn.dataset.armed === '1') {
@@ -13826,20 +14572,20 @@
           voidRecord(key, row.id || row.name || row.ticket_no || idOrName);
         } else {
           btn.dataset.armed = '1';
-          btn.textContent = '⚠️ Confirm Void / Delete?';
+          btn.innerHTML = `${ic('warn')} Confirm Void / Delete?`;
           btn.classList.add('armed');
           setTimeout(() => {
             if (btn.isConnected) {
               btn.dataset.armed = '';
-              btn.textContent = defaultText;
+              btn.innerHTML = defaultHtml;
               btn.classList.remove('armed');
             }
           }, 4500);
         }
       });
     };
-    wireInspectorVoidBtn($('inspectorVoidBtn'), '🗑 Void / Delete Record');
-    wireInspectorVoidBtn($('inspCmdVoidBtn'), '🗑 Void / Delete');
+    wireInspectorVoidBtn($('inspectorVoidBtn'), `${ic('trash')} Void / Delete Record`);
+    wireInspectorVoidBtn($('inspCmdVoidBtn'), `${ic('trash')} Void / Delete`);
 
     const backBtn = $('inspBackBtn');
     if (backBtn) backBtn.addEventListener('click', () => {
@@ -14810,10 +15556,10 @@
     if (bannerEl) {
       if (FACE_STATE.pending2faUser) {
         bannerEl.hidden = false;
-        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Live Face ID Required for ${FACE_STATE.pending2faUser.full_name} — blink or turn slightly`;
+        if (targetNameEl) targetNameEl.innerHTML = `${ic('lock')} Step 2 of 2: Live Face ID Required for ${esc(FACE_STATE.pending2faUser.full_name)} — blink or turn slightly`;
       } else if (FACE_STATE.pendingPinUser) {
         bannerEl.hidden = false;
-        if (targetNameEl) targetNameEl.textContent = `🔒 Step 2 of 2: Face ID verified for ${FACE_STATE.pendingPinUser.full_name} — enter 4-digit PIN below`;
+        if (targetNameEl) targetNameEl.innerHTML = `${ic('lock')} Step 2 of 2: Face ID verified for ${esc(FACE_STATE.pendingPinUser.full_name)} — enter 4-digit PIN below`;
       } else {
         bannerEl.hidden = true;
       }
@@ -16531,6 +17277,7 @@
     raw: 'Quarries & Raw Intake',
     fleet: 'Fleet & Diesel Control',
     pricing: 'Pricing & Commissions',
+    cashflow: 'Cash Flow & Till',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
@@ -16560,6 +17307,7 @@
     raw: 'Quarries & Raw Intake',
     fleet: 'Fleet & Diesel Control',
     pricing: 'Pricing & Commissions',
+    cashflow: 'Cash Flow & Till',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
@@ -16770,9 +17518,9 @@
     if (demoBtn) {
       demoBtn.hidden = !isOwner(user);
       demoBtn.classList.toggle('active', !!STATE.enterpriseScalePreview);
-      demoBtn.textContent = STATE.enterpriseScalePreview
-        ? '✓ 10 Ind × 150 Co Preview (Reset to 3)'
-        : '⚡ Preview 10 Ind × 150 Co';
+      demoBtn.innerHTML = STATE.enterpriseScalePreview
+        ? `${ic('check_circle')} 10 Ind × 150 Co Preview (Reset to 3)`
+        : `${ic('bolt')} Preview 10 Ind × 150 Co`;
     }
   }
 
@@ -17181,6 +17929,12 @@
         • <strong>BBConstruction</strong>: purchased ${fmtNum(bf.diesel_purchased_l, 0)} L − issued ${fmtNum(bf.diesel_issued_l, 0)} L − sold → <code class="mono">${fmtNum(bf.diesel_stock_balance_l, 0)} L</code> — negative because bulk diesel invoices were booked under General Expenses instead of Fuel Purchases; new BBConstruction diesel intakes are refused until the history is corrected (m212).<br>
         • Period issued ${fmtNum(k.diesel_litres, 0)} L · fleet cost per ton hauled ${fmtUSD(k.cost_per_ton, 2)} · ${fmtNum((fleet.consumption_outliers || []).length)} consumption outliers flagged by m142.`;
     }
+    if (has(/\b(cash|till|drawer|cashflow|lbp|pounds)\b/)) {
+      return `<strong>Cash Flow &amp; Physical Till (Account 5300) — ${esc(scope)}:</strong><br>
+        • <strong>Live Cash in Till</strong>: USD <strong>${fmtUSD(k.cash_till_usd, 2)}</strong> · LBP <strong>${fmtLBP(k.cash_till_lbp)}</strong> (Combined <strong>${fmtUSD(k.cash_till, 2)}</strong> @ ${fmtNum(k.rate_lbp || 89500, 0)} LL/$).<br>
+        • <strong>WTC</strong>: ${fmtUSD(w.cash_till_usd, 2)} &amp; ${fmtLBP(w.cash_till_lbp)} · <strong>BBConstruction</strong>: ${fmtUSD(b.cash_till_usd, 2)} &amp; ${fmtLBP(b.cash_till_lbp)}.<br>
+        • Selected period cash flow: In ${fmtUSD(k.cash_inflow, 2)} − Out ${fmtUSD(k.cash_outflow, 2)} = Net <strong>${fmtUSD(k.net_cash_flow, 2)}</strong>. Entry users can verify drawer cash anytime on <em>Cash Flow &amp; Till</em>.`;
+    }
     if (has(/\b(trial|balance|coa|ledger|gl|tie|tied)\b/)) {
       const tb = Number(k.tb_check || 0);
       return `<strong>Lebanese CoA Double-Entry Trial Balance — ${esc(scope)}:</strong><br>
@@ -17220,7 +17974,7 @@
       const kf = STATE.activeKiosk === 'raw' ? 'raw' : (STATE.activeKiosk === 'fuel' ? (STATE.kioskFuelSubmode === 'refill' ? 'expense' : 'fuel') : (STATE.activeKiosk === 'attendance' ? 'attendance' : 'sales'));
       if (canEnterForm(kf, user)) return kf;
     }
-    const map = { kiosks: 'sales', sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
+    const map = { kiosks: 'sales', sales: 'sales', raw: 'raw', fleet: 'fuel', pricing: 'pricerule', cashflow: 'receipt', customers: 'receipt', ar: 'receipt', suppliers: 'settlement', ap: 'settlement', expenses: 'expense', payroll: 'salary', tables: 'pricerule', reg_equipment: 'equipment', reg_drivers: 'driver', reg_sites: 'site', reg_regions: 'site', reg_products: 'product', reg_customers: 'customer', reg_suppliers: 'supplier', reg_categories: 'expense' };
     let preferred = map[view] || 'sales';
     if (view === 'tables' && window.MFG_PBI) { // the hub's active table owns the form (e.g. Loans → Treasury desk)
       const meta = (window.MFG_PBI.TABLE_CATALOG || []).find(t => t.key === STATE.activeTableKey);
@@ -17241,7 +17995,7 @@
     const v = STATE.view;
     let group = 'exec';
     if (['kiosks', 'sales', 'raw', 'fleet', 'pricing'].includes(v)) group = 'dispatch';
-    else if (['customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
+    else if (['cashflow', 'customers', 'ar', 'suppliers', 'ap', 'expenses', 'payroll', 'ledger', 'gl'].includes(v)) group = 'books';
 
     const pbiCount = (window.MFG_PBI && Array.isArray(window.MFG_PBI.PBI_PAGES))
       ? window.MFG_PBI.PBI_PAGES.filter(p => canAccessPbiPage(p.id, user)).length
@@ -17270,6 +18024,7 @@
         { view: 'pricing', label: VIEW_TITLES.pricing, pill: k.active_agreements != null ? fmtNum(k.active_agreements) : '' }
       ],
       books: [
+        { view: 'cashflow', label: VIEW_TITLES.cashflow, pill: fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) },
         { view: 'customers', match: ['customers', 'ar'], label: VIEW_TITLES.customers, pill: k.ar_balance != null ? fmtUSDk(k.ar_balance) : '' },
         { view: 'suppliers', match: ['suppliers', 'ap'], label: VIEW_TITLES.suppliers, pill: k.ap_balance != null ? fmtUSDk(k.ap_balance) : '' },
         { view: 'expenses', label: VIEW_TITLES.expenses, pill: k.expenses != null ? fmtUSDk(k.expenses) : '' },
@@ -17281,7 +18036,7 @@
     const items = (specs[group] || specs.exec).filter(it => canViewView(it.view, user));
     el.innerHTML = items.map(it => {
       const on = (it.match || [it.view]).includes(v);
-      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}" title="${esc(it.label)}"><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
+      return `<button type="button" class="m-subnav-pill${on ? ' on' : ''}" data-subnav-view="${esc(it.view)}" title="${esc(it.label)}"><i class="m-subnav-ico" aria-hidden="true">${ic(it.view)}</i><span>${esc(it.label)}</span>${it.pill ? `<em>${esc(it.pill)}</em>` : ''}</button>`;
     }).join('');
     el.querySelectorAll('[data-subnav-view]').forEach(btn => btn.addEventListener('click', () => setView(btn.getAttribute('data-subnav-view'))));
 
@@ -18022,10 +18777,10 @@
     const onSiteList = Array.from(latestByStaff.values()).filter(p => p.direction === 'IN');
 
     const kioskTabs = [
-      { id: 'sales', icon: '🚚', title: '1. Sales Dispatch Kiosk', sub: 'Weighbridge Ticket + Bluetooth Invoice / Gate Pass', badge: `${fmtNum(SEED.records.sales_tickets.length)} Tickets` },
-      { id: 'raw', icon: '🪨', title: '2. Raw Material Kiosk', sub: 'Quarry Receiving + Bluetooth 2-Leg Voucher / Slip', badge: `${fmtNum(SEED.records.raw_purchases.length)} Intakes` },
-      { id: 'fuel', icon: '⛽', title: '3. Fuel & Lubricants Kiosk', sub: 'Diesel / Oil / Petrol Dispense + Meter Guard & Refill', badge: `${fmtNum(SEED.records.fuel_intakes.length)} Logs` },
-      { id: 'attendance', icon: '👤', title: '4. Attendance Biometric Kiosk', sub: 'Live 4:3 Face ID + 4-Digit PIN + Smart 16h Shift', badge: `${onSiteList.length} On Site` }
+      { id: 'sales', icon: ic('truck'), title: '1. Sales Dispatch Kiosk', sub: 'Weighbridge Ticket + Bluetooth Invoice / Gate Pass', badge: `${fmtNum(SEED.records.sales_tickets.length)} Tickets` },
+      { id: 'raw', icon: ic('quarry'), title: '2. Raw Material Kiosk', sub: 'Quarry Receiving + Bluetooth 2-Leg Voucher / Slip', badge: `${fmtNum(SEED.records.raw_purchases.length)} Intakes` },
+      { id: 'fuel', icon: ic('fuel'), title: '3. Fuel & Lubricants Kiosk', sub: 'Diesel / Oil / Petrol Dispense + Meter Guard & Refill', badge: `${fmtNum(SEED.records.fuel_intakes.length)} Logs` },
+      { id: 'attendance', icon: ic('kiosks'), title: '4. Attendance Biometric Kiosk', sub: 'Live 4:3 Face ID + 4-Digit PIN + Smart 16h Shift', badge: `${onSiteList.length} On Site` }
     ];
 
     // Quick-preset chips for touch operators
@@ -18037,8 +18792,8 @@
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Dispatch Mode:</span>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Delivery">🚚 Delivery</button>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Pickup">🏗️ Plant Pickup</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Delivery">${ic('truck')} Delivery</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_saletype" data-kiosk-preset-val="Pickup">${ic('plant')} Plant Pickup</button>
           </div>
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">1-Tap Grade:</span>
@@ -18057,8 +18812,8 @@
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Haulage Fleet:</span>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Company fleet">🏢 Company Fleet (Own Truck)</button>
-            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">🚛 Third-Party Truck (Hauler)</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Company fleet">${ic('building')} Company Fleet (Own Truck)</button>
+            <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_transportby" data-kiosk-preset-val="Third-party truck">${ic('hauler')} Third-Party Truck (Hauler)</button>
           </div>
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Quarry Origin Site:</span>
@@ -18075,15 +18830,15 @@
         <div class="kiosk-quick-strip" id="kioskQuickStrip">
           <div class="kiosk-quick-group">
             <span class="kiosk-quick-lbl">Fuel Kiosk Operation:</span>
-            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode !== 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="dispense">⛽ Dispense to Equipment / Truck (Meter Guard)</button>
-            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode === 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="refill">🛢️ Bulk Tank Refill / Lubricant Purchase</button>
+            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode !== 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="dispense">${ic('fuel')} Dispense to Equipment / Truck (Meter Guard)</button>
+            <button type="button" class="kiosk-qchip ${STATE.kioskFuelSubmode === 'refill' ? 'active' : ''}" data-kiosk-fuel-sub="refill">${ic('droplet')} Bulk Tank Refill / Lubricant Purchase</button>
           </div>
           ${STATE.kioskFuelSubmode !== 'refill' ? `
             <div class="kiosk-quick-group">
               <span class="kiosk-quick-lbl">Product Type:</span>
-              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Diesel">⛽ Diesel</button>
-              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Lubricant">🛢️ Lubricant / Oil / Grease</button>
-              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Petrol">⛽ Petrol</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Diesel">${ic('fuel')} Diesel</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Lubricant">${ic('droplet')} Lubricant / Oil / Grease</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_fueltype" data-kiosk-preset-val="Petrol">${ic('fuel')} Petrol</button>
             </div>
             <div class="kiosk-quick-group">
               <span class="kiosk-quick-lbl">Quick Litres:</span>
@@ -18092,8 +18847,8 @@
           ` : `
             <div class="kiosk-quick-group">
               <span class="kiosk-quick-lbl">Bulk Purchase Category:</span>
-              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Fuel">⛽ Bulk Diesel Tank Refill</button>
-              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Oils">🛢️ Drums / Hydraulic &amp; Engine Oils</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Fuel">${ic('fuel')} Bulk Diesel Tank Refill</button>
+              <button type="button" class="kiosk-qchip" data-kiosk-preset-field="f_category" data-kiosk-preset-val="Oils">${ic('droplet')} Drums / Hydraulic &amp; Engine Oils</button>
             </div>
           `}
         </div>
@@ -18125,9 +18880,9 @@
             </div>
             <div class="kiosk-att-cam-body">
               <div class="kiosk-att-dir-bar" role="group" aria-label="Punch Direction Mode">
-                <button type="button" class="kiosk-dir-btn ${STATE.kioskAttDir === 'auto' ? 'active' : ''}" data-att-dir="auto">⚡ Auto Smart 16h (${nextDir} Next)</button>
-                <button type="button" class="kiosk-dir-btn in ${STATE.kioskAttDir === 'in' ? 'active' : ''}" data-att-dir="in">🟢 Clock IN</button>
-                <button type="button" class="kiosk-dir-btn out ${STATE.kioskAttDir === 'out' ? 'active' : ''}" data-att-dir="out">🟠 Clock OUT</button>
+                <button type="button" class="kiosk-dir-btn ${STATE.kioskAttDir === 'auto' ? 'active' : ''}" data-att-dir="auto">${ic('bolt')} Auto Smart 16h (${nextDir} Next)</button>
+                <button type="button" class="kiosk-dir-btn in ${STATE.kioskAttDir === 'in' ? 'active' : ''}" data-att-dir="in">${ic('clock_in')} Clock IN</button>
+                <button type="button" class="kiosk-dir-btn out ${STATE.kioskAttDir === 'out' ? 'active' : ''}" data-att-dir="out">${ic('clock_out')} Clock OUT</button>
               </div>
 
               <div class="kiosk-att-viewport" id="kioskAttViewport">
@@ -18150,14 +18905,14 @@
                   ${KIOSK_ATT_STATE.camActive ? '⏹ Stop Camera' : '▶ Start Biometric Camera'}
                 </button>
                 <button type="button" class="btn btn-brass" id="kioskAttInstantFacePunchBtn" title="Verify Face ID for selected seat and record punch">
-                  ⚡ Biometric Face Punch (${esc(selectedStaff.split(' ')[0])})
+                  ${ic('kiosks')} Biometric Face Punch (${esc(selectedStaff.split(' ')[0])})
                 </button>
               </div>
 
               ${lastPunch ? `
                 <div class="kiosk-last-punch-card ${lastPunch.direction === 'IN' ? 'is-in' : 'is-out'}" id="kioskAttLastPunchBox">
                   <div class="kiosk-lp-main">
-                    <span class="badge ${lastPunch.direction === 'IN' ? 'badge-ok' : 'badge-warn'}">${esc(lastPunch.direction === 'IN' ? '🟢 CLOCKED IN' : '🟠 CLOCKED OUT')}</span>
+                    <span class="badge ${lastPunch.direction === 'IN' ? 'badge-ok' : 'badge-warn'}">${lastPunch.direction === 'IN' ? `${ic('clock_in')} CLOCKED IN` : `${ic('clock_out')} CLOCKED OUT`}</span>
                     <strong>${esc(lastPunch.staff)}</strong>
                     <span class="mono">${esc(lastPunch.time)} · ${esc(lastPunch.date)}</span>
                     <small class="muted">${esc(lastPunch.site)} · via ${esc(lastPunch.method)}${lastPunch.paired_hours != null ? ` · Shift ${lastPunch.paired_hours}h${lastPunch.overtime_hours > 0 ? ' (+' + lastPunch.overtime_hours + 'h OT)' : ''}` : ''}</small>
@@ -18189,7 +18944,7 @@
                   <select id="kioskAttStaffSelect" data-native-select="1">
                     ${staffDir.map(s => {
                       const lp = latestByStaff.get(norm(s.name));
-                      const stTxt = lp && lp.direction === 'IN' ? `🟢 ON SITE (${lp.time})` : '⚪ Off Site';
+                      const stTxt = lp && lp.direction === 'IN' ? `● ON SITE (${lp.time})` : '○ Off Site';
                       return `<option value="${esc(s.name)}" ${norm(s.name) === norm(selectedStaff) ? 'selected' : ''}>${esc(s.name)} — ${stTxt}${IS_DEMO ? ` [PIN ${s.pin}]` : ''}</option>`;
                     }).join('')}
                   </select>
@@ -18277,10 +19032,10 @@
                 Operator: <b>${esc(activeUser().full_name)}</b> · Thermal: <b id="kioskFooterPrintModeLbl">${pCfg.paperWidth}mm · ${pCfg.priceMode === 'unpriced' ? 'Unpriced Gate Pass' : 'Priced Voucher'}</b>
               </div>
               <div class="kiosk-action-btns">
-                <button type="button" class="btn" id="kioskResetFormBtn">🧹 Reset</button>
+                <button type="button" class="btn" id="kioskResetFormBtn">${ic('rotate')} Reset</button>
                 <button type="button" class="btn" id="kioskPostOnlyBtn">✓ Post Only (No Print)</button>
                 <button type="button" class="btn btn-brass kiosk-big-print-btn" id="kioskPostAndPrintBtn">
-                  🖨️ Post &amp; Print ${pCfg.priceMode === 'unpriced' ? 'Gate Pass' : 'Thermal Ticket'} (${pCfg.paperWidth}mm)
+                  ${ic('printer')} Post &amp; Print ${pCfg.priceMode === 'unpriced' ? 'Gate Pass' : 'Thermal Ticket'} (${pCfg.paperWidth}mm)
                 </button>
               </div>
             </div>
@@ -18292,8 +19047,8 @@
               <div class="panel-head">
                 <div class="panel-title"><span>LIVE BLUETOOTH THERMAL ROLL PREVIEW (${pCfg.paperWidth}MM · ${pCfg.priceMode === 'unpriced' ? 'UNPRICED GATE PASS' : 'PRICED'})</span></div>
                 <div style="display:flex;gap:6px">
-                  <button type="button" class="btn btn-ghost-bar" id="kioskOpenModalPreviewBtn" style="padding:3px 8px;font-size:11px">🔍 Expand</button>
-                  <button type="button" class="btn btn-primary" id="kioskPrintDraftBtn" style="padding:3px 9px;font-size:11px">🖨️ Print Preview</button>
+                  <button type="button" class="btn btn-ghost-bar" id="kioskOpenModalPreviewBtn" style="padding:3px 8px;font-size:11px">${ic('expand')} Expand</button>
+                  <button type="button" class="btn btn-primary" id="kioskPrintDraftBtn" style="padding:3px 9px;font-size:11px">${ic('printer')} Print Preview</button>
                 </div>
               </div>
               <div class="kiosk-thermal-meta" id="kioskEscPosByteMeta">
@@ -18329,8 +19084,8 @@
                         <td class="r mono">${kMode === 'fuel' ? `${fmtNum(r.litres, 0)} L` : `${fmtNum(r.qty, 1)} ${esc(r.uom || 'm³')}`}</td>
                         <td class="r mono">${kMode === 'fuel' ? (() => { const em = effectiveFuelMeter(r); return em.reading != null ? fmtNum(em.reading, em.type === 'hours' && em.reading % 1 !== 0 ? 1 : 0) + ' ' + em.unit : '—'; })() : fmtUSD(r.total_ttc != null ? r.total_ttc : r.total, 0)}</td>
                         <td class="kiosk-rec-print-cell">
-                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">💲</button>
-                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">🚛</button>
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="priced" title="Print Priced Invoice / Voucher">${ic('dollar')}</button>
+                          <button type="button" class="tkt-print-mini" data-print-ticket="${activeDocType}" data-print-id="${esc(r.id)}" data-print-mode="unpriced" title="Print Unpriced Delivery Gate Pass / Receiving Slip">${ic('truck')}</button>
                         </td>
                       </tr>
                     `).join('') || emptyRow(5, 'No recent kiosk tickets')}
@@ -18357,7 +19112,7 @@
           <div class="cockpit-pill"><div class="cockpit-pill-lbl">Staff On Site</div><div class="cockpit-pill-val emerald">${fmtNum(onSiteList.length)}</div></div>
           <div class="cockpit-pill">
             <button type="button" class="btn ${STATE.kioskLocked ? 'btn-brass' : 'btn-ghost-bar'}" id="kioskLockToggleBtn" style="padding:5px 10px;font-size:11px">
-              ${STATE.kioskLocked ? '🔓 Unlock Kiosk Shell (PIN 2401)' : '🔒 Lock Tablet Kiosk Shell'}
+              ${STATE.kioskLocked ? `${ic('unlock')} Unlock Kiosk Shell (PIN 2401)` : `${ic('lock')} Lock Tablet Kiosk Shell`}
             </button>
           </div>
         </div>
@@ -18365,10 +19120,10 @@
 
       ${STATE.kioskUnlockPromptOpen ? `
         <div class="kiosk-unlock-bar" id="kioskUnlockPromptBar">
-          <span>🔒 <b>Tablet Kiosk Shell is Locked</b> — Enter Admin PIN (<b>2401</b>) or your seat PIN to restore full ERP navigation:</span>
+          <span>${ic('lock')} <b>Tablet Kiosk Shell is Locked</b> — Enter Admin PIN (<b>2401</b>) or your seat PIN to restore full ERP navigation:</span>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="password" id="kioskUnlockPinInput" placeholder="PIN (2401)..." style="max-width:140px;padding:5px 9px;border-radius:6px;border:1px solid var(--line-strong)">
-            <button type="button" class="btn btn-primary" id="kioskConfirmUnlockBtn">🔓 Unlock Now</button>
+            <button type="button" class="btn btn-primary" id="kioskConfirmUnlockBtn">${ic('unlock')} Unlock Now</button>
             <button type="button" class="btn" id="kioskCancelUnlockBtn">Cancel</button>
           </div>
         </div>
@@ -18391,23 +19146,23 @@
 
         <div class="kiosk-printer-bar">
           <div class="kiosk-printer-grp">
-            <span class="kiosk-bar-lbl">🖨️ Paper Roll Width:</span>
+            <span class="kiosk-bar-lbl">${ic('printer')} Paper Roll Width:</span>
             <button type="button" class="kiosk-toggle-pill ${pCfg.paperWidth === 80 ? 'active' : ''}" data-kiosk-paper="80">80mm Standard (48 cols)</button>
             <button type="button" class="kiosk-toggle-pill ${pCfg.paperWidth === 58 ? 'active' : ''}" data-kiosk-paper="58">58mm Handheld (32 cols)</button>
           </div>
           <div class="kiosk-printer-grp">
-            <span class="kiosk-bar-lbl">💲 Ticket Price Mode:</span>
-            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'priced' ? 'active' : ''}" data-kiosk-price-mode="priced">💲 Priced (Invoice / 2-Leg Voucher)</button>
-            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'unpriced' ? 'active' : ''}" data-kiosk-price-mode="unpriced">🚛 Unpriced (Gate Pass / Scale Slip)</button>
+            <span class="kiosk-bar-lbl">${ic('dollar')} Ticket Price Mode:</span>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'priced' ? 'active' : ''}" data-kiosk-price-mode="priced">${ic('dollar')} Priced (Invoice / 2-Leg Voucher)</button>
+            <button type="button" class="kiosk-toggle-pill ${pCfg.priceMode === 'unpriced' ? 'active' : ''}" data-kiosk-price-mode="unpriced">${ic('truck')} Unpriced (Gate Pass / Scale Slip)</button>
           </div>
           <div class="kiosk-printer-grp">
-            <span class="kiosk-bar-lbl">📡 Bluetooth Channel:</span>
+            <span class="kiosk-bar-lbl">${ic('bluetooth')} Bluetooth Channel:</span>
             <select id="kioskPrintChannelSelect" data-native-select="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font-size:12px">
               <option value="rawbt" ${pCfg.channel === 'rawbt' ? 'selected' : ''}>RawBT Bluetooth ESC/POS</option>
               <option value="web_bluetooth" ${pCfg.channel === 'web_bluetooth' ? 'selected' : ''}>Web Bluetooth GATT (${pCfg.bleDeviceName ? esc(pCfg.bleDeviceName) : 'Direct BLE'})</option>
               <option value="browser" ${pCfg.channel === 'browser' ? 'selected' : ''}>Browser Thermal Dialog</option>
             </select>
-            <button type="button" class="btn btn-ghost-bar" id="kioskPairBleBtn" style="padding:4px 9px;font-size:11px" title="Pair Bluetooth Thermal Printer via Web Bluetooth GATT">📡 Pair BLE</button>
+            <button type="button" class="btn btn-ghost-bar" id="kioskPairBleBtn" style="padding:4px 9px;font-size:11px" title="Pair Bluetooth Thermal Printer via Web Bluetooth GATT">${ic('bluetooth')} Pair BLE</button>
           </div>
         </div>
       </div>
@@ -18698,9 +19453,9 @@
     document.documentElement.setAttribute('data-theme', STATE.theme);
     syncRailCollapseUi();
     const themeBtn = $('themeToggleBtn');
-    if (themeBtn) themeBtn.textContent = STATE.theme === 'dark' ? 'Light' : 'Dark';
+    if (themeBtn) themeBtn.innerHTML = STATE.theme === 'dark' ? `${ic('sun')}<span>Light</span>` : `${ic('moon')}<span>Dark</span>`;
     const mThemeBtn = $('mobileThemeBtn');
-    if (mThemeBtn) mThemeBtn.textContent = STATE.theme === 'dark' ? '☀' : '☾';
+    if (mThemeBtn) mThemeBtn.innerHTML = STATE.theme === 'dark' ? ic('sun') : ic('moon');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0E1A2E' : '#F4F2EE');
 
@@ -18741,6 +19496,9 @@
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => {
       const v = btn.getAttribute('data-view');
+      if (!btn.querySelector('.nav-ico') && window.MFG_ICONS) {
+        btn.insertAdjacentHTML('afterbegin', window.MFG_ICONS.nav(v));
+      }
       const isMatch = v === STATE.view || (v === 'customers' && STATE.view === 'ar') || (v === 'suppliers' && STATE.view === 'ap') || (v === 'ledger' && STATE.view === 'gl');
       btn.classList.toggle('on', isMatch);
       const lblSpan = btn.querySelector('span');
@@ -18767,6 +19525,7 @@
     setPill('navCountRaw', k.raw_loads != null ? fmtNum(k.raw_loads) : '—');
     setPill('navCountFleet', k.active_equip != null ? fmtNum(k.active_equip) : fmtNum(SEED.records.equipment.length));
     setPill('navCountPricing', k.active_agreements != null ? fmtNum(k.active_agreements) : '—');
+    setPill('navCountTill', fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true));
     setPill('navCountAR', k.ar_balance != null ? fmtUSDk(k.ar_balance) : '—');
     setPill('navCountAP', k.ap_balance != null ? fmtUSDk(k.ap_balance) : '3 Legs');
     setPill('navCountExp', k.expenses != null ? fmtUSDk(k.expenses) : '—');
@@ -18803,6 +19562,7 @@
       case 'raw': wsHtml = renderRaw(); break;
       case 'fleet': wsHtml = renderFleet(); break;
       case 'pricing': wsHtml = renderPricing(); break;
+      case 'cashflow': wsHtml = renderCashFlowTill(); break;
       case 'customers':
       case 'ar': wsHtml = renderAR(); break;
       case 'suppliers':
@@ -18834,6 +19594,43 @@
     const allowedCos = getAllowedCompanyKeys(activeUserRow);
     const allowedNames = allowedCompanyNames(activeUserRow);
     const totalCatCount = getCompanyCatalog().length;
+
+    // Cash Flow & Till physical drawer count verification controls
+    const tillStatusEl = container.querySelector('#tillVarianceStatus');
+    if (tillStatusEl) {
+      const coKey = tillStatusEl.getAttribute('data-co-key') || resolveEffectiveModelKey(STATE.company);
+      const expUsd = Number(tillStatusEl.getAttribute('data-exp-usd') || 0);
+      const expLbp = Math.round(Number(tillStatusEl.getAttribute('data-exp-lbp') || 0));
+      const uInp = container.querySelector('#tillCountUsdInput');
+      const lInp = container.querySelector('#tillCountLbpInput');
+      const syncDrawerStatus = () => {
+        if (!STATE.tillCheck) STATE.tillCheck = {};
+        STATE.tillCheck[coKey] = {
+          usd: uInp ? uInp.value : '',
+          lbp: lInp ? lInp.value : ''
+        };
+        tillStatusEl.innerHTML = computeDrawerStatusHtml(coKey, expUsd, expLbp);
+      };
+      if (uInp) uInp.addEventListener('input', syncDrawerStatus);
+      if (lInp) lInp.addEventListener('input', syncDrawerStatus);
+      const matchBtn = container.querySelector('#tillMatchBtn');
+      if (matchBtn) {
+        matchBtn.addEventListener('click', () => {
+          if (uInp) uInp.value = String(expUsd.toFixed(2));
+          if (lInp) lInp.value = String(expLbp);
+          syncDrawerStatus();
+          toast(`Drawer verified: ${fmtUSD(expUsd, 2)} · ${fmtLBP(expLbp)}`, 'ok');
+        });
+      }
+      const clrBtn = container.querySelector('#tillClearBtn');
+      if (clrBtn) {
+        clrBtn.addEventListener('click', () => {
+          if (uInp) uInp.value = '';
+          if (lInp) lInp.value = '';
+          syncDrawerStatus();
+        });
+      }
+    }
 
     // Enforce RLS & permission consistency across entity recon cards, reset buttons & jump links
     container.querySelectorAll('.sales-recon-card[data-jump-co]').forEach(card => {
@@ -19121,7 +19918,7 @@
     container.querySelectorAll('[data-print-ticket]').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
       const docType = btn.getAttribute('data-print-ticket') || 'sales';
-      const id = btn.getAttribute('data-print-id');
+      const id = btn.getAttribute('data-print-id') || btn.getAttribute('data-rid');
       const priceMode = btn.getAttribute('data-print-mode') || '';
       const poolKey = docType === 'raw' ? 'raw_purchases' : (docType === 'fuel' ? 'fuel_intakes' : 'sales_tickets');
       const rec = resolveInspectorRecord(poolKey, id);

@@ -135,7 +135,7 @@ try {
   };
 
   // 2. Every view + 1-to-1 Page Title Consistency (Left Sidebar == Topbar == Page Hero Heading == Browser Tab)
-  const views = ['overview', 'pbi', 'tables', 'sentinels', 'kiosks', 'sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
+  const views = ['overview', 'pbi', 'tables', 'sentinels', 'kiosks', 'sales', 'raw', 'fleet', 'pricing', 'cashflow', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger', 'statements', 'users'];
   const titleMismatches = [];
   for (const v of views) {
     await evaluate(`(() => { const b = document.querySelector('#sidebarNav .nav-item[data-view="${v}"]'); b.click(); return 1; })()`);
@@ -183,7 +183,7 @@ try {
     }
   }
   titleMismatches.length === 0
-    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 16 views)')
+    ? pass('page titles · 1-to-1 identical across Left Sidebar, Topbar, Page Hero, Subnav & Browser Tab (all 17 views)')
     : fail('page titles consistency', titleMismatches.join(' | '));
 
   // 2a-2. Left sidebar truncated (...) hover tooltip (#railHoverTooltip + title attributes)
@@ -3143,6 +3143,179 @@ try {
   iosStandaloneDockProbe && iosStandaloneDockProbe.ok
     ? pass('iOS standalone & mobile bottom dock flush parity (PWA.md §3.1 — 100vh shell, 0px bottom gap, 22px dock home-indicator clearance)', `pos=${iosStandaloneDockProbe.shPos} · bottom=${iosStandaloneDockProbe.shBottom}/${iosStandaloneDockProbe.vh}px · dockPadBottom=${iosStandaloneDockProbe.dockPadBottom}`)
     : fail('iOS standalone & mobile bottom dock flush parity', JSON.stringify(iosStandaloneDockProbe));
+
+  // 7q. Cash Flow & Till Dual-Currency SharePoint Parity ($0.00 & 0 LL WTC, $622.00 & 5,035,000 LL BBConstruction) + Entry-User Physical Drawer Verification
+  const cashFlowTillProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+
+    // 1. WTC All-Time on Executive Overview + Custom Range (2024-01-01 .. 2026-09-30 on Rep Date)
+    document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    const grainAllBtn = document.querySelector('#dateGrainBar [data-grain="all"]');
+    if (grainAllBtn) grainAllBtn.click();
+    await wait(30);
+    const wtcTillCardAll = document.querySelector('#workspace .kpi[data-nav-jump="cashflow"]');
+    const wtcAllText = (wtcTillCardAll ? wtcTillCardAll.textContent : '').replace(/\\s+/g, ' ').trim();
+    const wtcNavPillAll = (document.getElementById('navCountTill') || {}).textContent?.trim() || '';
+
+    // Apply custom range 2024-01-01 .. 2026-09-30 + Rep Date (the exact screenshot scenario)
+    const setDate = (id, v) => {
+      const inp = document.getElementById(id);
+      if (!inp) return;
+      inp.value = v;
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setDate('dateFromInput', '2024-01-01');
+    setDate('dateToInput', '2026-09-30');
+    const repBtn = document.querySelector('#basisSwitch [data-basis="rep"]');
+    if (repBtn) repBtn.click();
+    await wait(30);
+    const wtcTillCardCustom = document.querySelector('#workspace .kpi[data-nav-jump="cashflow"]');
+    const wtcCustomText = (wtcTillCardCustom ? wtcTillCardCustom.textContent : '').replace(/\\s+/g, ' ').trim();
+    const noStale996Or32M = !/\\$996\\.08|32,812,134/.test(wtcCustomText) && !/\\$996\\.08|32,812,134/.test(wtcAllText);
+
+    // Reset back to All-Time Tx Date
+    const txBtn = document.querySelector('#basisSwitch [data-basis="tx"]');
+    if (txBtn) txBtn.click();
+    if (grainAllBtn) grainAllBtn.click();
+    await wait(30);
+
+    // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity & Physical Drawer Check
+    document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]').click();
+    await wait(40);
+    const wtcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const wtcSalesTfoot = (document.querySelector('#cfSalesPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const wtcExpTfoot = (document.querySelector('#cfExpPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const wtcBridgeTfoot = (document.querySelector('#tillBridgePanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+
+    // Interactive Physical Cash Drawer Verification
+    const usdInp = document.getElementById('tillCountUsdInput');
+    const lbpInp = document.getElementById('tillCountLbpInput');
+    usdInp.value = '50';
+    usdInp.dispatchEvent(new Event('input', { bubbles: true }));
+    const badgeVariance = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+    document.getElementById('tillMatchBtn').click();
+    const badgeMatch = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+    document.getElementById('tillClearBtn').click();
+    const badgeReset = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+
+    // 3. Switch to BBConstruction: verify $622.00 & 5,035,000 LL ($678.26 combined)
+    document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
+    await wait(30);
+    const bbcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const bbcNavPill = (document.getElementById('navCountTill') || {}).textContent?.trim() || '';
+
+    // 4. Entry User Access: u4 (scale1.wtc@bhfirms.com, Entry, pbi_access: 'none') & u6 (batch.bbc@bhfirms.com, Entry, BBConstruction)
+    await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
+    const u4NavBtn = document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]');
+    const u4NavVisible = Boolean(u4NavBtn && !u4NavBtn.hidden);
+    if (u4NavBtn) u4NavBtn.click();
+    await wait(30);
+    const u4VerifyPanel = Boolean(document.getElementById('tillVerifyPanel'));
+    const u4ConfSalHidden = !document.getElementById('cfSalPanel') && !document.getElementById('cfBorPanel');
+    const u4TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+
+    await T.performLogin('batch.bbc@bhfirms.com', '5555', { bypass2FA: true });
+    const u6NavBtn = document.querySelector('#sidebarNav .nav-item[data-view="cashflow"]');
+    if (u6NavBtn) u6NavBtn.click();
+    await wait(30);
+    const u6TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+
+    // Restore Owner & Group All-Time
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
+    document.querySelector('#sidebarNav .nav-item[data-view="overview"]').click();
+    await wait(30);
+
+    const wtcZeroOk = /\\$0\\.00/.test(wtcAllText) && /0 LL/.test(wtcAllText) && /\\$0\\.00/.test(wtcCustomText) && /0 LL/.test(wtcCustomText) && wtcNavPillAll === '$0 · 0 LL';
+    const wtcTablesOk = /\\$9,994,762\\.51/.test(wtcSalesTfoot) && /30,125,396,148 LL/.test(wtcSalesTfoot) && /\\$8,311,011\\.29/.test(wtcExpTfoot) && /\\$0\\.00/.test(wtcBridgeTfoot) && /0 LL/.test(wtcBridgeTfoot);
+    const drawerCheckOk = /Variance:\\s*\\+\\$50\\.00 USD/.test(badgeVariance) && /Exact Match/.test(badgeMatch) && /Book Till:\\s*\\$0\\.00\\s*·\\s*0 LL/.test(badgeReset);
+    const bbcParityOk = /\\$622\\.00/.test(bbcCfHeroText) && /5,035,000 LL/.test(bbcCfHeroText) && /\\$678\\.26/.test(bbcCfHeroText);
+    const entryUsersOk = u4NavVisible && u4VerifyPanel && u4ConfSalHidden && /\\$0\\.00\\s*·\\s*0 LL/.test(u4TillBadge) && /\\$622\\.00\\s*·\\s*5,035,000 LL/.test(u6TillBadge);
+
+    return {
+      ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && drawerCheckOk && bbcParityOk && entryUsersOk),
+      noStale996Or32M, wtcZeroOk, wtcTablesOk, drawerCheckOk, bbcParityOk, entryUsersOk,
+      wtcAllText, wtcCustomText, wtcNavPillAll, bbcNavPill, badgeVariance, badgeMatch, u4TillBadge, u6TillBadge
+    };
+  })()`);
+  cashFlowTillProbe && cashFlowTillProbe.ok
+    ? pass('cash flow & till parity · WTC $0.00 & 0 LL (All-Time + Rep Date custom window), BBC $622.00 & 5,035,000 LL, SharePoint 7-table parity, physical drawer count check & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill} · u4="${cashFlowTillProbe.u4TillBadge}" · u6="${cashFlowTillProbe.u6TillBadge}"`)
+    : fail('cash flow & till parity + entry-seat access', JSON.stringify(cashFlowTillProbe));
+
+  // 7q. Institutional Vector Icon System & #fleet Thermal Ticket Cell Parity (js/icons.js)
+  const iconSystemProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const hasIconsApi = Boolean(window.MFG_ICONS && typeof window.MFG_ICONS.svg === 'function' && typeof window.MFG_ICONS.nav === 'function');
+    const navBtns = Array.from(document.querySelectorAll('#sidebarNav button.nav-item'));
+    const allNavHaveSvg = navBtns.length >= 24 && navBtns.every(b => {
+      const ico = b.querySelector('i.nav-ico svg.ic');
+      const sp = b.querySelector('span');
+      return Boolean(ico && sp && sp.textContent.trim().length > 0 && !b.hasAttribute('title') && !sp.hasAttribute('title'));
+    });
+    const showcaseHasSvg = Boolean(document.querySelector('#railShowcaseLink i.nav-ico svg.ic'));
+
+    // Navigate to #fleet and verify Ticket column parity + thermal preview click
+    const fleetBtn = document.querySelector('#sidebarNav .nav-item[data-view="fleet"]');
+    if (fleetBtn) fleetBtn.click();
+    await wait(40);
+    const fuelTd = document.querySelector('#fuelPanel table.ledger-table tbody tr.rrow td:nth-child(2)');
+    const fuelInline = fuelTd ? fuelTd.querySelector('.tkt-cell-inline') : null;
+    const fuelNum = fuelInline ? fuelInline.querySelector('strong.tkt-no-num') : null;
+    const fuelPrintBtn = fuelInline ? fuelInline.querySelector('button.tkt-print-mini[data-print-ticket="fuel"][data-print-id]') : null;
+    const fuelPrintSvg = fuelPrintBtn ? fuelPrintBtn.querySelector('svg.ic') : null;
+    const noUnstyledBtn = !document.querySelector('#fuelPanel .tbl-print-icon');
+    const fuelNowrap = fuelTd ? getComputedStyle(fuelTd).whiteSpace === 'nowrap' : false;
+    const numBeforeBtn = Boolean(fuelInline && fuelNum && fuelPrintBtn && (fuelNum.compareDocumentPosition(fuelPrintBtn) & Node.DOCUMENT_POSITION_FOLLOWING));
+
+    // Click #fleet print button -> verify #thermalPrintModal actually opens for this fuel slip
+    let modalOpenedForFuel = false;
+    if (fuelPrintBtn) {
+      fuelPrintBtn.click();
+      await wait(30);
+      const tm = document.getElementById('thermalPrintModal');
+      const tmTitle = document.getElementById('thermalModalTitle')?.textContent || '';
+      const browserSvg = !!document.querySelector('#thermalBrowserPrintBtn svg.ic');
+      const rawBtSvg = !!document.querySelector('#thermalRawBtBtn svg.ic');
+      modalOpenedForFuel = Boolean(tm && !tm.hidden && tmTitle.includes(fuelNum.textContent.trim()) && browserSvg && rawBtSvg);
+      document.getElementById('closeThermalModalBtn')?.click();
+      await wait(20);
+    }
+
+    // Verify zero ugly bare monochrome dingbats (U+1F5A8 without FE0F, U+1F5D1, U+1F5D4) across key modules
+    let uglyGlyphHits = [];
+    for (const v of ['sales', 'raw', 'fleet', 'kiosks', 'statements', 'users']) {
+      const b = document.querySelector('#sidebarNav .nav-item[data-view="' + v + '"]');
+      if (b && !b.hidden) {
+        b.click();
+        await wait(25);
+        const wsTxt = document.getElementById('workspace')?.textContent || '';
+        if (/[\u{1F5A8}\u{1F5D1}\u{1F5D4}]/u.test(wsTxt)) uglyGlyphHits.push(v);
+      }
+    }
+
+    const ovBtn = document.querySelector('#sidebarNav .nav-item[data-view="overview"]');
+    if (ovBtn) ovBtn.click();
+    await wait(20);
+
+    return {
+      ok: Boolean(hasIconsApi && allNavHaveSvg && showcaseHasSvg && fuelInline && fuelNum && fuelPrintBtn && fuelPrintSvg && noUnstyledBtn && fuelNowrap && numBeforeBtn && modalOpenedForFuel && uglyGlyphHits.length === 0),
+      hasIconsApi,
+      navCount: navBtns.length,
+      allNavHaveSvg,
+      showcaseHasSvg,
+      noUnstyledBtn,
+      fuelNowrap,
+      numBeforeBtn,
+      modalOpenedForFuel,
+      uglyGlyphHits
+    };
+  })()`);
+  iconSystemProbe && iconSystemProbe.ok
+    ? pass('Institutional Vector Icon System & #fleet thermal ticket button parity (24+ rail SVGs, .tkt-print-mini click -> modal, 0 monochrome dingbats)', `nav=${iconSystemProbe.navCount} SVGs · fleetNowrap=${iconSystemProbe.fuelNowrap} · modalOpened=${iconSystemProbe.modalOpenedForFuel}`)
+    : fail('Institutional Vector Icon System & #fleet thermal ticket button parity', JSON.stringify(iconSystemProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);

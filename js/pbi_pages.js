@@ -3289,15 +3289,20 @@
     // PAGE 14: CASH FLOW & TILL (m18c_report.py Page 14 — Account 5300)
     // =========================================================================
     else if (activePageId === 'p14_cashflow') {
+      const fmtLL = v => {
+        const n = Math.round(Number(v || 0));
+        if (Math.abs(n) <= 1) return '0 LL';
+        return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' LL';
+      };
       bodyHtml = `
         <div class="pbi-overview-bands">
           ${kpiBand('1 · Cash Flow & Daily Plant Till (Lebanese CoA Account 5300)', [
-            { label: 'Cash Inflows (Total)', value: fmtUSD(k.cash_inflow, 0), sub: 'Cash sales + AR receipts + Loan/Ext in', tone: 'good' },
+            { label: 'USD Cash Till ($)', value: fmtUSD(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till, 2), sub: `In ${fmtUSD(k.cash_in_usd != null ? k.cash_in_usd : k.cash_inflow, 0)} · Out ${fmtUSD(k.cash_out_usd != null ? k.cash_out_usd : k.cash_outflow, 0)}`, tone: 'good' },
+            { label: 'LBP Cash Till (LL)', value: fmtLL(k.cash_till_lbp || 0), sub: `Rate ${fmtNum(k.rate_lbp || 89500, 0)} LL/$`, tone: 'good' },
+            { label: 'Closing Cash Till (5300)', value: fmtUSD(k.cash_till, 2), sub: 'Combined USD + LBP book till', tone: 'brass' },
+            { label: 'Cash Inflows (Total)', value: fmtUSD(k.cash_inflow, 0), sub: 'Cash sales + AR receipts + Treasury in', tone: 'good' },
             { label: 'Cash Outflows (Total)', value: fmtUSD(k.cash_outflow, 0), sub: 'AP settlements + Cash exp + Salaries', tone: 'crit' },
-            { label: 'Net Cash Flow', value: fmtUSD(k.net_cash_flow, 0), sub: 'Inflows − Outflows in period', neg: true },
-            { label: 'Closing Cash Till (5300)', value: fmtUSD(k.cash_till, 2), sub: 'Cumulative book till balance', tone: 'brass' },
-            { label: 'Cash Sales Collected', value: fmtUSD(k.cash_sales, 0), sub: 'Paid at weighbridge' },
-            { label: 'Customer Receipts Collected', value: fmtUSD(k.receipts, 0), sub: 'Cash, checks & bank transfers', tone: 'good' }
+            { label: 'Net Cash Flow', value: fmtUSD(k.net_cash_flow, 2), sub: 'Inflows − Outflows in period', neg: true }
           ])}
         </div>
 
