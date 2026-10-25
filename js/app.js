@@ -3235,14 +3235,17 @@
     }
   }
 
-  function insightCard({ label, badge = '', badgeCls = '', val, valCls = '', pct = null, pct2 = null, sub = '', tone = 'brass', id = '' }) {
+  function insightCard({ label, badge = '', badgeHtml = '', badgeCls = '', badgeChip = '', val, valCls = '', pct = null, pct2 = null, sub = '', tone = 'brass', id = '' }) {
     const p1 = pct != null ? Math.max(0, Math.min(100, Number(pct) || 0)) : null;
     const p2 = pct2 != null ? Math.max(0, Math.min(100 - (p1 || 0), Number(pct2) || 0)) : null;
+    const bAttr = badgeChip ? ` data-insight-chip="${esc(badgeChip)}" title="Click to toggle ${esc(badgeChip)} filter"` : '';
+    const bActive = badgeChip && STATE.chipFilter === badgeChip ? ' is-active' : '';
+    const renderedBadge = badgeHtml || (badge ? `<span class="cockpit-pill-tag ${esc(badgeCls)}${badgeChip ? ' insight-drill' : ''}${bActive}"${bAttr}>${esc(badge)}</span>` : '');
     return `
       <div class="cockpit-pill insight-card tone-${esc(tone)}">
         <div class="cockpit-pill-top">
           <div class="cockpit-pill-lbl">${esc(label)}</div>
-          ${badge ? `<span class="cockpit-pill-tag ${esc(badgeCls)}">${esc(badge)}</span>` : ''}
+          ${renderedBadge}
         </div>
         <div class="cockpit-pill-val ${esc(valCls)}"${id ? ` id="${esc(id)}"` : ''}>${val}</div>
         ${p1 != null ? `
@@ -5037,7 +5040,7 @@
     }
     const txt = esc(label || v);
     const inner = bold ? `<strong>${txt}</strong>` : txt;
-    return `<span class="rel-link" data-rel-key="${esc(targetKey)}" data-rel-val="${esc(v)}" title="Open 360° Record &amp; Related Tables: ${esc(v)}">${inner}<span class="rel-arr">↗</span></span>`;
+    return `<span class="rel-link" data-rel-key="${esc(targetKey)}" data-rel-val="${esc(v)}" title="Click to open 360° Record · Shift+Click to filter table by ${esc(v)}">${inner}<span class="rel-arr">↗</span></span>`;
   }
   function coBadge(co) {
     const raw = String(co || '').trim();
@@ -6095,39 +6098,40 @@
             valCls: 'brass',
             pct: matRevShare,
             pct2: trRevShare,
-            sub: `Ex-VAT <b>${fmtUSD(avgUnitNet, 2)}/m³</b> · Avg <b>${fmtNum(avgLoadQty, 1)} m³/load</b> · <b>${fmtNum(sumTons, 0)} t</b>`,
+            sub: `Ex-VAT <b>${fmtUSD(avgUnitNet, 2)}/m³</b> · Avg <b>${fmtNum(avgLoadQty, 1)} m³/load</b> · <span class="insight-drill" data-scroll-panel="salesProdPanel" title="Click to jump to Sales by Product &amp; Aggregate Grade"><b>${fmtNum(sumTons, 0)} t ↘</b></span>`,
             tone: 'brass'
           })}
           ${insightCard({
             label: 'Dispatch & Fleet Mix',
-            badge: `${fmtNum(delivLoads)} Deliv · ${fmtNum(pickupLoads)} Pick`,
-            badgeCls: 'good',
-            val: `${fmtNum(delivPct, 1)}% <small>Delivery</small>`,
+            badgeHtml: `<span class="cockpit-pill-tag good"><span class="insight-drill ${STATE.chipFilter === 'delivery' ? 'is-active' : ''}" data-insight-chip="delivery" title="Click to toggle Delivery filter">${fmtNum(delivLoads)} Deliv</span> · <span class="insight-drill ${STATE.chipFilter === 'pickup' ? 'is-active' : ''}" data-insight-chip="pickup" title="Click to toggle Pickup filter">${fmtNum(pickupLoads)} Pick</span></span>`,
+            val: `<span class="insight-drill ${STATE.chipFilter === 'delivery' ? 'is-active' : ''}" data-insight-chip="delivery" title="Click to toggle Delivery filter">${fmtNum(delivPct, 1)}% <small>Delivery</small></span>`,
             valCls: 'emerald',
             pct: delivPct,
             pct2: pickupPct,
-            sub: `Own Fleet <b>${fmtNum(ownFleetLoads)}</b> · 3rd-Party <b>${fmtNum(thirdPartyLoads)}</b> · Trans <b>${trRevShare}%</b>`,
+            sub: `<span class="insight-drill ${((STATE.colFilters.sales || {}).truck || '') === '__nonempty__' ? 'is-active' : ''}" data-quick-col-filter="sales" data-qcf-col="truck" data-qcf-val="__nonempty__" title="Click to filter tickets with assigned Truck">Own Fleet <b>${fmtNum(ownFleetLoads)}</b></span> · <span class="insight-drill ${STATE.chipFilter === 'delivery' ? 'is-active' : ''}" data-insight-chip="delivery" title="Click to filter Delivery loads">3rd-Party <b>${fmtNum(thirdPartyLoads)}</b></span> · Trans <b>${trRevShare}%</b>`,
             tone: 'emerald'
           })}
           ${insightCard({
             label: 'Settlement & VAT Profile',
             badge: `${vatLoadPct}% VAT-Billed`,
             badgeCls: 'info',
-            val: `${fmtNum(creditPct, 1)}% <small>Credit</small> · ${fmtNum(cashPct, 1)}% <small>Cash</small>`,
+            badgeChip: 'vat',
+            val: `<span class="insight-drill ${STATE.chipFilter === 'credit' ? 'is-active' : ''}" data-insight-chip="credit" title="Click to toggle Credit filter">${fmtNum(creditPct, 1)}% <small>Credit</small></span> · <span class="insight-drill ${STATE.chipFilter === 'cash' ? 'is-active' : ''}" data-insight-chip="cash" title="Click to toggle Cash filter">${fmtNum(cashPct, 1)}% <small>Cash</small></span>`,
             valCls: '',
             pct: creditPct,
             pct2: cashPct,
-            sub: `Credit <b>${fmtNum(creditLoads)}</b> loads · Cash <b>${fmtNum(cashLoads)}</b> · VAT <b>${fmtNum(vatLoads)}</b> loads`,
+            sub: `<span class="insight-drill ${STATE.chipFilter === 'credit' ? 'is-active' : ''}" data-insight-chip="credit">Credit <b>${fmtNum(creditLoads)}</b> loads</span> · <span class="insight-drill ${STATE.chipFilter === 'cash' ? 'is-active' : ''}" data-insight-chip="cash">Cash <b>${fmtNum(cashLoads)}</b></span> · <span class="insight-drill ${STATE.chipFilter === 'vat' ? 'is-active' : ''}" data-insight-chip="vat">VAT <b>${fmtNum(vatLoads)}</b> loads</span>`,
             tone: 'steel'
           })}
           ${insightCard({
             label: 'Active Reach & Top Volume',
             badge: `${fmtNum(otLoads)} OT (${fmtNum(otPct, 1)}%)`,
             badgeCls: otLoads > 0 ? 'warn' : 'info',
-            val: `${fmtNum(custMap.size)} <small>Clients</small> · ${fmtNum(siteSet.size)} <small>Sites</small>`,
+            badgeChip: 'overtime',
+            val: `${fmtNum(custMap.size)} <small>Clients</small> · <span class="insight-drill" data-scroll-panel="salesSitePanel" title="Click to jump to Destination Sites breakdown">${fmtNum(siteSet.size)} <small>Sites ↘</small></span>`,
             valCls: '',
             pct: Math.max(14, topCustShare * 2.5),
-            sub: `Top: <b>${esc(topCustName)}</b> (${fmtNum(topCustLoads)}) · #1 Grade: <b>${esc(topProdName)}</b>`,
+            sub: `<span class="insight-drill ${((STATE.colFilters.sales || {}).customer || '') === topCustName ? 'is-active' : ''}" data-quick-col-filter="sales" data-qcf-col="customer" data-qcf-val="${esc(topCustName)}" title="Click to filter register by Customer: ${esc(topCustName)}">Top: <b>${esc(topCustName)}</b> (${fmtNum(topCustLoads)})</span> · <span class="insight-drill ${((STATE.colFilters.sales || {}).product || '') === topProdName ? 'is-active' : ''}" data-quick-col-filter="sales" data-qcf-col="product" data-qcf-val="${esc(topProdName)}" title="Click to filter register by Product: ${esc(topProdName)}">#1 Grade: <b>${esc(topProdName)}</b></span>`,
             tone: 'amber'
           })}
           ${appPill('sales_tickets', 'total_ttc', 'tickets')}
@@ -6158,12 +6162,12 @@
               <span class="sales-recon-act">Filter WTC Only →</span>
             </div>
             <div class="sales-recon-metrics">
-              <span><small>Sales Ex-VAT</small><b>${fmtUSD(wtcS.net, 2)}</b></span>
-              <span><small>Cash</small><b>${fmtUSD(wtcS.cash, 2)}</b></span>
-              <span><small>Credit</small><b>${fmtUSD(wtcS.credit, 2)}</b></span>
-              <span><small>VAT (11%)</small><b>${fmtUSD(wtcS.vat, 2)}</b></span>
-              <span><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(wtcS.ttc, 2)}</b></span>
-              <span><small>Discount</small><b>${fmtUSD(wtcS.disc, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="wtc" data-recon-chip="all" title="Click to filter WTC All Sales"><small>Sales Ex-VAT</small><b>${fmtUSD(wtcS.net, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'cash' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="cash" title="Click to filter WTC Cash Sales"><small>Cash</small><b>${fmtUSD(wtcS.cash, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'credit' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="credit" title="Click to filter WTC Credit Sales"><small>Credit</small><b>${fmtUSD(wtcS.credit, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'vat' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="vat" title="Click to filter WTC VAT-Billed Sales"><small>VAT (11%)</small><b>${fmtUSD(wtcS.vat, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="wtc" data-recon-chip="all" title="Click to filter WTC All Sales"><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(wtcS.ttc, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="wtc" data-recon-chip="all" title="WTC Discounts"><small>Discount</small><b>${fmtUSD(wtcS.disc, 2)}</b></span>
             </div>
           </div>
           <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
@@ -6173,12 +6177,12 @@
               <span class="sales-recon-act">Filter BBC Only →</span>
             </div>
             <div class="sales-recon-metrics">
-              <span><small>Sales Ex-VAT</small><b>${fmtUSD(bbcS.net, 2)}</b></span>
-              <span><small>Cash</small><b>${fmtUSD(bbcS.cash, 2)}</b></span>
-              <span><small>Credit</small><b>${fmtUSD(bbcS.credit, 2)}</b></span>
-              <span><small>VAT (11%)</small><b>${fmtUSD(bbcS.vat, 2)}</b></span>
-              <span><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(bbcS.ttc, 2)}</b></span>
-              <span><small>Discount</small><b>${fmtUSD(bbcS.disc, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="bbconstruction" data-recon-chip="all" title="Click to filter BBConstruction All Sales"><small>Sales Ex-VAT</small><b>${fmtUSD(bbcS.net, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'cash' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="cash" title="Click to filter BBConstruction Cash Sales"><small>Cash</small><b>${fmtUSD(bbcS.cash, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'credit' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="credit" title="Click to filter BBConstruction Credit Sales"><small>Credit</small><b>${fmtUSD(bbcS.credit, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'vat' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="vat" title="Click to filter BBConstruction VAT-Billed Sales"><small>VAT (11%)</small><b>${fmtUSD(bbcS.vat, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="bbconstruction" data-recon-chip="all" title="Click to filter BBConstruction All Sales"><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(bbcS.ttc, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-co="bbconstruction" data-recon-chip="all" title="BBConstruction Discounts"><small>Discount</small><b>${fmtUSD(bbcS.disc, 2)}</b></span>
             </div>
           </div>
         </div>
@@ -6191,12 +6195,12 @@
               <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
             </div>
             <div class="sales-recon-metrics">
-              <span><small>Sales Ex-VAT</small><b>${fmtUSD(sumNet, 2)}</b></span>
-              <span><small>Cash</small><b>${fmtUSD(sumCash, 2)}</b></span>
-              <span><small>Credit</small><b>${fmtUSD(sumCredit, 2)}</b></span>
-              <span><small>VAT (11%)</small><b>${fmtUSD(sumVat, 2)}</b></span>
-              <span><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(sumTtc, 2)}</b></span>
-              <span><small>Discount</small><b>${fmtUSD(sumDisc, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'all' ? 'is-active' : ''}" data-recon-chip="all" title="Click to show all tickets"><small>Sales Ex-VAT</small><b>${fmtUSD(sumNet, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'cash' ? 'is-active' : ''}" data-recon-chip="cash" title="Click to toggle Cash filter"><small>Cash</small><b>${fmtUSD(sumCash, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'credit' ? 'is-active' : ''}" data-recon-chip="credit" title="Click to toggle Credit filter"><small>Credit</small><b>${fmtUSD(sumCredit, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'vat' ? 'is-active' : ''}" data-recon-chip="vat" title="Click to toggle VAT filter"><small>VAT (11%)</small><b>${fmtUSD(sumVat, 2)}</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'all' ? 'is-active' : ''}" data-recon-chip="all" title="Click to show all tickets"><small>Sales VAT Incl.</small><b class="brass">${fmtUSD(sumTtc, 2)}</b></span>
+              <span class="recon-metric-slice" data-recon-chip="all"><small>Discount</small><b>${fmtUSD(sumDisc, 2)}</b></span>
             </div>
           </div>
         </div>
@@ -16521,6 +16525,19 @@
       end_date: 'End Date'
     };
 
+    const REL_TO_VIEW_COL = {
+      sales: { customers: 'customer', products: 'product', sites: 'site', equipment: 'truck', drivers: 'driver' },
+      raw: { sites: 'site', suppliers: 'site_owner', products: 'product', equipment: 'truck' },
+      fleet: { equipment: 'equipment', drivers: 'driver' },
+      pricing: { customers: 'customer', suppliers: 'supplier', products: 'product', sites: 'site' },
+      customers: { customers: 'customer' },
+      suppliers: { suppliers: 'supplier' },
+      expenses: { suppliers: 'supplier', equipment: 'equipment', expense_categories: 'category' }
+    };
+    const activeMap = REL_TO_VIEW_COL[STATE.view] || null;
+    const quickFilterCol = activeMap ? activeMap[key] : null;
+    const quickFilterVal = String(row.name || row.Customer || row.Supplier || row.Product || row.Site || row.Equipment || row.driver || row.equipment || '').trim();
+
     const bodyEl = $('inspectorBody');
     bodyEl.innerHTML = `
       <!-- Top Command Bar & Relational Breadcrumb Trail -->
@@ -16533,6 +16550,7 @@
           `).join('')}
         </div>
         <div class="pa-cmd-actions">
+          ${quickFilterCol && quickFilterVal ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspFilterCurrentTableBtn" data-qf-col="${esc(quickFilterCol)}" data-qf-val="${esc(quickFilterVal)}" title="Close 360° Inspector and filter the current register by ${esc(quickFilterVal)}">⚡ Filter Table by "${esc(quickFilterVal)}"</button>` : ''}
           ${canModifyData() ? `<button type="button" class="pa-cmd-btn btn-brass" id="inspModifyRecordBtn">${ic('edit')} Modify Record</button>` : ''}
           ${isEquipInspect ? `<button type="button" class="pa-cmd-btn" data-insp-scroll-sg="truck_windows">${ic('ruler')} Truck Size Windows (${eqWindows.length})</button>` : ''}
           ${!row.voided && canVoid() ? `<button type="button" class="pa-cmd-btn pa-cmd-btn-danger" id="inspCmdVoidBtn" title="Void or delete this record (2-click confirmation)">${ic('trash')} Void / Delete</button>` : ''}
@@ -16813,6 +16831,23 @@
       STATE.activeTableKey = targetKey;
       setView('tables');
     }));
+
+    const qfBtn = $('inspFilterCurrentTableBtn');
+    if (qfBtn) {
+      qfBtn.addEventListener('click', () => {
+        const col = qfBtn.getAttribute('data-qf-col');
+        const valStr = qfBtn.getAttribute('data-qf-val');
+        const cfView = STATE.view === 'fleet' ? 'fuel' : (STATE.view === 'customers' ? 'receipts' : (STATE.view === 'suppliers' ? 'settle' : STATE.view));
+        if (col && valStr) {
+          if (!STATE.colFilters[cfView]) STATE.colFilters[cfView] = {};
+          STATE.colFilters[cfView][col] = valStr;
+          STATE.shown = {};
+          closeRecordInspector();
+          renderApp();
+          toast(`Filtered by ${getColLabel(col)}: ${valStr}`);
+        }
+      });
+    }
 
     const prBtn = $('inspPrintBtn');
     if (prBtn) prBtn.addEventListener('click', () => window.print());
@@ -22142,9 +22177,60 @@
           }
         }, 160);
       });
+      searchEl.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && searchEl.value) {
+          e.preventDefault();
+          e.stopPropagation();
+          clearTimeout(searchTimer);
+          searchEl.value = '';
+          STATE.search = '';
+          STATE.shown = {};
+          renderApp();
+          const next = $('tableSearchInput');
+          if (next) next.focus({ preventScroll: true });
+        }
+      });
     }
 
     container.querySelectorAll('[data-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.chipFilter = btn.getAttribute('data-chip'); STATE.shown = {}; renderApp(); }));
+    container.querySelectorAll('[data-insight-chip]').forEach(el => el.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const targetChip = el.getAttribute('data-insight-chip') || 'all';
+      STATE.chipFilter = STATE.chipFilter === targetChip ? 'all' : targetChip;
+      STATE.shown = {};
+      renderApp();
+    }));
+    container.querySelectorAll('[data-quick-col-filter]').forEach(el => el.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const view = el.getAttribute('data-quick-col-filter') || STATE.view;
+      const col = el.getAttribute('data-qcf-col');
+      const valStr = el.getAttribute('data-qcf-val') || '';
+      if (!view || !col || !valStr || valStr === '—') return;
+      if (!STATE.colFilters[view]) STATE.colFilters[view] = {};
+      if (STATE.colFilters[view][col] === valStr) {
+        delete STATE.colFilters[view][col];
+      } else {
+        STATE.colFilters[view][col] = valStr;
+      }
+      STATE.shown = {};
+      renderApp();
+    }));
+    container.querySelectorAll('.recon-metric-slice[data-recon-chip]').forEach(el => el.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const targetCo = el.getAttribute('data-recon-co');
+      const targetChip = el.getAttribute('data-recon-chip') || 'all';
+      if (targetCo && getAllowedCompanyKeys(activeUserRow).includes(targetCo)) {
+        const sameCo = STATE.company === targetCo;
+        STATE.company = targetCo;
+        STATE.chipFilter = (sameCo && STATE.chipFilter === targetChip && targetChip !== 'all') ? 'all' : targetChip;
+      } else {
+        STATE.chipFilter = (STATE.chipFilter === targetChip && targetChip !== 'all') ? 'all' : targetChip;
+      }
+      STATE.shown = {};
+      STATE.pbiTablePage = {};
+      saveFilterState();
+      renderApp();
+    }));
     container.querySelectorAll('[data-cf-mode]').forEach(btn => btn.addEventListener('click', () => {
       const nextMode = btn.getAttribute('data-cf-mode') || 'entries';
       if (STATE.cfEntryMode !== nextMode) {
@@ -22272,12 +22358,39 @@
       btn.addEventListener('click', go);
       if (btn.getAttribute('role') === 'button') btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
-    // Clickable lookup pills inside any register or 34-Table Hub cell
+    // Clickable lookup pills inside any register or 34-Table Hub cell (normal click = 360° Record Inspector; Shift/Alt+Click = instant table filter)
     container.querySelectorAll('[data-rel-key]').forEach(el => el.addEventListener('click', e => {
       e.stopPropagation();
       const rk = el.getAttribute('data-rel-key');
       const rv = el.getAttribute('data-rel-val');
-      if (rk && rv) showRecordInspector(rk, rv);
+      if (!rk || !rv) return;
+      if (e.shiftKey || e.altKey) {
+        const relColMap = {
+          sales: { customers: 'customer', products: 'product', sites: 'site', equipment: 'truck', drivers: 'driver' },
+          raw: { sites: 'site', suppliers: 'site_owner', products: 'product', equipment: 'truck' },
+          fleet: { equipment: 'equipment', drivers: 'driver' },
+          pricing: { customers: 'customer', suppliers: 'supplier', products: 'product', sites: 'site' },
+          customers: { customers: 'customer' },
+          suppliers: { suppliers: 'supplier' },
+          expenses: { suppliers: 'supplier', equipment: 'equipment', expense_categories: 'category' }
+        };
+        const cfView = STATE.view === 'fleet' ? 'fuel' : (STATE.view === 'customers' ? 'receipts' : (STATE.view === 'suppliers' ? 'settle' : STATE.view));
+        const col = (relColMap[STATE.view] || {})[rk];
+        if (col && cfView) {
+          if (!STATE.colFilters[cfView]) STATE.colFilters[cfView] = {};
+          if (STATE.colFilters[cfView][col] === rv) {
+            delete STATE.colFilters[cfView][col];
+            toast(`Cleared ${getColLabel(col)} filter`);
+          } else {
+            STATE.colFilters[cfView][col] = rv;
+            toast(`Filtered by ${getColLabel(col)}: ${rv}`);
+          }
+          STATE.shown = {};
+          renderApp();
+          return;
+        }
+      }
+      showRecordInspector(rk, rv);
     }));
     // Record inspector: click any register row to open its Power Apps 360° Record Form & Related Subgrids
     container.querySelectorAll('tr.rrow[data-rid]').forEach(tr => tr.addEventListener('click', e => {
@@ -23411,7 +23524,16 @@
         if (sidebar && sidebar.classList.contains('open')) { closeRail(); return; }
         if (STATE.showAddUserForm) { STATE.showAddUserForm = false; renderApp(); }
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { const s = $('tableSearchInput'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { const s = $('tableSearchInput') || $('pbiSlicerSearch'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+        const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
+        const modalOpen = ($('entryModal') && !$('entryModal').hidden) || ($('recordInspector') && !$('recordInspector').hidden);
+        if (!isEditable && !modalOpen && STATE.authed) {
+          const s = $('tableSearchInput') || $('pbiSlicerSearch');
+          if (s) { e.preventDefault(); s.focus({ preventScroll: true }); try { s.select(); } catch (_) {} }
+        }
+      }
     });
 
     // History: back / forward + hash links move between modules (only after sign-in)
