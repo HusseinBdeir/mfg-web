@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ISABI Systems | Command Center &amp; Double-Entry Ledger</title>
   <meta name="description" content="ISABI Systems — Command Center &amp; Double-Entry Ledger across 10 Industries (Manufacturing, Hospitality, Trading, Real Estate, Insurance &amp; Holding).">
-  <meta name="theme-color" content="#F4F2EE">
+  <meta name="theme-color" content="#F8FAFC">
   <script id="pre">
     // Pre-paint theme + iOS standalone + SW-resume detection (no white flash or auth-gate flash on reload) — PWA.md §3.1 & §3.3
     try {
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '15.6';
+      window.__MFG_SHELL_VER = '15.7';
       var t = localStorage.getItem('isabi_mfg_theme');
-      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+      if (t === 'dark' || t === 'light') { document.documentElement.setAttribute('data-theme', t); var tm = document.querySelector('meta[name="theme-color"]'); if (tm) tm.setAttribute('content', t === 'dark' ? '#090D16' : '#F8FAFC'); }
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
       if (rw >= 176 && rw <= 420) document.documentElement.style.setProperty('--rail-w', rw + 'px');
       var isStandalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=15.6">
+  <link rel="stylesheet" href="css/app.css?v=15.7">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -54,7 +54,7 @@
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                 <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
               </g>
-              <g fill="#D9A54A">
+              <g fill="#C89D54">
                 <rect x="0" y="9.5" width="55.66" height="3.4"/>
                 <rect x="0" y="17.5" width="55.66" height="3.4"/>
               </g>
@@ -69,7 +69,7 @@
                 <path transform="translate(-14.35,0)" d="M225.75 0V-68.75H282.27Q287.86 -68.75 292.39 -66.6Q296.91 -64.45 299.54 -60.65Q302.18 -56.85 302.18 -51.81Q302.18 -47.31 300.57 -44.11Q298.96 -40.91 296.25 -38.92Q293.54 -36.94 290.23 -35.95V-35.55Q294.09 -34.75 297.19 -32.66Q300.3 -30.57 302.11 -27.09Q303.92 -23.62 303.92 -18.57Q303.92 -12.66 301.07 -8.52Q298.22 -4.37 293.39 -2.19Q288.55 0 282.6 0ZM246.11 -14.49H275.8Q279 -14.49 281.02 -16.24Q283.05 -17.98 283.05 -21.59Q283.05 -23.49 282.17 -25.01Q281.3 -26.53 279.61 -27.37Q277.93 -28.21 275.53 -28.21H246.11ZM246.11 -41.59H274.11Q276.44 -41.59 278.03 -42.43Q279.63 -43.27 280.49 -44.8Q281.35 -46.33 281.35 -48.4Q281.35 -51.33 279.38 -53.04Q277.4 -54.75 274.39 -54.75H246.11Z"/>
                 <path transform="translate(-18.65,0)" d="M317.15 0V-68.75H337.51V0Z"/>
               </g>
-              <g fill="#D9A54A">
+              <g fill="#C89D54">
                 <rect x="0" y="9.5" width="318.86" height="3.4"/>
                 <rect x="0" y="17.5" width="318.86" height="3.4"/>
               </g>
@@ -115,7 +115,7 @@
           <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
         <button type="button" class="nav-item" data-hub="fleet" data-view="fleet" aria-label="Fleet &amp; Diesel">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="10" height="17" rx="1.8"/><line x1="2.5" y1="20.5" x2="15.6" y2="20.5"/><rect x="6.5" y="6.2" width="5" height="3.8" rx="0.6"/><path d="M14 8.5h2.5a2 2 0 0 1 2 2v5a1.8 1.8 0 0 0 3.6 0V9.5l-2.4-2.8"/></svg></i>
+          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="10" height="17" rx="1.8"/><line x1="2.5" y1="20.5" x2="15.7" y2="20.5"/><rect x="6.5" y="6.2" width="5" height="3.8" rx="0.6"/><path d="M14 8.5h2.5a2 2 0 0 1 2 2v5a1.8 1.8 0 0 0 3.6 0V9.5l-2.4-2.8"/></svg></i>
           <span>Fleet &amp; Diesel</span>
           <em class="nav-pill" id="navCountFleet">1,637</em>
         </button>
@@ -137,7 +137,7 @@
           <em class="nav-pill" id="navCountExp">—</em>
         </button>
         <button type="button" class="nav-item" data-hub="payroll" data-view="payroll" aria-label="Payroll &amp; Workforce">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.8" cy="7.5" r="3.6"/><path d="M21 21v-1.8a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.6 4.1a3.6 3.6 0 0 1 0 6.9"/></svg></i>
+          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.8" cy="7.5" r="3.6"/><path d="M21 21v-1.8a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.7 4.1a3.6 3.6 0 0 1 0 6.9"/></svg></i>
           <span>Payroll &amp; Workforce</span>
           <em class="nav-pill" id="navCountPayroll">—</em>
         </button>
@@ -197,7 +197,7 @@
                   <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                   <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
                 </g>
-                <g fill="#D9A54A">
+                <g fill="#C89D54">
                   <rect x="0" y="9.5" width="55.66" height="3.4"/>
                   <rect x="0" y="17.5" width="55.66" height="3.4"/>
                 </g>
@@ -315,7 +315,7 @@
                   <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                   <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
                 </g>
-                <g fill="#D9A54A">
+                <g fill="#C89D54">
                   <rect x="0" y="9.5" width="55.66" height="3.4"/>
                   <rect x="0" y="17.5" width="55.66" height="3.4"/>
                 </g>
@@ -374,7 +374,7 @@
               <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
               <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
             </g>
-            <g fill="#D9A54A">
+            <g fill="#C89D54">
               <rect x="0" y="9.5" width="55.66" height="3.4"/>
               <rect x="0" y="17.5" width="55.66" height="3.4"/>
             </g>
@@ -444,7 +444,7 @@
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                 <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
               </g>
-              <g fill="#D9A54A">
+              <g fill="#C89D54">
                 <rect x="0" y="9.5" width="55.66" height="3.4"/>
                 <rect x="0" y="17.5" width="55.66" height="3.4"/>
               </g>
@@ -574,23 +574,26 @@
   <!-- Left Sidebar Truncation Hover Tooltip -->
   <div class="rail-hover-tooltip" id="railHoverTooltip" role="tooltip" hidden></div>
 
+  <!-- Institutional Rev 10 Chart Explanation Popover -->
+  <div class="mfg-chart-popover" id="mfgChartPopover" role="tooltip" hidden></div>
+
   <!-- Interactive Date & Period Facilitator Popover (Day / Month / Week / Year / Range / Presets) -->
   <div class="date-facilitator-popover" id="dateFacilitatorPopover" role="dialog" aria-label="Interactive Date and Period Facilitator" hidden></div>
 
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=15.6"></script>
-  <script src="js/face.js?v=15.6"></script>
-  <script src="js/endpoints.js?v=15.6"></script>
-  <script src="js/seed_data.js?v=15.6"></script>
-  <script src="js/icons.js?v=15.6"></script>
-  <script src="js/forms_engine.js?v=15.6"></script>
-  <script src="js/pbi_pages.js?v=15.6"></script>
-  <script src="js/rdl_reports.js?v=15.6"></script>
-  <script src="js/kiosk_print.js?v=15.6"></script>
-  <script src="js/table_columns.js?v=15.6"></script>
-  <script src="js/app.js?v=15.6"></script>
+  <script src="vendor/face-api.js?v=15.7"></script>
+  <script src="js/face.js?v=15.7"></script>
+  <script src="js/endpoints.js?v=15.7"></script>
+  <script src="js/seed_data.js?v=15.7"></script>
+  <script src="js/icons.js?v=15.7"></script>
+  <script src="js/forms_engine.js?v=15.7"></script>
+  <script src="js/pbi_pages.js?v=15.7"></script>
+  <script src="js/rdl_reports.js?v=15.7"></script>
+  <script src="js/kiosk_print.js?v=15.7"></script>
+  <script src="js/table_columns.js?v=15.7"></script>
+  <script src="js/app.js?v=15.7"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

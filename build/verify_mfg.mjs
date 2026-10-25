@@ -3811,6 +3811,8 @@ try {
     });
     const catTopIsFuel = catRows.length >= 10 && /^Fuel\\b/.test(catRows[0].name) && catRows[0].costClass === 'Production Cost' && Math.abs(catRows[0].spent - 2499933.55) < 1;
     const catSecondIsCapex = catRows.length >= 2 && /^Capital Expenditures\\b/.test(catRows[1].name) && catRows[1].costClass === 'Capital Expenditure' && Math.abs(catRows[1].spent - 1776293.00) < 1;
+    const capexBadgeEl = document.querySelectorAll('#univRegPanel tbody tr.rrow')[1]?.querySelector('td:nth-child(2) .badge');
+    const catCapexBadgeOk = Boolean(capexBadgeEl && capexBadgeEl.classList.contains('badge-capex') && !capexBadgeEl.classList.contains('badge-warn'));
     const catMonotonicDesc = catRows.every((r, i) => i === 0 || r.spent <= catRows[i - 1].spent + 0.01);
     const catAllClassesValid = catRows.every(r => /^(Production Cost|Operating Expense|Capital Expenditure)$/.test(r.costClass));
     const catViewBtns = Array.from(document.querySelectorAll('#univRegPanel [data-tbl-view]'));
@@ -3870,8 +3872,8 @@ try {
     await wait(30);
 
     return {
-      ok: Boolean(catNoNaN && catTopIsFuel && catSecondIsCapex && catMonotonicDesc && catAllClassesValid && catFourViewsOk && sgEcSubOk && subNoNaN && subSortedDescOk && custSortedOk && drvSortedOk && prodSortedOk && logHubOk),
-      catNoNaN, catTopIsFuel, catSecondIsCapex, catMonotonicDesc, catAllClassesValid, catFourViewsOk,
+      ok: Boolean(catNoNaN && catTopIsFuel && catSecondIsCapex && catCapexBadgeOk && catMonotonicDesc && catAllClassesValid && catFourViewsOk && sgEcSubOk && subNoNaN && subSortedDescOk && custSortedOk && drvSortedOk && prodSortedOk && logHubOk),
+      catNoNaN, catTopIsFuel, catSecondIsCapex, catCapexBadgeOk, catMonotonicDesc, catAllClassesValid, catFourViewsOk,
       sgEcSubOk, subNoNaN, subSortedDescOk, custSortedOk, drvSortedOk, prodSortedOk, logHubOk,
       topCat: catRows[0], secondCat: catRows[1], topSub: subRows[0]
     };

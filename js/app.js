@@ -419,7 +419,7 @@
     const n = Number(v || 0);
     const abs = Math.abs(n);
     const s = abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    return (n < 0 ? '-$' : '$') + s;
+    return (n < 0 && !/^0(?:\.0+)?$/.test(s) ? '-$' : '$') + s;
   }
 
   function fmtUSDk(v) {
@@ -8298,7 +8298,7 @@
                   return `
                   <tr class="rrow" data-rkey="expense_categories" data-rid="${esc(c.id)}">
                     <td>${relLink('expense_categories', c.category, c.category, true)}</td>
-                    <td><span class="badge ${/Production/i.test(c.cost_class) ? 'badge-brass' : (/Capital/i.test(c.cost_class) ? 'badge-warn' : 'badge-info')}">${esc(c.cost_class)}</span></td>
+                    <td><span class="badge ${/Production/i.test(c.cost_class) ? 'badge-brass' : (/Capital/i.test(c.cost_class) ? 'badge-capex' : 'badge-info')}">${esc(c.cost_class)}</span></td>
                     <td class="r">${fmtNum(c.vouchers)}</td>
                     <td class="r">${fmtNum(c.unit_tagged)}</td>
                     <td class="r">${fmtUSD(c.cash, 2)}</td>
@@ -21563,7 +21563,7 @@
     const mThemeBtn = $('mobileThemeBtn');
     if (mThemeBtn) mThemeBtn.innerHTML = STATE.theme === 'dark' ? ic('sun') : ic('moon');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0E1A2E' : '#F4F2EE');
+    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#090D16' : '#F8FAFC');
 
     applyUserRlsAndPermissions();
     const user = activeUser();
