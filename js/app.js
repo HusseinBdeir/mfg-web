@@ -4889,10 +4889,9 @@
   function coBadge(co) {
     const raw = String(co || '').trim();
     const short = /^bbconstruction$/i.test(raw) ? 'BBC' : (/^lions\s*transport$/i.test(raw) ? 'Lions' : (raw || 'WTC'));
-    const cls = /^bbconstruction$/i.test(raw) ? 'badge-info' : 'badge-brass';
     return short !== raw
-      ? `<span class="badge ${cls} co-tbl-badge" title="${esc(raw)}">${esc(short)}<span class="sr-only"> ${esc(raw)}</span></span>`
-      : `<span class="badge ${cls} co-tbl-badge">${esc(raw)}</span>`;
+      ? `<span class="badge badge-neutral co-tbl-badge" title="${esc(raw)}">${esc(short)}<span class="sr-only"> ${esc(raw)}</span></span>`
+      : `<span class="badge badge-neutral co-tbl-badge">${esc(raw)}</span>`;
   }
   function listPrice(name) {
     const n = norm(name);
@@ -10020,15 +10019,15 @@
       <div class="a4-sheet" id="printableSheet">
         <div class="a4-header">
           <div>
-            <div class="mono" style="font-size:10px;color:#B8883B;letter-spacing:0.14em;text-transform:uppercase">
+            <div class="mono" style="font-size:10px;color:#475569;letter-spacing:0.14em;text-transform:uppercase">
               ISABI SYSTEMS · AUDITED FINANCIAL &amp; OPERATIONAL STATEMENT #${esc(st.code)} · ${esc(st.cat)}
             </div>
             <div class="a4-title">${esc(st.name)}</div>
-            <div style="font-size:12px;color:#5A657D;margin-top:3px">
+            <div style="font-size:12px;color:#525866;margin-top:3px">
               Entity: <strong>${esc(COMPANY_LABELS[STATE.company])}</strong> · Period: <strong>${esc(k.label || 'All-Time')}</strong> · Basis: <strong>${STATE.basis === 'rep' ? 'Reporting Date' : 'Transaction Date'}</strong>
             </div>
           </div>
-          <div style="text-align:right;font-family:var(--font-mono);font-size:11px;color:#2C364C">
+          <div style="text-align:right;font-family:var(--font-mono);font-size:11px;color:#1F2937">
             <div><strong>PRINTED:</strong> ${todayISO()} · ${esc(activeUser().full_name)}</div>
             <div><strong>CURRENCY:</strong> USD ($1 = 90,000 LBP)</div>
             <div><strong>TB VARIANCE:</strong> ${fmtUSD(k.tb_check || 0, 2)}</div>
@@ -17267,7 +17266,7 @@
           return;
         }
         if (overlayEl && window.Face.drawOverlay) {
-          const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#B8883B') : '#DC2626';
+          const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#64748B') : '#DC2626';
           window.Face.drawOverlay(overlayEl, videoEl, det, color, FACE_STATE.streakUser ? FACE_STATE.streakUser.name : '');
         }
         await handleAuthDescriptor(det, '', { liveCamera: true, videoEl });
@@ -18273,7 +18272,7 @@
           if (window.Face.snapshot) FACE_STATE.lastLiveEnrolSnap = window.Face.snapshot(videoEl);
         }
         if (overlayEl && window.Face.drawOverlay) {
-          const col = det && det.descriptor ? '#22c55e' : '#D9A54A';
+          const col = det && det.descriptor ? '#22c55e' : '#94A3B8';
           window.Face.drawOverlay(overlayEl, videoEl, det, col);
         }
         if (hudTel) {
@@ -20807,7 +20806,7 @@
     const mThemeBtn = $('mobileThemeBtn');
     if (mThemeBtn) mThemeBtn.innerHTML = STATE.theme === 'dark' ? ic('sun') : ic('moon');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0E1A2E' : '#F4F2EE');
+    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0B0D11' : '#F7F8FA');
 
     applyUserRlsAndPermissions();
     const user = activeUser();
