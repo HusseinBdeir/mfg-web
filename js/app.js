@@ -116,6 +116,7 @@
     search: '',
     chipFilter: 'all',
     cfEntryMode: 'entries',
+    cfBridgeMode: 'streams',
     cfFocusDate: '',
     cfFocusYm: '',
     cfFocusParty: '',
@@ -3872,8 +3873,7 @@
       title: HUB_TITLES.cashflow,
       group: 'books',
       tabs: [
-        { view: 'cashflow', label: 'Cash Flow & Till', icon: 'cashflow', pillFn: (_u, k) => (k ? fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) : '') },
-        { view: 'cashflow_analytics', label: 'Cash Flow Analytics', icon: 'cashflow_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+        { view: 'cashflow', match: ['cashflow', 'cashflow_analytics'], label: 'Cash Flow & Till', icon: 'cashflow', pillFn: (_u, k) => (k ? fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) : '') }
       ]
     },
     {
@@ -5304,19 +5304,29 @@
       const ymShort = ymFull.replace('2024', '24').replace('2025', '25').replace('2026', '26');
 
       const bars = [
-        { v: sK, cls: 's-1', x: x0 },
-        { v: rK, cls: 's-2', x: x0 + subW + 1 },
-        { v: pK, cls: 's-3', x: x0 + (subW + 1) * 2 }
+        { v: sK, cls: 's-1', x: x0, idx: 0 },
+        { v: rK, cls: 's-2', x: x0 + subW + 1, idx: 1 },
+        { v: pK, cls: 's-3', x: x0 + (subW + 1) * 2, idx: 2 }
       ].map(b => {
         const top = y(b.v);
         const bottom = y(0);
         const h = Math.max(2, bottom - top);
-        return `<rect class="${b.cls}" x="${b.x.toFixed(1)}" y="${top.toFixed(1)}" width="${subW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"/>`;
+        return `<rect class="${b.cls}" data-series-idx="${b.idx}" x="${b.x.toFixed(1)}" y="${top.toFixed(1)}" width="${subW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"/>`;
       }).join('');
 
       const tip = `Sales TTC: $${sK.toFixed(1)}k · Raw Cost: $${rK.toFixed(1)}k · Cash Profit: $${pK.toFixed(1)}k · Loads: ${fmtNum(row.loads)}`;
-      g += `<g class="col" data-m="${esc(ymFull)}" data-t="$${sK.toFixed(1)}k Sales" data-tip="${esc(tip)}">`
+      const popSpec = JSON.stringify({
+        t: ymFull,
+        b: `${fmtNum(row.loads)} loads`,
+        r: [
+          { l: 'Sales TTC', v: `$${sK.toFixed(1)}k`, c: '#2A6DB5' },
+          { l: 'Raw Material Cost', v: `$${rK.toFixed(1)}k`, c: '#C48A2C' },
+          { l: 'Operating Cash Profit', v: `$${pK.toFixed(1)}k`, c: '#1E9E8A', tot: true }
+        ]
+      });
+      g += `<g class="col" data-m="${esc(ymFull)}" data-t="$${sK.toFixed(1)}k Sales" data-tip="${esc(tip)}" data-chart-pop="${esc(popSpec)}">`
         + `<rect class="hit" x="${(ml + slot * i).toFixed(1)}" y="${mt}" width="${slot.toFixed(1)}" height="${ph}"/>`
+        + `<line class="pbi-col-guide" x1="${(x0 + bw / 2).toFixed(1)}" x2="${(x0 + bw / 2).toFixed(1)}" y1="${mt}" y2="${mt + ph}"/>`
         + `${bars}</g>`;
       g += `<text class="tick" x="${(x0 + bw / 2).toFixed(1)}" y="${H - 9}" text-anchor="middle">${esc(ymShort.slice(0, 6))}</text>`;
       if (i === n - 1) {
@@ -9296,6 +9306,60 @@
       return `${MONTH_SHORT[(Number(mHit[2]) || 1) - 1]} ${mHit[1]}`;
     };
 
+    const scopedMonths = getScopedMonthly(m.monthly, 14);
+    const cfVisualsHtml = (window.MFG_PBI && typeof window.MFG_PBI.renderCashFlowVisualsSection === 'function')
+      ? window.MFG_PBI.renderCashFlowVisualsSection({
+          months: scopedMonths,
+          allDailyRows,
+          rateLbp: rate,
+          chartGrain: STATE.cfChartGrain || 'monthly',
+          focusYm,
+          focusDate
+        })
+      : '';
+
+    const isBridgeMonthly = STATE.cfBridgeMode === 'months';
+    const cleanCfUsd = (v, eps = 0.5) => {
+      const n = Number(v || 0);
+      return Math.abs(n) < eps ? 0 : n;
+    };
+    const progRows = [...(m.monthly || [])].reverse().map(r => {
+      const ymNo = String(r.YearMonthNo || '');
+      const ymIso = /^\d{6}$/.test(ymNo) ? `${ymNo.slice(0, 4)}-${ymNo.slice(4, 6)}` : (monthLabelToYm(r['Year Month']) || '');
+      const opIn = Number(r.cash_sales || 0) + Number(r.receipts || 0);
+      const opOut = Number(r.cash_expenses || 0) + Number(r.settlements_paid || 0) + Number(r.salaries || 0);
+      return {
+        ymIso,
+        monthLbl: String(r['Year Month'] || r.YearMonthNo || ''),
+        cash_sales: cleanCfUsd(r.cash_sales),
+        receipts: cleanCfUsd(r.receipts),
+        treasury_in: cleanCfUsd(Math.max(0, round2(Number(r.cash_in || 0) - opIn))),
+        cash_in: cleanCfUsd(r.cash_in),
+        cash_expenses: cleanCfUsd(r.cash_expenses),
+        settlements_paid: cleanCfUsd(r.settlements_paid),
+        salaries: cleanCfUsd(r.salaries),
+        sweeps_out: cleanCfUsd(Math.max(0, round2(Number(r.cash_out || 0) - opOut))),
+        cash_out: cleanCfUsd(r.cash_out),
+        net_cash: cleanCfUsd(r.net_cash),
+        cash_till: cleanCfUsd(r.cash_till)
+      };
+    });
+    const progTotals = progRows.reduce((acc, r) => {
+      acc.cash_sales += r.cash_sales;
+      acc.receipts += r.receipts;
+      acc.treasury_in += r.treasury_in;
+      acc.cash_in += r.cash_in;
+      acc.cash_expenses += r.cash_expenses;
+      acc.settlements_paid += r.settlements_paid;
+      acc.salaries += r.salaries;
+      acc.sweeps_out += r.sweeps_out;
+      acc.cash_out += r.cash_out;
+      acc.net_cash += r.net_cash;
+      return acc;
+    }, { cash_sales: 0, receipts: 0, treasury_in: 0, cash_in: 0, cash_expenses: 0, settlements_paid: 0, salaries: 0, sweeps_out: 0, cash_out: 0, net_cash: 0 });
+    const latestProgTill = progRows.length ? progRows[0].cash_till : cleanCfUsd(liveTot);
+    const maxProgBar = Math.max(1, ...progRows.map(r => Math.max(Math.abs(r.cash_in || 0), Math.abs(r.cash_out || 0))));
+
     return `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
@@ -9336,7 +9400,7 @@
             label: 'Selected Period Cash Flow',
             badge: esc(k.label || 'All-Time'),
             val: `${fmtUSD(k.net_cash_flow, 2)}`,
-            sub: `USD <b>${fmtUSD(k.net_cash_usd, 2)}</b> · LBP <b>${fmtLBPk(k.net_cash_lbp)}</b> · End Till <b>${fmtUSD(k.period_till, 2)}</b>`,
+            sub: `In <b>${fmtUSDk(k.cash_inflow)}</b> · Out <b>${fmtUSDk(k.cash_outflow)}</b> · USD <b>${fmtUSD(k.net_cash_usd, 2)}</b> · LBP <b>${fmtLBPk(k.net_cash_lbp)}</b> · End Till <b>${fmtUSD(k.period_till, 2)}</b>`,
             tone: 'steel'
           })}
         </div>
@@ -9546,11 +9610,20 @@
         `}
       </div>
 
+      ${cfVisualsHtml}
+
       <div class="panel-card" id="tillBridgePanel" style="margin-bottom:14px">
-        <div class="panel-head">
-          <div class="panel-title"><span>CUMULATIVE BOOK TILL RECONCILIATION BY CATEGORY (USD &amp; LBP · CLICK ANY STREAM TO INSPECT ENTRIES)</span></div>
-          <span class="panel-meta">${exportBtn('tillBridgePanel', 'Cash_Till_Reconciliation')}</span>
+        <div class="panel-head cf-register-head">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="panel-title"><span>${isBridgeMonthly ? 'MONTHLY CASH FLOW &amp; TILL PROGRESSION (OPERATING VS TREASURY SWEEPS)' : 'CUMULATIVE BOOK TILL RECONCILIATION BY CATEGORY (USD &amp; LBP)'}</span></div>
+            <div class="cf-mode-switch" role="tablist" aria-label="Book Till Reconciliation Mode">
+              <button type="button" class="cf-mode-btn ${!isBridgeMonthly ? 'active' : ''}" data-cf-bridge-mode="streams" role="tab" aria-selected="${!isBridgeMonthly}">By Stream <span>(7 Categories)</span></button>
+              <button type="button" class="cf-mode-btn ${isBridgeMonthly ? 'active' : ''}" data-cf-bridge-mode="months" role="tab" aria-selected="${isBridgeMonthly}">Monthly Progression <span>(${fmtNum(progRows.length)} Months)</span></button>
+            </div>
+          </div>
+          <span class="panel-meta">${exportBtn('tillBridgePanel', isBridgeMonthly ? 'Monthly_Cash_Flow_Progression' : 'Cash_Till_Reconciliation')}</span>
         </div>
+        ${!isBridgeMonthly ? `
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -9594,6 +9667,65 @@
             </tfoot>
           </table>
         </div>
+        ` : `
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th class="r">Cash Sales ($)</th>
+                <th class="r">AR Receipts ($)</th>
+                <th class="r">Treasury &amp; FX In ($)</th>
+                <th class="r">Total Cash In ($)</th>
+                <th class="r">Cash Expenses ($)</th>
+                <th class="r">AP Settlements ($)</th>
+                ${fullFin ? '<th class="r">Salaries Paid ($)</th>' : ''}
+                <th class="r">Sweeps &amp; FX Out ($)</th>
+                <th class="r">Total Cash Out ($)</th>
+                <th class="r">Net Cash Flow ($)</th>
+                <th class="r">Closing Till ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${progRows.map(pr => {
+                const inBarW = Math.min(100, Math.round((Math.abs(pr.cash_in || 0) / maxProgBar) * 100));
+                const outBarW = Math.min(100, Math.round((Math.abs(pr.cash_out || 0) / maxProgBar) * 100));
+                return `
+                <tr>
+                  <td>${pr.ymIso ? `<button type="button" class="cf-month-drill-btn${focusYm === pr.ymIso ? ' active' : ''}" data-cf-focus-ym="${esc(pr.ymIso)}" title="Inspect all cash till entries in ${esc(pr.monthLbl)}"><strong>${esc(pr.monthLbl)}</strong> <span>→</span></button>` : `<strong>${esc(pr.monthLbl)}</strong>`}</td>
+                  <td class="r">${fmtUSD(pr.cash_sales, 0)}</td>
+                  <td class="r">${fmtUSD(pr.receipts, 0)}</td>
+                  <td class="r">${fmtUSD(pr.treasury_in, 0)}</td>
+                  <td class="r pbi-bar-cell"><span class="pbi-bar-bg" style="width:${inBarW}%"></span><span class="pbi-bar-fg"><b>${fmtUSD(pr.cash_in, 0)}</b></span></td>
+                  <td class="r">${fmtUSD(pr.cash_expenses, 0)}</td>
+                  <td class="r">${fmtUSD(pr.settlements_paid, 0)}</td>
+                  ${fullFin ? `<td class="r">${fmtUSD(pr.salaries, 0)}</td>` : ''}
+                  <td class="r">${fmtUSD(pr.sweeps_out, 0)}</td>
+                  <td class="r pbi-bar-cell"><span class="pbi-bar-bg" style="width:${outBarW}%"></span><span class="pbi-bar-fg"><b>${fmtUSD(pr.cash_out, 0)}</b></span></td>
+                  <td class="r"><strong style="color:${pr.net_cash < -0.5 ? 'var(--crit)' : (pr.net_cash > 0.5 ? 'var(--good)' : 'inherit')}">${fmtUSD(pr.net_cash, 0)}</strong></td>
+                  <td class="r"><strong style="color:${pr.cash_till < -0.5 ? 'var(--crit)' : 'inherit'}">${fmtUSD(pr.cash_till, 0)}</strong></td>
+                </tr>`;
+              }).join('') || emptyRow(fullFin ? 12 : 11, 'No monthly cash flow rows')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><b>TOTAL (${fmtNum(progRows.length)} MONTHS)</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.cash_sales, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.receipts, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.treasury_in, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.cash_in, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.cash_expenses, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.settlements_paid, 0)}</b></td>
+                ${fullFin ? `<td class="r"><b>${fmtUSD(progTotals.salaries, 0)}</b></td>` : ''}
+                <td class="r"><b>${fmtUSD(progTotals.sweeps_out, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(progTotals.cash_out, 0)}</b></td>
+                <td class="r"><b style="color:${progTotals.net_cash < -0.5 ? 'var(--crit)' : (progTotals.net_cash > 0.5 ? 'var(--good)' : 'inherit')}">${fmtUSD(progTotals.net_cash, 0)}</b></td>
+                <td class="r"><b>${fmtUSD(latestProgTill, 0)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        `}
       </div>
 
       <div class="split-grid-2" style="margin-bottom:14px">
@@ -21555,6 +21687,8 @@
 
   function renderApp() {
     STATE.renderPending = false;
+    const popEl = $('mfgChartPopover');
+    if (popEl && !popEl.hidden) popEl.hidden = true;
     lockShellScroll();
     document.documentElement.setAttribute('data-theme', STATE.theme);
     syncRailCollapseUi();
@@ -21674,7 +21808,6 @@
       case 'sales_analytics':
       case 'raw_analytics':
       case 'fleet_analytics':
-      case 'cashflow_analytics':
       case 'expenses_analytics':
       case 'payroll_analytics':
         wsHtml = renderHubAnalyticsView(STATE.view);
@@ -21682,6 +21815,7 @@
       case 'raw': wsHtml = renderRaw(); break;
       case 'fleet': wsHtml = renderFleet(); break;
       case 'pricing': wsHtml = renderPricing(); break;
+      case 'cashflow_analytics':
       case 'cashflow': wsHtml = renderCashFlowTill(); break;
       case 'customers':
       case 'ar': wsHtml = renderAR(); break;
@@ -21957,24 +22091,34 @@
     const chartWrap = $('execChartWrap');
     const chartTip = $('execChartTip');
     if (chartWrap && chartTip) {
-      const showTip = (col, clientX, clientY) => {
-        chartTip.innerHTML = `<strong>${esc(col.getAttribute('data-m') || '')} · ${esc(col.getAttribute('data-t') || '')}</strong><br>${esc(col.getAttribute('data-tip') || '')}`;
+      const showTip = (col, clientX, clientY, targetEl) => {
+        const rawSpec = col.getAttribute('data-chart-pop');
+        const sEl = targetEl && typeof targetEl.closest === 'function' ? targetEl.closest('[data-series-idx]') : null;
+        const activeIdx = sEl ? Number(sEl.getAttribute('data-series-idx')) : -1;
+        if (rawSpec && window.MFG_PBI && typeof window.MFG_PBI.renderChartPopHtml === 'function') {
+          chartTip.innerHTML = window.MFG_PBI.renderChartPopHtml(rawSpec, activeIdx);
+        } else {
+          chartTip.innerHTML = `<div class="chart-pop-hdr"><span class="chart-pop-title">${esc(col.getAttribute('data-m') || '')}</span><span class="chart-pop-badge">${esc(col.getAttribute('data-t') || '')}</span></div><div class="chart-pop-rows"><div class="chart-pop-row"><span class="chart-pop-lbl">${esc(col.getAttribute('data-tip') || '')}</span></div></div>`;
+        }
         chartTip.hidden = false;
         const rect = chartWrap.getBoundingClientRect();
-        const tipW = Math.min(260, rect.width - 16);
+        const tipRect = chartTip.getBoundingClientRect();
+        const tipW = tipRect.width || Math.min(260, rect.width - 16);
+        const tipH = tipRect.height || 92;
         const x = clientX != null ? (clientX - rect.left - tipW / 2) : 10;
-        const y = clientY != null ? (clientY - rect.top - 58) : 8;
+        const rawY = clientY != null ? (clientY - rect.top - tipH - 12) : 8;
+        const y = rawY < 6 && clientY != null ? Math.min(rect.height - tipH - 6, clientY - rect.top + 16) : Math.max(6, rawY);
         chartTip.style.left = Math.min(Math.max(8, rect.width - tipW - 8), Math.max(8, x)) + 'px';
         chartTip.style.top = Math.max(6, y) + 'px';
       };
       chartWrap.querySelectorAll('.col').forEach(col => {
-        col.addEventListener('mouseenter', e => showTip(col, e.clientX, e.clientY));
-        col.addEventListener('mousemove', e => showTip(col, e.clientX, e.clientY));
+        col.addEventListener('mouseenter', e => showTip(col, e.clientX, e.clientY, e.target));
+        col.addEventListener('mousemove', e => showTip(col, e.clientX, e.clientY, e.target));
         col.addEventListener('mouseleave', () => { chartTip.hidden = true; });
         col.addEventListener('click', e => {
           e.stopPropagation();
           const b = col.getBoundingClientRect();
-          showTip(col, b.left + b.width / 2, b.top);
+          showTip(col, b.left + b.width / 2, b.top, e.target);
         });
       });
     }
@@ -22013,6 +22157,16 @@
       renderApp();
       if (ws) ws.scrollTop = y;
     }));
+    container.querySelectorAll('[data-cf-bridge-mode]').forEach(btn => btn.addEventListener('click', () => {
+      const nextBridge = btn.getAttribute('data-cf-bridge-mode') || 'streams';
+      if (STATE.cfBridgeMode !== nextBridge) {
+        STATE.cfBridgeMode = nextBridge;
+      }
+      const ws = $('workspace');
+      const y = ws ? ws.scrollTop : 0;
+      renderApp();
+      if (ws) ws.scrollTop = y;
+    }));
     container.querySelectorAll('[data-cf-chart-grain]').forEach(btn => btn.addEventListener('click', () => {
       STATE.cfChartGrain = btn.getAttribute('data-cf-chart-grain') || 'monthly';
       const ws = $('workspace');
@@ -22041,7 +22195,7 @@
       STATE.cfEntryMode = 'entries';
       STATE.shown = {};
       renderApp();
-      const target = $('pbiCfEntriesPanel') || $('tillRecentPanel');
+      const target = $('tillRecentPanel') || $('pbiCfEntriesPanel');
       if (target) scrollWorkspaceTo(target, 10);
     }));
     container.querySelectorAll('[data-cf-focus-party]').forEach(el => el.addEventListener('click', ev => {
@@ -22455,6 +22609,7 @@
   }
 
   function setView(view, opts = {}) {
+    if (view === 'cashflow_analytics') view = 'cashflow';
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
     if (STATE.kioskLocked && view !== 'kiosks') {
@@ -22476,6 +22631,7 @@
       STATE.chipFilter = 'all';
       STATE.shown = {};
       STATE.cfEntryMode = 'entries';
+      STATE.cfBridgeMode = 'streams';
       STATE.cfFocusDate = '';
       STATE.cfFocusYm = '';
       STATE.cfFocusParty = '';
@@ -22531,7 +22687,8 @@
         if (parsedSw && parsedSw.email && (Date.now() - Number(parsedSw.ts || 0)) < 8000) swResumeEmail = parsedSw.email;
       }
     } catch (_) {}
-    const qView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
+    const rawQView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
+    const qView = rawQView === 'cashflow_analytics' ? 'cashflow' : rawQView;
     if (qView && VIEW_TITLES[qView]) STATE.view = qView;
     const qKiosk = PARAMS.get('kiosk');
     if (qKiosk && ['sales', 'raw', 'fuel', 'attendance'].includes(qKiosk.toLowerCase())) {
@@ -22849,6 +23006,62 @@
       const railNavEl = $('sidebarNav');
       if (railNavEl) railNavEl.addEventListener('scroll', hideRailHoverTooltip, { passive: true });
     }
+
+    // Unified Institutional Chart Explanation Popover (#mfgChartPopover) for all SVG & bar visuals
+    const chartPopEl = $('mfgChartPopover');
+    const hideChartPopover = () => {
+      if (chartPopEl && !chartPopEl.hidden) chartPopEl.hidden = true;
+    };
+    const showChartPopoverForEvent = e => {
+      if (!chartPopEl || !e || !e.target || typeof e.target.closest !== 'function') {
+        hideChartPopover();
+        return;
+      }
+      const popHost = e.target.closest('[data-chart-pop]');
+      if (!popHost || popHost.closest('#execChartWrap')) {
+        hideChartPopover();
+        return;
+      }
+      const rawSpec = popHost.getAttribute('data-chart-pop');
+      if (!rawSpec || !window.MFG_PBI || typeof window.MFG_PBI.renderChartPopHtml !== 'function') {
+        hideChartPopover();
+        return;
+      }
+      const sEl = e.target.closest('[data-series-idx]');
+      const activeIdx = sEl ? Number(sEl.getAttribute('data-series-idx')) : -1;
+      const html = window.MFG_PBI.renderChartPopHtml(rawSpec, activeIdx);
+      if (!html) {
+        hideChartPopover();
+        return;
+      }
+      chartPopEl.innerHTML = html;
+      chartPopEl.hidden = false;
+      const hRect = popHost.getBoundingClientRect();
+      const pRect = chartPopEl.getBoundingClientRect();
+      const hasPtr = typeof e.clientX === 'number' && typeof e.clientY === 'number' && (e.clientX > 0 || e.clientY > 0);
+      const anchorX = hasPtr ? e.clientX : (hRect.left + hRect.width / 2);
+      const anchorY = hasPtr ? e.clientY : hRect.top;
+      const leftPx = Math.min(
+        window.innerWidth - pRect.width - 10,
+        Math.max(10, Math.round(anchorX - pRect.width / 2))
+      );
+      let topPx = Math.round(anchorY - pRect.height - 14);
+      if (topPx < 10) {
+        topPx = Math.min(window.innerHeight - pRect.height - 10, Math.round((hasPtr ? e.clientY : hRect.bottom) + 16));
+      }
+      chartPopEl.style.left = `${leftPx}px`;
+      chartPopEl.style.top = `${Math.max(10, topPx)}px`;
+    };
+    const wsElForPop = $('workspace');
+    if (wsElForPop) {
+      wsElForPop.addEventListener('mouseover', showChartPopoverForEvent);
+      wsElForPop.addEventListener('pointerover', showChartPopoverForEvent);
+      wsElForPop.addEventListener('mousemove', showChartPopoverForEvent);
+      wsElForPop.addEventListener('focusin', showChartPopoverForEvent);
+      wsElForPop.addEventListener('mouseleave', hideChartPopover);
+      wsElForPop.addEventListener('scroll', hideChartPopover, { passive: true });
+    }
+    window.addEventListener('scroll', hideChartPopover, { passive: true });
 
     document.querySelectorAll('#sidebarNav .nav-item').forEach(btn => btn.addEventListener('click', () => clickHub(btn.getAttribute('data-hub') || btn.getAttribute('data-view'))));
     document.querySelectorAll('#mobileBottomDock [data-dock-view]').forEach(btn => btn.addEventListener('click', () => {

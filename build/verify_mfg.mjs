@@ -197,7 +197,7 @@ try {
     'sales', 'customers', 'pricing', 'sales_vat', 'sales_analytics',
     'raw', 'suppliers', 'raw_analytics',
     'fleet', 'fleet_analytics',
-    'cashflow', 'cashflow_analytics',
+    'cashflow',
     'expenses', 'expenses_analytics',
     'payroll', 'payroll_attendance', 'payroll_contracts', 'payroll_analytics',
     'ledger', 'ledger_treasury', 'statements', 'users'
@@ -225,7 +225,7 @@ try {
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
       const subtabBar = document.getElementById('hubSubtabBar');
       const activeSubtabLbl = subtabBar ? (subtabBar.querySelector('.hub-subtab.active .hub-subtab-lbl')?.textContent?.trim() || '') : topbarTitle;
-      const subtabCountOk = '${v}' === 'kiosks' ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
+      const subtabCountOk = ('${v}' === 'kiosks' || '${v}' === 'cashflow') ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
       const allMatch = Boolean(
         railLabel &&
         railLabel === expectedHubTitle &&
@@ -2098,8 +2098,8 @@ try {
       return !document.querySelector('#workspace .mod-analytics-hub');
     });
 
-    // Verify all 10 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
-    const modViews = ['sales_analytics', 'sales_vat', 'raw_analytics', 'fleet_analytics', 'cashflow_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
+    // Verify all 9 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
+    const modViews = ['sales_analytics', 'sales_vat', 'raw_analytics', 'fleet_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
     const modResults = [];
     for (const v of modViews) {
       window.__navToView(v);
@@ -3725,35 +3725,36 @@ try {
     await wait(30);
     const resetToIndivOk = Boolean(document.querySelector('#tillRecentPanel [data-cf-mode="entries"].active') && !document.querySelector('#tillRecentPanel [data-cf-mode="daily"].active'));
 
-    // B. #cashflow_analytics (Page 14): zero duplicate single-section title pills, clean round $0 ticks, Operating vs Treasury split, Daily 30d toggle & #pbiCfEntriesPanel
-    window.__navToView('cashflow_analytics');
-    await wait(45);
-    const cfAnTxt = document.getElementById('workspace')?.textContent || '';
-    const no5300AnOk = !/Account\\s*5300|Till\\s*5300|\\(5300\\)|Class\\s*5300/i.test(cfAnTxt);
-    const anDefaultIndivOk = Boolean(document.querySelector('#pbiCfEntriesPanel [data-cf-mode="entries"].active') && !document.querySelector('#pbiCfEntriesPanel [data-cf-mode="daily"].active'));
-    const dupSecTabs = document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] .mod-analytics-tabs [data-mod-sec]:not([data-mod-toggle])').length;
-    const hasExplainer = Boolean(document.querySelector('.cf-explainer-bar'));
-    const svgTexts = Array.from(document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] svg text')).map(t => t.textContent.trim());
+    // B. Unified single-page #cashflow: zero sub-tab bar (#hubSubtabBar absent), embedded visual charts (clean round $0 ticks, Operating vs Treasury split, Daily 30d toggle) & #tillBridgePanel By Stream <-> Monthly Progression toggle
+    const noSubtabBarOnCf = !document.getElementById('hubSubtabBar');
+    const hasExplainer = Boolean(document.querySelector('#workspace .cf-explainer-bar'));
+    const svgTexts = Array.from(document.querySelectorAll('#workspace svg text')).map(t => t.textContent.trim());
     const cleanTicksOk = svgTexts.includes('$0') && !svgTexts.includes('$32') && !svgTexts.includes('-$504') && !svgTexts.includes('$568') && !svgTexts.includes('$2.13M');
-    const progPanel = Array.from(document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] .pbi-panel')).find(p => (p.textContent || '').includes('Monthly Cash Flow & Till Progression'));
+
+    // Toggle #tillBridgePanel to Monthly Progression (22 Months)
+    const defaultStreamModeOk = Boolean(document.querySelector('#tillBridgePanel [data-cf-bridge-mode="streams"].active'));
+    document.querySelector('#tillBridgePanel [data-cf-bridge-mode="months"]')?.click();
+    await wait(35);
+    const progPanel = document.getElementById('tillBridgePanel');
     const progTxt = (progPanel ? progPanel.textContent : '').replace(/\\s+/g, ' ');
     const progCells = progPanel ? Array.from(progPanel.querySelectorAll('td')).map(td => td.textContent.trim()) : [];
     const horizReconOk = progTxt.toUpperCase().includes('TREASURY & FX IN ($)') && progTxt.toUpperCase().includes('SWEEPS & FX OUT ($)') && !progCells.includes('-$0') && !progCells.includes('-$0.00');
-    const hasExplorerPanel = Boolean(document.getElementById('pbiCfEntriesPanel'));
 
-    // Click Oct 2026 month drill button -> filters #pbiCfEntriesPanel to Oct 2026
-    document.querySelector('.cf-month-drill-btn[data-cf-focus-ym="2026-10"]')?.click();
+    // Click Oct 2026 month drill button inside #tillBridgePanel -> filters #tillRecentPanel on the same page to Oct 2026
+    document.querySelector('#tillBridgePanel .cf-month-drill-btn[data-cf-focus-ym="2026-10"]')?.click();
     await wait(35);
-    const octDrillPill = (document.querySelector('#pbiCfEntriesPanel .cf-drill-strip')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const octDrillPill = (document.querySelector('#tillRecentPanel .cf-drill-strip')?.textContent || '').replace(/\\s+/g, ' ').trim();
     const octDrillOk = octDrillPill.includes('Oct 2026');
-    document.querySelector('#pbiCfEntriesPanel [data-cf-clear-drill="all"]')?.click();
+    document.querySelector('#tillRecentPanel [data-cf-clear-drill="all"]')?.click();
+    await wait(25);
+    document.querySelector('#tillBridgePanel [data-cf-bridge-mode="streams"]')?.click();
     await wait(25);
 
-    // Toggle Till Balance chart to Daily (Last 30d)
+    // Toggle Till Balance chart to Daily (Last 30d) right on #cashflow
     document.querySelector('[data-cf-chart-grain="daily"]')?.click();
     await wait(35);
-    const dailyChartTitle = (document.querySelector('.mod-analytics-hub[data-mod-hub="cashflow_analytics"]')?.textContent || '');
-    const dailyBarCnt = document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] svg g.cf-chart-bar[data-cf-focus-date]').length;
+    const dailyChartTitle = (document.getElementById('workspace')?.textContent || '');
+    const dailyBarCnt = document.querySelectorAll('#workspace svg g.cf-chart-bar[data-cf-focus-date]').length;
     const dailyChartOk = dailyChartTitle.includes('Last 30 Operating Days') && dailyBarCnt === 30;
     document.querySelector('[data-cf-chart-grain="monthly"]')?.click();
     await wait(25);
@@ -3776,8 +3777,8 @@ try {
     await wait(30);
 
     return {
-      ok: Boolean(recentFirstOk && defaultIndivOk && resetToIndivOk && anDefaultIndivOk && no5300CfOk && no5300AnOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && dupSecTabs === 0 && hasExplainer && cleanTicksOk && horizReconOk && hasExplorerPanel && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
-      recentFirstOk, defaultIndivOk, resetToIndivOk, anDefaultIndivOk, no5300CfOk, no5300AnOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
+      ok: Boolean(recentFirstOk && defaultIndivOk && resetToIndivOk && noSubtabBarOnCf && defaultStreamModeOk && no5300CfOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && hasExplainer && cleanTicksOk && horizReconOk && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
+      recentFirstOk, defaultIndivOk, resetToIndivOk, noSubtabBarOnCf, defaultStreamModeOk, no5300CfOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, hasExplainer, cleanTicksOk, horizReconOk, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
       allEntriesTfoot, extTfoot, extdTfoot, salTfoot, loanTfoot, drillDayTfoot
     };
   })()`);
@@ -3881,6 +3882,58 @@ try {
   catSortAndCostClassProbe && catSortAndCostClassProbe.ok
     ? pass('Expense Categories & Subcategories total_spent desc sort (Fuel $2,499,933.55 #1), Lebanese CoA Cost Class badges (0 $NaN), 360° subgrid & Universal Registry activity-first default sorts', `topCat=${catSortAndCostClassProbe.topCat?.name} (${catSortAndCostClassProbe.topCat?.spentTxt}, ${catSortAndCostClassProbe.topCat?.costClass}) · topSub=${catSortAndCostClassProbe.topSub?.name}`)
     : fail('Expense Categories/Subcategories sort, Cost Class $NaN fix & activity-first registry sorting', JSON.stringify(catSortAndCostClassProbe));
+
+  // Institutional Chart Explanation Popover Card (#mfgChartPopover & #execChartTip) — 0 native <title> black boxes
+  const chartPopoverProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('overview');
+    await wait(50);
+    const ovSvgTitles = document.querySelectorAll('#workspace svg title').length;
+    const execCol = document.querySelector('#execChartWrap .col[data-chart-pop]');
+    if (execCol) {
+      const r = execCol.getBoundingClientRect();
+      execCol.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + 20 }));
+      execCol.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + 20 }));
+    }
+    const execTip = document.getElementById('execChartTip');
+    const execTipOpen = Boolean(execTip && !execTip.hidden && execTip.querySelector('.chart-pop-hdr') && execTip.querySelectorAll('.chart-pop-row').length === 3);
+    const execTipBg = execTip ? getComputedStyle(execTip).backgroundColor : '';
+    const execTipLightOk = /255,\\s*255,\\s*255/.test(execTipBg);
+
+    window.__navToView('cashflow_analytics');
+    await wait(60);
+    const cfSvgTitles = document.querySelectorAll('#workspace svg title').length;
+    const cfCol = document.querySelector('#workspace svg [data-chart-pop], #workspace [data-chart-pop]');
+    if (cfCol) {
+      const r = cfCol.getBoundingClientRect();
+      cfCol.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + 20 }));
+    }
+    const popEl = document.getElementById('mfgChartPopover');
+    const popOpen = Boolean(popEl && !popEl.hidden && popEl.querySelector('.chart-pop-hdr') && popEl.querySelectorAll('.chart-pop-row').length >= 1);
+    const popBg = popEl ? getComputedStyle(popEl).backgroundColor : '';
+    const popLightOk = /255,\\s*255,\\s*255/.test(popBg);
+    const popTitle = popEl?.querySelector('.chart-pop-title')?.textContent?.trim() || '';
+
+    window.__navToView('pbi');
+    await wait(60);
+    const pbiSvgTitles = document.querySelectorAll('#workspace svg title').length;
+    const pbiPopCount = document.querySelectorAll('#workspace [data-chart-pop]').length;
+    const pbiCol = document.querySelector('#workspace svg [data-chart-pop]');
+    if (pbiCol) {
+      const r = pbiCol.getBoundingClientRect();
+      pbiCol.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + 20 }));
+    }
+    const pbiPopOpen = Boolean(popEl && !popEl.hidden && popEl.querySelector('.chart-pop-hdr') && popEl.querySelectorAll('.chart-pop-row').length >= 1);
+    window.__navToView('overview');
+    await wait(30);
+    return {
+      ok: Boolean(ovSvgTitles === 0 && cfSvgTitles === 0 && pbiSvgTitles === 0 && execTipOpen && execTipLightOk && popOpen && pbiPopOpen && popLightOk && pbiPopCount >= 10),
+      ovSvgTitles, cfSvgTitles, pbiSvgTitles, execTipOpen, execTipBg, popOpen, pbiPopOpen, popBg, popTitle, pbiPopCount
+    };
+  })()`);
+  chartPopoverProbe && chartPopoverProbe.ok
+    ? pass('Institutional Chart Explanation Popover (#mfgChartPopover & #execChartTip) · 0 native <title> black boxes, light Rev 10 Ledger card + multi-series swatches', `popTitle=${chartPopoverProbe.popTitle} · pbiPopCount=${chartPopoverProbe.pbiPopCount} · bg=${chartPopoverProbe.popBg}`)
+    : fail('Institutional Chart Explanation Popover', JSON.stringify(chartPopoverProbe));
 
 
   // 8. Runtime errors

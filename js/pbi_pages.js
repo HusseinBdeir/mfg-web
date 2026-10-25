@@ -923,6 +923,50 @@
     `;
   }
 
+  // 3b. Institutional Rev 10 Chart Popover Payload Encoder & Renderer (zero native browser <title> black boxes)
+  function encodeChartPop(spec) {
+    return esc(JSON.stringify(spec));
+  }
+
+  function renderChartPopHtml(spec, activeIdx) {
+    if (typeof spec === 'string') {
+      try { spec = JSON.parse(spec); } catch (_) { return ''; }
+    }
+    if (!spec || typeof spec !== 'object') return '';
+    const rows = Array.isArray(spec.rows) ? spec.rows : (Array.isArray(spec.r) ? spec.r : []);
+    const titleTxt = spec.title || spec.t || '—';
+    const badgeTxt = spec.badge || spec.b || '';
+    const badgeCls = spec.badgeTone === 'good' ? ' good' : (spec.badgeTone === 'crit' ? ' crit' : '');
+    const actIdx = activeIdx != null && activeIdx !== '' && Number.isFinite(Number(activeIdx))
+      ? Number(activeIdx)
+      : (spec.activeIdx != null && Number.isFinite(Number(spec.activeIdx)) ? Number(spec.activeIdx) : -1);
+    return `
+      <div class="chart-pop-hdr">
+        <span class="chart-pop-title">${esc(titleTxt)}</span>
+        ${badgeTxt ? `<span class="chart-pop-badge${badgeCls}">${esc(badgeTxt)}</span>` : ''}
+      </div>
+      <div class="chart-pop-rows">
+        ${rows.map((r, ri) => {
+          const isAct = actIdx >= 0 && (r.idx != null ? Number(r.idx) === actIdx : ri === actIdx) && rows.length > 1;
+          const isTot = Boolean(r.isTotal || r.tot);
+          const rowCls = (isTot ? ' is-total' : '') + (isAct ? ' is-active' : '');
+          const valTone = r.tone === 'good' ? ' good' : (r.tone === 'crit' ? ' crit' : (r.tone === 'brass' ? ' brass' : ''));
+          const colHex = r.color || r.c || '';
+          const swatchHtml = colHex
+            ? `<i class="chart-pop-swatch${r.line ? ' is-line' : ''}" style="background:${esc(colHex)}"></i>`
+            : '';
+          return `
+            <div class="chart-pop-row${rowCls}">
+              <span class="chart-pop-lbl">${swatchHtml}<span>${esc(r.label || r.l || '')}</span></span>
+              <span class="chart-pop-val${valTone}">${esc(r.value || r.v || '—')}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      ${spec.footer ? `<div class="chart-pop-ftr">${esc(spec.footer)}</div>` : ''}
+    `;
+  }
+
   // 4. Multi-Series Clustered Column Chart (monthly or categorical)
   function buildClusteredColumnSvg(rows, series, opts = {}) {
     const data = (rows || []).slice(-(opts.maxBars || 14));
@@ -954,17 +998,31 @@
       const startX = cx - totalBarW / 2;
       const rawLbl = String(r[labelKey] || r.label || '');
       const shortLbl = rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, '$1 \'$2').slice(0, 8);
+      const popRows = [];
       const bars = series.map((s, si) => {
         const val = Number(typeof s.get === 'function' ? s.get(r) : r[s.key] || 0);
         const h = Math.max(val > 0 ? 2 : 0, (Math.abs(val) / maxVal) * plotH);
         const x = (startX + si * (barW + 2)).toFixed(1);
         const y = (padT + plotH - h).toFixed(1);
-        const fVal = isMoney ? fmtUSD(val, 0) : fmtNum(val, 0);
+        const fVal = s.fmt ? s.fmt(val, r) : (isMoney ? fmtUSD(val, opts.decimals != null ? opts.decimals : 0) : fmtNum(val, opts.decimals != null ? opts.decimals : 0));
+        popRows.push({
+          idx: si,
+          label: s.label || s.key || 'Series',
+          value: fVal,
+          color: s.color || '#1E293B',
+          tone: val < -0.001 ? 'crit' : ''
+        });
         const showTopLbl = opts.labels && Math.abs(val) > maxVal * 0.08 && data.length <= 10;
-        return `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${s.color || '#1E293B'}"><title>${esc(rawLbl)} · ${esc(s.label)}: ${esc(fVal)}</title></rect>` +
+        return `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${s.color || '#1E293B'}" data-series-idx="${si}"/>` +
           (showTopLbl ? `<text x="${(Number(x) + barW / 2).toFixed(1)}" y="${Math.max(11, Number(y) - 4)}" text-anchor="middle" font-size="8.8" font-weight="700" fill="var(--ink)">${isMoney ? fmtUSDk(val) : fmtNum(val, 0)}</text>` : '');
       }).join('');
-      return `${bars}<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(shortLbl)}</text>`;
+      const colBadge = (r.loads != null && Number(r.loads) > 0 && !series.some(s => /load/i.test(s.label || '')))
+        ? `${fmtNum(r.loads, 0)} loads`
+        : '';
+      const popSpec = { title: rawLbl || shortLbl, badge: colBadge, rows: popRows };
+      return `<g class="pbi-chart-col" data-chart-pop="${encodeChartPop(popSpec)}">` +
+        `<rect class="pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${Math.max(4, grpW - 2).toFixed(1)}" height="${plotH + 20}" rx="4"/>` +
+        `${bars}<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(shortLbl)}</text></g>`;
     }).join('');
 
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${grid}${cols}</svg>`;
@@ -1019,24 +1077,49 @@
       const startX = cx - totalBarW / 2;
       const rawLbl = String(r[labelKey] || r.label || '');
       const shortLbl = rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, '$1 \'$2').slice(0, 8);
+      const popRows = [];
       const bars = barSeries.map((s, si) => {
         const val = Number(typeof s.get === 'function' ? s.get(r) : r[s.key] || 0);
         const h = Math.max(val > 0 ? 2 : 0, (Math.abs(val) / maxBar) * plotH);
         const x = (startX + si * (barW + 2)).toFixed(1);
         const y = (padT + plotH - h).toFixed(1);
-        return `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${s.color || '#1E293B'}"><title>${esc(rawLbl)} · ${esc(s.label)}: ${esc(isMoney ? fmtUSD(val, 0) : fmtNum(val, 0))}</title></rect>`;
+        const fVal = isMoney ? fmtUSD(val, 0) : fmtNum(val, 0);
+        popRows.push({
+          idx: si,
+          label: s.label || s.key || 'Series',
+          value: fVal,
+          color: s.color || '#1E293B',
+          tone: val < -0.001 ? 'crit' : ''
+        });
+        return `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${s.color || '#1E293B'}" data-series-idx="${si}"/>`;
       }).join('');
+      let colBadge = '';
       if (lineSpec) {
         const lv = Number(typeof lineSpec.get === 'function' ? lineSpec.get(r) : r[lineSpec.key] || 0);
         const ly = padT + plotH * (1 - (lv - lMin) / lSpan);
-        pts.push({ x: cx, y: Math.max(padT + 3, Math.min(padT + plotH - 2, ly)), v: lv, lbl: rawLbl });
+        const lFmt = lineSpec.isPct ? (lv * 100).toFixed(1) + '%' : (lineSpec.isMoney !== false ? fmtUSD(lv, 2) : fmtNum(lv, 0));
+        colBadge = lFmt;
+        popRows.push({
+          idx: barSeries.length,
+          label: lineSpec.label || lineSpec.key || 'Trend',
+          value: lFmt,
+          color: lineSpec.color || '#0D9488',
+          line: true,
+          isTotal: true,
+          tone: lv < -0.0001 ? 'crit' : 'brass'
+        });
+        const popSpec = { title: rawLbl || shortLbl, badge: colBadge, rows: popRows };
+        pts.push({ x: cx, y: Math.max(padT + 3, Math.min(padT + plotH - 2, ly)), v: lv, lbl: rawLbl, popSpec });
       }
-      return `${bars}<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(shortLbl)}</text>`;
+      const popSpec = { title: rawLbl || shortLbl, badge: colBadge, rows: popRows };
+      return `<g class="pbi-chart-col" data-chart-pop="${encodeChartPop(popSpec)}">` +
+        `<rect class="pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${Math.max(4, grpW - 2).toFixed(1)}" height="${plotH + 20}" rx="4"/>` +
+        `${bars}<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(shortLbl)}</text></g>`;
     }).join('');
 
     const lineSvg = (lineSpec && pts.length > 1)
-      ? `<polyline fill="none" stroke="${lineSpec.color || '#0D9488'}" stroke-width="2.4" points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"/>` +
-        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.4" fill="${lineSpec.color || '#0D9488'}" stroke="var(--surface)" stroke-width="1"><title>${esc(p.lbl)} · ${esc(lineSpec.label)}: ${esc(lineSpec.isPct ? (p.v * 100).toFixed(1) + '%' : (lineSpec.isMoney !== false ? fmtUSD(p.v, 2) : fmtNum(p.v, 0)))}</title></circle>`).join('')
+      ? `<polyline fill="none" stroke="${lineSpec.color || '#0D9488'}" stroke-width="2.4" pointer-events="none" points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"/>` +
+        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.6" fill="${lineSpec.color || '#0D9488'}" stroke="var(--surface)" stroke-width="1.2" style="cursor:pointer" data-chart-pop="${encodeChartPop(p.popSpec)}" data-series-idx="${barSeries.length}"/>`).join('')
       : '';
 
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${grid}${cols}${lineSvg}</svg>`;
@@ -1049,11 +1132,12 @@
     const W = opts.width || 580, H = opts.height || 235, padL = 54, padR = 18, padT = 26, padB = 36;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const isMoney = opts.isMoney !== false;
-    let maxPos = 0, minNeg = 0;
+    let maxPos = 0, minNeg = 0, totPos = 0;
     data.forEach(d => {
       const v = Number(d.value || 0);
       if (v > maxPos) maxPos = v;
       if (v < minNeg) minNeg = v;
+      if (v > 0) totPos += v;
     });
     if (maxPos === 0 && minNeg === 0) maxPos = 1;
     maxPos *= 1.18;
@@ -1079,13 +1163,28 @@
       const y = v >= 0 ? (zeroY - h) : zeroY;
       const color = d.color || (v < 0 ? '#1E7A6E' : '#1E293B');
       const valLbl = isMoney ? fmtUSDk(v) : fmtNum(v, 0);
+      const fullVal = isMoney ? fmtUSD(v, 2) : fmtNum(v, 2);
       const lblY = v >= 0 ? Math.max(12, y - 5) : Math.min(H - 22, y + h + 12);
+      const shareStr = (v > 0 && totPos > 0 && data.length > 1)
+        ? `${((v / totPos) * 100).toFixed(1)}% of positive`
+        : (v < -0.005 ? 'Credit / On Account' : 'Balanced');
+      const popRows = [
+        { label: d.sub || d.label || 'Bucket Balance', value: fullVal, color, tone: v < -0.005 ? 'crit' : '' }
+      ];
+      if (d.count != null) popRows.push({ label: 'Records / Counterparties', value: fmtNum(d.count, 0) });
+      const popSpec = {
+        title: String(d.label || 'Bucket'),
+        badge: shareStr,
+        badgeTone: v < -0.005 ? 'crit' : (Math.abs(v) < 0.005 ? 'good' : ''),
+        rows: popRows
+      };
       return `
-        <rect x="${x}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${color}">
-          <title>${esc(d.label)}: ${esc(isMoney ? fmtUSD(v, 2) : fmtNum(v, 2))}</title>
-        </rect>
-        <text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${v < 0 ? '#C8333B' : 'var(--ink)'}">${esc(valLbl)}</text>
-        <text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--muted)">${esc(d.label)}</text>
+        <g class="pbi-chart-col" data-chart-pop="${encodeChartPop(popSpec)}">
+          <rect class="pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${Math.max(4, grpW - 2).toFixed(1)}" height="${plotH + 20}" rx="4"/>
+          <rect x="${x}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${color}"/>
+          <text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${v < 0 ? '#C8333B' : 'var(--ink)'}">${esc(valLbl)}</text>
+          <text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--muted)">${esc(d.label)}</text>
+        </g>
       `;
     }).join('');
 
@@ -1126,13 +1225,47 @@
     }).join('');
 
     const stepX = data.length > 1 ? plotW / (data.length - 1) : 0;
-    const xLabels = data.map((r, i) => {
+    const colSpecs = data.map((r, i) => {
       const x = data.length > 1 ? padL + i * stepX : padL + plotW / 2;
-      const shortLbl = String(r[labelKey] || r.label || '').replace(/^(\w{3})\s+20(\d{2})$/, '$1 \'$2').slice(0, 8);
-      return `<text x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(shortLbl)}</text>`;
+      const rawLbl = String(r[labelKey] || r.label || '');
+      const shortLbl = rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, '$1 \'$2').slice(0, 8);
+      const popRows = [];
+      series.forEach((s, si) => {
+        const raw = typeof s.get === 'function' ? s.get(r) : r[s.key];
+        if (raw == null || raw === '') return;
+        const v = Number(raw);
+        popRows.push({
+          idx: si,
+          label: s.label || s.key || 'Series',
+          value: isMoney ? fmtUSD(v, decimals) : fmtNum(v, decimals),
+          color: s.color || '#1E293B',
+          line: true
+        });
+      });
+      return {
+        x,
+        rawLbl,
+        shortLbl,
+        popSpec: { title: rawLbl || shortLbl, badge: `${popRows.length} series`, rows: popRows }
+      };
+    });
+
+    const hitW = data.length > 1 ? stepX : plotW;
+    const colBands = colSpecs.map((c, i) => {
+      const bandX = data.length > 1
+        ? (i === 0 ? padL : c.x - hitW / 2)
+        : padL;
+      const bandW = data.length > 1
+        ? (i === 0 || i === colSpecs.length - 1 ? hitW / 2 + 6 : hitW)
+        : plotW;
+      return `<g class="pbi-chart-col" data-chart-pop="${encodeChartPop(c.popSpec)}">` +
+        `<rect class="pbi-col-hit" x="${bandX.toFixed(1)}" y="${padT}" width="${Math.max(6, bandW).toFixed(1)}" height="${plotH + 20}" rx="3"/>` +
+        `<line class="pbi-col-guide" x1="${c.x.toFixed(1)}" y1="${padT}" x2="${c.x.toFixed(1)}" y2="${(padT + plotH).toFixed(1)}"/>` +
+        `<text x="${c.x.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${esc(c.shortLbl)}</text>` +
+        `</g>`;
     }).join('');
 
-    const lines = series.map(s => {
+    const lines = series.map((s, si) => {
       const pts = [];
       data.forEach((r, i) => {
         const raw = typeof s.get === 'function' ? s.get(r) : r[s.key];
@@ -1140,14 +1273,14 @@
         const v = Number(raw);
         const x = data.length > 1 ? padL + i * stepX : padL + plotW / 2;
         const y = padT + plotH * (1 - (v - minVal) / span);
-        pts.push({ x, y, v, lbl: r[labelKey] || r.label || '' });
+        pts.push({ x, y, v, popSpec: colSpecs[i].popSpec });
       });
       if (!pts.length) return '';
-      return `<polyline fill="none" stroke="${s.color || '#1E293B'}" stroke-width="2.3" points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"/>` +
-        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.2" fill="${s.color || '#1E293B'}" stroke="var(--surface)" stroke-width="1"><title>${esc(p.lbl)} · ${esc(s.label)}: ${esc(isMoney ? fmtUSD(p.v, decimals) : fmtNum(p.v, decimals))}</title></circle>`).join('');
+      return `<polyline fill="none" stroke="${s.color || '#1E293B'}" stroke-width="2.3" pointer-events="none" points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"/>` +
+        pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.4" fill="${s.color || '#1E293B'}" stroke="var(--surface)" stroke-width="1.2" style="cursor:pointer" data-chart-pop="${encodeChartPop(p.popSpec)}" data-series-idx="${si}"/>`).join('');
     }).join('');
 
-    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${grid}${lines}${xLabels}</svg>`;
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${grid}${colBands}${lines}</svg>`;
   }
 
   // 8. Horizontal Bar Chart (matches Power BI barChart with data labels at bar ends)
@@ -1156,17 +1289,35 @@
     const top = (rows || []).filter(r => Math.abs(Number(r[valKey] || 0)) > 0.001).slice(0, maxItems);
     if (!top.length) return `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">No rows for active filter</div>`;
     const max = Math.max(1, ...top.map(r => Math.abs(Number(r[valKey] || 0))));
+    const totAbs = top.reduce((a, r) => a + Math.abs(Number(r[valKey] || 0)), 0) || 1;
     const defaultColor = opts.color === 'brass' ? '#0F766E' : (opts.color === 'crit' ? '#C8333B' : (opts.color || '#1E293B'));
     return `
       <div class="pbi-bar-chart">
         ${top.map((r, i) => {
           const v = Number(r[valKey] || 0);
           const pct = Math.max(3, Math.min(100, Math.round((Math.abs(v) / max) * 100)));
+          const sharePct = ((Math.abs(v) / totAbs) * 100).toFixed(1) + '%';
           const sub = opts.subKey && r[opts.subKey] ? ` <small>· ${esc(r[opts.subKey])}</small>` : '';
           const barColor = v < 0 ? '#C8333B' : (typeof opts.colorFn === 'function' ? opts.colorFn(r, i) : defaultColor);
+          const fmtTxt = String(fmtFn(v, r) || '').replace(/<[^>]+>/g, '').trim();
+          const popRows = [
+            { label: opts.valLabel || 'Amount / Total', value: fmtTxt, color: barColor, tone: v < 0 ? 'crit' : '' }
+          ];
+          if (opts.subKey && r[opts.subKey]) {
+            popRows.push({ label: 'Context / Detail', value: String(r[opts.subKey]) });
+          }
+          if (top.length > 1) {
+            popRows.push({ label: `Share of Top ${top.length}`, value: sharePct });
+          }
+          const popSpec = {
+            title: String(r[labelKey] || '—'),
+            badge: opts.rank !== false ? `Rank #${i + 1} of ${top.length}` : sharePct,
+            badgeTone: v < 0 ? 'crit' : '',
+            rows: popRows
+          };
           return `
-            <div class="pbi-bar-item">
-              <span class="pbi-bar-lbl" title="${esc(r[labelKey] || '—')}">${opts.rank !== false ? `<small>${i + 1}.</small> ` : ''}${esc(r[labelKey] || '—')}${sub}</span>
+            <div class="pbi-bar-item" data-chart-pop="${encodeChartPop(popSpec)}">
+              <span class="pbi-bar-lbl">${opts.rank !== false ? `<small>${i + 1}.</small> ` : ''}${esc(r[labelKey] || '—')}${sub}</span>
               <div class="pbi-bar-lane"><div class="pbi-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
               <span class="pbi-bar-val ${v < 0 ? 'pbi-neg' : ''}">${fmtFn(v, r)}</span>
             </div>
@@ -1189,14 +1340,32 @@
     }));
     return `
       <div class="pbi-bar-chart">
-        ${top.map(r => `
-          <div class="pbi-cbar-item">
+        ${top.map((r, ri) => {
+          const rightTxt = opts.headRight ? String(opts.headRight(r) || '') : `Rank #${ri + 1}`;
+          const popRows = series.map((s, si) => {
+            const v = Number(typeof s.get === 'function' ? s.get(r) : r[s.key] || 0);
+            const fTxt = String(s.fmt ? s.fmt(v, r) : fmtUSD(v, opts.decimals != null ? opts.decimals : 2)).replace(/<[^>]+>/g, '').trim();
+            return {
+              idx: si,
+              label: s.label || s.key || 'Series',
+              value: fTxt,
+              color: v < 0 ? '#C8333B' : (s.color || '#1E293B'),
+              tone: v < 0 ? 'crit' : ''
+            };
+          });
+          const popSpec = {
+            title: String(r[labelKey] || '—'),
+            badge: rightTxt,
+            rows: popRows
+          };
+          return `
+          <div class="pbi-cbar-item" data-chart-pop="${encodeChartPop(popSpec)}">
             <div class="pbi-cbar-head"><span>${esc(r[labelKey] || '—')}</span>${opts.headRight ? `<small class="mono mu">${esc(opts.headRight(r))}</small>` : ''}</div>
-            ${series.map(s => {
+            ${series.map((s, si) => {
               const v = Number(typeof s.get === 'function' ? s.get(r) : r[s.key] || 0);
               const pct = Math.max(v !== 0 ? 3 : 0, Math.min(100, Math.round((Math.abs(v) / max) * 100)));
               return `
-                <div class="pbi-cbar-series">
+                <div class="pbi-cbar-series" data-series-idx="${si}">
                   <span>${esc(s.label)}</span>
                   <div class="pbi-bar-lane" style="height:11px"><div class="pbi-bar-fill" style="width:${pct}%;background:${v < 0 ? '#C8333B' : (s.color || '#1E293B')}"></div></div>
                   <b class="${v < 0 ? 'pbi-neg' : ''}">${s.fmt ? s.fmt(v, r) : fmtUSD(v, opts.decimals != null ? opts.decimals : 2)}</b>
@@ -1204,7 +1373,8 @@
               `;
             }).join('')}
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     `;
   }
@@ -3671,23 +3841,29 @@
           const yOpOut = padT + plotH - hOpOut;
           const yTrOut = yOpOut - hTrOut;
 
-          const tip = `${d.rawLbl} (Click to inspect month entries)\n` +
-            `• Operating In (Sales + AR): ${fmtUSD(d.opIn, 0)}\n` +
-            `• Treasury, Loans & FX In: ${fmtUSD(d.trIn, 0)}\n` +
-            `• Total Cash In: ${fmtUSD(d.totIn, 0)}\n` +
-            `• Operating Out (Exp + AP + Payroll): ${fmtUSD(d.opOut, 0)}\n` +
-            `• Treasury Sweeps & FX Out: ${fmtUSD(d.trOut, 0)}\n` +
-            `• Total Cash Out: ${fmtUSD(d.totOut, 0)}\n` +
-            `• Operating Cash Surplus: ${fmtSignedUSD(d.opNet, 0)} · Net Till Δ: ${fmtSignedUSD(d.netCash, 0)}`;
+          const popSpec = {
+            title: d.rawLbl || shortLbl,
+            badge: `Till Δ ${fmtSignedUSD(d.netCash, 0)}`,
+            badgeTone: Math.abs(d.netCash) < 0.5 ? 'good' : (d.netCash > 0 ? 'good' : 'crit'),
+            rows: [
+              { label: 'Operating In (Sales + AR)', value: fmtUSD(d.opIn, 0), color: '#1C8C46' },
+              { label: 'Treasury, Loans & FX In', value: fmtUSD(d.trIn, 0), color: '#6BB38B' },
+              { label: 'Total Cash Inflows', value: fmtUSD(d.totIn, 0), isTotal: true, tone: 'good' },
+              { label: 'Operating Out (Exp + AP + Sal)', value: fmtUSD(d.opOut, 0), color: '#C8333B' },
+              { label: 'Treasury Sweeps & FX Out', value: fmtUSD(d.trOut, 0), color: '#DF8A71' },
+              { label: 'Total Cash Outflows', value: fmtUSD(d.totOut, 0), isTotal: true, tone: 'crit' },
+              { label: 'Operating Cash Surplus', value: fmtSignedUSD(d.opNet, 0), isTotal: true, tone: d.opNet >= 0 ? 'good' : 'crit' }
+            ],
+            footer: 'Click month bar to filter entries below'
+          };
 
-          return `<g class="cf-chart-bar${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''}>` +
-            `<rect class="cf-bar-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''} data-chart-pop="${encodeChartPop(popSpec)}">` +
+            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
             (hOpIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yOpIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpIn.toFixed(1)}" fill="#1C8C46" rx="1.5"/>` : '') +
             (hTrIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yTrIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrIn.toFixed(1)}" fill="#6BB38B" rx="1.5"/>` : '') +
             (hOpOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yOpOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpOut.toFixed(1)}" fill="#C8333B" rx="1.5"/>` : '') +
             (hTrOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yTrOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrOut.toFixed(1)}" fill="#DF8A71" rx="1.5"/>` : '') +
             `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.3" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(shortLbl)}</text>` +
-            `<title>${esc(tip)}</title>` +
             `</g>`;
         }).join('');
 
@@ -3759,16 +3935,27 @@
             ? `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.2" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(d.shortLbl)}</text>`
             : '';
 
-          const tip = `${d.fullLbl} (Click to inspect entries)\n` +
-            `• Closing Cash Till: ${fmtUSD(d.val, 2)}\n` +
-            `• USD Drawer: ${fmtUSD(cleanUsd(d.usd, 0.05), 2)}\n` +
-            `• LBP Drawer: ${fmtLL(d.lbp || 0)}${Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : ''}\n` +
-            (d.inUsd != null ? `• Period Inflows: ${fmtUSD(d.inUsd, 0)} · Outflows: ${fmtUSD(d.outUsd, 0)}` : '');
+          const lbpEqStr = Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : '';
+          const popRows = [
+            { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#2A6DB5' },
+            { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#C0892F' },
+            { label: 'Combined Closing Till', value: fmtUSD(d.val, 2), isTotal: true, tone: isZeroBar ? 'good' : (isNeg ? 'crit' : 'brass') }
+          ];
+          if (d.inUsd != null) {
+            popRows.push({ label: 'Period Cash Inflows', value: fmtUSD(d.inUsd, 0), color: '#1C8C46' });
+            popRows.push({ label: 'Period Cash Outflows', value: fmtUSD(d.outUsd, 0), color: '#C8333B' });
+          }
+          const popSpec = {
+            title: d.fullLbl || d.shortLbl,
+            badge: isZeroBar ? 'Balanced ($0.00)' : fmtUSD(d.val, 2),
+            badgeTone: isZeroBar ? 'good' : (isNeg ? 'crit' : ''),
+            rows: popRows,
+            footer: 'Click bar to inspect entries below'
+          };
 
-          return `<g class="cf-chart-bar${isSel ? ' is-selected' : ''}" ${drillAttr}>` +
-            `<rect class="cf-bar-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${drillAttr} data-chart-pop="${encodeChartPop(popSpec)}">` +
+            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
             `${barShape}${valLbl}${xLbl}` +
-            `<title>${esc(tip)}</title>` +
             `</g>`;
         }).join('');
 
@@ -5356,6 +5543,319 @@
     `;
   }
 
+  function renderCashFlowVisualsSection(opts = {}) {
+    const months = Array.isArray(opts.months) ? opts.months : [];
+    const allDailyRows = Array.isArray(opts.allDailyRows) ? opts.allDailyRows : [];
+    const rateLbp = Number(opts.rateLbp || 89500);
+    const chartGrain = opts.chartGrain === 'daily' ? 'daily' : 'monthly';
+    const focusYm = opts.focusYm || '';
+    const focusDate = opts.focusDate || '';
+
+    const fmtLL = v => {
+      const n = Math.round(Number(v || 0));
+      if (Math.abs(n) <= 1) return '0 LL';
+      return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' LL';
+    };
+    const cleanUsd = (v, eps = 0.005) => {
+      const n = Number(v || 0);
+      return Math.abs(n) < eps ? 0 : n;
+    };
+    const ymToIso = r => {
+      const ymNo = String(r.YearMonthNo || '');
+      if (/^\d{6}$/.test(ymNo)) return ymNo.slice(0, 4) + '-' + ymNo.slice(4, 6);
+      return '';
+    };
+
+    const nicePositiveTicks = rawMax => {
+      const mx = Math.max(100, Number(rawMax || 0));
+      const rough = mx / 4;
+      const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+      const frac = rough / mag;
+      const mult = frac <= 1 ? 1 : (frac <= 2 ? 2 : (frac <= 2.5 ? 2.5 : (frac <= 5 ? 5 : 10)));
+      const step = mult * mag;
+      const topSteps = Math.max(4, Math.ceil((mx * 1.04) / step));
+      const ticks = [];
+      for (let i = 0; i <= topSteps; i++) ticks.push(i * step);
+      return { ticks, top: topSteps * step };
+    };
+
+    const niceSignedTicks = (minV, maxV) => {
+      const lo = Math.min(0, Number(minV || 0));
+      const hi = Math.max(0, Number(maxV || 0));
+      const span = Math.max(Math.abs(lo), Math.abs(hi));
+      if (span < 0.5) {
+        return { ticks: [-200, -100, 0, 100, 200], lo: -200, hi: 200 };
+      }
+      const candidates = [10, 20, 25, 50, 100, 200, 250, 400, 500, 1000, 2000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000];
+      let step = candidates[candidates.length - 1];
+      for (let i = 0; i < candidates.length; i++) {
+        const s = candidates[i];
+        const upN = hi > 0 ? Math.max(1, Math.ceil((hi * 1.14) / s)) : 0;
+        const dnN = lo < 0 ? Math.max(1, Math.ceil((Math.abs(lo) * 1.14) / s)) : 0;
+        const tot = upN + dnN;
+        if (tot >= 3 && tot <= 6) { step = s; break; }
+      }
+      const upSteps = hi > 0 ? Math.max(1, Math.ceil((hi * 1.14) / step)) : (lo < 0 ? 1 : 2);
+      const dnSteps = lo < 0 ? Math.max(1, Math.ceil((Math.abs(lo) * 1.14) / step)) : 0;
+      const ticks = [];
+      for (let i = -dnSteps; i <= upSteps; i++) ticks.push(i * step);
+      return { ticks, lo: -dnSteps * step, hi: upSteps * step };
+    };
+
+    const fmtRoundAxisUsd = v => {
+      const n = Math.round(Number(v || 0));
+      if (n === 0) return '$0';
+      const sign = n < 0 ? '-' : '+';
+      const abs = Math.abs(n);
+      if (abs >= 1000000) return `${n < 0 ? '-' : ''}$${(abs / 1000000).toFixed(abs % 1000000 === 0 ? 0 : 1)}M`;
+      if (abs >= 10000) return `${n < 0 ? '-' : ''}$${Math.round(abs / 1000)}K`;
+      return `${sign}$${abs.toLocaleString('en-US')}`;
+    };
+
+    const buildCashFlowSplitColumnSvg = (mRows, selectedYm) => {
+      const data = (mRows || []).slice(-14);
+      if (!data.length) return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">No monthly cash flow data for active filter</div>`;
+      const W = 620, H = 228, padL = 52, padR = 16, padT = 18, padB = 34;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      let rawMax = 100;
+      const parsed = data.map(r => {
+        const totIn = Math.max(0, Number(r.cash_in || 0));
+        const totOut = Math.max(0, Number(r.cash_out || 0));
+        const opIn = Math.min(totIn, Math.max(0, Number(r.cash_sales || 0) + Number(r.receipts || 0)));
+        const trIn = Math.max(0, round2(totIn - opIn));
+        const opOut = Math.min(totOut, Math.max(0, Number(r.cash_expenses || 0) + Number(r.settlements_paid || 0) + Number(r.salaries || 0)));
+        const trOut = Math.max(0, round2(totOut - opOut));
+        rawMax = Math.max(rawMax, totIn, totOut);
+        return {
+          r,
+          ymIso: ymToIso(r),
+          rawLbl: String(r['Year Month'] || r.YearMonthNo || ''),
+          totIn, totOut, opIn, trIn, opOut, trOut,
+          opNet: round2(opIn - opOut),
+          netCash: cleanUsd(r.net_cash, 0.5)
+        };
+      });
+      const { ticks, top } = nicePositiveTicks(rawMax);
+      const yOf = v => padT + plotH * (1 - (v / top));
+      const grid = ticks.map(tv => {
+        const y = yOf(tv).toFixed(1);
+        const isZero = tv === 0;
+        const lbl = tv === 0 ? '$0' : (tv >= 1000000 ? `$${(tv / 1000000).toFixed(tv % 1000000 === 0 ? 0 : 1)}M` : `$${Math.round(tv / 1000)}K`);
+        return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZero ? 'var(--ink)' : 'rgba(128,138,158,0.18)'}" stroke-opacity="${isZero ? '0.32' : '1'}" stroke-width="${isZero ? '1.3' : '1'}" ${isZero ? '' : 'stroke-dasharray="3 3"'}/>` +
+          `<text x="${padL - 7}" y="${(Number(y) + 3.2).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="${isZero ? '700' : '500'}" fill="${isZero ? 'var(--ink)' : 'var(--muted)'}">${lbl}</text>`;
+      }).join('');
+
+      const grpW = plotW / parsed.length;
+      const barW = Math.min(13, Math.max(6, (grpW * 0.66 - 2) / 2));
+      const cols = parsed.map((d, i) => {
+        const cx = padL + i * grpW + grpW / 2;
+        const xIn = cx - barW - 1;
+        const xOut = cx + 1;
+        const shortLbl = d.rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, "$1 '$2").slice(0, 7);
+        const isSel = selectedYm && d.ymIso === selectedYm;
+
+        const hOpIn = (d.opIn / top) * plotH;
+        const hTrIn = (d.trIn / top) * plotH;
+        const yOpIn = padT + plotH - hOpIn;
+        const yTrIn = yOpIn - hTrIn;
+
+        const hOpOut = (d.opOut / top) * plotH;
+        const hTrOut = (d.trOut / top) * plotH;
+        const yOpOut = padT + plotH - hOpOut;
+        const yTrOut = yOpOut - hTrOut;
+
+        const popSpec = {
+          title: d.rawLbl || shortLbl,
+          badge: `Till Δ ${fmtSignedUSD(d.netCash, 0)}`,
+          badgeTone: Math.abs(d.netCash) < 0.5 ? 'good' : (d.netCash > 0 ? 'good' : 'crit'),
+          rows: [
+            { label: 'Operating In (Sales + AR)', value: fmtUSD(d.opIn, 0), color: '#1C8C46' },
+            { label: 'Treasury, Loans & FX In', value: fmtUSD(d.trIn, 0), color: '#6BB38B' },
+            { label: 'Total Cash Inflows', value: fmtUSD(d.totIn, 0), isTotal: true, tone: 'good' },
+            { label: 'Operating Out (Exp + AP + Sal)', value: fmtUSD(d.opOut, 0), color: '#C8333B' },
+            { label: 'Treasury Sweeps & FX Out', value: fmtUSD(d.trOut, 0), color: '#DF8A71' },
+            { label: 'Total Cash Outflows', value: fmtUSD(d.totOut, 0), isTotal: true, tone: 'crit' },
+            { label: 'Operating Cash Surplus', value: fmtSignedUSD(d.opNet, 0), isTotal: true, tone: d.opNet >= 0 ? 'good' : 'crit' }
+          ],
+          footer: 'Click month bar to filter entries below'
+        };
+
+        return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''} data-chart-pop="${encodeChartPop(popSpec)}">` +
+          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          (hOpIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yOpIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpIn.toFixed(1)}" fill="#1C8C46" rx="1.5"/>` : '') +
+          (hTrIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yTrIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrIn.toFixed(1)}" fill="#6BB38B" rx="1.5"/>` : '') +
+          (hOpOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yOpOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpOut.toFixed(1)}" fill="#C8333B" rx="1.5"/>` : '') +
+          (hTrOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yTrOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrOut.toFixed(1)}" fill="#DF8A71" rx="1.5"/>` : '') +
+          `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.3" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(shortLbl)}</text>` +
+          `</g>`;
+      }).join('');
+
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Monthly Cash Inflows and Outflows split into Operating vs Treasury Sweeps">${grid}${cols}</svg>`;
+    };
+
+    const buildTillBalanceChartSvg = (items, chartOpts = {}) => {
+      if (!items || !items.length) return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">No physical cash till balance points for active filter</div>`;
+      const W = 620, H = 228, padL = 54, padR = 16, padT = 22, padB = 34;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const rateNum = Number(chartOpts.rate || 89500);
+      const isDaily = Boolean(chartOpts.isDaily);
+
+      let minV = 0, maxV = 0;
+      items.forEach(d => {
+        if (d.val < minV) minV = d.val;
+        if (d.val > maxV) maxV = d.val;
+      });
+      const { ticks, lo, hi } = niceSignedTicks(minV, maxV);
+      const span = Math.max(1, hi - lo);
+      const yOf = v => padT + plotH * (1 - ((v - lo) / span));
+      const yZero = yOf(0);
+      const allZero = items.every(d => Math.abs(d.val) < 0.5);
+
+      const grid = ticks.map(tv => {
+        const y = yOf(tv).toFixed(1);
+        const isZ = tv === 0;
+        const lbl = fmtRoundAxisUsd(tv);
+        return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZ ? 'var(--ink)' : 'rgba(128,138,158,0.18)'}" stroke-opacity="${isZ ? '0.42' : '1'}" stroke-width="${isZ ? '1.6' : '1'}" ${isZ ? '' : 'stroke-dasharray="3 3"'}/>` +
+          `<text x="${padL - 7}" y="${(Number(y) + 3.2).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="${isZ ? '800' : '500'}" fill="${isZ ? 'var(--ink)' : 'var(--muted)'}">${lbl}</text>`;
+      }).join('');
+
+      const grpW = plotW / items.length;
+      const barW = Math.min(24, Math.max(isDaily ? 7 : 14, grpW * 0.58));
+      const labelStep = isDaily ? Math.max(1, Math.ceil(items.length / 8)) : 1;
+
+      const bars = items.map((d, i) => {
+        const cx = padL + i * grpW + grpW / 2;
+        const isZeroBar = Math.abs(d.val) < 0.5;
+        const isNeg = d.val <= -0.5;
+        const lbpUsdEq = Math.abs(Number(d.lbp || 0)) / rateNum;
+        const isLbpDom = !isZeroBar && !isNeg && lbpUsdEq > Math.abs(Number(d.usd || 0)) + 1;
+        const fill = isZeroBar ? '#1C8C46' : (isNeg ? '#C8333B' : (isLbpDom ? '#C0892F' : '#2A6DB5'));
+        const isSel = (d.ymIso && chartOpts.selectedYm === d.ymIso) || (d.dateIso && chartOpts.selectedDate === d.dateIso);
+        const drillAttr = d.dateIso ? `data-cf-focus-date="${esc(d.dateIso)}"` : (d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : '');
+
+        let barShape = '';
+        let valLbl = '';
+        if (isZeroBar) {
+          barShape = `<circle cx="${cx.toFixed(1)}" cy="${yZero.toFixed(1)}" r="${isDaily ? '3.2' : '4.2'}" fill="#1C8C46" stroke="var(--surface)" stroke-width="1.2"/>`;
+          if (!isDaily || i === items.length - 1) {
+            valLbl = `<text x="${cx.toFixed(1)}" y="${(yZero - 8).toFixed(1)}" text-anchor="middle" font-size="8.6" font-weight="700" fill="#1C8C46">$0</text>`;
+          }
+        } else {
+          const yVal = yOf(d.val);
+          const rectY = Math.min(yZero, yVal);
+          const rectH = Math.max(3, Math.abs(yVal - yZero));
+          barShape = `<rect x="${(cx - barW / 2).toFixed(1)}" y="${rectY.toFixed(1)}" width="${barW.toFixed(1)}" height="${rectH.toFixed(1)}" rx="2.5" fill="${fill}"/>`;
+          const showVal = !isDaily || Math.abs(d.val) >= Math.max(Math.abs(minV), Math.abs(maxV)) * 0.35 || i === items.length - 1;
+          if (showVal) {
+            const txt = (d.val < 0 ? '-$' : '$') + Math.round(Math.abs(d.val)).toLocaleString('en-US');
+            const lblY = isNeg ? Math.min(H - 22, rectY + rectH + 10) : Math.max(12, rectY - 5);
+            valLbl = `<text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" font-size="8.8" font-weight="700" fill="${isNeg ? '#C8333B' : 'var(--ink)'}">${txt}</text>`;
+          }
+        }
+
+        const showXAxisLbl = (i % labelStep === 0) || (i === items.length - 1);
+        const xLbl = showXAxisLbl
+          ? `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.2" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(d.shortLbl)}</text>`
+          : '';
+
+        const lbpEqStr = Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : '';
+        const popRows = [
+          { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#2A6DB5' },
+          { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#C0892F' },
+          { label: 'Combined Closing Till', value: fmtUSD(d.val, 2), isTotal: true, tone: isZeroBar ? 'good' : (isNeg ? 'crit' : 'brass') }
+        ];
+        if (d.inUsd != null) {
+          popRows.push({ label: 'Period Cash Inflows', value: fmtUSD(d.inUsd, 0), color: '#1C8C46' });
+          popRows.push({ label: 'Period Cash Outflows', value: fmtUSD(d.outUsd, 0), color: '#C8333B' });
+        }
+        const popSpec = {
+          title: d.fullLbl || d.shortLbl,
+          badge: isZeroBar ? 'Balanced ($0.00)' : fmtUSD(d.val, 2),
+          badgeTone: isZeroBar ? 'good' : (isNeg ? 'crit' : ''),
+          rows: popRows,
+          footer: 'Click bar to inspect entries below'
+        };
+
+        return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${drillAttr} data-chart-pop="${encodeChartPop(popSpec)}">` +
+          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          `${barShape}${valLbl}${xLbl}` +
+          `</g>`;
+      }).join('');
+
+      const zeroCallout = allZero
+        ? `<rect x="${(padL + plotW / 2 - 118).toFixed(1)}" y="${(padT + 8).toFixed(1)}" width="236" height="20" rx="10" fill="rgba(28,140,70,0.10)" stroke="rgba(28,140,70,0.35)"/>` +
+          `<text x="${(padL + plotW / 2).toFixed(1)}" y="${(padT + 21.5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1C8C46">All ${items.length} ${isDaily ? 'days' : 'months'} swept to $0.00 balance</text>`
+        : '';
+
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Closing Cash Till Trajectory">${grid}${bars}${zeroCallout}</svg>`;
+    };
+
+    const tillChartItems = chartGrain === 'daily'
+      ? allDailyRows.slice(0, 30).reverse().map(d => ({
+          dateIso: d.date,
+          shortLbl: fmtDateDMY(d.date).slice(0, 5),
+          fullLbl: `${fmtDateDMY(d.date)} (${d.dow})`,
+          val: cleanUsd(d.close_combined, 0.05),
+          usd: cleanUsd(d.close_usd, 0.05),
+          lbp: Math.abs(d.close_lbp) <= 5 ? 0 : d.close_lbp,
+          inUsd: d.in_usd,
+          outUsd: d.out_usd
+        }))
+      : months.slice(-14).map(r => {
+          const rawLbl = String(r['Year Month'] || r.YearMonthNo || '');
+          return {
+            ymIso: ymToIso(r),
+            shortLbl: rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, "$1 '$2").slice(0, 7),
+            fullLbl: rawLbl,
+            val: cleanUsd(r.cash_till, 0.05),
+            usd: cleanUsd(r.till_usd != null ? r.till_usd : r.cash_till, 0.05),
+            lbp: Math.abs(r.till_lbp || 0) <= 5 ? 0 : Math.round(r.till_lbp || 0),
+            inUsd: r.cash_in,
+            outUsd: r.cash_out
+          };
+        });
+
+    return `
+      <div class="pbi-grid-1" style="margin-bottom:10px">
+        <div class="cf-explainer-bar" role="region" aria-label="How Plant Cash Till Works">
+          <div class="cf-explainer-copy">
+            <strong>How Cash Till Works:</strong> Cash Sales &amp; AR Receipts flow <b>IN</b> while Cash Expenses, AP Settlements &amp; Payroll flow <b>OUT</b>; daily <b>Treasury Sweeps</b> transfer net cash to/from central treasury so physical cash on hand stays near <b>$0.00</b> (<span class="mono">USD + LBP ÷ ${fmtNum(rateLbp, 0)}</span>). <em>Click any bar, month, stream or counterparty to filter the Cash Till Register.</em>
+          </div>
+          <div class="cf-grain-ctrl">
+            <span class="cf-grain-lbl">Till Balance View</span>
+            <div class="cf-mode-switch" role="group" aria-label="Closing Till Chart Grain">
+              <button type="button" class="cf-mode-btn ${chartGrain === 'monthly' ? 'active' : ''}" data-cf-chart-grain="monthly">Monthly (${months.slice(-14).length}m)</button>
+              <button type="button" class="cf-mode-btn ${chartGrain === 'daily' ? 'active' : ''}" data-cf-chart-grain="daily">Daily (Last ${Math.min(30, allDailyRows.length)}d)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pbi-grid-2" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Cash Inflows vs Outflows — Operating vs Treasury Sweeps', buildCashFlowSplitColumnSvg(months, focusYm), {
+          subtitle: 'Left column = Inflows · Right column = Outflows · Click any month to filter entries',
+          legend: [
+            { label: 'Op. Cash In (Sales+AR)', color: '#1C8C46' },
+            { label: 'Treasury / FX In', color: '#6BB38B' },
+            { label: 'Op. Cash Out (Exp+AP+Sal)', color: '#C8333B' },
+            { label: 'Sweeps / FX Out', color: '#DF8A71' }
+          ]
+        })}
+        ${pbiPanel(chartGrain === 'daily' ? 'Closing Cash Till — Last 30 Operating Days' : 'Closing Cash Till — Month-End Balance ($)', buildTillBalanceChartSvg(tillChartItems, { rate: rateLbp, isDaily: chartGrain === 'daily', selectedYm: focusYm, selectedDate: focusDate }), {
+          subtitle: chartGrain === 'daily'
+            ? 'End-of-day physical drawer balance anchored at $0 · Click any day to inspect entries'
+            : 'Month-end physical drawer balance anchored at $0 (no flow overlay) · Hover for USD + LBP split',
+          legend: [
+            { label: 'USD Drawer (+)', color: '#2A6DB5' },
+            { label: 'LBP Drawer (+)', color: '#C0892F' },
+            { label: 'Timing Deficit (<$0)', color: '#C8333B' },
+            { label: 'Balanced ($0)', color: '#1C8C46' }
+          ]
+        })}
+      </div>
+    `;
+  }
+
   window.MFG_PBI = {
     PBI_PAGES,
     MOVED_PBI_PAGES,
@@ -5365,9 +5865,11 @@
     getHubTableDefaultSort,
     getHubRelIndex,
     cellValue,
+    renderChartPopHtml,
     renderPbiStudio,
     renderModuleAnalytics,
     renderTablesHub,
-    renderUniversalRegistriesView
+    renderUniversalRegistriesView,
+    renderCashFlowVisualsSection
   };
 })();
