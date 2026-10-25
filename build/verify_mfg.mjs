@@ -3665,12 +3665,15 @@ try {
     if (rstBtn) rstBtn.click();
     await wait(30);
 
-    // A. #cashflow: #tillRecentPanel FIRST at top (Rule 16c, zero card above #tillRecentPanel), all 7 SharePoint streams (incl. External, Extended, Salary, Borrowing & FX), Daily Till Sheet & Day Drill
+    // A. #cashflow: #tillRecentPanel FIRST at top (Rule 16c, zero card above #tillRecentPanel), defaults to Individual Entries, 0 "Account 5300"/"Till 5300", all 7 SharePoint streams, Daily Till Sheet & Day Drill
     window.__navToView('cashflow');
     await wait(40);
     const cfPanelIds = Array.from(document.querySelectorAll('#workspace .panel-card[id]')).map(el => el.id);
     const noCardBetweenBannerAndTill = Boolean(document.querySelector('#tillRecentPanel .sales-entity-recon')) && !document.querySelector('#workspace > .sales-entity-recon');
     const recentFirstOk = cfPanelIds[0] === 'tillRecentPanel' && cfPanelIds[1] === 'tillBridgePanel' && noCardBetweenBannerAndTill;
+    const defaultIndivOk = Boolean(document.querySelector('#tillRecentPanel [data-cf-mode="entries"].active') && !document.querySelector('#tillRecentPanel [data-cf-mode="daily"].active'));
+    const cfPageTxt = document.getElementById('workspace')?.textContent || '';
+    const no5300CfOk = !/Account\\s*5300|Till\\s*5300|\\(5300\\)|Class\\s*5300/i.test(cfPageTxt);
     const allEntriesTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
 
     // Verify External (5,467 WTC rows: +$10,920,786.96 In / -$12,078,057.02 Out / +1,200,340,363 LL), Extended (336 WTC rows: NET +$15,221.69 / -2,550,000 LL), Salary (3,069 WTC rows: NET -$754,416.51 / -501,121,595 LL) & Borrowing (1,058 WTC rows)
@@ -3710,14 +3713,24 @@ try {
     const drillDayTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
     const drillDayOk = drillDayTfoot.includes('76 ENTRIES') && drillDayTfoot.includes('+$62,520.00') && drillDayTfoot.includes('-$62,975.00') && Boolean(document.querySelector('[data-cf-clear-drill="date"]'));
 
-    // Clear active drill
+    // Clear active drill & verify switching to Daily -> leaving view -> reopening #cashflow resets to Individual Entries
     document.querySelector('[data-cf-clear-drill="all"]')?.click();
     await wait(30);
     const clearedOk = !document.querySelector('[data-cf-clear-drill="date"]');
+    document.querySelector('#tillRecentPanel [data-cf-mode="daily"]')?.click();
+    await wait(25);
+    window.__navToView('overview');
+    await wait(25);
+    window.__navToView('cashflow');
+    await wait(30);
+    const resetToIndivOk = Boolean(document.querySelector('#tillRecentPanel [data-cf-mode="entries"].active') && !document.querySelector('#tillRecentPanel [data-cf-mode="daily"].active'));
 
     // B. #cashflow_analytics (Page 14): zero duplicate single-section title pills, clean round $0 ticks, Operating vs Treasury split, Daily 30d toggle & #pbiCfEntriesPanel
     window.__navToView('cashflow_analytics');
     await wait(45);
+    const cfAnTxt = document.getElementById('workspace')?.textContent || '';
+    const no5300AnOk = !/Account\\s*5300|Till\\s*5300|\\(5300\\)|Class\\s*5300/i.test(cfAnTxt);
+    const anDefaultIndivOk = Boolean(document.querySelector('#pbiCfEntriesPanel [data-cf-mode="entries"].active') && !document.querySelector('#pbiCfEntriesPanel [data-cf-mode="daily"].active'));
     const dupSecTabs = document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] .mod-analytics-tabs [data-mod-sec]:not([data-mod-toggle])').length;
     const hasExplainer = Boolean(document.querySelector('.cf-explainer-bar'));
     const svgTexts = Array.from(document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] svg text')).map(t => t.textContent.trim());
@@ -3763,14 +3776,14 @@ try {
     await wait(30);
 
     return {
-      ok: Boolean(recentFirstOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && dupSecTabs === 0 && hasExplainer && cleanTicksOk && horizReconOk && hasExplorerPanel && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
-      recentFirstOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
+      ok: Boolean(recentFirstOk && defaultIndivOk && resetToIndivOk && anDefaultIndivOk && no5300CfOk && no5300AnOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && dupSecTabs === 0 && hasExplainer && cleanTicksOk && horizReconOk && hasExplorerPanel && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
+      recentFirstOk, defaultIndivOk, resetToIndivOk, anDefaultIndivOk, no5300CfOk, no5300AnOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
       allEntriesTfoot, extTfoot, extdTfoot, salTfoot, loanTfoot, drillDayTfoot
     };
   })()`);
   cashTillUxProbe && cashTillUxProbe.ok
-    ? pass('Cash Till 5300 UX & Analytics (#tillRecentPanel 1st at top, External + Extended + Salary + Borrowing + FX streams, 610-day Daily Till Sheet + day/month drill, $0-anchored Till balance chart, #pbiCfEntriesPanel & Entry RLS)', `WTC=${cashTillUxProbe.allEntriesTfoot} · overflow=${cashTillUxProbe.overflowPx}px`)
-    : fail('Cash Till 5300 UX & Analytics', JSON.stringify(cashTillUxProbe));
+    ? pass('Cash Till UX & Analytics (#tillRecentPanel 1st at top, defaults to Individual Entries, 0 "Account 5300"/"Till 5300", External + Extended + Salary + Borrowing + FX streams, Daily Till Sheet + drill & Entry RLS)', `WTC=${cashTillUxProbe.allEntriesTfoot} · overflow=${cashTillUxProbe.overflowPx}px`)
+    : fail('Cash Till UX & Analytics', JSON.stringify(cashTillUxProbe));
 
   // 7t. Expense Categories & Subcategories Total-Spent Descending Sort, GL-Backed Cost Class Badges (0 $NaN), & Activity-First Registry Sorting
   const catSortAndCostClassProbe = await evaluate(`(async () => {

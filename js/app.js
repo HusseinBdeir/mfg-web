@@ -2220,7 +2220,7 @@
     net_usd: 'Net USD ($)',
     close_usd: 'Closing USD ($)',
     close_lbp: 'Closing LBP (LL)',
-    close_combined: 'Closing Till 5300 ($)'
+    close_combined: 'Closing Till ($)'
   };
 
   const VIEW_COL_DEFS = {
@@ -2407,7 +2407,7 @@
       { key: 'net_usd', label: 'Net USD ($)', kind: 'numeric' },
       { key: 'close_usd', label: 'Closing USD ($)', kind: 'numeric' },
       { key: 'close_lbp', label: 'Closing LBP (LL)', kind: 'numeric' },
-      { key: 'close_combined', label: 'Closing Till 5300 ($)', kind: 'numeric' }
+      { key: 'close_combined', label: 'Closing Till ($)', kind: 'numeric' }
     ]
   };
 
@@ -3505,7 +3505,7 @@
       { id: 'dash_overview', pages: ['p01_overview', 'p02_companies', 'p03_exceptions'], count: 3, label: 'Executive, Entity Comparison & Sentinels', sub: 'P01 Executive Pulse, P02 Entity Comparison & Action Items (in AI Sentinels)', badge: '3 Dashboards' },
       { id: 'dash_commercial', pages: ['p04_sales', 'p05_pricing', 'p06_ar', 'p18_tickets', 'p20_recon'], count: 5, label: 'Commercial, Sales, Pricing & AR Aging', sub: 'Sales Analytics, Pricing Spreads, AR Aging + Ticket Books & Statement Recon', badge: '5 Dashboards' },
       { id: 'dash_plant_fleet', pages: ['p07_ap', 'p08_stock', 'p09_fuel', 'p10_fleet', 'p11_drivers'], count: 5, label: 'Raw Material, 3-Leg AP, Inventory & Fleet', sub: 'Payables & Spend, Stock & Margin, Diesel Burn, Fleet Economics + Drivers & OT', badge: '5 Dashboards' },
-      { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'Cash Flow & Till 5300 + VAT 11% (in Customers) & Change Log (in Sentinels)', badge: '3 Dashboards' },
+      { id: 'dash_expenses_vat', pages: ['p13_vat', 'p14_cashflow', 'p19_changelog'], count: 3, label: 'Operating Cash Flow, Statutory VAT & Audit', sub: 'Cash Flow & Till + VAT 11% (in Customers) & Change Log (in Sentinels)', badge: '3 Dashboards' },
       { id: 'dash_payroll_hr', pages: ['p12_payroll'], count: 1, label: 'Payroll, Attendance & Workforce (Confidential)', sub: 'Workforce Analytics, Site Allowances & Freelance', badge: '1 Dashboard' },
       { id: 'dash_financial_gl', pages: ['p15_treasury', 'p16_financial', 'p17_jv'], count: 3, label: 'Treasury, CoA Trial Balance & JV Board', sub: 'Financial GL & Ratios + Treasury/Loans (in GL) & JV 50/50 Sites (in Material & Transportation)', badge: '3 Dashboards' }
     ],
@@ -5404,7 +5404,7 @@
           <span class="d">Expenses: ${fmtUSD(expVal, 0)} · Payroll: ${fmtUSD(k.salaries_paid, 0)}</span>
         </div>
         <div class="kpi kpi-link" data-nav-jump="cashflow" role="button" tabindex="0" title="Open Cash Flow &amp; Till">
-          <span class="k">Cash Till &amp; Net Flow (5300)</span>
+          <span class="k">Cash Till &amp; Net Flow</span>
           <span class="v num">${fmtUSD(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till, 2)}<small>${fmtLBP(k.cash_till_lbp || 0)}</small></span>
           <span class="d good">Total: ${fmtUSD(k.cash_till, 2)} · In: ${fmtUSDk(k.cash_inflow)} / Out: ${fmtUSDk(k.cash_outflow)}</span>
         </div>
@@ -9299,7 +9299,7 @@
     return `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
-          <div class="cockpit-eyebrow">DUAL-CURRENCY CASH TILL &amp; CASH FLOW RECONCILIATION (5300)</div>
+          <div class="cockpit-eyebrow">DUAL-CURRENCY CASH TILL &amp; CASH FLOW RECONCILIATION</div>
           <div class="cockpit-title">Cash Flow &amp; Till</div>
         </div>
         <div class="cockpit-pills insight-grid">
@@ -9324,7 +9324,7 @@
             tone: 'emerald'
           })}
           ${insightCard({
-            label: 'Combined Cash Flow (5300)',
+            label: 'Combined Cash Till',
             badge: `@ ${fmtNum(rate, 0)} LL/$`,
             badgeCls: 'brass',
             val: `${fmtUSD(liveTot, 2)} <small>TOTAL</small>`,
@@ -9345,7 +9345,7 @@
       <div class="panel-card" id="tillRecentPanel" style="margin-bottom:14px">
         <div class="panel-head cf-register-head">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="panel-title"><span>DAY-TO-DAY CASH TILL REGISTER &amp; DAILY CASHBOOK (ACCOUNT 5300)</span></div>
+            <div class="panel-title"><span>CASH TILL REGISTER</span></div>
             <div class="cf-mode-switch" role="tablist" aria-label="Cash Till View Mode">
               <button type="button" class="cf-mode-btn ${!isDailyMode ? 'active' : ''}" data-cf-mode="entries" role="tab" aria-selected="${!isDailyMode}">Individual Entries <span>(${fmtNum(allMoves.length)})</span></button>
               <button type="button" class="cf-mode-btn ${isDailyMode ? 'active' : ''}" data-cf-mode="daily" role="tab" aria-selected="${isDailyMode}">Daily Till Sheet <span>(${fmtNum(allDailyRows.length)} Days)</span></button>
@@ -9405,7 +9405,7 @@
             <div class="sales-recon-metrics">
               <span><small>USD Till ($)</small><b>${fmtUSD(wtcK.cash_till_usd, 2)}</b></span>
               <span><small>LBP Till (LL)</small><b>${fmtLBP(wtcK.cash_till_lbp)}</b></span>
-              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(wtcK.cash_till, 2)}</b></span>
+              <span><small>Combined Till</small><b class="brass">${fmtUSD(wtcK.cash_till, 2)}</b></span>
             </div>
           </div>
           <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
@@ -9413,7 +9413,7 @@
             <div class="sales-recon-metrics">
               <span><small>USD Till ($)</small><b>${fmtUSD(bbcK.cash_till_usd, 2)}</b></span>
               <span><small>LBP Till (LL)</small><b>${fmtLBP(bbcK.cash_till_lbp)}</b></span>
-              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(bbcK.cash_till, 2)}</b></span>
+              <span><small>Combined Till</small><b class="brass">${fmtUSD(bbcK.cash_till, 2)}</b></span>
             </div>
           </div>
         </div>` : (allowedNames.length > 1 ? `
@@ -9427,7 +9427,7 @@
             <div class="sales-recon-metrics">
               <span><small>USD Till ($)</small><b>${fmtUSD(liveUsd, 2)}</b></span>
               <span><small>LBP Till (LL)</small><b>${fmtLBP(liveLbp)}</b></span>
-              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(liveTot, 2)}</b></span>
+              <span><small>Combined Till</small><b class="brass">${fmtUSD(liveTot, 2)}</b></span>
             </div>
           </div>
         </div>` : '')}
@@ -9507,7 +9507,7 @@
                 ${th('cf_daily', 'Net ($)', 'net_usd', 'r')}
                 ${th('cf_daily', 'Close ($)', 'close_usd', 'r')}
                 ${th('cf_daily', 'Close (LL)', 'close_lbp', 'r')}
-                ${th('cf_daily', 'Till 5300 ($)', 'close_combined', 'r')}
+                ${th('cf_daily', 'Till ($)', 'close_combined', 'r')}
               </tr>
             </thead>
             <tbody>
@@ -9583,7 +9583,7 @@
             </tbody>
             <tfoot>
               <tr>
-                <td><b>CLOSING BOOK CASH TILL (5300)</b></td>
+                <td><b>CLOSING BOOK CASH TILL</b></td>
                 <td class="r"><b>${fmtUSD(cf.live_till.in_usd, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(cf.live_till.out_usd, 2)}</b></td>
                 <td class="r"><b>${fmtUSD(liveUsd, 2)}</b></td>
@@ -10515,7 +10515,7 @@
         ${stTable([{ label: 'Code', key: 'Code', mono: true }, { label: 'Account', key: 'Account' }, { label: 'Debit ($)', key: 'debit', r: true, fmt: C.usd2 }, { label: 'Credit ($)', key: 'credit', r: true, fmt: C.usd2 }, { label: 'Net Balance ($)', key: 'balance', r: true, fmt: v => `<strong>${fmtUSD(v, 2)}</strong>` }],
           cls(n), [{ v: 'CLASS TOTAL', span: 2 }, { v: fmtUSD(sum(cls(n), 'debit'), 2), r: true }, { v: fmtUSD(sum(cls(n), 'credit'), 2), r: true }, { v: fmtUSD(sum(cls(n), 'balance'), 2), r: true }])}`).join('');
       const assets = sum(cls(2), 'balance') + sum(cls(3), 'balance') + sum(cls(5), 'balance') + Number(k.ar_balance || 0);
-      bodyHtml += `<div class="live-calc" style="margin-top:16px"><div><small>Open AR (Class 4 asset)</small><b>${fmtUSD(k.ar_balance, 0)}</b></div><div><small>Open AP (Class 4 liability)</small><b>${fmtUSD(k.ap_balance, 0)}</b></div><div><small>Cash Till 5300</small><b>${fmtUSD(k.cash_till, 2)}</b></div><div><small>Classes 2+3+5 + AR</small><b>${fmtUSD(assets, 0)}</b></div></div>`;
+      bodyHtml += `<div class="live-calc" style="margin-top:16px"><div><small>Open AR (Class 4 asset)</small><b>${fmtUSD(k.ar_balance, 0)}</b></div><div><small>Open AP (Class 4 liability)</small><b>${fmtUSD(k.ap_balance, 0)}</b></div><div><small>Cash Till</small><b>${fmtUSD(k.cash_till, 2)}</b></div><div><small>Classes 2+3+5 + AR</small><b>${fmtUSD(assets, 0)}</b></div></div>`;
     } else if (code === '05') {
       const months = (m.monthly || []).slice(-12).map(r => ({ ...r, net: Number(r.cash_in || 0) - Number(r.cash_out || 0) }));
       bodyHtml = stTable([
@@ -10531,7 +10531,7 @@
         ['Payroll', fmtUSD(k.salaries_paid, 2), `overtime bonus ${fmtUSD(k.overtime_bonus, 0)} · commission due ${fmtUSD(k.commission_due, 0)}`],
         ['Customer Receipts', fmtUSD(k.receipts, 2), `open AR ${fmtUSD(k.ar_balance, 2)} · overdue ${fmtUSD(k.ar_overdue, 0)} · DSO ${fmtNum(k.dso_days, 0)} d`],
         ['Supplier Settlements', fmtUSD(k.settlements_paid, 2), `open AP ${fmtUSD(k.ap_balance, 0)}`],
-        ['Cash Till 5300', fmtUSD(k.cash_till, 2), `in ${fmtUSD(k.cash_inflow, 0)} · out ${fmtUSD(k.cash_outflow, 0)} · net ${fmtUSD(k.net_cash_flow, 0)}`],
+        ['Cash Till', fmtUSD(k.cash_till, 2), `in ${fmtUSD(k.cash_inflow, 0)} · out ${fmtUSD(k.cash_outflow, 0)} · net ${fmtUSD(k.net_cash_flow, 0)}`],
         ['Diesel', `${fmtNum(k.diesel_litres, 0)} L issued`, `purchased ${fmtNum(k.diesel_purchased, 0)} L · sold ${fmtNum(k.diesel_sold, 0)} L · tank ${fmtNum(k.diesel_in_tank, 0)} L`],
         ['Fleet', `${fmtNum(k.active_equip)} units`, `${fmtNum(k.trucks_used)} trucks used · ${fmtNum(k.own_fleet_loads)} own-fleet loads · ${fmtUSD(k.cost_per_ton, 2)}/t`],
         ['Gross Margin / Operating Profit', `${fmtUSD(k.gross_margin, 0)} / ${fmtUSD(k.operating_profit, 0)}`, `${fmtPct(k.gm_pct, k.gross_margin, k.net_sales)} GM · ${fmtPct(k.op_margin_pct, k.operating_profit, k.net_sales)} op margin`],
@@ -15846,9 +15846,9 @@
         pill: `${fmtSignedUSD(d.usd, 2)} · ${fmtSignedLBP(d.lbp)}`,
         cards: [
           { lbl: 'USD DRAWER CHANGE', tag: d.u2l ? 'USD OUTFLOW' : 'USD INFLOW', tone: d.u2l ? 'crit' : 'good', val: fmtSignedUSD(d.usd, 2), sub1: d.u2l ? 'USD sold from cash till' : 'USD received into cash till', sub2: `Direction: ${d.dirLabel}`, pct: 85 },
-          { lbl: 'LBP DRAWER CHANGE', tag: d.u2l ? 'LBP INFLOW' : 'LBP OUTFLOW', tone: d.u2l ? 'good' : 'crit', val: fmtSignedLBP(d.lbp), sub1: d.u2l ? 'LBP received into cash till' : 'LBP sold from cash till', sub2: `Dual-currency 5300 leg`, pct: 85 },
+          { lbl: 'LBP DRAWER CHANGE', tag: d.u2l ? 'LBP INFLOW' : 'LBP OUTFLOW', tone: d.u2l ? 'good' : 'crit', val: fmtSignedLBP(d.lbp), sub1: d.u2l ? 'LBP received into cash till' : 'LBP sold from cash till', sub2: `Dual-currency cash till`, pct: 85 },
           { lbl: 'EFFECTIVE FX RATE', tag: 'LL / USD', tone: 'info', val: `${fmtNum(d.rate, 0)} LL/$`, sub1: `Exact Rate: ${fmtNum(d.rate, 2)} LL/$`, sub2: `Tx Date: ${row.date || '—'}`, pct: 80 },
-          { lbl: 'AUDIT & LEDGER SOURCE', tag: isAppRecord(row) ? 'WEB APP' : 'DATAVERSE', tone: 'info', val: isAppRecord(row) ? 'App Entry' : 'Synced Book', sub1: isAppRecord(row) ? `Posted by ${row.entered_by || 'User'}` : `Snapshot ${SEED_DATE}`, sub2: `Cash Till 5300 Reconciled`, pct: 100 }
+          { lbl: 'AUDIT & LEDGER SOURCE', tag: isAppRecord(row) ? 'WEB APP' : 'DATAVERSE', tone: 'info', val: isAppRecord(row) ? 'App Entry' : 'Synced Book', sub1: isAppRecord(row) ? `Posted by ${row.entered_by || 'User'}` : `Snapshot ${SEED_DATE}`, sub2: `Cash Till Reconciled`, pct: 100 }
         ]
       };
     }
@@ -20033,7 +20033,7 @@
         • Period issued ${fmtNum(k.diesel_litres, 0)} L · fleet cost per ton hauled ${fmtUSD(k.cost_per_ton, 2)} · ${fmtNum((fleet.consumption_outliers || []).length)} consumption outliers flagged by m142.`;
     }
     if (has(/\b(cash|till|drawer|cashflow|lbp|pounds)\b/)) {
-      return `<strong>Cash Flow &amp; Physical Till (Account 5300) — ${esc(scope)}:</strong><br>
+      return `<strong>Cash Flow &amp; Physical Till — ${esc(scope)}:</strong><br>
         • <strong>Live Cash in Till</strong>: USD <strong>${fmtUSD(k.cash_till_usd, 2)}</strong> · LBP <strong>${fmtLBP(k.cash_till_lbp)}</strong> (Combined <strong>${fmtUSD(k.cash_till, 2)}</strong> @ ${fmtNum(k.rate_lbp || 89500, 0)} LL/$).<br>
         • <strong>WTC</strong>: ${fmtUSD(w.cash_till_usd, 2)} &amp; ${fmtLBP(w.cash_till_lbp)} · <strong>BBConstruction</strong>: ${fmtUSD(b.cash_till_usd, 2)} &amp; ${fmtLBP(b.cash_till_lbp)}.<br>
         • Selected period cash flow: In ${fmtUSD(k.cash_inflow, 2)} − Out ${fmtUSD(k.cash_outflow, 2)} = Net <strong>${fmtUSD(k.net_cash_flow, 2)}</strong>. Entry users can verify drawer cash anytime on <em>Cash Flow &amp; Till</em>.`;
@@ -20041,7 +20041,7 @@
     if (has(/\b(trial|balance|coa|ledger|gl|tie|tied)\b/)) {
       const tb = Number(k.tb_check || 0);
       return `<strong>Lebanese CoA Double-Entry Trial Balance — ${esc(scope)}:</strong><br>
-        • Variance <strong>${fmtUSD(tb, 2)}</strong> ${Math.abs(tb) < 0.005 ? '— every SOA journal leg across Class 4 (receivables / payables / VAT), Class 5 (till 5300), Class 6 (raw material, haulage, payroll, expenses) and Class 7 (sales) ties.' : '— open the General Ledger and the Sentinels page: the books do not tie for this scope.'}<br>
+        • Variance <strong>${fmtUSD(tb, 2)}</strong> ${Math.abs(tb) < 0.005 ? '— every SOA journal leg across Class 4 (receivables / payables / VAT), Class 5 (cash & till), Class 6 (raw material, haulage, payroll, expenses) and Class 7 (sales) ties.' : '— open the General Ledger and the Sentinels page: the books do not tie for this scope.'}<br>
         • Output VAT 11% ${fmtUSD(k.sales_vat, 2)} · VAT receivable ${fmtUSD(k.vat_receivable, 2)} · cash till ${fmtUSD(k.cash_till, 2)}.`;
     }
     if (has(/\b(price|prices|pricing|agreement|agreements|below|commission)\b/)) {
@@ -22471,7 +22471,15 @@
     if (UNIV_VIEW_TO_TABLE_KEY[view]) {
       STATE.activeUnivRegKey = UNIV_VIEW_TO_TABLE_KEY[view];
     }
-    if (opts.reset !== false) { STATE.search = ''; STATE.chipFilter = 'all'; STATE.shown = {}; }
+    if (opts.reset !== false) {
+      STATE.search = '';
+      STATE.chipFilter = 'all';
+      STATE.shown = {};
+      STATE.cfEntryMode = 'entries';
+      STATE.cfFocusDate = '';
+      STATE.cfFocusYm = '';
+      STATE.cfFocusParty = '';
+    }
     if (!opts.noPush) {
       const h = '#' + view;
       if (location.hash !== h) history.pushState({ view }, '', h);

@@ -21,7 +21,7 @@
     { id: 'p09_fuel', num: '08', label: 'Diesel & Tank Burn', title: 'Diesel Tank Balance, Consumption per 100 km / hr & Meter Guard (m142)' },
     { id: 'p10_fleet', num: '09', label: 'Fleet Economics', title: 'Equipment Utilization, Running Cost & Cost per Ton' },
     { id: 'p12_payroll', num: '10', label: 'Workforce Analytics', title: 'Staff Payroll Analytics, Site Allowances & Freelance' },
-    { id: 'p14_cashflow', num: '11', label: 'Cash Flow & Till', title: 'Cash Inflows vs Outflows, Daily Till 5300 & Payment Method Mix' },
+    { id: 'p14_cashflow', num: '11', label: 'Cash Flow & Till', title: 'Cash Inflows vs Outflows, Daily Till & Payment Method Mix' },
     { id: 'p16_financial', num: '12', label: 'Financial GL & Ratios', title: 'Lebanese CoA Income Statement, Balance Sheet & Trial Balance' }
   ];
 
@@ -1490,7 +1490,7 @@
           { v: '2', l: 'Class 2 · Fixed Assets' },
           { v: '3', l: 'Class 3 · Inventories' },
           { v: '4', l: 'Class 4 · AR, AP & VAT' },
-          { v: '5', l: 'Class 5 · Cash & Till 5300' },
+          { v: '5', l: 'Class 5 · Cash & Till' },
           { v: '6', l: 'Class 6 · Cost & Expenses' },
           { v: '7', l: 'Class 7 · Revenue' }
         ] },
@@ -2144,7 +2144,7 @@
             { label: 'Customer Receipts', value: fmtUSD(sc(k.receipts), 0), sub: 'DSO ' + fmtNum(k.dso_days, 0) + ' days', tone: 'good', navPage: 'p06_ar' },
             { label: '3-Leg Open AP', value: fmtUSD(k.ap_balance, 0), sub: 'Mat ' + fmtUSDk(k.ap_material) + ' · Haul ' + fmtUSDk(k.ap_haulage), navPage: 'p07_ap' },
             { label: 'Supplier Settlements', value: fmtUSD(k.settlements_paid, 0), sub: 'Applied against 3 legs', navPage: 'p07_ap' },
-            { label: 'Cash Till 5300', value: fmtUSD(k.cash_till, 0), sub: 'Net Cash Flow ' + fmtUSDk(k.net_cash_flow), tone: Number(k.cash_till || 0) < 0 ? 'crit' : 'brass', navPage: 'p14_cashflow' }
+            { label: 'Cash Till', value: fmtUSD(k.cash_till, 0), sub: 'Net Cash Flow ' + fmtUSDk(k.net_cash_flow), tone: Number(k.cash_till || 0) < 0 ? 'crit' : 'brass', navPage: 'p14_cashflow' }
           ])}
           ${kpiBand('4 · Fleet, Diesel Tank & Trial Balance Integrity', [
             { label: 'Active Equipment', value: fmtNum(k.active_equip), sub: fmtNum(k.trucks_used) + ' trucks dispatched', navPage: 'p10_fleet' },
@@ -2258,7 +2258,7 @@
         ['FIFO Open Customer AR', fmtUSD(w.ar_balance, 2), fmtUSD(b.ar_balance, 2), '—', fmtUSD(g.ar_balance, 2)],
         ['AR Overdue > 60 Days', fmtUSD(w.ar_60_plus, 2), fmtUSD(b.ar_60_plus, 2), '—', fmtUSD(g.ar_60_plus, 2)],
         ['3-Leg Open Supplier AP', fmtUSD(w.ap_balance, 2), fmtUSD(b.ap_balance, 2), '—', fmtUSD(g.ap_balance, 2)],
-        ['Cash Till 5300', fmtUSD(w.cash_till, 2), fmtUSD(b.cash_till, 2), '—', fmtUSD(g.cash_till, 2)],
+        ['Cash Till', fmtUSD(w.cash_till, 2), fmtUSD(b.cash_till, 2), '—', fmtUSD(g.cash_till, 2)],
         ['Diesel in Tank (Litres)', fmtNum(w.diesel_in_tank, 0) + ' L', fmtNum(b.diesel_in_tank, 0) + ' L', '—', fmtNum(g.diesel_in_tank, 0) + ' L'],
         ['Active Equipment Units', fmtNum(w.active_equip), fmtNum(b.active_equip), fmtNum(l.active_equip || 142), fmtNum(g.active_equip)],
         ['Trial Balance Check (Dr − Cr)', fmtUSD(w.tb_check || 0, 2), fmtUSD(b.tb_check || 0, 2), '$0.00', fmtUSD(g.tb_check || 0, 2)]
@@ -2810,7 +2810,7 @@
           ])}
           ${kpiBand('2 · Operating Expenses & Cost Class Breakdown', [
             { label: 'Total General Expenses', value: fmtUSD(sc(k.expenses), 0), sub: fmtNum(expRows.length) + ' vouchers in sample' },
-            { label: 'Cash Expenses', value: fmtUSD(sc(k.cash_expenses), 0), sub: 'Paid from Till 5300' },
+            { label: 'Cash Expenses', value: fmtUSD(sc(k.cash_expenses), 0), sub: 'Paid from Till' },
             { label: 'Credit Expenses', value: fmtUSD(sc(k.credit_expenses), 0), sub: 'Booked to Supplier AP Leg 3' },
             { label: 'Total Raw Material Cost', value: fmtUSD(sc(k.raw_cost), 0), sub: fmtNum(k.raw_loads) + ' raw loads' },
             { label: 'Avg Raw Cost / Unit', value: fmtUSD(k.avg_raw_cost, 2), sub: 'Material + haulage combined' },
@@ -3749,7 +3749,7 @@
             : '';
 
           const tip = `${d.fullLbl} (Click to inspect entries)\n` +
-            `• Closing Cash Till (5300): ${fmtUSD(d.val, 2)}\n` +
+            `• Closing Cash Till: ${fmtUSD(d.val, 2)}\n` +
             `• USD Drawer: ${fmtUSD(cleanUsd(d.usd, 0.05), 2)}\n` +
             `• LBP Drawer: ${fmtLL(d.lbp || 0)}${Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : ''}\n` +
             (d.inUsd != null ? `• Period Inflows: ${fmtUSD(d.inUsd, 0)} · Outflows: ${fmtUSD(d.outUsd, 0)}` : '');
@@ -3766,7 +3766,7 @@
             `<text x="${(padL + plotW / 2).toFixed(1)}" y="${(padT + 21.5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1C8C46">All ${items.length} ${isDaily ? 'days' : 'months'} swept to $0.00 balance</text>`
           : '';
 
-        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Closing Physical Cash Till Account 5300 Trajectory">${grid}${bars}${zeroCallout}</svg>`;
+        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Closing Cash Till Trajectory">${grid}${bars}${zeroCallout}</svg>`;
       };
 
       const rateLbp = Number(k.rate_lbp || 89500);
@@ -3892,10 +3892,10 @@
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Cash Flow & Daily Plant Till (Lebanese CoA Account 5300)', [
+          ${kpiBand('1 · Cash Flow & Daily Plant Till', [
             { label: 'USD Cash Till ($)', value: fmtUSD(cleanUsd(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till), 2), sub: `In ${fmtUSD(k.cash_in_usd != null ? k.cash_in_usd : k.cash_inflow, 0)} · Out ${fmtUSD(k.cash_out_usd != null ? k.cash_out_usd : k.cash_outflow, 0)}`, tone: 'good' },
             { label: 'LBP Cash Till (LL)', value: fmtLL(k.cash_till_lbp || 0), sub: `Rate ${fmtNum(rateLbp, 0)} LL/$`, tone: 'good' },
-            { label: 'Closing Cash Till (5300)', value: fmtUSD(cleanUsd(k.cash_till), 2), sub: 'Combined USD + LBP book till', tone: 'brass' },
+            { label: 'Closing Cash Till', value: fmtUSD(cleanUsd(k.cash_till), 2), sub: 'Combined USD + LBP book till', tone: 'brass' },
             { label: 'Cash Inflows (Total)', value: fmtUSD(k.cash_inflow, 0), sub: 'Op. Sales/AR + Treasury/FX in', tone: 'good' },
             { label: 'Cash Outflows (Total)', value: fmtUSD(k.cash_outflow, 0), sub: 'Op. Exp/AP/Payroll + Sweeps out', tone: 'crit' },
             { label: 'Net Cash Flow', value: fmtUSD(cleanUsd(k.net_cash_flow), 2), sub: 'Inflows − Outflows in period', neg: true }
@@ -3903,9 +3903,9 @@
         </div>
 
         <div class="pbi-grid-1">
-          <div class="cf-explainer-bar" role="region" aria-label="How Plant Cash Till 5300 Works">
+          <div class="cf-explainer-bar" role="region" aria-label="How Plant Cash Till Works">
             <div class="cf-explainer-copy">
-              <strong>How Till 5300 Works:</strong> Cash Sales &amp; AR Receipts flow <b>IN</b> while Cash Expenses, AP Settlements &amp; Payroll flow <b>OUT</b>; daily <b>Treasury Sweeps</b> transfer net cash to/from central treasury so physical cash on hand stays near <b>$0.00</b> (<span class="mono">USD + LBP ÷ ${fmtNum(rateLbp, 0)}</span>). <em>Click any bar or month to inspect its entries below.</em>
+              <strong>How Cash Till Works:</strong> Cash Sales &amp; AR Receipts flow <b>IN</b> while Cash Expenses, AP Settlements &amp; Payroll flow <b>OUT</b>; daily <b>Treasury Sweeps</b> transfer net cash to/from central treasury so physical cash on hand stays near <b>$0.00</b> (<span class="mono">USD + LBP ÷ ${fmtNum(rateLbp, 0)}</span>). <em>Click any bar or month to inspect its entries below.</em>
             </div>
             <div class="cf-grain-ctrl">
               <span class="cf-grain-lbl">Till Balance View</span>
@@ -3927,7 +3927,7 @@
               { label: 'Sweeps / FX Out', color: '#DF8A71' }
             ]
           })}
-          ${pbiPanel(chartGrain === 'daily' ? 'Closing Cash Till (5300) — Last 30 Operating Days' : 'Closing Cash Till (5300) — Month-End Balance ($)', buildTillBalanceChartSvg(tillChartItems, { rate: rateLbp, isDaily: chartGrain === 'daily', selectedYm: focusYm, selectedDate: focusDate }), {
+          ${pbiPanel(chartGrain === 'daily' ? 'Closing Cash Till — Last 30 Operating Days' : 'Closing Cash Till — Month-End Balance ($)', buildTillBalanceChartSvg(tillChartItems, { rate: rateLbp, isDaily: chartGrain === 'daily', selectedYm: focusYm, selectedDate: focusDate }), {
             subtitle: chartGrain === 'daily'
               ? 'End-of-day physical drawer balance anchored at $0 · Click any day to inspect entries'
               : 'Month-end physical drawer balance anchored at $0 (no flow overlay) · Hover for USD + LBP split',
@@ -3966,7 +3966,7 @@
             <div class="pbi-panel-hdr cf-register-head">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <div>
-                  <div class="pbi-panel-title">Cash Till Entries &amp; Daily Cashbook Explorer (Account 5300)</div>
+                  <div class="pbi-panel-title">Cash Till Entries Explorer</div>
                   <div class="pbi-panel-sub">Inspect every cash inflow, outflow, treasury sweep, salary, loan &amp; FX slip · Click any row for 360° Record Form</div>
                 </div>
                 <div class="cf-mode-switch" role="tablist" aria-label="Cash Till Explorer View Mode">
@@ -4091,7 +4091,7 @@
                     ${thCell('cf_daily', 'Net ($)', 'net_usd', 'r')}
                     ${thCell('cf_daily', 'Close ($)', 'close_usd', 'r')}
                     ${thCell('cf_daily', 'Close (LL)', 'close_lbp', 'r')}
-                    ${thCell('cf_daily', 'Till 5300 ($)', 'close_combined', 'r')}
+                    ${thCell('cf_daily', 'Till ($)', 'close_combined', 'r')}
                   </tr>
                 </thead>
                 <tbody>
@@ -4633,7 +4633,7 @@
             { label: 'Output VAT 11% → Stmt #18', value: fmtUSD(k.sales_vat, 2), sub: 'Ties to Class 4427', tone: 'good' },
             { label: 'FIFO Open AR → Stmt #09/#11', value: fmtUSD(k.ar_balance, 2), sub: 'Ties to Class 4111', tone: 'good' },
             { label: '3-Leg Open AP → Stmt #10/#12', value: fmtUSD(k.ap_balance, 2), sub: 'Ties to Class 4011', tone: 'good' },
-            { label: 'Cash Till 5300 → Stmt #05', value: fmtUSD(k.cash_till, 2), sub: 'Ties to Class 5300', tone: 'good' },
+            { label: 'Cash Till → Stmt #05', value: fmtUSD(k.cash_till, 2), sub: 'Ties to Class 5 Till', tone: 'good' },
             { label: 'Trial Balance → Stmt #02', value: fmtUSD(k.tb_check || 0, 2), sub: 'Double-Entry Variance $0.00', tone: 'brass' }
           ])}
         </div>
@@ -4727,11 +4727,11 @@
       ]
     },
     cashflow_analytics: {
-      title: 'Cash Flow Inflows/Outflows & Daily Till 5300 Analytics',
-      subtitle: 'Daily Physical Till 5300 Trajectory, Cash Inflows vs Outflows & Payment Method Mix',
+      title: 'Cash Flow Inflows/Outflows & Daily Till Analytics',
+      subtitle: 'Daily Cash Till Trajectory, Cash Inflows vs Outflows & Payment Method Mix',
       defaultSec: 'cashflow',
       sections: [
-        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till 5300', pageId: 'p14_cashflow', badge: 'Analytics' }
+        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till', pageId: 'p14_cashflow', badge: 'Analytics' }
       ]
     },
     expenses_analytics: {
@@ -4830,12 +4830,12 @@
       ]
     },
     ledger: {
-      title: 'Partner Treasury, Loans, FX Conversions & Cash Flow Till 5300',
-      subtitle: 'Partner Loans, Repayments, External Movements, USD ↔ LBP Conversions & Daily Till 5300',
+      title: 'Partner Treasury, Loans, FX Conversions & Cash Flow Till',
+      subtitle: 'Partner Loans, Repayments, External Movements, USD ↔ LBP Conversions & Daily Till',
       defaultSec: 'treasury',
       sections: [
         { id: 'treasury', label: 'Partner Loans, External Treasury & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Moved Page' },
-        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till 5300', pageId: 'p14_cashflow', badge: 'Analytics' }
+        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till', pageId: 'p14_cashflow', badge: 'Analytics' }
       ]
     },
     sentinels: {
