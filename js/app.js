@@ -8308,7 +8308,7 @@
                   return `
                   <tr class="rrow" data-rkey="expense_categories" data-rid="${esc(c.id)}">
                     <td>${relLink('expense_categories', c.category, c.category, true)}</td>
-                    <td><span class="badge ${/Production/i.test(c.cost_class) ? 'badge-brass' : (/Capital/i.test(c.cost_class) ? 'badge-capex' : 'badge-info')}">${esc(c.cost_class)}</span></td>
+                    <td><span class="badge ${/Production/i.test(c.cost_class) ? 'badge-cost-prod' : (/Capital/i.test(c.cost_class) ? 'badge-cost-capex' : 'badge-cost-opex')}">${esc(c.cost_class)}</span></td>
                     <td class="r">${fmtNum(c.vouchers)}</td>
                     <td class="r">${fmtNum(c.unit_tagged)}</td>
                     <td class="r">${fmtUSD(c.cash, 2)}</td>

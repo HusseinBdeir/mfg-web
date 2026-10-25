@@ -202,7 +202,7 @@
   function formatCostClassHtml(clsTxt) {
     const s = String(clsTxt || '').trim();
     if (!s || s === '—') return '—';
-    const cls = /Production/i.test(s) ? 'badge-brass' : (/Capital/i.test(s) ? 'badge-capex' : 'badge-info');
+    const cls = /Production/i.test(s) ? 'badge-cost-prod' : (/Capital/i.test(s) ? 'badge-cost-capex' : 'badge-cost-opex');
     return `<span class="badge ${cls}">${esc(s)}</span>`;
   }
 

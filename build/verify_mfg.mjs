@@ -3812,8 +3812,14 @@ try {
     });
     const catTopIsFuel = catRows.length >= 10 && /^Fuel\\b/.test(catRows[0].name) && catRows[0].costClass === 'Production Cost' && Math.abs(catRows[0].spent - 2499933.55) < 1;
     const catSecondIsCapex = catRows.length >= 2 && /^Capital Expenditures\\b/.test(catRows[1].name) && catRows[1].costClass === 'Capital Expenditure' && Math.abs(catRows[1].spent - 1776293.00) < 1;
+    const prodBadgeEl = document.querySelectorAll('#univRegPanel tbody tr.rrow')[0]?.querySelector('td:nth-child(2) .badge');
     const capexBadgeEl = document.querySelectorAll('#univRegPanel tbody tr.rrow')[1]?.querySelector('td:nth-child(2) .badge');
-    const catCapexBadgeOk = Boolean(capexBadgeEl && capexBadgeEl.classList.contains('badge-capex') && !capexBadgeEl.classList.contains('badge-warn'));
+    const opexBadgeEl = document.querySelectorAll('#univRegPanel tbody tr.rrow')[2]?.querySelector('td:nth-child(2) .badge');
+    const catCapexBadgeOk = Boolean(
+      prodBadgeEl && prodBadgeEl.classList.contains('badge-cost-prod') &&
+      capexBadgeEl && capexBadgeEl.classList.contains('badge-cost-capex') && !capexBadgeEl.classList.contains('badge-warn') &&
+      opexBadgeEl && opexBadgeEl.classList.contains('badge-cost-opex')
+    );
     const catMonotonicDesc = catRows.every((r, i) => i === 0 || r.spent <= catRows[i - 1].spent + 0.01);
     const catAllClassesValid = catRows.every(r => /^(Production Cost|Operating Expense|Capital Expenditure)$/.test(r.costClass));
     const catViewBtns = Array.from(document.querySelectorAll('#univRegPanel [data-tbl-view]'));
