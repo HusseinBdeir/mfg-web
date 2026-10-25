@@ -73,13 +73,21 @@
     { key: 'expense_subcategories', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
     { key: 'company_equipment', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
     { key: 'company_drivers', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'assigned_trucks', 'loads_hauled', 'start_date', 'end_date', 'notes'], relTables: ['drivers', 'employments', 'equipment', 'sales_tickets'], views: [{ id: 'all', label: 'All Driver Assignments' }] },
-    { key: 'salaries', group: '4 · Workforce, Fleet & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'rep_date', 'payroll_month', 'company', 'staff', 'method', 'amount', 'notes'], relTables: ['employments', 'attendance', 'logistics_allowances', 'freelance_entries'], views: [{ id: 'all', label: 'All Salary Payments' }] },
+    { key: 'salaries', group: '4 · Workforce, Fleet & Payroll', label: 'Staff Salary Payments', dvn: 'bhf_mfgsalary', form: 'salary', cols: ['date', 'payroll_month', 'company', 'staff', 'currency', 'amount', 'lbp_amount', 'notes'], relTables: ['employments', 'attendance', 'logistics_allowances', 'freelance_entries'], views: [
+      { id: 'all', label: 'All Salary Payments' },
+      { id: 'usd', label: 'USD Salaries', fn: r => String(r.currency || 'USD').toUpperCase() !== 'LBP' && !r.lbp_amount },
+      { id: 'lbp', label: 'LBP Salaries (LL)', fn: r => String(r.currency || '').toUpperCase() === 'LBP' || Number(r.lbp_amount || 0) > 0 }
+    ] },
     { key: 'employments', group: '4 · Workforce, Fleet & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => /active/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
     { key: 'attendance', group: '4 · Workforce, Fleet & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Attendance Rows' }, { id: 'ot', label: 'With Overtime Hours', fn: r => Number(r.overtime_hours || 0) > 0 }] },
     { key: 'freelance_entries', group: '4 · Workforce, Fleet & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Freelance Entries' }] },
     { key: 'logistics_allowances', group: '4 · Workforce, Fleet & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'], relTables: ['employments', 'sites', 'equipment', 'salaries'], views: [{ id: 'all', label: 'All Site Allowances' }] },
     { key: 'overtime_rates', group: '4 · Workforce, Fleet & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'], relTables: ['regions', 'drivers', 'sales_tickets'], views: [{ id: 'all', label: 'All Trip & Overtime Rates' }] },
-    { key: 'external_movements', group: '5 · Treasury, Loans & JV', label: 'External Treasury Movements', dvn: 'bhf_mfgexternal', form: 'treasury', cols: ['date', 'company', 'counterparty', 'direction', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'loan_settlements'], views: [{ id: 'all', label: 'All External Movements' }] },
+    { key: 'external_movements', group: '5 · Treasury, Loans & JV', label: 'External & Extended Movements', dvn: 'bhf_mfgexternal', form: 'treasury', cols: ['date', 'company', 'kind', 'counterparty', 'direction', 'usd_amount', 'lbp_amount', 'notes'], relTables: ['loans', 'loan_settlements'], views: [
+      { id: 'all', label: 'All External & Extended' },
+      { id: 'external', label: 'External Treasury', fn: r => String(r.kind || 'External').toLowerCase() !== 'extended' },
+      { id: 'extended', label: 'Extended Stakeholders', fn: r => String(r.kind || '').toLowerCase() === 'extended' }
+    ] },
     { key: 'loans', group: '5 · Treasury, Loans & JV', label: 'Loans & Partner Advances', dvn: 'bhf_mfgloan', form: 'treasury', cols: ['name', 'company', 'counterparty', 'direction', 'principal', 'settled_amount', 'interest_rate', 'start_date', 'notes'], relTables: ['loan_settlements', 'external_movements'], views: [{ id: 'all', label: 'All Loans & Advances' }] },
     { key: 'loan_settlements', group: '5 · Treasury, Loans & JV', label: 'Loan Repayments & Drawdowns', dvn: 'bhf_mfgloansettlement', form: 'treasury', cols: ['date', 'company', 'loan', 'type', 'method', 'usd_amount', 'notes'], relTables: ['loans', 'external_movements'], views: [{ id: 'all', label: 'All Loan Settlements' }] },
     { key: 'conversions', group: '5 · Treasury, Loans & JV', label: 'USD ↔ LBP FX Conversions', dvn: 'bhf_mfgconversion', form: 'conversion', cols: ['date', 'company', 'type', 'usd_delta', 'lbp_delta', 'exchange_rate', 'name', 'notes'], relTables: ['external_movements'], views: [
@@ -3824,7 +3832,12 @@
         if (focusPartyNorm && norm(mv.party) !== focusPartyNorm) return false;
         return true;
       });
-      const hasFullFinRows = allCashMoves.some(mv => mv.stream === 'ext' || mv.stream === 'sal' || mv.stream === 'loan');
+      const hasFullFinRows = allCashMoves.some(mv => mv.stream === 'ext' || mv.stream === 'extd' || mv.stream === 'sal' || mv.stream === 'loan');
+      const streamCounts = { sales: 0, exp: 0, loan: 0, sal: 0, ext: 0, extd: 0, fx: 0 };
+      for (let i = 0; i < drillScopedMoves.length; i++) {
+        const sk = drillScopedMoves[i].stream;
+        if (streamCounts[sk] != null) streamCounts[sk]++;
+      }
       const cfChip = STATE.chipFilter || 'all';
       const chipBtn = (key, lbl) => `<button type="button" class="filter-chip ${cfChip === key ? 'active' : ''}" data-chip="${esc(key)}">${lbl}</button>`;
 
@@ -3834,6 +3847,7 @@
         if (cfChip === 'cf_sales' && mRow.stream !== 'sales') return false;
         if (cfChip === 'cf_exp' && mRow.stream !== 'exp') return false;
         if (cfChip === 'cf_ext' && mRow.stream !== 'ext') return false;
+        if (cfChip === 'cf_extd' && mRow.stream !== 'extd') return false;
         if (cfChip === 'cf_sal' && mRow.stream !== 'sal') return false;
         if (cfChip === 'cf_loan' && mRow.stream !== 'loan') return false;
         if (cfChip === 'cf_fx' && mRow.stream !== 'fx') return false;
@@ -3974,12 +3988,13 @@
                     ${chipBtn('all', `All (${fmtNum(drillScopedMoves.length)})`)}
                     ${chipBtn('cf_in', '▲ Cash In')}
                     ${chipBtn('cf_out', '▼ Cash Out')}
-                    ${chipBtn('cf_sales', 'Sales & AR')}
-                    ${chipBtn('cf_exp', 'Expenses & AP')}
-                    ${hasFullFinRows ? chipBtn('cf_ext', 'Treasury & Sweeps') : ''}
-                    ${hasFullFinRows ? chipBtn('cf_sal', 'Salaries') : ''}
-                    ${hasFullFinRows ? chipBtn('cf_loan', 'Loans') : ''}
-                    ${chipBtn('cf_fx', '⇄ FX')}
+                    ${chipBtn('cf_sales', `Sales & AR (${fmtNum(streamCounts.sales)})`)}
+                    ${chipBtn('cf_exp', `Expenses & AP (${fmtNum(streamCounts.exp)})`)}
+                    ${hasFullFinRows ? chipBtn('cf_loan', `Borrowing (${fmtNum(streamCounts.loan)})`) : ''}
+                    ${hasFullFinRows ? chipBtn('cf_sal', `Salary (${fmtNum(streamCounts.sal)})`) : ''}
+                    ${hasFullFinRows ? chipBtn('cf_ext', `External (${fmtNum(streamCounts.ext)})`) : ''}
+                    ${hasFullFinRows ? chipBtn('cf_extd', `Extended (${fmtNum(streamCounts.extd)})`) : ''}
+                    ${chipBtn('cf_fx', `FX Conversions (${fmtNum(streamCounts.fx)})`)}
                     ${chipBtn('cf_lbp', 'LBP (LL)')}
                   ` : `
                     ${chipBtn('all', `All Days (${fmtNum(allDailyRows.length)})`)}

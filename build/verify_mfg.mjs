@@ -3665,13 +3665,38 @@ try {
     if (rstBtn) rstBtn.click();
     await wait(30);
 
-    // A. #cashflow: #tillRecentPanel FIRST (Rule 16c), all 9 streams, Daily Till Sheet & Day Drill
+    // A. #cashflow: #tillRecentPanel FIRST at top (Rule 16c, zero card above #tillRecentPanel), all 7 SharePoint streams (incl. External, Extended, Salary, Borrowing & FX), Daily Till Sheet & Day Drill
     window.__navToView('cashflow');
     await wait(40);
     const cfPanelIds = Array.from(document.querySelectorAll('#workspace .panel-card[id]')).map(el => el.id);
-    const recentFirstOk = cfPanelIds[0] === 'tillRecentPanel' && cfPanelIds[1] === 'tillBridgePanel';
+    const noCardBetweenBannerAndTill = Boolean(document.querySelector('#tillRecentPanel .sales-entity-recon')) && !document.querySelector('#workspace > .sales-entity-recon');
+    const recentFirstOk = cfPanelIds[0] === 'tillRecentPanel' && cfPanelIds[1] === 'tillBridgePanel' && noCardBetweenBannerAndTill;
     const allEntriesTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
-    const hasNineStreamTotal = allEntriesTfoot.includes('20,405 ENTRIES') && allEntriesTfoot.includes('+$22,286,694.33') && allEntriesTfoot.includes('-$22,304,659.29') && allEntriesTfoot.includes('+551,916,007 LL');
+
+    // Verify External (5,467 WTC rows: +$10,920,786.96 In / -$12,078,057.02 Out / +1,200,340,363 LL), Extended (336 WTC rows: NET +$15,221.69 / -2,550,000 LL), Salary (3,069 WTC rows: NET -$754,416.51 / -501,121,595 LL) & Borrowing (1,058 WTC rows)
+    document.querySelector('#tillRecentPanel [data-chip="cf_ext"]')?.click();
+    await wait(25);
+    const extTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const extChipOk = extTfoot.includes('5,467 ENTRIES') && extTfoot.includes('+$10,920,786.96') && extTfoot.includes('-$12,078,057.02') && extTfoot.includes('+1,200,340,363 LL');
+
+    document.querySelector('#tillRecentPanel [data-chip="cf_extd"]')?.click();
+    await wait(25);
+    const extdTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const extdChipOk = extdTfoot.includes('336 ENTRIES') && extdTfoot.includes('+$15,221.69') && extdTfoot.includes('+$609,147.11') && extdTfoot.includes('-$593,925.42') && extdTfoot.includes('-2,550,000 LL');
+
+    document.querySelector('#tillRecentPanel [data-chip="cf_sal"]')?.click();
+    await wait(25);
+    const salTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const salChipOk = salTfoot.includes('3,055 ENTRIES') && salTfoot.includes('-$754,416.51') && salTfoot.includes('-501,121,595 LL');
+
+    document.querySelector('#tillRecentPanel [data-chip="cf_loan"]')?.click();
+    await wait(25);
+    const loanTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const loanChipOk = loanTfoot.includes('1,058 ENTRIES');
+
+    document.querySelector('#tillRecentPanel [data-chip="all"]')?.click();
+    await wait(25);
+    const hasNineStreamTotal = Boolean(extChipOk && extdChipOk && salChipOk && loanChipOk && allEntriesTfoot.includes('20,495 ENTRIES'));
 
     // Toggle to Daily Till Sheet (610 operating days for WTC)
     document.querySelector('#tillRecentPanel [data-cf-mode="daily"]')?.click();
@@ -3722,14 +3747,14 @@ try {
 
     const overflowPx = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-    // Entry seat u4 confidentiality check on #cashflow (#tillRecentPanel 1st, 0 confidential salary/sweep/loan chips or rows)
+    // Entry seat u4 confidentiality check on #cashflow (#tillRecentPanel 1st, 0 confidential salary/external/extended/borrowing chips or rows)
     await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
     window.__navToView('cashflow');
     await wait(35);
     const u4FirstPanel = (document.querySelector('#workspace .panel-card[id]') || {}).id || '';
-    const u4NoConfChips = !document.querySelector('#tillRecentPanel [data-chip="cf_sal"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_ext"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_loan"]');
+    const u4NoConfChips = !document.querySelector('#tillRecentPanel [data-chip="cf_sal"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_ext"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_extd"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_loan"]');
     const u4BodyTxt = (document.querySelector('#tillRecentPanel tbody')?.textContent || '');
-    const u4NoConfRows = !u4BodyTxt.includes('Salary Paid') && !u4BodyTxt.includes('Treasury Sweep');
+    const u4NoConfRows = !u4BodyTxt.includes('Salary Paid') && !u4BodyTxt.includes('External Out') && !u4BodyTxt.includes('Extended Out');
 
     // Restore Owner & Overview
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
@@ -3739,12 +3764,12 @@ try {
 
     return {
       ok: Boolean(recentFirstOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && dupSecTabs === 0 && hasExplainer && cleanTicksOk && horizReconOk && hasExplorerPanel && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
-      recentFirstOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
-      allEntriesTfoot, drillDayTfoot
+      recentFirstOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
+      allEntriesTfoot, extTfoot, extdTfoot, salTfoot, loanTfoot, drillDayTfoot
     };
   })()`);
   cashTillUxProbe && cashTillUxProbe.ok
-    ? pass('Cash Till 5300 UX & Analytics (#tillRecentPanel 1st, 9-stream ledger, 610-day Daily Till Sheet + day/month drill, $0-anchored round-tick Till balance chart, Operating vs Treasury Sweeps split, #pbiCfEntriesPanel & Entry RLS)', `WTC=${cashTillUxProbe.allEntriesTfoot} · overflow=${cashTillUxProbe.overflowPx}px`)
+    ? pass('Cash Till 5300 UX & Analytics (#tillRecentPanel 1st at top, External + Extended + Salary + Borrowing + FX streams, 610-day Daily Till Sheet + day/month drill, $0-anchored Till balance chart, #pbiCfEntriesPanel & Entry RLS)', `WTC=${cashTillUxProbe.allEntriesTfoot} · overflow=${cashTillUxProbe.overflowPx}px`)
     : fail('Cash Till 5300 UX & Analytics', JSON.stringify(cashTillUxProbe));
 
   // 7t. Expense Categories & Subcategories Total-Spent Descending Sort, GL-Backed Cost Class Badges (0 $NaN), & Activity-First Registry Sorting

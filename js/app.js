@@ -8943,37 +8943,75 @@
       });
     });
 
-    // 5–8. Confidential Treasury Sweeps, Staff Salaries & Borrowing/Loans (Owner / Supervisor / read_fin seats only)
+    // 5–8. Confidential External, Extended, Salary (incl. Opening Config) & Borrowing/Loans (Owner / Supervisor / read_fin seats only)
     if (fullFin) {
       filterRecords(SEED.records.external_movements, { ignoreSearch: true, ignorePeriod: Boolean(opts.ignorePeriod), basis: 'tx', user: u }).forEach(ex => {
-        if (/^config$/i.test(String(ex.flow || ex.method || '').trim())) return;
-        const isOut = /out|expense/i.test(String(ex.direction || ex.flow || ''));
-        const lbpMag = Math.round(Math.abs(Number(ex.lbp_amount || 0)));
-        const usdMag = Math.abs(ex.lbp_amount ? Number(ex.usd_amount || 0) : Number(ex.usd_amount != null ? ex.usd_amount : ex.amount || 0));
+        const isExtd = String(ex.kind || '').toLowerCase() === 'extended' || /^Extended(?:\.|\s|$)/i.test(String(ex.notes || '').trim());
+        const flowStr = String(ex.flow || ex.method || '').trim();
+        const isCfg = /^config$/i.test(flowStr);
+        const lbpRaw = Number(ex.lbp_amount || 0);
+        const usdRaw = lbpRaw ? Number(ex.usd_amount || 0) : Number(ex.usd_amount != null ? ex.usd_amount : ex.amount || 0);
+        let usd = 0, lbp = 0, cat = '', methodLbl = '';
+        if (isCfg) {
+          usd = round2(usdRaw);
+          lbp = Math.round(lbpRaw);
+          cat = isExtd ? 'Extended Opening' : 'External Opening';
+          methodLbl = 'Opening';
+        } else {
+          const isOut = /out|expense/i.test(String(ex.direction || flowStr));
+          const usdMag = Math.abs(usdRaw);
+          const lbpMag = Math.round(Math.abs(lbpRaw));
+          usd = isOut ? -usdMag : usdMag;
+          lbp = isOut ? -lbpMag : lbpMag;
+          cat = isExtd ? (isOut ? 'Extended Out' : 'Extended In') : (isOut ? 'External Out' : 'External In');
+          methodLbl = isExtd ? (isOut ? 'Extended Out' : 'Extended In') : (isOut ? 'External Out' : 'External In');
+        }
+        const strippedNotes = String(ex.notes || '').replace(/^Extended\.?\s*/i, '');
         pushMove({
           id: ex.id, rkey: 'external_movements', date: ex.date, company: ex.company,
-          stream: 'ext', cat: isOut ? 'Treasury Sweep Out' : 'Treasury Funding In',
-          party: ex.counterparty || 'General Treasury', partyRel: '',
-          detail: cleanLedgerNote(ex.notes) || (isOut ? 'Cash sweep / external disbursement' : 'External treasury funding into till'),
+          stream: isExtd ? 'extd' : 'ext', cat,
+          party: ex.counterparty || (isExtd ? 'Extended Stakeholder' : 'External Treasury'), partyRel: '',
+          detail: cleanLedgerNote(strippedNotes) || (isCfg ? 'Opening balance carried forward' : ((usd < 0 || lbp < 0) ? (isExtd ? 'Extended stakeholder advance / outflow' : 'External treasury expense / outflow') : (isExtd ? 'Extended stakeholder receipt / inflow' : 'External treasury revenue / inflow'))),
           ref: shortVoucherRef(ex.reference || ex.name),
-          method: isOut ? 'External Out' : 'External In',
-          usd: isOut ? -usdMag : usdMag,
-          lbp: isOut ? -lbpMag : lbpMag,
+          method: methodLbl,
+          usd,
+          lbp,
           raw: ex
         });
       });
 
       filterRecords(SEED.records.salaries, { ignoreSearch: true, ignorePeriod: Boolean(opts.ignorePeriod), basis: 'tx', user: u }).forEach(sa => {
-        const lbpMag = Math.round(Math.abs(Number(sa.lbp_amount || 0)));
-        const usdMag = Math.abs(sa.lbp_amount ? Number(sa.usd_amount || 0) : Number(sa.usd_amount != null ? sa.usd_amount : sa.amount || 0));
+        const lbpRaw = Math.round(Number(sa.lbp_amount || 0));
+        const usdRaw = Number(sa.lbp_amount ? Number(sa.usd_amount || 0) : (sa.usd_amount != null ? sa.usd_amount : sa.amount || 0));
+        const usd = round2(-usdRaw);
+        const lbp = -lbpRaw;
+        const isRefund = usd > 0.004 || lbp > 1;
         const det = [sa.payroll_month ? `Payroll ${sa.payroll_month}` : '', cleanLedgerNote(sa.notes)].filter(Boolean).join(' · ');
         pushMove({
           id: sa.id, rkey: 'salaries', date: sa.date, company: sa.company,
-          stream: 'sal', cat: 'Salary Paid',
+          stream: 'sal', cat: isRefund ? 'Salary Refund' : 'Salary Paid',
           party: sa.staff || '—', partyRel: sa.staff ? 'employments' : '',
-          detail: det || 'Staff wage disbursement',
+          detail: det || (isRefund ? 'Staff wage adjustment / refund' : 'Staff wage disbursement'),
           ref: shortVoucherRef(sa.reference || sa.name),
-          method: sa.method || 'Cash', usd: -usdMag, lbp: -lbpMag, raw: sa
+          method: sa.method || 'Cash', usd, lbp, raw: sa
+        });
+      });
+
+      filterRecords(SEED.records.attendance, { ignoreSearch: true, ignorePeriod: Boolean(opts.ignorePeriod), basis: 'tx', user: u }).forEach(at => {
+        const tp = String(at.type || '');
+        if (!/^Config\s+(USD|LBP)$/i.test(tp)) return;
+        const tally = Number(at.tally || 0);
+        if (!tally) return;
+        const isLbp = /LBP/i.test(tp);
+        const usd = isLbp ? 0 : round2(-tally);
+        const lbp = isLbp ? -Math.round(tally) : 0;
+        pushMove({
+          id: at.id, rkey: 'attendance', date: at.date, company: at.company,
+          stream: 'sal', cat: 'Salary Opening',
+          party: at.staff || '—', partyRel: at.staff ? 'employments' : '',
+          detail: [cleanLedgerNote(at.notes) || 'Opening staff balance carried forward', `(${tp})`].join(' '),
+          ref: shortVoucherRef(at.name),
+          method: 'Opening', usd, lbp, raw: at
         });
       });
 
@@ -8987,9 +9025,9 @@
         const det = [ln.direction || '', lbpMag ? `${fmtLBP(lbpMag)} principal` : '', cleanLedgerNote(ln.notes)].filter(Boolean).join(' · ');
         pushMove({
           id: ln.id, rkey: 'loans', date: dt, company: ln.company,
-          stream: 'loan', cat: isBorrowIn ? 'Loan Received' : 'Loan / Advance Out',
+          stream: 'loan', cat: isBorrowIn ? 'Borrowing In' : 'Borrowing Out',
           party: ln.lender || ln.counterparty || ln.borrower || '—', partyRel: '',
-          detail: det || 'Loan / staff advance principal',
+          detail: det || 'Borrowing / staff advance principal',
           ref: shortVoucherRef(ln.name),
           method: isBorrowIn ? 'Borrow In' : 'Lend Out',
           usd: isBorrowIn ? usdMag : -usdMag,
@@ -9005,7 +9043,7 @@
         const det = [ls.type || '', cleanLedgerNote(ls.notes)].filter(Boolean).join(' · ');
         pushMove({
           id: ls.id, rkey: 'loan_settlements', date: ls.date, company: ls.company,
-          stream: 'loan', cat: isIn ? 'Loan Repayment In' : 'Loan Repayment Out',
+          stream: 'loan', cat: isIn ? 'Borrowing Repayment In' : 'Borrowing Repayment Out',
           party: ls.borrower || ls.loan || ls.counterparty || '—', partyRel: '',
           detail: det || 'Borrowing settlement',
           ref: shortVoucherRef(ls.name),
@@ -9166,6 +9204,12 @@
 
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
 
+    const streamCounts = { sales: 0, exp: 0, loan: 0, sal: 0, ext: 0, extd: 0, fx: 0 };
+    for (let i = 0; i < drillScopedMoves.length; i++) {
+      const sk = drillScopedMoves[i].stream;
+      if (streamCounts[sk] != null) streamCounts[sk]++;
+    }
+
     const chipFilteredMoves = drillScopedMoves.filter(mRow => {
       const cfChip = STATE.chipFilter || 'all';
       if (cfChip === 'cf_in' && mRow.dir !== 'IN') return false;
@@ -9173,6 +9217,7 @@
       if (cfChip === 'cf_sales' && mRow.stream !== 'sales') return false;
       if (cfChip === 'cf_exp' && mRow.stream !== 'exp') return false;
       if (cfChip === 'cf_ext' && mRow.stream !== 'ext') return false;
+      if (cfChip === 'cf_extd' && mRow.stream !== 'extd') return false;
       if (cfChip === 'cf_sal' && mRow.stream !== 'sal') return false;
       if (cfChip === 'cf_loan' && mRow.stream !== 'loan') return false;
       if (cfChip === 'cf_fx' && mRow.stream !== 'fx') return false;
@@ -9233,7 +9278,7 @@
       { cat: 'Borrowing & Staff Advances', chipKey: fullFin ? 'cf_loan' : '', inU: tBor.totals.paid_usd, outU: tBor.totals.rec_usd, inL: tBor.totals.paid_lbp, outL: tBor.totals.rec_lbp },
       { cat: 'Salary & Workforce Payments', chipKey: fullFin ? 'cf_sal' : '', inU: 0, outU: tSal.totals.usd, inL: 0, outL: tSal.totals.lbp },
       { cat: 'External Treasury', chipKey: fullFin ? 'cf_ext' : '', inU: tExt.totals.rev_usd, outU: tExt.totals.exp_usd, inL: tExt.totals.rev_lbp, outL: tExt.totals.exp_lbp },
-      { cat: 'Extended Counterparties', chipKey: fullFin ? 'cf_ext' : '', inU: tExtd.totals.usd < 0 ? -tExtd.totals.usd : 0, outU: tExtd.totals.usd > 0 ? tExtd.totals.usd : 0, inL: tExtd.totals.lbp < 0 ? -tExtd.totals.lbp : 0, outL: tExtd.totals.lbp > 0 ? tExtd.totals.lbp : 0 },
+      { cat: 'Extended Counterparties', chipKey: fullFin ? 'cf_extd' : '', inU: tExtd.totals.usd < 0 ? -tExtd.totals.usd : 0, outU: tExtd.totals.usd > 0 ? tExtd.totals.usd : 0, inL: tExtd.totals.lbp < 0 ? -tExtd.totals.lbp : 0, outL: tExtd.totals.lbp > 0 ? tExtd.totals.lbp : 0 },
       { cat: 'Currency Conversions (USD ↔ LBP)', chipKey: 'cf_fx', inU: l2uRow.to_amt, outU: u2lRow.from_amt, inL: u2lRow.to_amt, outL: l2uRow.from_amt }
     ];
 
@@ -9297,44 +9342,10 @@
         </div>
       </div>
 
-      ${showGroupSplit ? `
-      <div class="sales-entity-recon" role="region" aria-label="Cash Till by Entity" style="margin-bottom:12px">
-        <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
-          <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter WTC Only →</span></div>
-          <div class="sales-recon-metrics">
-            <span><small>USD Till ($)</small><b>${fmtUSD(wtcK.cash_till_usd, 2)}</b></span>
-            <span><small>LBP Till (LL)</small><b>${fmtLBP(wtcK.cash_till_lbp)}</b></span>
-            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(wtcK.cash_till, 2)}</b></span>
-          </div>
-        </div>
-        <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
-          <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter BBC Only →</span></div>
-          <div class="sales-recon-metrics">
-            <span><small>USD Till ($)</small><b>${fmtUSD(bbcK.cash_till_usd, 2)}</b></span>
-            <span><small>LBP Till (LL)</small><b>${fmtLBP(bbcK.cash_till_lbp)}</b></span>
-            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(bbcK.cash_till, 2)}</b></span>
-          </div>
-        </div>
-      </div>` : (allowedNames.length > 1 ? `
-      <div class="sales-entity-recon single" style="margin-bottom:12px">
-        <div class="sales-recon-card single-card sales-recon-single" data-co="${esc(STATE.company)}">
-          <div class="sales-recon-head">
-            <span class="badge ${STATE.company === 'bbconstruction' ? 'badge-info' : 'badge-brass'}">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span>
-            <b>Active Plant Cash Till</b>
-            <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
-          </div>
-          <div class="sales-recon-metrics">
-            <span><small>USD Till ($)</small><b>${fmtUSD(liveUsd, 2)}</b></span>
-            <span><small>LBP Till (LL)</small><b>${fmtLBP(liveLbp)}</b></span>
-            <span><small>Combined (5300)</small><b class="brass">${fmtUSD(liveTot, 2)}</b></span>
-          </div>
-        </div>
-      </div>` : '')}
-
       <div class="panel-card" id="tillRecentPanel" style="margin-bottom:14px">
         <div class="panel-head cf-register-head">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="panel-title"><span>CASH TILL REGISTER &amp; DAILY CASHBOOK (ACCOUNT 5300)</span></div>
+            <div class="panel-title"><span>DAY-TO-DAY CASH TILL REGISTER &amp; DAILY CASHBOOK (ACCOUNT 5300)</span></div>
             <div class="cf-mode-switch" role="tablist" aria-label="Cash Till View Mode">
               <button type="button" class="cf-mode-btn ${!isDailyMode ? 'active' : ''}" data-cf-mode="entries" role="tab" aria-selected="${!isDailyMode}">Individual Entries <span>(${fmtNum(allMoves.length)})</span></button>
               <button type="button" class="cf-mode-btn ${isDailyMode ? 'active' : ''}" data-cf-mode="daily" role="tab" aria-selected="${isDailyMode}">Daily Till Sheet <span>(${fmtNum(allDailyRows.length)} Days)</span></button>
@@ -9344,6 +9355,8 @@
             ${canEnterForm('receipt', u) ? '<button type="button" class="btn" data-open-modal="receipt">+ AR Receipt</button>' : ''}
             ${canEnterForm('expense', u) ? '<button type="button" class="btn" data-open-modal="expense">+ Cash Expense</button>' : ''}
             ${canEnterForm('settlement', u) ? '<button type="button" class="btn" data-open-modal="settlement">+ AP Payment</button>' : ''}
+            ${canEnterForm('salary', u) ? '<button type="button" class="btn" data-open-modal="salary">+ Salary</button>' : ''}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn" data-open-modal="treasury">+ External / Loan</button>' : ''}
             ${canEnterForm('treasury', u) ? '<button type="button" class="btn btn-primary" data-open-modal="conversion">+ FX Conversion</button>' : ''}
             ${exportBtn('tillRecentPanel', isDailyMode ? 'Daily_Till_Sheet' : 'Cash_Till_Entries')}
           </div>
@@ -9351,18 +9364,19 @@
 
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox(isDailyMode ? 'Search date (DD-MM-YYYY) or weekday...' : 'Search counterparty, note, #ref, ticket, category...')}
+            ${searchBox(isDailyMode ? 'Search date (DD-MM-YYYY) or weekday...' : 'Search counterparty, staff, stakeholder, note, #ref, ticket, category...')}
             <div class="chip-bar">
               ${!isDailyMode ? `
                 ${chip('all', `All (${fmtNum(drillScopedMoves.length)})`)}
                 ${chip('cf_in', '▲ Cash In')}
                 ${chip('cf_out', '▼ Cash Out')}
-                ${chip('cf_sales', 'Sales & AR')}
-                ${chip('cf_exp', 'Expenses & AP')}
-                ${fullFin ? chip('cf_ext', 'Treasury & Sweeps') : ''}
-                ${fullFin ? chip('cf_sal', 'Salaries') : ''}
-                ${fullFin ? chip('cf_loan', 'Loans') : ''}
-                ${chip('cf_fx', '⇄ FX')}
+                ${chip('cf_sales', `Sales & AR (${fmtNum(streamCounts.sales)})`)}
+                ${chip('cf_exp', `Expenses & AP (${fmtNum(streamCounts.exp)})`)}
+                ${fullFin ? chip('cf_loan', `Borrowing (${fmtNum(streamCounts.loan)})`) : ''}
+                ${fullFin ? chip('cf_sal', `Salary (${fmtNum(streamCounts.sal)})`) : ''}
+                ${fullFin ? chip('cf_ext', `External (${fmtNum(streamCounts.ext)})`) : ''}
+                ${fullFin ? chip('cf_extd', `Extended (${fmtNum(streamCounts.extd)})`) : ''}
+                ${chip('cf_fx', `FX Conversions (${fmtNum(streamCounts.fx)})`)}
                 ${chip('cf_lbp', 'LBP (LL)')}
               ` : `
                 ${chip('all', `All Days (${fmtNum(allDailyRows.length)})`)}
@@ -9383,6 +9397,40 @@
             `}
           </div>
         </div>
+
+        ${showGroupSplit ? `
+        <div class="sales-entity-recon" role="region" aria-label="Cash Till by Entity">
+          <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
+            <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+            <div class="sales-recon-metrics">
+              <span><small>USD Till ($)</small><b>${fmtUSD(wtcK.cash_till_usd, 2)}</b></span>
+              <span><small>LBP Till (LL)</small><b>${fmtLBP(wtcK.cash_till_lbp)}</b></span>
+              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(wtcK.cash_till, 2)}</b></span>
+            </div>
+          </div>
+          <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+            <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>Plant Cash Till</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+            <div class="sales-recon-metrics">
+              <span><small>USD Till ($)</small><b>${fmtUSD(bbcK.cash_till_usd, 2)}</b></span>
+              <span><small>LBP Till (LL)</small><b>${fmtLBP(bbcK.cash_till_lbp)}</b></span>
+              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(bbcK.cash_till, 2)}</b></span>
+            </div>
+          </div>
+        </div>` : (allowedNames.length > 1 ? `
+        <div class="sales-entity-recon single">
+          <div class="sales-recon-card single-card sales-recon-single" data-co="${esc(STATE.company)}">
+            <div class="sales-recon-head">
+              <span class="badge ${STATE.company === 'bbconstruction' ? 'badge-info' : 'badge-brass'}">${esc(COMPANY_BU_MATCH[STATE.company] || STATE.company)}</span>
+              <b>Active Plant Cash Till</b>
+              <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
+            </div>
+            <div class="sales-recon-metrics">
+              <span><small>USD Till ($)</small><b>${fmtUSD(liveUsd, 2)}</b></span>
+              <span><small>LBP Till (LL)</small><b>${fmtLBP(liveLbp)}</b></span>
+              <span><small>Combined (5300)</small><b class="brass">${fmtUSD(liveTot, 2)}</b></span>
+            </div>
+          </div>
+        </div>` : '')}
 
         ${hasDrill ? `
         <div class="cf-drill-strip" role="status">
