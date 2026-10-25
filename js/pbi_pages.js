@@ -3858,7 +3858,7 @@
           };
 
           return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''} data-chart-pop="${encodeChartPop(popSpec)}">` +
-            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(13,148,136,0.10)' : 'transparent'}"/>` +
             (hOpIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yOpIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpIn.toFixed(1)}" fill="#1C8C46" rx="1.5"/>` : '') +
             (hTrIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yTrIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrIn.toFixed(1)}" fill="#6BB38B" rx="1.5"/>` : '') +
             (hOpOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yOpOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpOut.toFixed(1)}" fill="#C8333B" rx="1.5"/>` : '') +
@@ -3937,8 +3937,8 @@
 
           const lbpEqStr = Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : '';
           const popRows = [
-            { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#2A6DB5' },
-            { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#C0892F' },
+            { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#334155' },
+            { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#0F766E' },
             { label: 'Combined Closing Till', value: fmtUSD(d.val, 2), isTotal: true, tone: isZeroBar ? 'good' : (isNeg ? 'crit' : 'brass') }
           ];
           if (d.inUsd != null) {
@@ -3954,7 +3954,7 @@
           };
 
           return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${drillAttr} data-chart-pop="${encodeChartPop(popSpec)}">` +
-            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+            `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(13,148,136,0.10)' : 'transparent'}"/>` +
             `${barShape}${valLbl}${xLbl}` +
             `</g>`;
         }).join('');
@@ -5681,7 +5681,7 @@
         };
 
         return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''} data-chart-pop="${encodeChartPop(popSpec)}">` +
-          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(13,148,136,0.10)' : 'transparent'}"/>` +
           (hOpIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yOpIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpIn.toFixed(1)}" fill="#1C8C46" rx="1.5"/>` : '') +
           (hTrIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yTrIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrIn.toFixed(1)}" fill="#6BB38B" rx="1.5"/>` : '') +
           (hOpOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yOpOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpOut.toFixed(1)}" fill="#C8333B" rx="1.5"/>` : '') +
@@ -5729,7 +5729,7 @@
         const isNeg = d.val <= -0.5;
         const lbpUsdEq = Math.abs(Number(d.lbp || 0)) / rateNum;
         const isLbpDom = !isZeroBar && !isNeg && lbpUsdEq > Math.abs(Number(d.usd || 0)) + 1;
-        const fill = isZeroBar ? '#1C8C46' : (isNeg ? '#C8333B' : (isLbpDom ? '#C0892F' : '#2A6DB5'));
+        const fill = isZeroBar ? '#1C8C46' : (isNeg ? '#C8333B' : (isLbpDom ? '#0F766E' : '#334155'));
         const isSel = (d.ymIso && chartOpts.selectedYm === d.ymIso) || (d.dateIso && chartOpts.selectedDate === d.dateIso);
         const drillAttr = d.dateIso ? `data-cf-focus-date="${esc(d.dateIso)}"` : (d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : '');
 
@@ -5760,8 +5760,8 @@
 
         const lbpEqStr = Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : '';
         const popRows = [
-          { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#2A6DB5' },
-          { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#C0892F' },
+          { label: 'USD Physical Drawer', value: fmtUSD(cleanUsd(d.usd, 0.05), 2), color: '#334155' },
+          { label: 'LBP Physical Drawer', value: fmtLL(d.lbp || 0) + lbpEqStr, color: '#0F766E' },
           { label: 'Combined Closing Till', value: fmtUSD(d.val, 2), isTotal: true, tone: isZeroBar ? 'good' : (isNeg ? 'crit' : 'brass') }
         ];
         if (d.inUsd != null) {
@@ -5777,7 +5777,7 @@
         };
 
         return `<g class="cf-chart-bar pbi-chart-col${isSel ? ' is-selected' : ''}" ${drillAttr} data-chart-pop="${encodeChartPop(popSpec)}">` +
-          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+          `<rect class="cf-bar-hit pbi-col-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(13,148,136,0.10)' : 'transparent'}"/>` +
           `${barShape}${valLbl}${xLbl}` +
           `</g>`;
       }).join('');
@@ -5846,8 +5846,8 @@
             ? 'End-of-day physical drawer balance anchored at $0 · Click any day to inspect entries'
             : 'Month-end physical drawer balance anchored at $0 (no flow overlay) · Hover for USD + LBP split',
           legend: [
-            { label: 'USD Drawer (+)', color: '#2A6DB5' },
-            { label: 'LBP Drawer (+)', color: '#C0892F' },
+            { label: 'USD Drawer (+)', color: '#334155' },
+            { label: 'LBP Drawer (+)', color: '#0F766E' },
             { label: 'Timing Deficit (<$0)', color: '#C8333B' },
             { label: 'Balanced ($0)', color: '#1C8C46' }
           ]
