@@ -628,6 +628,13 @@
       const iv = r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price;
       if (iv != null && iv !== '') return iv;
     }
+    if (tableKey === 'conversions') {
+      const cd = convDeltasPbi(r);
+      if (c === 'type') return cd.dirLabel;
+      if (c === 'usd_delta') return cd.usd;
+      if (c === 'lbp_delta') return cd.lbp;
+      if (c === 'exchange_rate') return cd.rate;
+    }
     if (c === 'cost_class') return deriveExpenseCostClass(r);
     if (r[c] != null && r[c] !== '') {
       if (Array.isArray(r[c])) return r[c].join(', ');
@@ -818,6 +825,29 @@
     const n = Number(v ?? 0);
     if (!Number.isFinite(n)) return String(v ?? '—');
     return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+  function fmtSignedUSD(v, decimals = 2) {
+    const n = Number(v || 0);
+    if (Math.abs(n) < 0.005) return fmtUSD(0, decimals);
+    const abs = Math.abs(n);
+    return (n < 0 ? '-$' : '+$') + abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+  function fmtSignedLBP(v) {
+    const n = Math.round(Number(v || 0));
+    if (Math.abs(n) <= 1) return '0 LL';
+    return (n < 0 ? '-' : '+') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' LL';
+  }
+  function convDeltasPbi(r) {
+    const t = String((r && (r.type || r.name)) || '');
+    const fc = String((r && r.from_currency) || '').toUpperCase();
+    const u2l = /LBP\s*(?:to|→|2)\s*USD/i.test(t) ? false : (/USD\s*(?:to|→|2)\s*LBP/i.test(t) ? true : fc !== 'LBP');
+    const usdMag = Math.abs(Number((r && (r.usd_amount != null ? r.usd_amount : r.usd_delta)) || 0));
+    const lbpMag = Math.round(Math.abs(Number((r && (r.lbp_amount != null ? r.lbp_amount : r.lbp_delta)) || 0)));
+    const usd = r && r.usd_delta != null && Number(r.usd_delta) !== 0 ? Number(r.usd_delta) : round2(usdMag * (u2l ? -1 : 1));
+    const lbp = r && r.lbp_delta != null && Number(r.lbp_delta) !== 0 ? Math.round(Number(r.lbp_delta)) : lbpMag * (u2l ? 1 : -1);
+    const ex = Number((r && (r.exchange_rate || r.fx_rate)) || 0);
+    const rate = ex > 0 ? ex : (usdMag > 0 && lbpMag > 0 ? lbpMag / usdMag : 89500);
+    return { u2l, dirLabel: u2l ? 'USD → LBP' : 'LBP → USD', usd: round2(usd), lbp, rate };
   }
   function fmtPct(v, num, den) {
     if (num != null && den) return ((Number(num) / Number(den)) * 100).toFixed(1) + '%';
@@ -3514,49 +3544,577 @@
         if (Math.abs(n) <= 1) return '0 LL';
         return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' LL';
       };
+      const cleanUsd = (v, eps = 0.005) => {
+        const n = Number(v || 0);
+        return Math.abs(n) < eps ? 0 : n;
+      };
+      const ymToIso = r => {
+        const ymNo = String(r.YearMonthNo || '');
+        if (/^\d{6}$/.test(ymNo)) return ymNo.slice(0, 4) + '-' + ymNo.slice(4, 6);
+        return '';
+      };
+
+      const nicePositiveTicks = rawMax => {
+        const mx = Math.max(100, Number(rawMax || 0));
+        const rough = mx / 4;
+        const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+        const frac = rough / mag;
+        const mult = frac <= 1 ? 1 : (frac <= 2 ? 2 : (frac <= 2.5 ? 2.5 : (frac <= 5 ? 5 : 10)));
+        const step = mult * mag;
+        const topSteps = Math.max(4, Math.ceil((mx * 1.04) / step));
+        const ticks = [];
+        for (let i = 0; i <= topSteps; i++) ticks.push(i * step);
+        return { ticks, top: topSteps * step };
+      };
+
+      const niceSignedTicks = (minV, maxV) => {
+        const lo = Math.min(0, Number(minV || 0));
+        const hi = Math.max(0, Number(maxV || 0));
+        const span = Math.max(Math.abs(lo), Math.abs(hi));
+        if (span < 0.5) {
+          return { ticks: [-200, -100, 0, 100, 200], lo: -200, hi: 200 };
+        }
+        const candidates = [10, 20, 25, 50, 100, 200, 250, 400, 500, 1000, 2000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000];
+        let step = candidates[candidates.length - 1];
+        for (let i = 0; i < candidates.length; i++) {
+          const s = candidates[i];
+          const upN = hi > 0 ? Math.max(1, Math.ceil((hi * 1.14) / s)) : 0;
+          const dnN = lo < 0 ? Math.max(1, Math.ceil((Math.abs(lo) * 1.14) / s)) : 0;
+          const tot = upN + dnN;
+          if (tot >= 3 && tot <= 6) { step = s; break; }
+        }
+        const upSteps = hi > 0 ? Math.max(1, Math.ceil((hi * 1.14) / step)) : (lo < 0 ? 1 : 2);
+        const dnSteps = lo < 0 ? Math.max(1, Math.ceil((Math.abs(lo) * 1.14) / step)) : 0;
+        const ticks = [];
+        for (let i = -dnSteps; i <= upSteps; i++) ticks.push(i * step);
+        return { ticks, lo: -dnSteps * step, hi: upSteps * step };
+      };
+
+      const fmtRoundAxisUsd = v => {
+        const n = Math.round(Number(v || 0));
+        if (n === 0) return '$0';
+        const sign = n < 0 ? '-' : '+';
+        const abs = Math.abs(n);
+        if (abs >= 1000000) return `${n < 0 ? '-' : ''}$${(abs / 1000000).toFixed(abs % 1000000 === 0 ? 0 : 1)}M`;
+        if (abs >= 10000) return `${n < 0 ? '-' : ''}$${Math.round(abs / 1000)}K`;
+        return `${sign}$${abs.toLocaleString('en-US')}`;
+      };
+
+      const buildCashFlowSplitColumnSvg = (mRows, selectedYm) => {
+        const data = (mRows || []).slice(-14);
+        if (!data.length) return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">No monthly cash flow data for active filter</div>`;
+        const W = 620, H = 228, padL = 52, padR = 16, padT = 18, padB = 34;
+        const plotW = W - padL - padR, plotH = H - padT - padB;
+        let rawMax = 100;
+        const parsed = data.map(r => {
+          const totIn = Math.max(0, Number(r.cash_in || 0));
+          const totOut = Math.max(0, Number(r.cash_out || 0));
+          const opIn = Math.min(totIn, Math.max(0, Number(r.cash_sales || 0) + Number(r.receipts || 0)));
+          const trIn = Math.max(0, round2(totIn - opIn));
+          const opOut = Math.min(totOut, Math.max(0, Number(r.cash_expenses || 0) + Number(r.settlements_paid || 0) + Number(r.salaries || 0)));
+          const trOut = Math.max(0, round2(totOut - opOut));
+          rawMax = Math.max(rawMax, totIn, totOut);
+          return {
+            r,
+            ymIso: ymToIso(r),
+            rawLbl: String(r['Year Month'] || r.YearMonthNo || ''),
+            totIn, totOut, opIn, trIn, opOut, trOut,
+            opNet: round2(opIn - opOut),
+            netCash: cleanUsd(r.net_cash, 0.5)
+          };
+        });
+        const { ticks, top } = nicePositiveTicks(rawMax);
+        const yOf = v => padT + plotH * (1 - (v / top));
+        const grid = ticks.map(tv => {
+          const y = yOf(tv).toFixed(1);
+          const isZero = tv === 0;
+          const lbl = tv === 0 ? '$0' : (tv >= 1000000 ? `$${(tv / 1000000).toFixed(tv % 1000000 === 0 ? 0 : 1)}M` : `$${Math.round(tv / 1000)}K`);
+          return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZero ? 'var(--ink)' : 'rgba(128,138,158,0.18)'}" stroke-opacity="${isZero ? '0.32' : '1'}" stroke-width="${isZero ? '1.3' : '1'}" ${isZero ? '' : 'stroke-dasharray="3 3"'}/>` +
+            `<text x="${padL - 7}" y="${(Number(y) + 3.2).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="${isZero ? '700' : '500'}" fill="${isZero ? 'var(--ink)' : 'var(--muted)'}">${lbl}</text>`;
+        }).join('');
+
+        const grpW = plotW / parsed.length;
+        const barW = Math.min(13, Math.max(6, (grpW * 0.66 - 2) / 2));
+        const cols = parsed.map((d, i) => {
+          const cx = padL + i * grpW + grpW / 2;
+          const xIn = cx - barW - 1;
+          const xOut = cx + 1;
+          const shortLbl = d.rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, "$1 '$2").slice(0, 7);
+          const isSel = selectedYm && d.ymIso === selectedYm;
+
+          const hOpIn = (d.opIn / top) * plotH;
+          const hTrIn = (d.trIn / top) * plotH;
+          const yOpIn = padT + plotH - hOpIn;
+          const yTrIn = yOpIn - hTrIn;
+
+          const hOpOut = (d.opOut / top) * plotH;
+          const hTrOut = (d.trOut / top) * plotH;
+          const yOpOut = padT + plotH - hOpOut;
+          const yTrOut = yOpOut - hTrOut;
+
+          const tip = `${d.rawLbl} (Click to inspect month entries)\n` +
+            `• Operating In (Sales + AR): ${fmtUSD(d.opIn, 0)}\n` +
+            `• Treasury, Loans & FX In: ${fmtUSD(d.trIn, 0)}\n` +
+            `• Total Cash In: ${fmtUSD(d.totIn, 0)}\n` +
+            `• Operating Out (Exp + AP + Payroll): ${fmtUSD(d.opOut, 0)}\n` +
+            `• Treasury Sweeps & FX Out: ${fmtUSD(d.trOut, 0)}\n` +
+            `• Total Cash Out: ${fmtUSD(d.totOut, 0)}\n` +
+            `• Operating Cash Surplus: ${fmtSignedUSD(d.opNet, 0)} · Net Till Δ: ${fmtSignedUSD(d.netCash, 0)}`;
+
+          return `<g class="cf-chart-bar${isSel ? ' is-selected' : ''}" ${d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : ''}>` +
+            `<rect class="cf-bar-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+            (hOpIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yOpIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpIn.toFixed(1)}" fill="#1C8C46" rx="1.5"/>` : '') +
+            (hTrIn > 0.4 ? `<rect x="${xIn.toFixed(1)}" y="${yTrIn.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrIn.toFixed(1)}" fill="#6BB38B" rx="1.5"/>` : '') +
+            (hOpOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yOpOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hOpOut.toFixed(1)}" fill="#C8333B" rx="1.5"/>` : '') +
+            (hTrOut > 0.4 ? `<rect x="${xOut.toFixed(1)}" y="${yTrOut.toFixed(1)}" width="${barW.toFixed(1)}" height="${hTrOut.toFixed(1)}" fill="#DF8A71" rx="1.5"/>` : '') +
+            `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.3" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(shortLbl)}</text>` +
+            `<title>${esc(tip)}</title>` +
+            `</g>`;
+        }).join('');
+
+        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Monthly Cash Inflows and Outflows split into Operating vs Treasury Sweeps">${grid}${cols}</svg>`;
+      };
+
+      const buildTillBalanceChartSvg = (items, opts = {}) => {
+        if (!items || !items.length) return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">No physical cash till balance points for active filter</div>`;
+        const W = 620, H = 228, padL = 54, padR = 16, padT = 22, padB = 34;
+        const plotW = W - padL - padR, plotH = H - padT - padB;
+        const rateNum = Number(opts.rate || 89500);
+        const isDaily = Boolean(opts.isDaily);
+
+        let minV = 0, maxV = 0;
+        items.forEach(d => {
+          if (d.val < minV) minV = d.val;
+          if (d.val > maxV) maxV = d.val;
+        });
+        const { ticks, lo, hi } = niceSignedTicks(minV, maxV);
+        const span = Math.max(1, hi - lo);
+        const yOf = v => padT + plotH * (1 - ((v - lo) / span));
+        const yZero = yOf(0);
+        const allZero = items.every(d => Math.abs(d.val) < 0.5);
+
+        const grid = ticks.map(tv => {
+          const y = yOf(tv).toFixed(1);
+          const isZ = tv === 0;
+          const lbl = fmtRoundAxisUsd(tv);
+          return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${isZ ? 'var(--ink)' : 'rgba(128,138,158,0.18)'}" stroke-opacity="${isZ ? '0.42' : '1'}" stroke-width="${isZ ? '1.6' : '1'}" ${isZ ? '' : 'stroke-dasharray="3 3"'}/>` +
+            `<text x="${padL - 7}" y="${(Number(y) + 3.2).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="${isZ ? '800' : '500'}" fill="${isZ ? 'var(--ink)' : 'var(--muted)'}">${lbl}</text>`;
+        }).join('');
+
+        const grpW = plotW / items.length;
+        const barW = Math.min(24, Math.max(isDaily ? 7 : 14, grpW * 0.58));
+        const labelStep = isDaily ? Math.max(1, Math.ceil(items.length / 8)) : 1;
+
+        const bars = items.map((d, i) => {
+          const cx = padL + i * grpW + grpW / 2;
+          const isZeroBar = Math.abs(d.val) < 0.5;
+          const isNeg = d.val <= -0.5;
+          const lbpUsdEq = Math.abs(Number(d.lbp || 0)) / rateNum;
+          const isLbpDom = !isZeroBar && !isNeg && lbpUsdEq > Math.abs(Number(d.usd || 0)) + 1;
+          const fill = isZeroBar ? '#1C8C46' : (isNeg ? '#C8333B' : (isLbpDom ? '#C0892F' : '#2A6DB5'));
+          const isSel = (d.ymIso && opts.selectedYm === d.ymIso) || (d.dateIso && opts.selectedDate === d.dateIso);
+          const drillAttr = d.dateIso ? `data-cf-focus-date="${esc(d.dateIso)}"` : (d.ymIso ? `data-cf-focus-ym="${esc(d.ymIso)}"` : '');
+
+          let barShape = '';
+          let valLbl = '';
+          if (isZeroBar) {
+            barShape = `<circle cx="${cx.toFixed(1)}" cy="${yZero.toFixed(1)}" r="${isDaily ? '3.2' : '4.2'}" fill="#1C8C46" stroke="var(--surface)" stroke-width="1.2"/>`;
+            if (!isDaily || i === items.length - 1) {
+              valLbl = `<text x="${cx.toFixed(1)}" y="${(yZero - 8).toFixed(1)}" text-anchor="middle" font-size="8.6" font-weight="700" fill="#1C8C46">$0</text>`;
+            }
+          } else {
+            const yVal = yOf(d.val);
+            const rectY = Math.min(yZero, yVal);
+            const rectH = Math.max(3, Math.abs(yVal - yZero));
+            barShape = `<rect x="${(cx - barW / 2).toFixed(1)}" y="${rectY.toFixed(1)}" width="${barW.toFixed(1)}" height="${rectH.toFixed(1)}" rx="2.5" fill="${fill}"/>`;
+            const showVal = !isDaily || Math.abs(d.val) >= Math.max(Math.abs(minV), Math.abs(maxV)) * 0.35 || i === items.length - 1;
+            if (showVal) {
+              const txt = (d.val < 0 ? '-$' : '$') + Math.round(Math.abs(d.val)).toLocaleString('en-US');
+              const lblY = isNeg ? Math.min(H - 22, rectY + rectH + 10) : Math.max(12, rectY - 5);
+              valLbl = `<text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" font-size="8.8" font-weight="700" fill="${isNeg ? '#C8333B' : 'var(--ink)'}">${txt}</text>`;
+            }
+          }
+
+          const showXAxisLbl = (i % labelStep === 0) || (i === items.length - 1);
+          const xLbl = showXAxisLbl
+            ? `<text x="${cx.toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="9.2" font-weight="${isSel ? '800' : '500'}" fill="${isSel ? 'var(--brass)' : 'var(--muted)'}">${esc(d.shortLbl)}</text>`
+            : '';
+
+          const tip = `${d.fullLbl} (Click to inspect entries)\n` +
+            `• Closing Cash Till (5300): ${fmtUSD(d.val, 2)}\n` +
+            `• USD Drawer: ${fmtUSD(cleanUsd(d.usd, 0.05), 2)}\n` +
+            `• LBP Drawer: ${fmtLL(d.lbp || 0)}${Math.abs(d.lbp || 0) > 5 ? ` (${fmtUSD((d.lbp || 0) / rateNum, 2)} eq.)` : ''}\n` +
+            (d.inUsd != null ? `• Period Inflows: ${fmtUSD(d.inUsd, 0)} · Outflows: ${fmtUSD(d.outUsd, 0)}` : '');
+
+          return `<g class="cf-chart-bar${isSel ? ' is-selected' : ''}" ${drillAttr}>` +
+            `<rect class="cf-bar-hit" x="${(padL + i * grpW + 1).toFixed(1)}" y="${padT}" width="${(grpW - 2).toFixed(1)}" height="${plotH + 22}" rx="4" fill="${isSel ? 'rgba(192,137,47,0.12)' : 'transparent'}"/>` +
+            `${barShape}${valLbl}${xLbl}` +
+            `<title>${esc(tip)}</title>` +
+            `</g>`;
+        }).join('');
+
+        const zeroCallout = allZero
+          ? `<rect x="${(padL + plotW / 2 - 118).toFixed(1)}" y="${(padT + 8).toFixed(1)}" width="236" height="20" rx="10" fill="rgba(28,140,70,0.10)" stroke="rgba(28,140,70,0.35)"/>` +
+            `<text x="${(padL + plotW / 2).toFixed(1)}" y="${(padT + 21.5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1C8C46">All ${items.length} ${isDaily ? 'days' : 'months'} swept to $0.00 balance</text>`
+          : '';
+
+        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" role="img" aria-label="Closing Physical Cash Till Account 5300 Trajectory">${grid}${bars}${zeroCallout}</svg>`;
+      };
+
+      const rateLbp = Number(k.rate_lbp || 89500);
+      const chartGrain = STATE.cfChartGrain === 'daily' ? 'daily' : 'monthly';
+      const allDailyRows = typeof ctx.buildDailyTillSheetRows === 'function' ? ctx.buildDailyTillSheetRows() : [];
+      const allCashMoves = typeof ctx.buildCashTillMoves === 'function' ? ctx.buildCashTillMoves() : [];
+
+      const tillChartItems = chartGrain === 'daily'
+        ? allDailyRows.slice(0, 30).reverse().map(d => ({
+            dateIso: d.date,
+            shortLbl: fmtDateDMY(d.date).slice(0, 5),
+            fullLbl: `${fmtDateDMY(d.date)} (${d.dow})`,
+            val: cleanUsd(d.close_combined, 0.05),
+            usd: cleanUsd(d.close_usd, 0.05),
+            lbp: Math.abs(d.close_lbp) <= 5 ? 0 : d.close_lbp,
+            inUsd: d.in_usd,
+            outUsd: d.out_usd
+          }))
+        : months.slice(-14).map(r => {
+            const rawLbl = String(r['Year Month'] || r.YearMonthNo || '');
+            return {
+              ymIso: ymToIso(r),
+              shortLbl: rawLbl.replace(/^(\w{3})\s+20(\d{2})$/, "$1 '$2").slice(0, 7),
+              fullLbl: rawLbl,
+              val: cleanUsd(r.cash_till, 0.05),
+              usd: cleanUsd(r.till_usd != null ? r.till_usd : r.cash_till, 0.05),
+              lbp: Math.abs(r.till_lbp || 0) <= 5 ? 0 : Math.round(r.till_lbp || 0),
+              inUsd: r.cash_in,
+              outUsd: r.cash_out
+            };
+          });
+
+      const progRows = [...months].reverse().map(r => {
+        const opIn = Number(r.cash_sales || 0) + Number(r.receipts || 0);
+        const opOut = Number(r.cash_expenses || 0) + Number(r.settlements_paid || 0) + Number(r.salaries || 0);
+        return Object.assign({}, r, {
+          _ymIso: ymToIso(r),
+          treasury_in: Math.max(0, round2(Number(r.cash_in || 0) - opIn)),
+          sweeps_out: Math.max(0, round2(Number(r.cash_out || 0) - opOut)),
+          clean_net: cleanUsd(r.net_cash, 0.5),
+          clean_till: cleanUsd(r.cash_till, 0.5)
+        });
+      });
+
+      // Interactive Cash Till Entries & Daily Cashbook Explorer right inside Cash Flow Analytics
+      const isDailyMode = STATE.cfEntryMode === 'daily';
+      const focusDate = STATE.cfFocusDate || '';
+      const focusYm = STATE.cfFocusYm || '';
+      const focusParty = STATE.cfFocusParty || '';
+      const focusPartyNorm = norm(focusParty);
+      const qComb = [STATE.search || '', sl.search || ''].map(s => String(s).trim().toLowerCase()).filter(Boolean).join(' ');
+      const hasDrill = Boolean(focusDate || focusYm || focusParty);
+      const fmtYmHuman = ym => {
+        const mHit = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+        if (!mHit) return ym;
+        const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${mNames[(Number(mHit[2]) || 1) - 1]} ${mHit[1]}`;
+      };
+
+      const drillScopedMoves = allCashMoves.filter(mv => {
+        if (focusDate && mv.date !== focusDate) return false;
+        if (focusYm && mv.ym !== focusYm) return false;
+        if (focusPartyNorm && norm(mv.party) !== focusPartyNorm) return false;
+        return true;
+      });
+      const hasFullFinRows = allCashMoves.some(mv => mv.stream === 'ext' || mv.stream === 'sal' || mv.stream === 'loan');
+      const cfChip = STATE.chipFilter || 'all';
+      const chipBtn = (key, lbl) => `<button type="button" class="filter-chip ${cfChip === key ? 'active' : ''}" data-chip="${esc(key)}">${lbl}</button>`;
+
+      const filteredMoves = drillScopedMoves.filter(mRow => {
+        if (cfChip === 'cf_in' && mRow.dir !== 'IN') return false;
+        if (cfChip === 'cf_out' && mRow.dir !== 'OUT') return false;
+        if (cfChip === 'cf_sales' && mRow.stream !== 'sales') return false;
+        if (cfChip === 'cf_exp' && mRow.stream !== 'exp') return false;
+        if (cfChip === 'cf_ext' && mRow.stream !== 'ext') return false;
+        if (cfChip === 'cf_sal' && mRow.stream !== 'sal') return false;
+        if (cfChip === 'cf_loan' && mRow.stream !== 'loan') return false;
+        if (cfChip === 'cf_fx' && mRow.stream !== 'fx') return false;
+        if (cfChip === 'cf_lbp' && Math.abs(mRow.lbp) <= 1) return false;
+        if (qComb && !`${mRow.date} ${fmtDateDMY(mRow.date)} ${mRow.company} ${mRow.cat} ${mRow.party} ${mRow.detail} ${mRow.ref} ${mRow.method}`.toLowerCase().includes(qComb)) return false;
+        return true;
+      });
+      const sortedMoves = ctx.sortRows ? ctx.sortRows(filteredMoves, 'cf_moves', 'date', 'desc') : filteredMoves;
+      const shownMoves = sortedMoves.slice(0, ctx.shownCount ? ctx.shownCount('cf_moves') : 50);
+      let mvInUsd = 0, mvOutUsd = 0, mvLbpSum = 0;
+      for (let i = 0; i < sortedMoves.length; i++) {
+        mvInUsd += sortedMoves[i].in_usd;
+        mvOutUsd += sortedMoves[i].out_usd;
+        mvLbpSum += sortedMoves[i].lbp;
+      }
+      mvInUsd = round2(mvInUsd);
+      mvOutUsd = round2(mvOutUsd);
+      const mvUsdNet = round2(mvInUsd - mvOutUsd);
+      mvLbpSum = Math.round(mvLbpSum);
+
+      const filteredDaily = allDailyRows.filter(dRow => {
+        if (focusYm && dRow.ym !== focusYm) return false;
+        if (cfChip === 'cf_day_nonzero' && Math.abs(dRow.close_combined) < 0.05) return false;
+        if (cfChip === 'cf_day_lbp' && Math.abs(dRow.in_lbp) <= 1 && Math.abs(dRow.out_lbp) <= 1 && Math.abs(dRow.close_lbp) <= 5) return false;
+        if (cfChip === 'cf_day_neg' && dRow.close_combined >= -0.05) return false;
+        if (qComb && !`${dRow.date} ${fmtDateDMY(dRow.date)} ${dRow.dow}`.toLowerCase().includes(qComb)) return false;
+        return true;
+      });
+      const sortedDaily = ctx.sortRows ? ctx.sortRows(filteredDaily, 'cf_daily', 'date', 'desc') : filteredDaily;
+      const shownDaily = sortedDaily.slice(0, ctx.shownCount ? ctx.shownCount('cf_daily') : 50);
+      let dyInUsd = 0, dyOutUsd = 0;
+      for (let i = 0; i < sortedDaily.length; i++) {
+        dyInUsd += sortedDaily[i].in_usd;
+        dyOutUsd += sortedDaily[i].out_usd;
+      }
+      dyInUsd = round2(dyInUsd);
+      dyOutUsd = round2(dyOutUsd);
+      const dyNetUsd = round2(dyInUsd - dyOutUsd);
+      const latestDayClose = sortedDaily.length ? sortedDaily[0] : { close_usd: cleanUsd(k.cash_till_usd), close_lbp: Math.round(k.cash_till_lbp || 0), close_combined: cleanUsd(k.cash_till) };
+
+      const thCell = (view, lbl, key, cls) => ctx.th ? ctx.th(view, lbl, key, cls) : `<th class="${cls || ''}">${esc(lbl)}</th>`;
+
       bodyHtml = `
         <div class="pbi-overview-bands">
           ${kpiBand('1 · Cash Flow & Daily Plant Till (Lebanese CoA Account 5300)', [
-            { label: 'USD Cash Till ($)', value: fmtUSD(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till, 2), sub: `In ${fmtUSD(k.cash_in_usd != null ? k.cash_in_usd : k.cash_inflow, 0)} · Out ${fmtUSD(k.cash_out_usd != null ? k.cash_out_usd : k.cash_outflow, 0)}`, tone: 'good' },
-            { label: 'LBP Cash Till (LL)', value: fmtLL(k.cash_till_lbp || 0), sub: `Rate ${fmtNum(k.rate_lbp || 89500, 0)} LL/$`, tone: 'good' },
-            { label: 'Closing Cash Till (5300)', value: fmtUSD(k.cash_till, 2), sub: 'Combined USD + LBP book till', tone: 'brass' },
-            { label: 'Cash Inflows (Total)', value: fmtUSD(k.cash_inflow, 0), sub: 'Cash sales + AR receipts + Treasury in', tone: 'good' },
-            { label: 'Cash Outflows (Total)', value: fmtUSD(k.cash_outflow, 0), sub: 'AP settlements + Cash exp + Salaries', tone: 'crit' },
-            { label: 'Net Cash Flow', value: fmtUSD(k.net_cash_flow, 2), sub: 'Inflows − Outflows in period', neg: true }
+            { label: 'USD Cash Till ($)', value: fmtUSD(cleanUsd(k.cash_till_usd != null ? k.cash_till_usd : k.cash_till), 2), sub: `In ${fmtUSD(k.cash_in_usd != null ? k.cash_in_usd : k.cash_inflow, 0)} · Out ${fmtUSD(k.cash_out_usd != null ? k.cash_out_usd : k.cash_outflow, 0)}`, tone: 'good' },
+            { label: 'LBP Cash Till (LL)', value: fmtLL(k.cash_till_lbp || 0), sub: `Rate ${fmtNum(rateLbp, 0)} LL/$`, tone: 'good' },
+            { label: 'Closing Cash Till (5300)', value: fmtUSD(cleanUsd(k.cash_till), 2), sub: 'Combined USD + LBP book till', tone: 'brass' },
+            { label: 'Cash Inflows (Total)', value: fmtUSD(k.cash_inflow, 0), sub: 'Op. Sales/AR + Treasury/FX in', tone: 'good' },
+            { label: 'Cash Outflows (Total)', value: fmtUSD(k.cash_outflow, 0), sub: 'Op. Exp/AP/Payroll + Sweeps out', tone: 'crit' },
+            { label: 'Net Cash Flow', value: fmtUSD(cleanUsd(k.net_cash_flow), 2), sub: 'Inflows − Outflows in period', neg: true }
           ])}
         </div>
 
+        <div class="pbi-grid-1">
+          <div class="cf-explainer-bar" role="region" aria-label="How Plant Cash Till 5300 Works">
+            <div class="cf-explainer-copy">
+              <strong>How Till 5300 Works:</strong> Cash Sales &amp; AR Receipts flow <b>IN</b> while Cash Expenses, AP Settlements &amp; Payroll flow <b>OUT</b>; daily <b>Treasury Sweeps</b> transfer net cash to/from central treasury so physical cash on hand stays near <b>$0.00</b> (<span class="mono">USD + LBP ÷ ${fmtNum(rateLbp, 0)}</span>). <em>Click any bar or month to inspect its entries below.</em>
+            </div>
+            <div class="cf-grain-ctrl">
+              <span class="cf-grain-lbl">Till Balance View</span>
+              <div class="cf-mode-switch" role="group" aria-label="Closing Till Chart Grain">
+                <button type="button" class="cf-mode-btn ${chartGrain === 'monthly' ? 'active' : ''}" data-cf-chart-grain="monthly">Monthly (${months.slice(-14).length}m)</button>
+                <button type="button" class="cf-mode-btn ${chartGrain === 'daily' ? 'active' : ''}" data-cf-chart-grain="daily">Daily (Last ${Math.min(30, allDailyRows.length)}d)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="pbi-grid-2">
-          ${pbiPanel('Cash in vs cash out by month', buildComboChartSvg(months, [
-            { key: 'cash_in', label: 'Cash In', color: '#1E7A6E' },
-            { key: 'cash_out', label: 'Cash Out', color: '#C8333B' }
-          ], { label: 'Net Cash Flow', key: 'net_cash', color: '#D9A54A', isMoney: true }, { shareAxis: true }), {
-            subtitle: 'Monthly cash inflows vs outflows and net cash generation',
-            legend: [{ label: 'Cash In', color: '#1E7A6E' }, { label: 'Cash Out', color: '#C8333B' }, { label: 'Net Cash', color: '#D9A54A', line: true }]
+          ${pbiPanel('Monthly Cash Inflows vs Outflows — Operating vs Treasury Sweeps', buildCashFlowSplitColumnSvg(months, focusYm), {
+            subtitle: 'Left column = Inflows · Right column = Outflows · Click any month to filter entries below',
+            legend: [
+              { label: 'Op. Cash In (Sales+AR)', color: '#1C8C46' },
+              { label: 'Treasury / FX In', color: '#6BB38B' },
+              { label: 'Op. Cash Out (Exp+AP+Sal)', color: '#C8333B' },
+              { label: 'Sweeps / FX Out', color: '#DF8A71' }
+            ]
           })}
-          ${pbiPanel('Cash (till 5300) at month end', buildMultiLineSvg(months, [
-            { label: 'Closing Till Balance ($)', key: 'cash_till', color: '#1B365D' },
-            { label: 'Net Monthly Cash ($)', key: 'net_cash', color: '#1E7A6E' }
-          ], { isMoney: true, decimals: 0 }), {
-            subtitle: 'Month-end cash till trajectory across the reporting window',
-            legend: [{ label: 'Till Balance', color: '#1B365D', line: true }, { label: 'Monthly Net', color: '#1E7A6E', line: true }]
+          ${pbiPanel(chartGrain === 'daily' ? 'Closing Cash Till (5300) — Last 30 Operating Days' : 'Closing Cash Till (5300) — Month-End Balance ($)', buildTillBalanceChartSvg(tillChartItems, { rate: rateLbp, isDaily: chartGrain === 'daily', selectedYm: focusYm, selectedDate: focusDate }), {
+            subtitle: chartGrain === 'daily'
+              ? 'End-of-day physical drawer balance anchored at $0 · Click any day to inspect entries'
+              : 'Month-end physical drawer balance anchored at $0 (no flow overlay) · Hover for USD + LBP split',
+            legend: [
+              { label: 'USD Drawer (+)', color: '#2A6DB5' },
+              { label: 'LBP Drawer (+)', color: '#C0892F' },
+              { label: 'Timing Deficit (<$0)', color: '#C8333B' },
+              { label: 'Balanced ($0)', color: '#1C8C46' }
+            ]
           })}
         </div>
 
         <div class="pbi-grid-1">
           ${pbiTable('Monthly Cash Flow & Till Progression', [
-            { label: 'Month', key: 'Year Month', bold: true },
+            { label: 'Month', key: 'Year Month', fmt: (v, r) => r._ymIso ? `<button type="button" class="cf-month-drill-btn${focusYm === r._ymIso ? ' active' : ''}" data-cf-focus-ym="${esc(r._ymIso)}" title="Inspect all cash till entries in ${esc(v)}"><strong>${esc(v)}</strong> <span>→</span></button>` : `<b>${esc(v)}</b>` },
             { label: 'Cash Sales ($)', key: 'cash_sales', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'AR Receipts ($)', key: 'receipts', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Treasury & FX In ($)', key: 'treasury_in', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Total Cash In ($)', key: 'cash_in', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
             { label: 'Cash Expenses ($)', key: 'cash_expenses', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'AP Settlements ($)', key: 'settlements_paid', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Salaries Paid ($)', key: 'salaries', r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Total Cash Out ($)', key: 'cash_out', r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Net Cash Flow ($)', key: 'net_cash', r: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
-            { label: 'Closing Till ($)', key: 'cash_till', r: true, negRed: true, fmt: v => fmtUSD(v, 0) }
-          ], [...months].reverse(), { unitLabel: 'months' })}
+            { label: 'Sweeps & FX Out ($)', key: 'sweeps_out', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Total Cash Out ($)', key: 'cash_out', r: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
+            { label: 'Net Cash Flow ($)', key: 'clean_net', r: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
+            { label: 'Closing Till ($)', key: 'clean_till', r: true, negRed: true, fmt: v => fmtUSD(v, 0) }
+          ], progRows, {
+            subtitle: 'Operating Cash + Treasury Sweeps/FX reconcile 100% to Total Cash In & Out · Click any month to filter the Cash Till Entries Explorer below',
+            unitLabel: 'months'
+          })}
         </div>
+
+        ${typeof ctx.buildCashTillMoves === 'function' ? `
+        <div class="pbi-grid-1" style="margin-bottom:6px">
+          <div class="pbi-panel" id="pbiCfEntriesPanel">
+            <div class="pbi-panel-hdr cf-register-head">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <div>
+                  <div class="pbi-panel-title">Cash Till Entries &amp; Daily Cashbook Explorer (Account 5300)</div>
+                  <div class="pbi-panel-sub">Inspect every cash inflow, outflow, treasury sweep, salary, loan &amp; FX slip · Click any row for 360° Record Form</div>
+                </div>
+                <div class="cf-mode-switch" role="tablist" aria-label="Cash Till Explorer View Mode">
+                  <button type="button" class="cf-mode-btn ${!isDailyMode ? 'active' : ''}" data-cf-mode="entries" role="tab" aria-selected="${!isDailyMode}">Individual Entries <span>(${fmtNum(allCashMoves.length)})</span></button>
+                  <button type="button" class="cf-mode-btn ${isDailyMode ? 'active' : ''}" data-cf-mode="daily" role="tab" aria-selected="${isDailyMode}">Daily Till Sheet <span>(${fmtNum(allDailyRows.length)} Days)</span></button>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <button type="button" class="btn" data-nav-jump="cashflow">7-Table Book Recon →</button>
+                ${exportBtn('pbiCfEntriesPanel', isDailyMode ? 'Daily_Till_Sheet' : 'Cash_Till_Entries')}
+              </div>
+            </div>
+
+            <div class="table-toolbar" style="border-top:1px solid var(--line)">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                ${ctx.searchBox ? ctx.searchBox(isDailyMode ? 'Search date (DD-MM-YYYY) or weekday...' : 'Search counterparty, note, #ref, ticket, category...') : ''}
+                <div class="chip-bar">
+                  ${!isDailyMode ? `
+                    ${chipBtn('all', `All (${fmtNum(drillScopedMoves.length)})`)}
+                    ${chipBtn('cf_in', '▲ Cash In')}
+                    ${chipBtn('cf_out', '▼ Cash Out')}
+                    ${chipBtn('cf_sales', 'Sales & AR')}
+                    ${chipBtn('cf_exp', 'Expenses & AP')}
+                    ${hasFullFinRows ? chipBtn('cf_ext', 'Treasury & Sweeps') : ''}
+                    ${hasFullFinRows ? chipBtn('cf_sal', 'Salaries') : ''}
+                    ${hasFullFinRows ? chipBtn('cf_loan', 'Loans') : ''}
+                    ${chipBtn('cf_fx', '⇄ FX')}
+                    ${chipBtn('cf_lbp', 'LBP (LL)')}
+                  ` : `
+                    ${chipBtn('all', `All Days (${fmtNum(allDailyRows.length)})`)}
+                    ${chipBtn('cf_day_nonzero', 'Drawer ≠ $0')}
+                    ${chipBtn('cf_day_lbp', 'LBP Active')}
+                    ${chipBtn('cf_day_neg', 'Timing Deficit (<$0)')}
+                  `}
+                </div>
+              </div>
+              <div class="cf-live-strip" aria-label="Filtered Cash Summary">
+                ${!isDailyMode ? `
+                  <span>In: <b class="good">${fmtUSD(mvInUsd, 2)}</b></span>
+                  <span>Out: <b class="crit">${fmtUSD(mvOutUsd, 2)}</b></span>
+                  <span>Net: <b style="color:${mvUsdNet < -0.005 ? 'var(--crit)' : (mvUsdNet > 0.005 ? 'var(--good)' : 'var(--ink)')}">${fmtSignedUSD(mvUsdNet, 2)}</b></span>
+                  ${Math.abs(mvLbpSum) > 1 ? `<span>LBP: <b>${fmtSignedLBP(mvLbpSum)}</b></span>` : ''}
+                ` : `
+                  <span>Click any day row to inspect all cash entries of that day →</span>
+                `}
+              </div>
+            </div>
+
+            ${hasDrill ? `
+            <div class="cf-drill-strip" role="status">
+              <span class="cf-drill-lbl">Active Drill Filter:</span>
+              ${focusDate ? `<button type="button" class="cf-active-pill" data-cf-clear-drill="date"><span>Day: <b>${esc(fmtDateDMY(focusDate))}</b></span><span class="cf-pill-x">✕</span></button>` : ''}
+              ${focusYm ? `<button type="button" class="cf-active-pill" data-cf-clear-drill="ym"><span>Month: <b>${esc(fmtYmHuman(focusYm))}</b></span><span class="cf-pill-x">✕</span></button>` : ''}
+              ${focusParty ? `<button type="button" class="cf-active-pill" data-cf-clear-drill="party"><span>Counterparty: <b>${esc(focusParty)}</b></span><span class="cf-pill-x">✕</span></button>` : ''}
+              <button type="button" class="cf-clear-all-btn" data-cf-clear-drill="all">✕ Show All Cash Entries</button>
+            </div>` : ''}
+
+            ${!isDailyMode ? `
+            ${ctx.renderColFilterBar ? ctx.renderColFilterBar('cf_moves') : ''}
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    ${thCell('cf_moves', 'Date', 'date')}
+                    ${thCell('cf_moves', 'Co.', 'company')}
+                    ${thCell('cf_moves', 'Category', 'cat')}
+                    ${thCell('cf_moves', 'Counterparty', 'party')}
+                    ${thCell('cf_moves', 'Details', 'detail')}
+                    ${thCell('cf_moves', 'Ref', 'ref')}
+                    ${thCell('cf_moves', 'In ($)', 'in_usd', 'r')}
+                    ${thCell('cf_moves', 'Out ($)', 'out_usd', 'r')}
+                    ${thCell('cf_moves', 'LBP (LL)', 'lbp', 'r')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${shownMoves.map(r => {
+                    const flowCls = r.dir === 'IN' ? 'in' : (r.dir === 'FX' ? 'fx' : 'out');
+                    const flowSym = r.dir === 'IN' ? '▲' : (r.dir === 'FX' ? '⇄' : '▼');
+                    const partyHtml = (r.partyRel && ctx.relLink)
+                      ? ctx.relLink(r.partyRel, r.party, r.party, true)
+                      : `<button type="button" class="cf-party-btn" data-cf-focus-party="${esc(r.party)}" title="Filter all cash entries for ${esc(r.party)}">${esc(r.party)}</button>`;
+                    const refHtml = (r.ticketId && ctx.ic)
+                      ? `<span class="tkt-cell-inline"><strong class="tkt-no-num">${esc(r.ref)}</strong><button type="button" class="tkt-print-mini" data-print-ticket="sales" data-print-id="${esc(r.ticketId)}" title="Preview / Print Ticket ${esc(r.ref)}">${ctx.ic('printer')}</button></span> <span class="mu">· ${esc(r.method)}</span>`
+                      : `${esc(r.ref)} <span class="mu">· ${esc(r.method)}</span>`;
+                    return `
+                    <tr class="rrow" data-rkey="${esc(r.rkey)}" data-rid="${esc(r.id)}">
+                      <td class="mono"><button type="button" class="cf-date-jump" data-cf-focus-date="${esc(r.date)}" title="Filter entries to ${esc(fmtDateDMY(r.date))}">${esc(fmtDateDMY(r.date))}</button>${ctx.appCell ? ctx.appCell(r.raw, r.rkey) : ''}</td>
+                      <td>${ctx.coBadge ? ctx.coBadge(r.company) : shortCoHtml(r.company)}</td>
+                      <td class="cf-cat-cell"><span class="cf-flow-badge ${flowCls}">${flowSym}</span><span class="cf-cat-txt">${esc(r.cat)}</span></td>
+                      <td class="cf-party-cell" title="${esc(r.party)}">${partyHtml}</td>
+                      <td class="cf-detail-cell" title="${esc(r.detail)}">${esc(r.detail)}</td>
+                      <td class="mono cf-ref-cell" title="${esc(r.ref + ' · ' + r.method)}">${refHtml}</td>
+                      <td class="r">${r.in_usd >= 0.005 ? `<strong style="color:var(--good)">+${fmtUSD(r.in_usd, 2)}</strong>` : '—'}</td>
+                      <td class="r">${r.out_usd >= 0.005 ? `<strong style="color:var(--crit)">-${fmtUSD(r.out_usd, 2)}</strong>` : '—'}</td>
+                      <td class="r">${Math.abs(r.lbp) > 1 ? `<strong style="color:${r.lbp < 0 ? 'var(--crit)' : 'var(--good)'}">${fmtSignedLBP(r.lbp)}</strong>` : (r.stream === 'fx' ? '0 LL' : '—')}</td>
+                    </tr>`;
+                  }).join('') || (ctx.emptyRow ? ctx.emptyRow(9, 'No cash till entries match the active filter') : '')}
+                  ${ctx.showMoreRow ? ctx.showMoreRow('cf_moves', sortedMoves.length, 9) : ''}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="6"><b>FILTERED TOTAL (${fmtNum(sortedMoves.length)} ENTRIES · NET ${fmtSignedUSD(mvUsdNet, 2)})</b></td>
+                    <td class="r"><b style="color:var(--good)">+${fmtUSD(mvInUsd, 2)}</b></td>
+                    <td class="r"><b style="color:var(--crit)">-${fmtUSD(mvOutUsd, 2)}</b></td>
+                    <td class="r"><b style="color:${mvLbpSum < -1 ? 'var(--crit)' : (mvLbpSum > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(mvLbpSum)}</b></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            ` : `
+            ${ctx.renderColFilterBar ? ctx.renderColFilterBar('cf_daily') : ''}
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    ${thCell('cf_daily', 'Date', 'date')}
+                    ${thCell('cf_daily', 'Entries', 'entries_cnt', 'r')}
+                    ${thCell('cf_daily', 'Open ($)', 'open_usd', 'r')}
+                    ${thCell('cf_daily', 'In ($)', 'in_usd', 'r')}
+                    ${thCell('cf_daily', 'Out ($)', 'out_usd', 'r')}
+                    ${thCell('cf_daily', 'Net ($)', 'net_usd', 'r')}
+                    ${thCell('cf_daily', 'Close ($)', 'close_usd', 'r')}
+                    ${thCell('cf_daily', 'Close (LL)', 'close_lbp', 'r')}
+                    ${thCell('cf_daily', 'Till 5300 ($)', 'close_combined', 'r')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${shownDaily.map(d => {
+                    const statusBadge = Math.abs(d.close_combined) < 0.05
+                      ? '<span class="badge badge-ok" style="margin-left:5px">Balanced $0</span>'
+                      : (d.close_combined < 0 ? '<span class="badge badge-warn" style="margin-left:5px">Timing Deficit</span>' : '');
+                    return `
+                    <tr class="cf-day-row" data-cf-focus-date="${esc(d.date)}" title="Click to inspect ${fmtNum(d.entries_cnt)} cash entries on ${esc(fmtDateDMY(d.date))}">
+                      <td class="mono"><strong>${esc(fmtDateDMY(d.date))}</strong> <span class="mu">${esc(d.dow)}</span></td>
+                      <td class="r"><span class="badge badge-info">${fmtNum(d.entries_cnt)} →</span></td>
+                      <td class="r">${Math.abs(d.open_usd) >= 0.005 ? fmtUSD(d.open_usd, 2) : '$0.00'}</td>
+                      <td class="r">${d.in_usd >= 0.005 ? `<strong style="color:var(--good)">+${fmtUSD(d.in_usd, 2)}</strong>` : '—'}</td>
+                      <td class="r">${d.out_usd >= 0.005 ? `<strong style="color:var(--crit)">-${fmtUSD(d.out_usd, 2)}</strong>` : '—'}</td>
+                      <td class="r"><strong style="color:${d.net_usd < -0.005 ? 'var(--crit)' : (d.net_usd > 0.005 ? 'var(--good)' : 'var(--muted)')}">${fmtSignedUSD(d.net_usd, 2)}</strong></td>
+                      <td class="r"><strong style="color:${d.close_usd < -0.05 ? 'var(--crit)' : 'inherit'}">${fmtUSD(d.close_usd, 2)}</strong></td>
+                      <td class="r">${Math.abs(d.close_lbp) > 5 ? `<strong>${fmtLL(d.close_lbp)}</strong>` : '0 LL'}</td>
+                      <td class="r"><strong style="color:${d.close_combined < -0.05 ? 'var(--crit)' : (d.close_combined > 0.05 ? 'var(--brass)' : 'var(--good)')}">${fmtUSD(d.close_combined, 2)}</strong>${statusBadge}</td>
+                    </tr>`;
+                  }).join('') || (ctx.emptyRow ? ctx.emptyRow(9, 'No daily till rows match the active filter') : '')}
+                  ${ctx.showMoreRow ? ctx.showMoreRow('cf_daily', sortedDaily.length, 9) : ''}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3"><b>PERIOD DAILY TILL SUMMARY (${fmtNum(sortedDaily.length)} OPERATING DAYS)</b></td>
+                    <td class="r"><b style="color:var(--good)">+${fmtUSD(dyInUsd, 2)}</b></td>
+                    <td class="r"><b style="color:var(--crit)">-${fmtUSD(dyOutUsd, 2)}</b></td>
+                    <td class="r"><b>${fmtSignedUSD(dyNetUsd, 2)}</b></td>
+                    <td class="r"><b>${fmtUSD(latestDayClose.close_usd, 2)}</b></td>
+                    <td class="r"><b>${fmtLL(latestDayClose.close_lbp)}</b></td>
+                    <td class="r"><b>${fmtUSD(latestDayClose.close_combined, 2)}</b></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            `}
+          </div>
+        </div>` : ''}
       `;
     }
 
@@ -3591,7 +4149,9 @@
       const extNet = round2(extRev - extExp);
       const totPrincipal = loanRows.reduce((a, r) => a + Number(r.principal || 0), 0);
       const totRepaid = loanSetRows.reduce((a, r) => a + Number(r.usd_amount || r.amount || 0), 0);
-      const avgFx = convRows.length ? convRows.reduce((a, r) => a + Number(r.exchange_rate || 89500), 0) / convRows.length : 89500;
+      const avgFx = convRows.length ? convRows.reduce((a, r) => a + convDeltasPbi(r).rate, 0) / convRows.length : 89500;
+      const convNetUsd = convRows.reduce((a, r) => a + convDeltasPbi(r).usd, 0);
+      const convNetLbp = convRows.reduce((a, r) => a + convDeltasPbi(r).lbp, 0);
 
       // Aggregate external by counterparty for the 2 horizontal bar charts
       const cpMap = new Map();
@@ -3616,7 +4176,7 @@
             { label: 'Loans Outstanding (owes +)', value: fmtUSD(totPrincipal - totRepaid, 0), sub: 'Principal − Repaid', tone: 'warn' }
           ])}
           ${kpiBand('2 · FX Conversions (USD ↔ LBP) & Barter Offsets', [
-            { label: 'FX Conversions', value: fmtNum(convRows.length), sub: 'Treasury exchange slips' },
+            { label: 'FX Conversions', value: fmtNum(convRows.length), sub: `${fmtSignedUSD(convNetUsd, 0)} · ${fmtSignedLBP(convNetLbp)}` },
             { label: 'Avg Rate USD → LBP', value: fmtNum(avgFx, 0) + ' LBP', sub: 'Pegged ~89,500–90,000 LBP', tone: 'brass' },
             { label: 'External Movements', value: fmtNum(extRows.length), sub: 'Non-ticket treasury entries' },
             { label: 'Counterparties Active', value: fmtNum(cpList.length), sub: 'External & loan parties' },
@@ -3674,11 +4234,10 @@
           ${pbiTable('Currency conversions (USD ↔ LBP)', [
             { label: 'Date', key: 'date', mono: true },
             { label: 'Co.', key: 'company' },
-            { label: 'From', key: 'from_currency', mono: true },
-            { label: 'To', key: 'to_currency', mono: true },
-            { label: 'USD Amount ($)', key: 'usd_amount', r: true, fmt: v => fmtUSD(v, 2) },
-            { label: 'LBP Amount', key: 'lbp_amount', r: true, mono: true, fmt: v => fmtNum(v, 0) + ' LBP' },
-            { label: 'Exchange Rate', key: 'exchange_rate', r: true, mono: true, fmt: v => fmtNum(v, 0) },
+            { label: 'Direction', raw: r => convDeltasPbi(r).dirLabel, bold: true },
+            { label: 'USD Change ($)', raw: r => convDeltasPbi(r).usd, r: true, mono: true, fmt: v => `<strong style="color:${Number(v) >= 0 ? 'var(--good)' : 'var(--crit)'}">${fmtSignedUSD(v, 2)}</strong>` },
+            { label: 'LBP Change (LL)', raw: r => convDeltasPbi(r).lbp, r: true, mono: true, fmt: v => `<strong style="color:${Number(v) >= 0 ? 'var(--good)' : 'var(--crit)'}">${fmtSignedLBP(v)}</strong>` },
+            { label: 'Exchange Rate', raw: r => convDeltasPbi(r).rate, r: true, mono: true, fmt: v => fmtNum(v, 0) },
             { label: 'Voucher', key: 'name', mono: true }
           ], convRows, { rkey: 'conversions', limit: 35, unitLabel: 'conversions' })}
         </div>
@@ -4325,7 +4884,7 @@
             <div class="mod-analytics-sub">${esc(cfg.subtitle)}</div>
           </div>
           <div class="mod-analytics-tabs" role="tablist" aria-label="${esc(cfg.title)} Sections">
-            ${availSecs.map(s => {
+            ${availSecs.length > 1 ? availSecs.map(s => {
               const sel = !isCollapsed && !isAll && activeSecs[0] && activeSecs[0].id === s.id;
               return `
                 <button type="button" class="filter-chip ${sel ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="${esc(s.id)}" role="tab" aria-selected="${sel}">
@@ -4333,11 +4892,14 @@
                   <span class="badge ${s.badge === 'Moved Page' ? 'badge-brass' : 'badge-info'}" style="margin-left:5px;font-size:9.5px;padding:1px 5px">${esc(s.badge)}</span>
                 </button>
               `;
-            }).join('')}
+            }).join('') : ''}
             ${availSecs.length > 1 ? `
               <button type="button" class="filter-chip ${isAll ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="all" role="tab" aria-selected="${isAll}">
                 All (${availSecs.length})
               </button>
+            ` : ''}
+            ${moduleKey === 'cashflow_analytics' ? `
+              <button type="button" class="btn" style="padding:4px 9px;font-size:11px" data-nav-jump="cashflow">Open Full Cashbook &amp; 7-Table Recon →</button>
             ` : ''}
             <button type="button" class="filter-chip ${isCollapsed ? 'active' : ''}" data-mod-hub-key="${esc(moduleKey)}" data-mod-sec="${esc(isCollapsed ? expandSecId : 'hide')}" data-mod-toggle="${isCollapsed ? 'expand' : 'collapse'}" aria-expanded="${!isCollapsed}">
               ${isCollapsed ? '▸ Expand Insights' : '▾ Collapse'}
@@ -4489,7 +5051,7 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('tbl_' + meta.key, hubColLabel(c, meta.key), c, !NON_NUMERIC_HUB_COLS.test(c) && /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('tbl_' + meta.key, hubColLabel(c, meta.key), c, !NON_NUMERIC_HUB_COLS.test(c) && /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets|_delta$|exchange_rate/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
@@ -4499,19 +5061,28 @@
                     const v = cellValue(r, c, meta.key, rel);
                     const nonNum = NON_NUMERIC_HUB_COLS.test(c);
                     const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
-                    const isMoney = !isBool && !nonNum && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
-                    const isNum = !isBool && !nonNum && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
+                    const isSignedUsd = !isBool && !nonNum && c === 'usd_delta';
+                    const isSignedLbp = !isBool && !nonNum && c === 'lbp_delta';
+                    const isLbp = !isBool && !nonNum && !isSignedLbp && /^lbp_|_lbp$/.test(c);
+                    const isMoney = !isBool && !nonNum && !isLbp && !isSignedLbp && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate|^usd_delta$/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !nonNum && !isMoney && !isLbp && !isSignedLbp && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
-                    if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
+                    if (isSignedUsd && v != null && v !== '') cell = fmtSignedUSD(v, 2);
+                    else if (isSignedLbp && v != null && v !== '') cell = fmtSignedLBP(v);
+                    else if (isLbp && v != null && v !== '') cell = fmtNum(v, 0) + ' LL';
+                    else if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
                     else if (/date/.test(c) && v) cell = fmtDateDMY(v);
 
                     const lkTarget = HUB_LOOKUP_TARGETS[c];
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
+                    const signedHtml = (isSignedUsd || isSignedLbp) && v != null && v !== ''
+                      ? `<strong style="color:${Number(v) >= 0 ? 'var(--good)' : 'var(--crit)'}">${esc(cell)}</strong>`
+                      : null;
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : (c === 'cost_class' ? formatCostClassHtml(cell) : esc(cell))));
-                    return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
+                      : (signedHtml || (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : (c === 'cost_class' ? formatCostClassHtml(cell) : esc(cell)))));
+                    return `<td class="${isMoney || isNum || isLbp || isSignedLbp ? 'r' : ''}${/date|ticket|code|_no$|plate|version|_delta$|exchange_rate/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
               `).join('') || emptyRow(meta.cols.length, 'No rows match the active filter.')}
@@ -4521,11 +5092,14 @@
               <tr>
                 ${(() => {
                   const isColNumeric = col => {
-                    if (NON_NUMERIC_HUB_COLS.test(col)) return { isM: false, isN: false, num: false };
+                    if (NON_NUMERIC_HUB_COLS.test(col)) return { isM: false, isN: false, isL: false, isSU: false, isSL: false, num: false };
                     const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(col);
-                    const isM = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(col) && !/rate$/.test(col);
-                    const isN = !isBoolCol && !isM && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
-                    return { isM, isN, num: isM || isN };
+                    const isSU = !isBoolCol && col === 'usd_delta';
+                    const isSL = !isBoolCol && col === 'lbp_delta';
+                    const isL = !isBoolCol && !isSL && /^lbp_|_lbp$/.test(col);
+                    const isM = !isBoolCol && !isL && !isSL && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate|^usd_delta$/.test(col) && !/rate$/.test(col);
+                    const isN = !isBoolCol && !isM && !isL && !isSL && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
+                    return { isM, isN, isL, isSU, isSL, num: isM || isN || isL || isSU || isSL };
                   };
                   let firstNum = meta.cols.findIndex((col, idx) => idx > 0 && isColNumeric(col).num);
                   if (firstNum < 0) firstNum = meta.cols.length;
@@ -4533,8 +5107,8 @@
                   const out = [`<td colspan="${leadSpan}"><b>TOTAL (${fmtNum(rows.length)} RECORDS)</b></td>`];
                   for (let ci = leadSpan; ci < meta.cols.length; ci++) {
                     const c = meta.cols[ci];
-                    const { isM: isMoney, isN: isNum } = isColNumeric(c);
-                    if (!isMoney && !isNum) { out.push(`<td></td>`); continue; }
+                    const { isM: isMoney, isN: isNum, isL, isSU, isSL } = isColNumeric(c);
+                    if (!isMoney && !isNum && !isL && !isSU && !isSL) { out.push(`<td></td>`); continue; }
                     let sum = 0, cnt = 0;
                     rows.forEach(r => {
                       const v = cellValue(r, c, meta.key, rel);
@@ -4546,8 +5120,14 @@
                     if (!cnt) { out.push(`<td class="r">—</td>`); continue; }
                     const isAvg = /price|rate|factor|pct|percentage|odometer|closing_till|credit_days/.test(c) && !/^(total|amount|vat_amount|cost|trans_price|price|total_paid|total_spent)$/.test(c);
                     const val = isAvg ? (sum / cnt) : sum;
-                    const txt = isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0);
-                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-avg-tag">Avg </span>' : ''}<b>${txt}</b></td>`);
+                    const txt = isSU ? fmtSignedUSD(val, 2)
+                      : (isSL ? fmtSignedLBP(val)
+                        : (isL ? fmtNum(val, 0) + ' LL'
+                          : (isMoney ? fmtUSD(val, 2) : fmtNum(val, /factor|qty|capacity|percentage|interest/.test(c) ? 2 : 0))));
+                    const footHtml = (isSU || isSL)
+                      ? `<strong style="color:${val >= 0 ? 'var(--good)' : 'var(--crit)'}">${esc(txt)}</strong>`
+                      : `<b>${txt}</b>`;
+                    out.push(`<td class="r">${isAvg ? '<span class="tfoot-avg-tag">Avg </span>' : ''}${footHtml}</td>`);
                   }
                   return out.join('');
                 })()}
@@ -4580,11 +5160,16 @@
     truck_owner: 'Truck Owner (Hauler)',
     site_owner: 'Site Owner',
     is_jv: 'JV 50/50',
-    gps_status: 'GPS Pin'
+    gps_status: 'GPS Pin',
+    usd_delta: 'USD Change ($)',
+    lbp_delta: 'LBP Change (LL)',
+    exchange_rate: 'Rate (LL/$)'
   };
 
   function hubColLabel(c, tableKey) {
+    if (c === 'type' && tableKey === 'conversions') return 'Direction';
     if (c === 'name') {
+      if (tableKey === 'conversions') return 'Voucher / Ref';
       if (tableKey === 'suppliers') return 'Supplier / Hauler';
       if (tableKey === 'equipment') return 'Unit / Plate #';
       if (tableKey === 'drivers') return 'Driver Name';

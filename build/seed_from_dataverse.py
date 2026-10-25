@@ -120,6 +120,52 @@ def fmt_val(row, attr, default=""):
     )
 
 
+def _build_conversion_row(cv):
+    bu = ID_TO_BU.get((cv.get("_owningbusinessunit_value") or "").lower(), "WTC")
+    nm = cv.get("bhf_name") or ""
+    tp = fmt_val(cv, "_bhf_type_value", "")
+    if not tp or len(tp) == 36:
+        tp = "LBP to USD" if ("LBP to USD" in nm or "LBP2USD" in nm.upper()) else "USD to LBP"
+    is_u2l = not tp.strip().upper().startswith("LBP")
+    raw_from = float(cv.get("bhf_from") or 0)
+    raw_to = float(cv.get("bhf_to") or 0)
+    if is_u2l:
+        from_cur, to_cur = "USD", "LBP"
+        usd_amt = round(raw_from, 2)
+        lbp_amt = int(round(raw_to))
+        usd_delta = round(-raw_from, 2)
+        lbp_delta = int(round(raw_to))
+    else:
+        from_cur, to_cur = "LBP", "USD"
+        lbp_amt = int(round(raw_from))
+        usd_amt = round(raw_to, 2)
+        usd_delta = round(raw_to, 2)
+        lbp_delta = -int(round(raw_from))
+    raw_rate = float(cv.get("bhf_rate") or cv.get("bhf_exchangerate") or 0)
+    if raw_rate > 0:
+        fx_rate = round(raw_rate, 2)
+    elif usd_amt > 0 and lbp_amt > 0:
+        fx_rate = round(lbp_amt / usd_amt, 2)
+    else:
+        fx_rate = 89500.0
+    return {
+        "id": cv["bhf_conversionid"],
+        "name": nm,
+        "company": bu,
+        "date": str(cv.get("bhf_transactiondate") or "")[:10],
+        "type": "USD to LBP" if is_u2l else "LBP to USD",
+        "from_currency": from_cur,
+        "to_currency": to_cur,
+        "usd_amount": usd_amt,
+        "lbp_amount": lbp_amt,
+        "usd_delta": usd_delta,
+        "lbp_delta": lbp_delta,
+        "exchange_rate": fx_rate,
+        "reference": cv.get("bhf_reference") or "",
+        "notes": cv.get("bhf_notes") or "",
+    }
+
+
 def clean_row(row):
     """Strip table[col] or [col] brackets from DAX output keys."""
     out = {}
@@ -1683,21 +1729,7 @@ def fetch_dataverse_records():
         })
 
     cv_raw = fetched["cv_raw"]
-    conversions = []
-    for cv in cv_raw:
-        bu = ID_TO_BU.get((cv.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        conversions.append({
-            "id": cv["bhf_conversionid"],
-            "name": cv.get("bhf_name") or "",
-            "company": bu,
-            "date": str(cv.get("bhf_transactiondate") or "")[:10],
-            "from_currency": fmt_val(cv, "bhf_fromcurrency", "USD"),
-            "to_currency": fmt_val(cv, "bhf_tocurrency", "LBP"),
-            "usd_amount": float(cv.get("bhf_usdamount") or cv.get("bhf_usdvalue") or 0),
-            "lbp_amount": float(cv.get("bhf_lbpamount") or 0),
-            "exchange_rate": float(cv.get("bhf_exchangerate") or cv.get("bhf_rate") or 90000),
-            "notes": cv.get("bhf_notes") or "",
-        })
+    conversions = [_build_conversion_row(cv) for cv in cv_raw]
 
     jvp_raw = fetched["jvp_raw"]
     jv_partnerships = []
@@ -2632,12 +2664,69 @@ def apply_cashflow_till_parity(models):
 def main():
     t0 = time.time()
     cf_only = "--cf-only" in sys.argv
+    conv_only = "--conversions-only" in sys.argv
     skip_dax = "--skip-dax" in sys.argv or cf_only
     snap_path = DATA_DIR / "mfg_snapshot.json"
-    if cf_only and snap_path.exists():
-        print("== Fast Cash Flow & Till Parity Patch (--cf-only) ==", flush=True)
+    if (cf_only or conv_only) and snap_path.exists():
         packed_payload = json.loads(snap_path.read_text(encoding="utf-8"))
-        apply_cashflow_till_parity(packed_payload.get("models") or {})
+        if cf_only:
+            print("== Fast Cash Flow & Till Parity Patch (--cf-only) ==", flush=True)
+            apply_cashflow_till_parity(packed_payload.get("models") or {})
+        if conv_only:
+            print("== Fast FX Conversions Patch (--conversions-only) ==", flush=True)
+            import re as _re
+            _WB_TAG_RE = _re.compile(r"\s*\[wb:[^\]]+\]")
+            _MIG_TAG_RE = _re.compile(r"\s*\[m\d+[^\]]*\]", _re.I)
+            bu_filter = " or ".join(f"_owningbusinessunit_value eq {g}" for g in BU_IDS.values())
+            cv_raw = safe_get_fmt("bhf_conversion", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", True, False)
+            raw_convs = [_build_conversion_row(cv) for cv in cv_raw]
+            compact_convs = []
+            for r in raw_convs:
+                out = {}
+                for ck, v in r.items():
+                    if ck == "id":
+                        continue
+                    if ck == "notes" and isinstance(v, str):
+                        v = _MIG_TAG_RE.sub("", _WB_TAG_RE.sub("", v)).strip()
+                    if v is None or v == "" or v == [] or v == {} or v is False or v == 0 or v == 0.0:
+                        continue
+                    out[ck] = v
+                compact_convs.append(out)
+            col_set = []
+            seen_cols = set()
+            for r in compact_convs:
+                for ck in r.keys():
+                    if ck not in seen_cols:
+                        seen_cols.add(ck)
+                        col_set.append(ck)
+            sc = [1 if all(isinstance(r.get(c), str) or r.get(c) is None for r in compact_convs) else 0 for c in col_set]
+            pool = list(packed_payload.get("_s") or [])
+            pool_idx = {s: i for i, s in enumerate(pool)}
+            str_counts = Counter()
+            for r in compact_convs:
+                for ci, c in enumerate(col_set):
+                    if sc[ci]:
+                        v = r.get(c)
+                        if isinstance(v, str) and len(v) >= 2:
+                            str_counts[v] += 1
+            for s_val, cnt in str_counts.most_common():
+                if cnt >= 2 and s_val not in pool_idx:
+                    pool_idx[s_val] = len(pool)
+                    pool.append(s_val)
+            out_rows = []
+            for r in compact_convs:
+                arr = []
+                for ci, c in enumerate(col_set):
+                    v = r.get(c)
+                    if sc[ci] and isinstance(v, str) and v in pool_idx:
+                        v = pool_idx[v]
+                    arr.append(v)
+                while arr and arr[-1] is None:
+                    arr.pop()
+                out_rows.append(arr)
+            packed_payload["_s"] = pool
+            packed_payload.setdefault("records", {})["conversions"] = {"c": col_set, "sc": sc, "r": out_rows, "p": "cv"}
+            print(f"  Patched conversions -> {len(out_rows)} rows · cols={col_set}", flush=True)
         packed_payload["generated_at"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         snap_path.write_text(json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)

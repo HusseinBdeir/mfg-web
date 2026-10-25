@@ -806,10 +806,15 @@
             ['external', 'External Cash Inflow / Outflow'],
             ['conversion', 'Currency Conversion USD ↔ LBP']
           ], 'loan'))}
-          ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'list="dl_counterparties" placeholder="Select or type partner, bank, or entity..."') + dl('dl_counterparties', counterpartyNames))}
-          ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed'], ['Outflow', 'Cash Outflow / Repaid']], 'Inflow'))}
-          ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'))}
-          ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'))}
+          ${fld('Counterparty / Partner / Account *', inp('f_counterparty', 'text', '', 'list="dl_counterparties" placeholder="Select or type partner, bank, or entity..."') + dl('dl_counterparties', counterpartyNames), { id: 'wrap_tr_cp' })}
+          ${fld('Direction / Leg *', sel('f_direction', [['Inflow', 'Cash Inflow / Borrowed'], ['Outflow', 'Cash Outflow / Repaid']], 'Inflow'), { id: 'wrap_tr_dir' })}
+          ${fld('Conversion Direction *', sel('f_conv_dir', [
+            ['USD to LBP', 'USD → LBP (USD Decreases · LBP Increases)'],
+            ['LBP to USD', 'LBP → USD (LBP Decreases · USD Increases)']
+          ], 'USD to LBP'), { id: 'wrap_conv_dir', hidden: true })}
+          ${fld('Exchange Rate (LL / $)', inp('f_fxrate', 'number', '89500', 'step="10" min="1"'), { id: 'wrap_conv_rate', hidden: true })}
+          ${fld('USD Amount ($)', inp('f_usd', 'number', '', 'step="0.01" min="0"'), { id: 'wrap_tr_usd' })}
+          ${fld('LBP Amount (L.L.)', inp('f_lbp', 'number', '', 'step="1000" min="0"'), { id: 'wrap_tr_lbp' })}
           ${fld('Total USD Value *', inp('f_amount', 'number', '', 'step="0.01" readonly class="pa-locked-input"'), { id: 'wrap_f_amount', lockField: 'f_amount', lockReason: 'Locked to Dual-Currency FX formula (USD + LBP ÷ 90,000)' })}
           ${fld('Reference / Voucher', inp('f_reference', 'text', ''))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}

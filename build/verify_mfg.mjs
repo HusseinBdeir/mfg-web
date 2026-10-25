@@ -3373,7 +3373,7 @@ try {
     // 1. WTC All-Time on Executive Overview + Custom Range (2024-01-01 .. 2026-09-30 on Rep Date)
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
     window.__navToView('overview');
-    const grainAllBtn = document.querySelector('#dateGrainBar [data-grain="all"]');
+    const grainAllBtn = document.querySelector('#grainSwitch .grain-btn[data-grain="all"]');
     if (grainAllBtn) grainAllBtn.click();
     await wait(30);
     const wtcTillCardAll = document.querySelector('#workspace .kpi[data-nav-jump="cashflow"]');
@@ -3399,23 +3399,54 @@ try {
     // Reset back to All-Time Tx Date
     const txBtn = document.querySelector('#basisSwitch [data-basis="tx"]');
     if (txBtn) txBtn.click();
-    if (grainAllBtn) grainAllBtn.click();
+    const rstBtn = document.getElementById('dateRangeResetBtn') || document.querySelector('#grainSwitch .grain-btn[data-grain="all"]');
+    if (rstBtn) rstBtn.click();
     await wait(30);
 
-    // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity & Physical Drawer Check removed
+    // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity, FX Conversion dual-currency signed deltas & Physical Drawer Check removed
     window.__navToView('cashflow');
     await wait(40);
     const wtcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcSalesTfoot = (document.querySelector('#cfSalesPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcExpTfoot = (document.querySelector('#cfExpPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcBridgeTfoot = (document.querySelector('#tillBridgePanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const wtcConvSummaryTxt = (document.getElementById('cfExtdConvPanel') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const noDrawerVerifyCard = !document.getElementById('tillVerifyPanel') && !document.getElementById('tillCountUsdInput') && !document.getElementById('tillCountLbpInput');
 
-    // 3. Switch to BBConstruction: verify $622.00 & 5,035,000 LL ($678.26 combined)
+    const wtcFxChip = document.querySelector('#tillRecentPanel [data-chip="cf_fx"]');
+    if (wtcFxChip) wtcFxChip.click();
+    await wait(30);
+    const wtcFxTfoot = (document.querySelector('#tillRecentPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const wtcFxRows = Array.from(document.querySelectorAll('#tillRecentPanel tbody tr.rrow')).map(tr => {
+      const tds = tr.querySelectorAll('td');
+      const inTxt = (tds[6] ? tds[6].textContent : '').trim();
+      const outTxt = (tds[7] ? tds[7].textContent : '').trim();
+      return {
+        dir: (tds[3] ? tds[3].textContent : '').replace(/\\s+/g, ' ').trim(),
+        ref: ((tds[4] ? tds[4].textContent : '') + ' ' + (tds[5] ? tds[5].textContent : '')).replace(/\\s+/g, ' ').trim(),
+        usd: inTxt && inTxt !== '—' ? inTxt : outTxt,
+        lbp: (tds[8] ? tds[8].textContent : '').trim()
+      };
+    });
+    const wtcFxNoDashes = wtcFxRows.length >= 25 && wtcFxRows.slice(0, 25).every(r => (r.usd.startsWith('+$') || r.usd.startsWith('-$')) && (r.lbp.startsWith('+') || r.lbp.startsWith('-')) && r.lbp.endsWith(' LL'));
+    const wtcFx709 = wtcFxRows.find(r => r.ref.includes('#709')) || {};
+    const wtcFx707 = wtcFxRows.find(r => r.ref.includes('#707')) || {};
+    const wtcAllChip = document.querySelector('#tillRecentPanel [data-chip="all"]');
+    if (wtcAllChip) wtcAllChip.click();
+    await wait(25);
+
+    // 3. Switch to BBConstruction: verify $622.00 & 5,035,000 LL ($678.26 combined) + 336 FX Conversions
     document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
     await wait(30);
     const bbcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const bbcNavPill = (document.getElementById('navCountTill') || {}).textContent?.trim() || '';
+    const bbcFxChip = document.querySelector('#tillRecentPanel [data-chip="cf_fx"]');
+    if (bbcFxChip) bbcFxChip.click();
+    await wait(25);
+    const bbcFxTfoot = (document.querySelector('#tillRecentPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const bbcAllChip = document.querySelector('#tillRecentPanel [data-chip="all"]');
+    if (bbcAllChip) bbcAllChip.click();
+    await wait(20);
 
     // 4. Entry User Access: u4 (scale1.wtc@bhfirms.com, Entry, pbi_access: 'none') & u6 (batch.bbc@bhfirms.com, Entry, BBConstruction)
     await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
@@ -3442,18 +3473,26 @@ try {
 
     const wtcZeroOk = /\\$0\\.00/.test(wtcAllText) && /0 LL/.test(wtcAllText) && /\\$0\\.00/.test(wtcCustomText) && /0 LL/.test(wtcCustomText) && wtcNavPillAll === '$0 · 0 LL';
     const wtcTablesOk = /\\$9,994,762\\.51/.test(wtcSalesTfoot) && /30,125,396,148 LL/.test(wtcSalesTfoot) && /\\$8,311,011\\.29/.test(wtcExpTfoot) && /\\$0\\.00/.test(wtcBridgeTfoot) && /0 LL/.test(wtcBridgeTfoot);
+    const fxConversionsOk = wtcFxNoDashes
+      && wtcFxTfoot.includes('710 ENTRIES') && wtcFxTfoot.includes('+$154,694.10') && wtcFxTfoot.includes('-13,853,604,456 LL')
+      && (wtcFx709.dir || '').includes('LBP → USD') && (wtcFx709.ref || '').includes('@ 89,502') && wtcFx709.usd === '+$855.50' && wtcFx709.lbp === '-76,569,040 LL'
+      && (wtcFx707.dir || '').includes('USD → LBP') && (wtcFx707.ref || '').includes('@ 89,671') && wtcFx707.usd === '-$209.72' && wtcFx707.lbp === '+18,805,740 LL'
+      && wtcConvSummaryTxt.includes('-$187,211.84') && wtcConvSummaryTxt.includes('+16,747,731,907 LL')
+      && wtcConvSummaryTxt.includes('+$341,980.74') && wtcConvSummaryTxt.includes('-30,608,030,963 LL')
+      && bbcFxTfoot.includes('336 ENTRIES') && bbcFxTfoot.includes('-$62,630.07') && bbcFxTfoot.includes('+5,577,835,762 LL');
     const bbcParityOk = /\\$622\\.00/.test(bbcCfHeroText) && /5,035,000 LL/.test(bbcCfHeroText) && /\\$678\\.26/.test(bbcCfHeroText);
     const entryUsersOk = u4NavVisible && u4BridgePanel && u4NoVerifyPanel && u4ConfSalHidden && /\\$0\\.00/.test(u4HeroText) && /0 LL/.test(u4HeroText) && /\\$622\\.00/.test(u6HeroText) && /5,035,000 LL/.test(u6HeroText);
 
     return {
-      ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && noDrawerVerifyCard && bbcParityOk && entryUsersOk),
-      noStale996Or32M, wtcZeroOk, wtcTablesOk, noDrawerVerifyCard, bbcParityOk, entryUsersOk,
+      ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && fxConversionsOk && noDrawerVerifyCard && bbcParityOk && entryUsersOk),
+      noStale996Or32M, wtcZeroOk, wtcTablesOk, fxConversionsOk, noDrawerVerifyCard, bbcParityOk, entryUsersOk,
+      wtcFxTfoot, bbcFxTfoot, wtcFx709, wtcFx707,
       wtcAllText, wtcCustomText, wtcNavPillAll, bbcNavPill
     };
   })()`);
   cashFlowTillProbe && cashFlowTillProbe.ok
-    ? pass('cash flow & till parity · WTC $0.00 & 0 LL (All-Time + Rep Date custom window), BBC $622.00 & 5,035,000 LL, SharePoint 7-table parity, no drawer verification card & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill}`)
-    : fail('cash flow & till parity + entry-seat access', JSON.stringify(cashFlowTillProbe));
+    ? pass('cash flow & till parity · WTC $0.00 & 0 LL, BBC $622.00 & 5,035,000 LL, FX Conversion signed USD ↔ LBP drawer deltas (710 WTC + 336 BBC), SharePoint 7-table parity & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill} · FX=${cashFlowTillProbe.wtcFxTfoot}`)
+    : fail('cash flow & till parity + fx conversions + entry-seat access', JSON.stringify(cashFlowTillProbe));
 
   // 7q. Institutional Vector Icon System & #fleet Thermal Ticket Cell Parity (js/icons.js)
   const iconSystemProbe = await evaluate(`(async () => {
@@ -3614,6 +3653,99 @@ try {
     ? pass('Material & Transportation 4-table suite & WTC Old Stock penny parity (#rawPanel, #rawSupPanel, #rawSalesHaulPanel, #sitesPanel · Credit $3,345,044.76 · Paid $4,020,861.84 · Rem -$675,817.08 · 283 3rd-party customer loads)', `panels=${matTransProbe.panelIds.join('→')}`)
     : fail('Material & Transportation 4-table suite & WTC Old Stock penny parity', JSON.stringify(matTransProbe));
 
+  // 7s. Cash Till 5300 Charts, Daily Till Sheet & Interactive Cashbook Explorer (#cashflow & #cashflow_analytics)
+  const cashTillUxProbe = await evaluate(`(async () => {
+    const T = window.MFG_FACE_TEST;
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
+    const txBtn = document.querySelector('#basisSwitch [data-basis="tx"]');
+    if (txBtn) txBtn.click();
+    const rstBtn = document.getElementById('dateRangeResetBtn') || document.querySelector('#grainSwitch .grain-btn[data-grain="all"]');
+    if (rstBtn) rstBtn.click();
+    await wait(30);
+
+    // A. #cashflow: #tillRecentPanel FIRST (Rule 16c), all 9 streams, Daily Till Sheet & Day Drill
+    window.__navToView('cashflow');
+    await wait(40);
+    const cfPanelIds = Array.from(document.querySelectorAll('#workspace .panel-card[id]')).map(el => el.id);
+    const recentFirstOk = cfPanelIds[0] === 'tillRecentPanel' && cfPanelIds[1] === 'tillBridgePanel';
+    const allEntriesTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const hasNineStreamTotal = allEntriesTfoot.includes('20,405 ENTRIES') && allEntriesTfoot.includes('+$22,286,694.33') && allEntriesTfoot.includes('-$22,304,659.29') && allEntriesTfoot.includes('+551,916,007 LL');
+
+    // Toggle to Daily Till Sheet (610 operating days for WTC)
+    document.querySelector('#tillRecentPanel [data-cf-mode="daily"]')?.click();
+    await wait(35);
+    const dailyTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const dailyOk = dailyTfoot.includes('610 OPERATING DAYS') && dailyTfoot.includes('$0.00');
+
+    // Click 2026-10-24 day row -> drills back into Individual Entries for 24-10-2026 (76 entries: +$62,520.00 In / -$62,975.00 Out = -$455.00 Net matching dt25)
+    document.querySelector('#tillRecentPanel tr.cf-day-row[data-cf-focus-date="2026-10-24"]')?.click();
+    await wait(35);
+    const drillDayTfoot = (document.querySelector('#tillRecentPanel tfoot')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const drillDayOk = drillDayTfoot.includes('76 ENTRIES') && drillDayTfoot.includes('+$62,520.00') && drillDayTfoot.includes('-$62,975.00') && Boolean(document.querySelector('[data-cf-clear-drill="date"]'));
+
+    // Clear active drill
+    document.querySelector('[data-cf-clear-drill="all"]')?.click();
+    await wait(30);
+    const clearedOk = !document.querySelector('[data-cf-clear-drill="date"]');
+
+    // B. #cashflow_analytics (Page 14): zero duplicate single-section title pills, clean round $0 ticks, Operating vs Treasury split, Daily 30d toggle & #pbiCfEntriesPanel
+    window.__navToView('cashflow_analytics');
+    await wait(45);
+    const dupSecTabs = document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] .mod-analytics-tabs [data-mod-sec]:not([data-mod-toggle])').length;
+    const hasExplainer = Boolean(document.querySelector('.cf-explainer-bar'));
+    const svgTexts = Array.from(document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] svg text')).map(t => t.textContent.trim());
+    const cleanTicksOk = svgTexts.includes('$0') && !svgTexts.includes('$32') && !svgTexts.includes('-$504') && !svgTexts.includes('$568') && !svgTexts.includes('$2.13M');
+    const progPanel = Array.from(document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] .pbi-panel')).find(p => (p.textContent || '').includes('Monthly Cash Flow & Till Progression'));
+    const progTxt = (progPanel ? progPanel.textContent : '').replace(/\\s+/g, ' ');
+    const progCells = progPanel ? Array.from(progPanel.querySelectorAll('td')).map(td => td.textContent.trim()) : [];
+    const horizReconOk = progTxt.toUpperCase().includes('TREASURY & FX IN ($)') && progTxt.toUpperCase().includes('SWEEPS & FX OUT ($)') && !progCells.includes('-$0') && !progCells.includes('-$0.00');
+    const hasExplorerPanel = Boolean(document.getElementById('pbiCfEntriesPanel'));
+
+    // Click Oct 2026 month drill button -> filters #pbiCfEntriesPanel to Oct 2026
+    document.querySelector('.cf-month-drill-btn[data-cf-focus-ym="2026-10"]')?.click();
+    await wait(35);
+    const octDrillPill = (document.querySelector('#pbiCfEntriesPanel .cf-drill-strip')?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const octDrillOk = octDrillPill.includes('Oct 2026');
+    document.querySelector('#pbiCfEntriesPanel [data-cf-clear-drill="all"]')?.click();
+    await wait(25);
+
+    // Toggle Till Balance chart to Daily (Last 30d)
+    document.querySelector('[data-cf-chart-grain="daily"]')?.click();
+    await wait(35);
+    const dailyChartTitle = (document.querySelector('.mod-analytics-hub[data-mod-hub="cashflow_analytics"]')?.textContent || '');
+    const dailyBarCnt = document.querySelectorAll('.mod-analytics-hub[data-mod-hub="cashflow_analytics"] svg g.cf-chart-bar[data-cf-focus-date]').length;
+    const dailyChartOk = dailyChartTitle.includes('Last 30 Operating Days') && dailyBarCnt === 30;
+    document.querySelector('[data-cf-chart-grain="monthly"]')?.click();
+    await wait(25);
+
+    const overflowPx = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+    // Entry seat u4 confidentiality check on #cashflow (#tillRecentPanel 1st, 0 confidential salary/sweep/loan chips or rows)
+    await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
+    window.__navToView('cashflow');
+    await wait(35);
+    const u4FirstPanel = (document.querySelector('#workspace .panel-card[id]') || {}).id || '';
+    const u4NoConfChips = !document.querySelector('#tillRecentPanel [data-chip="cf_sal"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_ext"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_loan"]');
+    const u4BodyTxt = (document.querySelector('#tillRecentPanel tbody')?.textContent || '');
+    const u4NoConfRows = !u4BodyTxt.includes('Salary Paid') && !u4BodyTxt.includes('Treasury Sweep');
+
+    // Restore Owner & Overview
+    await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]').click();
+    window.__navToView('overview');
+    await wait(30);
+
+    return {
+      ok: Boolean(recentFirstOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && dupSecTabs === 0 && hasExplainer && cleanTicksOk && horizReconOk && hasExplorerPanel && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
+      recentFirstOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, dupSecTabs, hasExplainer, cleanTicksOk, horizReconOk, hasExplorerPanel, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
+      allEntriesTfoot, drillDayTfoot
+    };
+  })()`);
+  cashTillUxProbe && cashTillUxProbe.ok
+    ? pass('Cash Till 5300 UX & Analytics (#tillRecentPanel 1st, 9-stream ledger, 610-day Daily Till Sheet + day/month drill, $0-anchored round-tick Till balance chart, Operating vs Treasury Sweeps split, #pbiCfEntriesPanel & Entry RLS)', `WTC=${cashTillUxProbe.allEntriesTfoot} · overflow=${cashTillUxProbe.overflowPx}px`)
+    : fail('Cash Till 5300 UX & Analytics', JSON.stringify(cashTillUxProbe));
 
   // 7t. Expense Categories & Subcategories Total-Spent Descending Sort, GL-Backed Cost Class Badges (0 $NaN), & Activity-First Registry Sorting
   const catSortAndCostClassProbe = await evaluate(`(async () => {
