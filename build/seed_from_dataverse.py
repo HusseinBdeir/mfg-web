@@ -1085,7 +1085,8 @@ def fetch_dataverse_records():
             "&$orderby=bhf_transactiondate desc",
             False,
         ),
-        "ec_raw": ("bhf_expensecategory", "$filter=statecode eq 0&$select=bhf_expensecategoryid,bhf_name", False),
+        "ec_raw": ("bhf_expensecategory", "$filter=statecode eq 0&$select=bhf_expensecategoryid,bhf_name,_bhf_glaccount_value", False),
+        "gl_raw": ("bhf_glaccount", "$filter=statecode eq 0&$select=bhf_glaccountid,bhf_code,bhf_name", False),
         "esc_raw": ("bhf_expensesubcategory", "$filter=statecode eq 0&$select=bhf_expensesubcategoryid,bhf_name,_bhf_category_value", False),
         "r_exp": (
             "bhf_expense",
@@ -1284,8 +1285,25 @@ def fetch_dataverse_records():
         })
     print(f"  All Fuel Intakes: {len(fuel_intakes)}", flush=True)
 
+    gl_by_id = {
+        (g.get("bhf_glaccountid") or "").lower(): str(g.get("bhf_code") or "").strip()
+        for g in (fetched.get("gl_raw") or [])
+    }
     ec_raw = fetched["ec_raw"]
-    expense_categories = [{"id": c["bhf_expensecategoryid"], "name": c.get("bhf_name") or ""} for c in ec_raw]
+    expense_categories = []
+    for c in ec_raw:
+        gl_code = gl_by_id.get((c.get("_bhf_glaccount_value") or "").lower(), "")
+        cost_cls = (
+            "Production Cost"
+            if gl_code[:2] in ("60", "61")
+            else ("Capital Expenditure" if gl_code[:1] == "2" else "Operating Expense")
+        )
+        expense_categories.append({
+            "id": c["bhf_expensecategoryid"],
+            "name": c.get("bhf_name") or "",
+            "gl_code": gl_code,
+            "cost_class": cost_cls,
+        })
 
     esc_raw = fetched["esc_raw"]
     expense_subcategories = [

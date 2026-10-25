@@ -2110,7 +2110,11 @@
     pay_sal: 'salaries',
     pay_emp: 'employments',
     pay_att: 'attendance',
-    pay_log: 'logistics_allowances'
+    pay_log: 'logistics_allowances',
+    credterm: 'credit_terms',
+    vatinv: 'vat_invoices',
+    tr_loans: 'loans',
+    st17: 'price_rules'
   };
 
   const COL_KEY_ALIASES = {
@@ -2419,6 +2423,7 @@
 
   function isNumericColKey(colKey) {
     const k = String(colKey || '');
+    if (/^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i.test(k)) return false;
     if (isBooleanColKey(k)) return false;
     return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|remaining|haul|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
   }
@@ -2626,12 +2631,55 @@
   }
 
   // ---- sorting / paging / table helpers --------------------------------------
+  const _defaultSortBy = {};
+
+  function getSecondaryNumericKeys(tk) {
+    switch (tk) {
+      case 'expense_categories': return ['total_spent', 'expenses_count', 'subcategories_count'];
+      case 'expense_subcategories': return ['total_spent', 'expenses_count'];
+      case 'customers': return ['sales_loads', 'ar_balance', 'sales_ttc', 'active_rules'];
+      case 'credit_terms': return ['ar_balance', 'credit_limit', 'sales_loads', 'credit_days'];
+      case 'suppliers': return ['total_spent', 'ap_balance', 'raw_loads', 'haul_loads', 'expenses_count', 'raw_cost'];
+      case 'equipment':
+      case 'company_equipment': return ['loads_hauled', 'fuel_fills', 'capacity'];
+      case 'drivers':
+      case 'company_drivers': return ['loads_hauled', 'fuel_fills'];
+      case 'sites': return ['sales_loads', 'raw_loads', 'active_rules'];
+      case 'regions': return ['sales_loads', 'sites_count', 'overtime_rate'];
+      case 'products': return ['sales_loads', 'fuel_fills', 'active_rules', 'list_price'];
+      case 'product_types': return ['sales_loads', 'products_count'];
+      case 'uoms': return ['tickets_count', 'products_count'];
+      case 'employments': return ['total_paid', 'salary_usd', 'daily_rate', 'payments_count'];
+      case 'logistics_allowances': return ['daily_usd', 'lbp_amount'];
+      case 'price_rules': return ['matched_tickets', 'unit_price', 'trans_unit_price'];
+      case 'loans': return ['principal', 'settled_amount'];
+      default: return [];
+    }
+  }
+
+  function compareRowTie(ra, rb, primaryKey, view) {
+    const tk = viewToTableKey(view);
+    const secKeys = getSecondaryNumericKeys(tk);
+    for (let i = 0; i < secKeys.length; i++) {
+      const sk = secKeys[i];
+      if (sk === primaryKey) continue;
+      const va = Number(resolveColVal(ra, sk, view) || 0);
+      const vb = Number(resolveColVal(rb, sk, view) || 0);
+      if (Number.isFinite(va) && Number.isFinite(vb) && va !== vb) return vb - va;
+    }
+    const na = String((ra && (ra.name || ra.Customer || ra.Supplier || ra.Product || ra.Site || ra.Equipment || ra.customer || ra.supplier || ra.staff || ra.driver || ra.equipment)) || '');
+    const nb = String((rb && (rb.name || rb.Customer || rb.Supplier || rb.Product || rb.Site || rb.Equipment || rb.customer || rb.supplier || rb.staff || rb.driver || rb.equipment)) || '');
+    return _NUM_COLLATOR.compare(na, nb);
+  }
+
   function sortRows(rows, view, defKey, defDir) {
     const rawPool = Array.isArray(rows) ? rows : [];
     if (view) _tablePoolCache[view] = rawPool;
     const hasColF = Boolean(view && hasActiveColFilters(view));
     const filteredRows = hasColF ? applyColFiltersForView(rawPool, view) : rawPool;
-    const s = STATE.sortBy[view] || { key: defKey, dir: defDir || (isDefaultDescSortKey(defKey) ? 'desc' : 'asc') };
+    const resolvedDefDir = defDir || (isDefaultDescSortKey(defKey) ? 'desc' : 'asc');
+    if (view && defKey) _defaultSortBy[view] = { key: defKey, dir: resolvedDefDir };
+    const s = STATE.sortBy[view] || { key: defKey, dir: resolvedDefDir };
     if (!s.key || filteredRows.length <= 1) return filteredRows;
 
     const rev = SEED._customRev || 0;
@@ -2668,12 +2716,19 @@
         decorated[i] = { r, v, empty, isNum: typeof v === 'number', isBool: typeof v === 'boolean', str: empty ? '' : String(v) };
       }
       decorated.sort((a, b) => {
-        if (a.empty && b.empty) return 0;
+        if (a.empty && b.empty) return compareRowTie(a.r, b.r, s.key, view);
         if (a.empty) return 1;
         if (b.empty) return -1;
-        if (a.isNum && b.isNum) return (a.v - b.v) * dir;
-        if (a.isBool && b.isBool) return ((a.v ? 1 : 0) - (b.v ? 1 : 0)) * dir;
-        return _NUM_COLLATOR.compare(a.str, b.str) * dir;
+        if (a.isNum && b.isNum) {
+          if (a.v !== b.v) return (a.v - b.v) * dir;
+          return compareRowTie(a.r, b.r, s.key, view);
+        }
+        if (a.isBool && b.isBool) {
+          const d = ((a.v ? 1 : 0) - (b.v ? 1 : 0)) * dir;
+          return d !== 0 ? d : compareRowTie(a.r, b.r, s.key, view);
+        }
+        const sc = _NUM_COLLATOR.compare(a.str, b.str) * dir;
+        return sc !== 0 ? sc : compareRowTie(a.r, b.r, s.key, view);
       });
       sorted = new Array(decorated.length);
       for (let i = 0, len = decorated.length; i < len; i++) sorted[i] = decorated[i].r;
@@ -2681,12 +2736,19 @@
       sorted = filteredRows.slice().sort((a, b) => {
         const av = resolveColVal(a, s.key, view);
         const bv = resolveColVal(b, s.key, view);
-        if ((av == null || av === '') && (bv == null || bv === '')) return 0;
+        if ((av == null || av === '') && (bv == null || bv === '')) return compareRowTie(a, b, s.key, view);
         if (av == null || av === '') return 1;
         if (bv == null || bv === '') return -1;
-        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-        if (typeof av === 'boolean' && typeof bv === 'boolean') return ((av ? 1 : 0) - (bv ? 1 : 0)) * dir;
-        return _NUM_COLLATOR.compare(String(av), String(bv)) * dir;
+        if (typeof av === 'number' && typeof bv === 'number') {
+          if (av !== bv) return (av - bv) * dir;
+          return compareRowTie(a, b, s.key, view);
+        }
+        if (typeof av === 'boolean' && typeof bv === 'boolean') {
+          const d = ((av ? 1 : 0) - (bv ? 1 : 0)) * dir;
+          return d !== 0 ? d : compareRowTie(a, b, s.key, view);
+        }
+        const sc = _NUM_COLLATOR.compare(String(av), String(bv)) * dir;
+        return sc !== 0 ? sc : compareRowTie(a, b, s.key, view);
       });
     }
 
@@ -2700,7 +2762,7 @@
   const TH_FUNNEL_SVG = '<svg viewBox="0 0 12 12" width="9.5" height="9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="1.2,2 10.8,2 7.1,6.3 7.1,10.2 4.9,9.1 4.9,6.3"/></svg>';
 
   function th(view, label, key, cls) {
-    const s = STATE.sortBy[view] || {};
+    const s = STATE.sortBy[view] || _defaultSortBy[view] || {};
     const on = s.key === key;
     const cf = (STATE.colFilters && STATE.colFilters[view]) || {};
     const hasFilter = Boolean(cf[key] && String(cf[key]).trim());
@@ -7026,7 +7088,7 @@
       if (STATE.chipFilter === 'transporter') return !/^own/i.test(ce.ownership || '');
       if (STATE.chipFilter === 'app') return isAppRecord(ce);
       return true;
-    }), 'coeq', 'equipment', 'asc');
+    }), 'coeq', 'loads_hauled', 'desc');
 
     const ownPct = equipAll.length > 0 ? (ownCount / equipAll.length) * 100 : 0;
     const avgIntakeL = fuelRows.length > 0 ? (litres / fuelRows.length) : 0;
@@ -8002,10 +8064,13 @@
       const ck = norm(catName);
       if (!catAggMap.has(ck)) {
         const cm = catMetaMap.get(ck);
+        const derivedCls = (window.MFG_PBI && typeof window.MFG_PBI.deriveExpenseCostClass === 'function')
+          ? window.MFG_PBI.deriveExpenseCostClass(cm || catName)
+          : ((cm && (cm.cost_class || cm.category1)) || r.cost_class || 'Operating Expense');
         catAggMap.set(ck, {
           id: (cm && cm.id) || catName,
           category: catName,
-          cost_class: (cm && (cm.cost_class || cm.category1)) || r.cost_class || 'Operating Overhead',
+          cost_class: derivedCls,
           vouchers: 0,
           unit_tagged: 0,
           cash: 0,
@@ -8193,7 +8258,7 @@
                   return `
                   <tr class="rrow" data-rkey="expense_categories" data-rid="${esc(c.id)}">
                     <td>${relLink('expense_categories', c.category, c.category, true)}</td>
-                    <td><span class="badge badge-info">${esc(c.cost_class)}</span></td>
+                    <td><span class="badge ${/Production/i.test(c.cost_class) ? 'badge-brass' : (/Capital/i.test(c.cost_class) ? 'badge-warn' : 'badge-info')}">${esc(c.cost_class)}</span></td>
                     <td class="r">${fmtNum(c.vouchers)}</td>
                     <td class="r">${fmtNum(c.unit_tagged)}</td>
                     <td class="r">${fmtUSD(c.cash, 2)}</td>
@@ -8313,7 +8378,7 @@
       if (STATE.chipFilter === 'app') return isAppRecord(e);
       return true;
     });
-    const filteredEmp = sortRows(filteredEmpBase, 'pay_emp', 'start_date', 'desc');
+    const filteredEmp = sortRows(filteredEmpBase, 'pay_emp', 'total_paid', 'desc');
     const shownEmp = filteredEmp.slice(0, shownCount('pay_emp'));
     const filteredAttBase = attAll.filter(a => {
       if (subMode !== 'attendance') return true;
@@ -8324,7 +8389,7 @@
     });
     const filteredAtt = sortRows(filteredAttBase, 'pay_att', 'date', 'desc');
     const shownAtt = filteredAtt.slice(0, shownCount('pay_att'));
-    const filteredLog = sortRows(logAll, 'pay_log', 'start_date', 'desc');
+    const filteredLog = sortRows(logAll, 'pay_log', 'daily_usd', 'desc');
     const shownLog = filteredLog.slice(0, shownCount('pay_log'));
     const unmatchedRows = pricing.unmatched_salary_by_staff || [];
     const totalSiteAllow = filteredStaff.reduce((a, r) => a + r.site_allow, 0);
@@ -9439,7 +9504,7 @@
       return true;
     }), 'vatinv', 'date', 'desc');
     const shownVat = vatRows.slice(0, shownCount('vatinv'));
-    const credRows = sortRows(credBase, 'credterm', 'credit_limit', 'desc');
+    const credRows = sortRows(credBase, 'credterm', 'ar_balance', 'desc');
     const shownCred = credRows.slice(0, shownCount('credterm'));
 
     const sumNet = vatRows.reduce((a, r) => a + Number(r.net_amount || 0), 0);
@@ -9979,7 +10044,7 @@
       if (code === '20') bodyHtml += `<p class="form-note">JV entitlement = partner share × the JV site's raw material cost (Stock Entitlement rule, m114). Revenue-side entitlement is not derivable from tickets because the ticket Site is the delivery site — confirm with the accountant before reading this as a debt.</p>`;
     } else if (code === '17') {
       const today = SEED_DATE;
-      const rows = sortRows(filterRecords(SEED.records.price_rules, { ignoreSearch: true, ignorePeriod: true }).filter(r => (!r.end_date || String(r.end_date) >= today) && (!r.start_date || String(r.start_date) <= today)), 'st17', 'customer', 'asc');
+      const rows = sortRows(filterRecords(SEED.records.price_rules, { ignoreSearch: true, ignorePeriod: true }).filter(r => (!r.end_date || String(r.end_date) >= today) && (!r.start_date || String(r.start_date) <= today)), 'st17', 'unit_price', 'desc');
       bodyHtml = stTable([
         { label: 'Agreement', key: 'name', mono: true }, { label: 'Co.', key: 'company' }, { label: 'Customer / Owner', key: 'customer', fmt: (v, r) => `<strong>${esc(v || r.supplier || 'Standard List')}</strong>` }, { label: 'Product', key: 'product', fmt: v => esc(v || '(All Grades)') }, { label: 'Site', key: 'site' }, { label: 'Unit', key: 'unit', mono: true }, { label: 'Unit Price', key: 'unit_price', r: true, fmt: C.usd2 }, { label: 'Transport', key: 'trans_unit_price', r: true, fmt: v => v ? fmtUSD(v, 2) : '—' }, { label: 'Start', key: 'start_date', mono: true }, { label: 'End', key: 'end_date', mono: true, fmt: v => esc(v || 'Open') }
       ], rows, [{ v: `${fmtNum(rows.length)} ACTIVE AGREEMENTS AT ${today}`, span: 10 }]);
@@ -9996,7 +10061,9 @@
       const log = filterRecords(SEED.records.logistics_allowances, { ignoreSearch: true, ignorePeriod: true });
       const att = filterRecords(SEED.records.attendance, { ignoreSearch: true });
       const g = groupBy(sal, s => s.staff + '|' + s.payroll_month);
-      const rows = Array.from(g.entries()).map(([key, list]) => ({ staff: list[0].staff, month: list[0].payroll_month, company: list[0].company, payments: list.length, amount: sum(list, 'amount'), last: list.map(x => x.date).sort().pop() })).sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(a.staff).localeCompare(String(b.staff)));
+      const rows = Array.from(g.entries()).map(([key, list]) => ({ staff: list[0].staff, month: list[0].payroll_month, company: list[0].company, payments: list.length, amount: sum(list, 'amount'), last: list.map(x => x.date).sort().pop() })).sort((a, b) => String(b.month).localeCompare(String(a.month)) || (b.amount - a.amount));
+      emp.sort((a, b) => (Number(b.salary_usd || 0) || Number(b.daily_rate || 0) * 26) - (Number(a.salary_usd || 0) || Number(a.daily_rate || 0) * 26));
+      log.sort((a, b) => Number(b.daily_usd || b.usd_amount || 0) - Number(a.daily_usd || a.usd_amount || 0));
       bodyHtml = `
         <div class="live-calc">
           <div><small>Salaries Paid (Book)</small><b>${fmtUSD(k.salaries_paid, 2)}</b></div>
@@ -14966,7 +15033,7 @@
       if (key === 'lbp_delta') return fmtSignedLBP(v);
       if (/^lbp_|_lbp$/.test(key)) return fmtLBP(v);
       if (key === 'usd_delta') return fmtSignedUSD(v, 2);
-      if (/price|cost|amount|total|vat|discount|tip|limit|salary|balance|adj|principal|value|change|rate_usd|daily_usd|paid|spent|sales_ttc|raw_cost/.test(key) && !/rate$|pct|factor|ton_factor|exchange|count|loads|days|hours/.test(key)) return fmtUSD(v, 2);
+      if (/price|cost|amount|total|vat|discount|tip|limit|salary|balance|adj|principal|value|change|rate_usd|daily_usd|paid|spent|sales_ttc|raw_cost/.test(key) && !/rate$|pct|factor|ton_factor|exchange|count|loads|days|hours|cost_class|cost_bucket/.test(key)) return fmtUSD(v, 2);
       return fmtNum(v, Number.isInteger(v) ? 0 : 2);
     }
     if (/date|last_sale|last_purchase/i.test(key)) return fmtDateDMY(v);
@@ -15414,7 +15481,23 @@
     const addGrid = (id, title, shortLabel, relBadge, targetKey, rows, cols, sumCol) => {
       if (!rows) return;
       if (targetKey && !canAccessTable(targetKey)) return;
-      const scoped = rows.filter(r => !r || (!r.voided && (!r.company || allowedCos.includes(r.company))));
+      const scoped = rows.filter(r => !r || (!r.voided && (!r.company || allowedCos.includes(r.company)))).slice();
+      if (scoped.length > 1) {
+        const viewId = targetKey ? ('tbl_' + targetKey) : '';
+        const hasDate = Array.isArray(cols) && cols.includes('date');
+        scoped.sort((a, b) => {
+          if (hasDate) {
+            const da = recordDate(a), db = recordDate(b);
+            if (da !== db) return db < da ? -1 : 1;
+          }
+          if (sumCol) {
+            const va = Number(a[sumCol] != null ? a[sumCol] : (resolveColVal(a, sumCol, viewId) || 0));
+            const vb = Number(b[sumCol] != null ? b[sumCol] : (resolveColVal(b, sumCol, viewId) || 0));
+            if (Number.isFinite(va) && Number.isFinite(vb) && va !== vb) return vb - va;
+          }
+          return compareRowTie(a, b, sumCol || (hasDate ? 'date' : ''), viewId);
+        });
+      }
       const cleanBadge = String(relBadge || '')
         .replace(/^\s*(?:1:N|N:1|N:N)\s*/i, '')
         .replace(/\bbhf_[a-z0-9_]+\b/gi, '')
@@ -15520,7 +15603,15 @@
     else if (key === 'expense_categories' || key === 'expense_subcategories' || key === 'expenses') {
       const cat = row.category || row.name;
       if (key === 'expense_categories') {
-        addGrid('sg_ec_sub', `Subcategories under ${cat}`, 'Subcategories', 'Subcategories', 'expense_subcategories', (rec.expense_subcategories || []).filter(s => norm(s.category) === norm(cat)), ['name', 'category'], null);
+        const relIdx = window.MFG_PBI && window.MFG_PBI.getHubRelIndex ? window.MFG_PBI.getHubRelIndex(SEED) : null;
+        const subRows = (rec.expense_subcategories || []).filter(s => norm(s.category) === norm(cat)).map(s => {
+          const se = relIdx && relIdx.subcatByName ? relIdx.subcatByName[norm(s.name)] : null;
+          return Object.assign({}, s, {
+            expenses_count: se ? se.expenses_count : Number(s.expenses_count || 0),
+            total_spent: se ? se.total_spent : Number(s.total_spent || 0)
+          });
+        });
+        addGrid('sg_ec_sub', `Subcategories under ${cat}`, 'Subcategories', 'Subcategories', 'expense_subcategories', subRows, ['name', 'category', 'expenses_count', 'total_spent'], 'total_spent');
       }
       const matchExps = (rec.expenses || []).filter(x => key === 'expense_subcategories' ? norm(x.subcategory) === norm(row.name) : norm(x.category) === norm(cat));
       addGrid('sg_ec_exp', `Expense Vouchers (${row.subcategory || cat})`, 'Expense Vouchers', 'Expense Vouchers', 'expenses', matchExps, ['date', 'name', 'company', 'category', 'subcategory', 'supplier', 'equipment', 'method', 'amount', 'reference'], 'amount');
@@ -15632,20 +15723,21 @@
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${sg.cols.map(c => `<th class="${/price|cost|amount|total|vat|limit|salary|qty|litres|capacity|hours|days|percentage/.test(c) ? 'r' : ''}">${esc(c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))}</th>`).join('')}
+                  ${sg.cols.map(c => `<th class="${!/^(cost_class|cost_bucket|working_days)$/i.test(c) && /price|cost|amount|total|vat|limit|salary|qty|litres|capacity|hours|days|percentage|_count$/.test(c) ? 'r' : ''}">${esc(c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))}</th>`).join('')}
                 </tr>
               </thead>
               <tbody data-sg-tbody="${esc(sg.id)}">
                 ${shown.map(r => `
                   <tr class="rrow" data-rkey="${esc(sg.targetKey)}" data-rid="${esc(r.id || r.name || r.ticket_no)}">
                     ${sg.cols.map((c, ci) => {
-                      let v = r[c];
+                      let v = r[c] !== undefined ? r[c] : resolveColVal(r, c, 'tbl_' + sg.targetKey);
                       if (sg.targetKey === 'price_rules') {
                         if (c === 'indiff_price' && v == null) v = ruleAnyIndiffPrice(r);
                         if (c === 'unit_price' && isMatIndiffRule(r)) v = null;
                       }
-                      const isMoney = /price|cost|amount|total|vat|limit|salary|daily_usd|rate_usd|principal|discount/.test(c) && !/rate$/.test(c);
-                      const isNum = !isMoney && /qty|litres|capacity|hours|days|odometer|percentage/.test(c);
+                      const nonNum = /^(cost_class|cost_bucket|working_days)$/i.test(c);
+                      const isMoney = !nonNum && /price|cost|amount|total|vat|limit|salary|daily_usd|rate_usd|principal|discount/.test(c) && !/rate$/.test(c);
+                      const isNum = !nonNum && !isMoney && /qty|litres|capacity|hours|days|odometer|percentage|_count$/.test(c);
                       let txt = v == null || v === '' ? '—' : String(v);
                       if (isMoney && v != null && v !== '') txt = fmtUSD(v, 2);
                       else if (isNum && v != null && v !== '') txt = fmtNum(v, /qty|capacity|percentage/.test(c) ? 2 : 0);
@@ -21458,7 +21550,7 @@
     container.querySelectorAll('th.sortable').forEach(h => h.addEventListener('click', e => {
       if (e.target && e.target.closest('.th-filter-btn, .tbl-col-resizer, .tbl-th-tools')) return;
       const view = h.getAttribute('data-sort-view'), key = h.getAttribute('data-sort-key');
-      const cur = STATE.sortBy[view] || {};
+      const cur = STATE.sortBy[view] || _defaultSortBy[view] || {};
       const defaultDir = !isDefaultDescSortKey(key) ? 'asc' : 'desc';
       STATE.sortBy[view] = { key, dir: cur.key === key ? (cur.dir === 'desc' ? 'asc' : 'desc') : defaultDir };
       renderApp();

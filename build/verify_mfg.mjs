@@ -3615,6 +3615,102 @@ try {
     : fail('Material & Transportation 4-table suite & WTC Old Stock penny parity', JSON.stringify(matTransProbe));
 
 
+  // 7t. Expense Categories & Subcategories Total-Spent Descending Sort, GL-Backed Cost Class Badges (0 $NaN), & Activity-First Registry Sorting
+  const catSortAndCostClassProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const parseMoney = s => Number(String(s || '').replace(/[^0-9.-]+/g, '')) || 0;
+    const parseCount = s => Number(String(s || '').replace(/[^0-9.-]+/g, '')) || 0;
+
+    document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]')?.click();
+    document.querySelector('#dateGrainBar [data-grain="all"]')?.click();
+    await wait(30);
+
+    // 1. #reg_categories -> Expense Categories (45)
+    window.__navToView('reg_categories');
+    await wait(50);
+    document.querySelector('#univRegPanel [data-univ-reg-key="expense_categories"]')?.click();
+    await wait(40);
+    document.querySelector('#univRegPanel [data-tbl-view="all"]')?.click();
+    await wait(30);
+
+    const catPanelText = document.getElementById('univRegPanel')?.textContent || '';
+    const catNoNaN = !/\\$NaN|\\bNaN\\b/.test(catPanelText);
+    const catRows = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow')).map(tr => {
+      const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.replace(/\\s+/g, ' ').trim());
+      return { name: tds[0], costClass: tds[1], subCount: parseCount(tds[2]), bills: parseCount(tds[3]), spent: parseMoney(tds[4]), spentTxt: tds[4] };
+    });
+    const catTopIsFuel = catRows.length >= 10 && /^Fuel\\b/.test(catRows[0].name) && catRows[0].costClass === 'Production Cost' && Math.abs(catRows[0].spent - 2499933.55) < 1;
+    const catSecondIsCapex = catRows.length >= 2 && /^Capital Expenditures\\b/.test(catRows[1].name) && catRows[1].costClass === 'Capital Expenditure' && Math.abs(catRows[1].spent - 1776293.00) < 1;
+    const catMonotonicDesc = catRows.every((r, i) => i === 0 || r.spent <= catRows[i - 1].spent + 0.01);
+    const catAllClassesValid = catRows.every(r => /^(Production Cost|Operating Expense|Capital Expenditure)$/.test(r.costClass));
+    const catViewBtns = Array.from(document.querySelectorAll('#univRegPanel [data-tbl-view]'));
+    const catFourViewsOk = catViewBtns.length === 4;
+
+    // Open Fuel 360° Inspector -> verify Subcategories subgrid sorted by total_spent desc
+    const fuelRowEl = document.querySelector('#univRegPanel tbody tr.rrow');
+    if (fuelRowEl) fuelRowEl.click();
+    await wait(60);
+    const sgEcSub = document.getElementById('subgrid_sg_ec_sub');
+    const sgEcSubText = sgEcSub ? sgEcSub.textContent : '';
+    const sgEcRows = sgEcSub ? Array.from(sgEcSub.querySelectorAll('tbody tr.rrow')).map(tr => {
+      const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.replace(/\\s+/g, ' ').trim());
+      return { name: tds[0], spent: parseMoney(tds[3]) };
+    }) : [];
+    const sgEcSubOk = sgEcRows.length >= 5 && sgEcRows[0].spent > 0 && sgEcRows.every((r, i) => i === 0 || r.spent <= sgEcRows[i - 1].spent + 0.01) && !/\\$NaN|\\bNaN\\b/.test(sgEcSubText);
+    (document.getElementById('inspectorDoneBtn') || document.getElementById('inspectorCloseBtn'))?.click();
+    await wait(30);
+
+    // 2. Expense Subcategories (644) -> sorted by total_spent desc, 0 $NaN
+    document.querySelector('#univRegPanel [data-univ-reg-key="expense_subcategories"]')?.click();
+    await wait(50);
+    const subPanelText = document.getElementById('univRegPanel')?.textContent || '';
+    const subNoNaN = !/\\$NaN|\\bNaN\\b/.test(subPanelText);
+    const subRows = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow')).map(tr => {
+      const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.replace(/\\s+/g, ' ').trim());
+      return { name: tds[0], category: tds[1], bills: parseCount(tds[2]), spent: parseMoney(tds[3]) };
+    });
+    const subSortedDescOk = subRows.length >= 15 && subRows[0].spent > 500000 && subRows.every((r, i) => i === 0 || r.spent <= subRows[i - 1].spent + 0.01);
+
+    // 3. Universal Registries activity-first default sorting (Customers, Drivers, Products, Regions)
+    window.__navToView('reg_customers');
+    await wait(45);
+    const custLoads = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow')).slice(0, 10).map(tr => parseCount(tr.querySelectorAll('td')[9]?.textContent));
+    const custSortedOk = custLoads.length >= 5 && custLoads[0] > 500 && custLoads.every((v, i) => i === 0 || v <= custLoads[i - 1]);
+
+    window.__navToView('reg_drivers');
+    await wait(45);
+    const drvLoads = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow')).slice(0, 10).map(tr => parseCount(tr.querySelectorAll('td')[5]?.textContent));
+    const drvSortedOk = drvLoads.length >= 5 && drvLoads[0] > 500 && drvLoads.every((v, i) => i === 0 || v <= drvLoads[i - 1]);
+
+    window.__navToView('reg_products');
+    await wait(45);
+    const prodLoads = Array.from(document.querySelectorAll('#univRegPanel tbody tr.rrow')).slice(0, 8).map(tr => parseCount(tr.querySelectorAll('td')[9]?.textContent));
+    const prodSortedOk = prodLoads.length >= 5 && prodLoads[0] > 1000 && prodLoads.every((v, i) => i === 0 || v <= prodLoads[i - 1]);
+
+    // 4. 34-Table Hub (#tables) -> logistics_allowances has 0 NaN on working_days & sorts by daily_usd desc
+    window.__navToView('tables');
+    await wait(45);
+    document.querySelector('[data-hub-tbl="logistics_allowances"]')?.click();
+    await wait(45);
+    const logHubText = document.getElementById('tablesHubPanel')?.textContent || '';
+    const logHubRates = Array.from(document.querySelectorAll('#tablesHubPanel tbody tr.rrow')).slice(0, 10).map(tr => parseMoney(tr.querySelectorAll('td')[5]?.textContent));
+    const logHubOk = !/\\$NaN|\\bNaN\\b/.test(logHubText) && logHubRates.length >= 3 && logHubRates[0] >= logHubRates[logHubRates.length - 1];
+
+    window.__navToView('overview');
+    await wait(30);
+
+    return {
+      ok: Boolean(catNoNaN && catTopIsFuel && catSecondIsCapex && catMonotonicDesc && catAllClassesValid && catFourViewsOk && sgEcSubOk && subNoNaN && subSortedDescOk && custSortedOk && drvSortedOk && prodSortedOk && logHubOk),
+      catNoNaN, catTopIsFuel, catSecondIsCapex, catMonotonicDesc, catAllClassesValid, catFourViewsOk,
+      sgEcSubOk, subNoNaN, subSortedDescOk, custSortedOk, drvSortedOk, prodSortedOk, logHubOk,
+      topCat: catRows[0], secondCat: catRows[1], topSub: subRows[0]
+    };
+  })()`);
+  catSortAndCostClassProbe && catSortAndCostClassProbe.ok
+    ? pass('Expense Categories & Subcategories total_spent desc sort (Fuel $2,499,933.55 #1), Lebanese CoA Cost Class badges (0 $NaN), 360° subgrid & Universal Registry activity-first default sorts', `topCat=${catSortAndCostClassProbe.topCat?.name} (${catSortAndCostClassProbe.topCat?.spentTxt}, ${catSortAndCostClassProbe.topCat?.costClass}) · topSub=${catSortAndCostClassProbe.topSub?.name}`)
+    : fail('Expense Categories/Subcategories sort, Cost Class $NaN fix & activity-first registry sorting', JSON.stringify(catSortAndCostClassProbe));
+
+
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
   const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);

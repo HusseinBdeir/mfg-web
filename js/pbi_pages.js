@@ -64,7 +64,12 @@
       { id: 'open_ap', label: 'Open AP Balance > $0', fn: (r, rel) => ((rel.suppByName[norm(r.name)] || {}).ap_balance || 0) > 1 },
       { id: 'iva', label: 'IVA / VAT Registered', fn: r => Boolean(r.iva || r.financial_no || r.mof_no) }
     ] },
-    { key: 'expense_categories', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_categories', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [{ id: 'all', label: 'All Expense Categories' }] },
+    { key: 'expense_categories', group: '3 · Universal Registries (All BUs)', universal: true, navView: 'reg_categories', label: 'Expense Categories', dvn: 'bhf_expensecategory', form: 'expense', cols: ['name', 'cost_class', 'subcategories_count', 'expenses_count', 'total_spent'], relTables: ['expense_subcategories', 'expenses'], views: [
+      { id: 'all', label: 'All Expense Categories' },
+      { id: 'prod', label: 'Production Cost (60/61)', fn: r => deriveExpenseCostClass(r) === 'Production Cost' },
+      { id: 'opex', label: 'Operating Expense (62–67)', fn: r => deriveExpenseCostClass(r) === 'Operating Expense' },
+      { id: 'capex', label: 'Capital Expenditure (22)', fn: r => deriveExpenseCostClass(r) === 'Capital Expenditure' }
+    ] },
     { key: 'expense_subcategories', group: '3 · Universal Registries (All BUs)', universal: true, label: 'Expense Subcategories', dvn: 'bhf_expensesubcategory', form: 'expense', cols: ['name', 'category', 'expenses_count', 'total_spent'], relTables: ['expense_categories', 'expenses'], views: [{ id: 'all', label: 'All Expense Subcategories' }] },
     { key: 'company_equipment', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Equipment Assignments', dvn: 'bhf_companyequipment', form: 'companyequipment', cols: ['equipment', 'company', 'ownership', 'status', 'supplier', 'default_driver', 'site', 'day_operator', 'night_operator', 'start_date', 'end_date'], relTables: ['equipment', 'suppliers', 'drivers', 'sites'], views: [{ id: 'all', label: 'All Fleet Assignments' }, { id: 'active', label: 'Active Assignments', fn: r => /active/i.test(r.status || '') && !r.end_date }] },
     { key: 'company_drivers', group: '4 · Workforce, Fleet & Payroll', label: 'Company-Driver Assignments', dvn: 'bhf_companydriver', form: 'driver', cols: ['driver', 'company', 'staff', 'assigned_trucks', 'loads_hauled', 'start_date', 'end_date', 'notes'], relTables: ['drivers', 'employments', 'equipment', 'sales_tickets'], views: [{ id: 'all', label: 'All Driver Assignments' }] },
@@ -109,11 +114,150 @@
     subcategory: 'expense_subcategories'
   };
 
+  // Authoritative Dataverse bhf_expensecategory -> bhf_glaccount mapping (m18a_tables.py)
+  const EXPENSE_CAT_GL_MAP = {
+    'bank fees': '6736',
+    'beach supplies': '6112',
+    'beverage supplies': '6111',
+    'capital expenditures': '2243',
+    'cleaning supplies': '6112',
+    'configuration': '6269',
+    'depreciation expense': '6512',
+    'disposable supplies': '6112',
+    'education': '6266',
+    'food supplies': '6111',
+    'fuel': '61121',
+    'furniture': '2263',
+    'hookah and charcoal': '6111',
+    'hotel supplies': '6112',
+    'insurance': '6268',
+    'licences and fees': '645',
+    'marketing services': '6269',
+    'medical supplies': '6112',
+    'merchandise': '601',
+    'minor equipment': '61123',
+    'nicotine supplies': '6111',
+    'office supplies': '61125',
+    'oils': '6122',
+    'other costs': '6269',
+    'palms': '186',
+    'pool supplies': '6112',
+    'raw material settlements': '401',
+    'raw materials': '6111',
+    'rent': '62631',
+    'repairs and maintenance': '6262',
+    'sanitation and pest control': '6269',
+    'security services': '6269',
+    'skilled labor': '62651',
+    'social security': '635',
+    'software': '6255',
+    'spare parts': '6122',
+    'staff': '6269',
+    'taxes': '645',
+    'tips': '6269',
+    'tools': '61123',
+    'transfer fee': '6269',
+    'transportation': '62611',
+    'uniform purchases': '6112',
+    'utilities': '6112',
+    'vat': '4425'
+  };
+
+  function deriveExpenseCostClass(catObjOrName, glCodeOverride) {
+    const isObj = catObjOrName && typeof catObjOrName === 'object';
+    if (isObj && catObjOrName.cost_class && /^(Production Cost|Capital Expenditure|Operating Expense)$/i.test(String(catObjOrName.cost_class).trim())) {
+      const s = String(catObjOrName.cost_class).trim();
+      if (/^production/i.test(s)) return 'Production Cost';
+      if (/^capital/i.test(s)) return 'Capital Expenditure';
+      return 'Operating Expense';
+    }
+    const rawName = isObj ? (catObjOrName.name || catObjOrName.category || '') : String(catObjOrName || '');
+    const nk = norm(rawName);
+    const gl = String(glCodeOverride || (isObj && catObjOrName.gl_code) || EXPENSE_CAT_GL_MAP[nk] || '').trim();
+    if (gl) {
+      if (gl.startsWith('60') || gl.startsWith('61')) return 'Production Cost';
+      if (gl.startsWith('2')) return 'Capital Expenditure';
+      return 'Operating Expense';
+    }
+    if (/capex|capital|machinery|furniture|building|vehicle purchase/i.test(rawName)) return 'Capital Expenditure';
+    if (/fuel|diesel|oil|lube|spare|tire|tyre|tool|minor equip|raw mat|supply|supplies|utilit|merchandise/i.test(rawName)) return 'Production Cost';
+    return 'Operating Expense';
+  }
+
+  function hubExpenseSign(ex) {
+    const m = String((ex && ex.method) || '').trim();
+    if (m === 'C Return' || m === 'CR Return') return -1;
+    if (m === 'Config' || m === 'VATConfig' || m === 'Free' || m === 'Remove' || m === 'Adjusted' || m === 'JV Adjusted') return 0;
+    return 1;
+  }
+
+  function formatCostClassHtml(clsTxt) {
+    const s = String(clsTxt || '').trim();
+    if (!s || s === '—') return '—';
+    const cls = /Production/i.test(s) ? 'badge-brass' : (/Capital/i.test(s) ? 'badge-warn' : 'badge-info');
+    return `<span class="badge ${cls}">${esc(s)}</span>`;
+  }
+
+  const NON_NUMERIC_HUB_COLS = /^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i;
+
+  function getHubTableDefaultSort(meta, activeViewId) {
+    const k = (meta && meta.key) || '';
+    const vw = String(activeViewId || 'all');
+    switch (k) {
+      case 'expense_categories':
+      case 'expense_subcategories':
+        return { key: 'total_spent', dir: 'desc' };
+      case 'customers':
+        return { key: vw === 'open_ar' ? 'ar_balance' : 'sales_loads', dir: 'desc' };
+      case 'suppliers':
+        if (vw === 'open_ap') return { key: 'ap_balance', dir: 'desc' };
+        if (vw === 'haulers') return { key: 'haul_loads', dir: 'desc' };
+        if (vw === 'quarries') return { key: 'raw_loads', dir: 'desc' };
+        if (vw === 'vendors') return { key: 'expenses_usd', dir: 'desc' };
+        return { key: 'total_spent', dir: 'desc' };
+      case 'equipment':
+        return { key: vw === 'machinery' ? 'fuel_fills' : 'loads_hauled', dir: 'desc' };
+      case 'company_equipment':
+      case 'drivers':
+      case 'company_drivers':
+        return { key: 'loads_hauled', dir: 'desc' };
+      case 'sites':
+        return { key: vw === 'jv' ? 'raw_loads' : 'sales_loads', dir: 'desc' };
+      case 'regions':
+      case 'product_types':
+        return { key: 'sales_loads', dir: 'desc' };
+      case 'products':
+        return { key: vw === 'fuel' ? 'fuel_fills' : 'sales_loads', dir: 'desc' };
+      case 'uoms':
+        return { key: 'tickets_count', dir: 'desc' };
+      case 'employments':
+        return { key: 'total_paid', dir: 'desc' };
+      case 'credit_terms':
+        return { key: 'ar_balance', dir: 'desc' };
+      case 'loans':
+        return { key: 'principal', dir: 'desc' };
+      case 'jv_partnerships':
+        return { key: 'distributions_total', dir: 'desc' };
+      case 'overtime_rates':
+        return { key: 'amount', dir: 'desc' };
+      case 'logistics_allowances':
+        return { key: 'daily_usd', dir: 'desc' };
+      case 'price_rules':
+        return { key: 'start_date', dir: 'desc' };
+      default: {
+        const cols = (meta && meta.cols) || [];
+        if (cols.includes('date')) return { key: 'date', dir: 'desc' };
+        if (cols.includes('start_date')) return { key: 'start_date', dir: 'desc' };
+        return { key: cols[0] || 'name', dir: 'asc' };
+      }
+    }
+  }
+
   let _hubRelCache = null;
   let _hubRelStamp = '';
   function getHubRelIndex(SEED) {
     const rec = (SEED && SEED.records) || {};
-    const stamp = `${(rec.sales_tickets || []).length}:${(rec.raw_purchases || []).length}:${(rec.price_rules || []).length}:${(rec.receipts || []).length}:${(rec.settlements || []).length}:${(SEED && SEED._customRev) || 0}`;
+    const stamp = `${(rec.sales_tickets || []).length}:${(rec.raw_purchases || []).length}:${(rec.expenses || []).length}:${(rec.salaries || []).length}:${(rec.price_rules || []).length}:${(rec.receipts || []).length}:${(rec.settlements || []).length}:${(SEED && SEED._customRev) || 0}`;
     if (_hubRelCache && _hubRelStamp === stamp) return _hubRelCache;
     _hubRelStamp = stamp;
     const rel = {
@@ -123,12 +267,16 @@
     };
     const ensure = (map, k, init) => { const nk = norm(k); if (!nk) return null; if (!map[nk]) map[nk] = init(); return map[nk]; };
 
+    const initCust = () => ({ sales_loads: 0, sample_loads: 0, total_sales: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 });
     const initSupp = () => ({
       raw_loads: 0,
       raw_loads_cnt: 0,
+      raw_cost: 0,
+      raw_cost_sample: 0,
       haul_loads: 0,
       expenses_count: 0,
       expenses_usd: 0,
+      total_spent: 0,
       ap_balance: 0,
       active_rules: 0,
       is_quarry: false,
@@ -139,14 +287,23 @@
       sites: new Set()
     });
 
-    // Seed from semantic model AR / AP summaries first
-    (((SEED && SEED.semantic_model) || {}).customer_ar_summary || []).forEach(c => {
-      const e = ensure(rel.custByName, c.Customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
-      if (e) { e.sales_loads = Number(c.loads || 0); e.ar_balance = Number(c.ar_balance || 0); }
+    // Seed from Manufacturing Group consolidated model + fallback semantic_model summaries
+    const mgModel = ((SEED && SEED.models) || {})['manufacturing-group'] || {};
+    (mgModel.customers || (((SEED && SEED.semantic_model) || {}).customer_ar_summary) || []).forEach(c => {
+      const e = ensure(rel.custByName, c.Customer, initCust);
+      if (e) {
+        e.sales_loads = Number(c.loads || 0);
+        e.total_sales = Number(c.sales_ttc || 0);
+        e.ar_balance = Number(c.ar_balance || 0);
+      }
     });
-    (((SEED && SEED.semantic_model) || {}).supplier_ap_summary || []).forEach(s => {
+    (mgModel.suppliers || (((SEED && SEED.semantic_model) || {}).supplier_ap_summary) || []).forEach(s => {
       const e = ensure(rel.suppByName, s.Supplier, initSupp);
-      if (e) { e.raw_loads = Number(s.raw_loads || 0); e.ap_balance = Number(s.ap_balance || 0); }
+      if (e) {
+        e.raw_loads = Number(s.raw_loads || 0);
+        e.raw_cost = Number(s.raw_cost || 0);
+        e.ap_balance = Number(s.ap_balance || 0);
+      }
     });
 
     const eqLabelMap = {};
@@ -159,6 +316,8 @@
     });
     const fmtTruckRef = t => eqLabelMap[norm(t)] || t;
 
+    (rec.customers || []).forEach(c => { ensure(rel.custByName, c.name, initCust); });
+
     (rec.suppliers || []).forEach(s => {
       const e = ensure(rel.suppByName, s.name, initSupp);
       if (!e) return;
@@ -169,7 +328,7 @@
     });
 
     (rec.credit_terms || []).forEach(ct => {
-      const e = ensure(rel.custByName, ct.customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
+      const e = ensure(rel.custByName, ct.customer, initCust);
       if (e) {
         if (ct.credit_days != null) e.credit_days = ct.credit_days;
         if (ct.credit_limit != null) e.credit_limit = ct.credit_limit;
@@ -178,7 +337,7 @@
 
     (rec.price_rules || []).forEach(pr => {
       if (pr.customer) {
-        const e = ensure(rel.custByName, pr.customer, () => ({ sales_loads: 0, ar_balance: 0, credit_days: null, credit_limit: null, active_rules: 0 }));
+        const e = ensure(rel.custByName, pr.customer, initCust);
         if (e && !pr.end_date) e.active_rules++;
       }
       if (pr.supplier) {
@@ -186,7 +345,7 @@
         if (e && !pr.end_date) e.active_rules++;
       }
       if (pr.product) {
-        const e = ensure(rel.prodByName, pr.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0 }));
+        const e = ensure(rel.prodByName, pr.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0, fuel_fills: 0 }));
         if (e) {
           if (!pr.end_date) e.active_rules++;
           if (/list/i.test(pr.rule_type || '') && pr.unit_price != null) e.list_price = pr.unit_price;
@@ -199,14 +358,23 @@
       }
     });
 
+    const prodTypeMap = {};
+    (rec.product_types || []).forEach(pt => { ensure(rel.typeByName, pt.name, () => ({ products_count: 0, sales_loads: 0 })); });
+    (rec.uoms || []).forEach(u => { ensure(rel.uomByName, u.name, () => ({ products_count: 0, tickets_count: 0 })); });
     (rec.products || []).forEach(p => {
+      ensure(rel.prodByName, p.name, () => ({ list_price: null, active_rules: 0, sales_loads: 0, fuel_fills: 0 }));
+      if (p.name && p.type) prodTypeMap[norm(p.name)] = p.type;
       const te = ensure(rel.typeByName, p.type, () => ({ products_count: 0, sales_loads: 0 }));
       if (te) te.products_count++;
       const ue = ensure(rel.uomByName, p.uom, () => ({ products_count: 0, tickets_count: 0 }));
       if (ue) ue.products_count++;
     });
 
+    const siteRegMap = {};
+    (rec.regions || []).forEach(rg => { ensure(rel.regByName, rg.name, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 })); });
     (rec.sites || []).forEach(s => {
+      ensure(rel.siteByName, s.name, () => ({ active_rules: 0, sales_loads: 0, raw_loads: 0 }));
+      if (s.name && s.region) siteRegMap[norm(s.name)] = s.region;
       const re = ensure(rel.regByName, s.region, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
       if (re) re.sites_count++;
       if (s.supplier) {
@@ -247,6 +415,7 @@
       }
     });
     (rec.drivers || []).forEach(drv => {
+      ensure(rel.drvByName, drv.name || drv.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (drv.truck_owner) {
         const se = ensure(rel.suppByName, drv.truck_owner, initSupp);
         if (se) {
@@ -262,12 +431,29 @@
     });
 
     (rec.sales_tickets || []).forEach(t => {
-      const pe = ensure(rel.prodByName, t.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0 }));
+      if (t.customer) {
+        const ce = ensure(rel.custByName, t.customer, initCust);
+        if (ce) {
+          ce.sample_loads++;
+          if (ce.sample_loads > ce.sales_loads) ce.sales_loads = ce.sample_loads;
+        }
+      }
+      const pe = ensure(rel.prodByName, t.product, () => ({ list_price: null, active_rules: 0, sales_loads: 0, fuel_fills: 0 }));
       if (pe) pe.sales_loads++;
+      const pType = t.product ? prodTypeMap[norm(t.product)] : null;
+      if (pType) {
+        const te = ensure(rel.typeByName, pType, () => ({ products_count: 0, sales_loads: 0 }));
+        if (te) te.sales_loads++;
+      }
       const ue = ensure(rel.uomByName, t.uom, () => ({ products_count: 0, tickets_count: 0 }));
       if (ue) ue.tickets_count++;
       const se = ensure(rel.siteByName, t.site, () => ({ active_rules: 0, sales_loads: 0, raw_loads: 0 }));
       if (se) se.sales_loads++;
+      const sReg = t.site ? siteRegMap[norm(t.site)] : null;
+      if (sReg) {
+        const re = ensure(rel.regByName, sReg, () => ({ sites_count: 0, overtime_rate: null, sales_loads: 0 }));
+        if (re) re.sales_loads++;
+      }
       const ee = ensure(rel.equipByName, t.truck, () => ({ companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (ee) { ee.loads_hauled++; if (t.company) ee.companies.add(t.company); }
       const de = ensure(rel.drvByName, t.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
@@ -298,6 +484,7 @@
         if (qe) {
           qe.is_quarry = true;
           qe.raw_loads_cnt++;
+          qe.raw_cost_sample += Number(t.cost || 0);
           if (qe.raw_loads_cnt > qe.raw_loads) qe.raw_loads = qe.raw_loads_cnt;
           if (t.site) qe.sites.add(t.site);
         }
@@ -307,6 +494,7 @@
         if (he) {
           he.is_hauler = true;
           he.haul_loads++;
+          he.raw_cost_sample += Number(t.trans_cost || 0);
           if (t.truck) he.trucks.add(fmtTruckRef(t.truck));
           if (t.driver) he.drivers.add(t.driver);
         }
@@ -318,31 +506,53 @@
       if (ee) ee.fuel_fills++;
       const de = ensure(rel.drvByName, f.driver, () => ({ trucks: new Set(), companies: new Set(), loads_hauled: 0, fuel_fills: 0 }));
       if (de) de.fuel_fills++;
+      if (f.item) {
+        const pe = ensure(rel.prodByName, f.item, () => ({ list_price: null, active_rules: 0, sales_loads: 0, fuel_fills: 0 }));
+        if (pe) pe.fuel_fills++;
+      }
       if (f.supplier) {
         const se = ensure(rel.suppByName, f.supplier, initSupp);
         if (se) { se.is_expense = true; se.expenses_count++; }
       }
     });
 
+    (rec.expense_categories || []).forEach(ec => {
+      if (!ec) return;
+      if (!ec.gl_code && EXPENSE_CAT_GL_MAP[norm(ec.name)]) ec.gl_code = EXPENSE_CAT_GL_MAP[norm(ec.name)];
+      ec.cost_class = deriveExpenseCostClass(ec);
+      ensure(rel.catByName, ec.name, () => ({ subcategories_count: 0, expenses_count: 0, total_spent: 0 }));
+    });
     (rec.expense_subcategories || []).forEach(sc => {
+      if (!sc) return;
+      ensure(rel.subcatByName, sc.name, () => ({ expenses_count: 0, total_spent: 0 }));
       const ce = ensure(rel.catByName, sc.category, () => ({ subcategories_count: 0, expenses_count: 0, total_spent: 0 }));
       if (ce) ce.subcategories_count++;
     });
     (rec.expenses || []).forEach(ex => {
-      const amt = Number(ex.amount || ex.usd_amount || 0);
+      const sgn = hubExpenseSign(ex);
+      if (sgn === 0) return;
+      const amt = round2(sgn * Number(ex.amount || ex.usd_amount || 0));
       const ce = ensure(rel.catByName, ex.category, () => ({ subcategories_count: 0, expenses_count: 0, total_spent: 0 }));
-      if (ce) { ce.expenses_count++; ce.total_spent += amt; }
+      if (ce) { ce.expenses_count++; ce.total_spent = round2(ce.total_spent + amt); }
       const se = ensure(rel.subcatByName, ex.subcategory, () => ({ expenses_count: 0, total_spent: 0 }));
-      if (se) { se.expenses_count++; se.total_spent += amt; }
+      if (se) { se.expenses_count++; se.total_spent = round2(se.total_spent + amt); }
       if (ex.supplier) {
         const supE = ensure(rel.suppByName, ex.supplier, initSupp);
-        if (supE) { supE.is_expense = true; supE.expenses_count++; supE.expenses_usd += amt; }
+        if (supE) { supE.is_expense = true; supE.expenses_count++; supE.expenses_usd = round2(supE.expenses_usd + amt); }
       }
     });
 
+    Object.values(rel.suppByName).forEach(se => {
+      const rc = Math.max(Number(se.raw_cost || 0), Number(se.raw_cost_sample || 0));
+      se.total_spent = round2(rc + Number(se.expenses_usd || 0));
+    });
+
+    (rec.employments || []).forEach(emp => {
+      ensure(rel.staffByName, emp.staff || emp.name, () => ({ payments_count: 0, total_paid: 0 }));
+    });
     (rec.salaries || []).forEach(sal => {
       const st = ensure(rel.staffByName, sal.staff, () => ({ payments_count: 0, total_paid: 0 }));
-      if (st) { st.payments_count++; st.total_paid += Number(sal.amount || sal.usd_amount || 0); }
+      if (st) { st.payments_count++; st.total_paid = round2(st.total_paid + Number(sal.amount || sal.usd_amount || 0)); }
     });
 
     rel.loanSettledByCp = {};
@@ -418,6 +628,7 @@
       const iv = r.indiff_price ?? r.trans_indiff_price ?? r.delivered_indiff_price;
       if (iv != null && iv !== '') return iv;
     }
+    if (c === 'cost_class') return deriveExpenseCostClass(r);
     if (r[c] != null && r[c] !== '') {
       if (Array.isArray(r[c])) return r[c].join(', ');
       return r[c];
@@ -448,7 +659,6 @@
     if (c === 'total_ttc') return round2(Number(r.amount || r.net_amount || r.price || 0) + Number(r.vat || r.vat_amount || 0));
     if (c === 'vat') return Number(r.vat_amount || 0);
     if (c === 'code') return nm ? nm.toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 12) : '—';
-    if (c === 'cost_class') return /fuel|maint|tire|truck|fleet|oil|spare/i.test(nm) ? 'Direct Fleet & Plant' : (/sal|food|allow|staff|med/i.test(nm) ? 'Workforce & Site' : 'General & Admin');
     if (c === 'gps_status') return (r.latitude != null && r.longitude != null) ? 'Verified Pin' : 'Pending GPS';
 
     if (rel) {
@@ -509,8 +719,8 @@
         const re = rel.regByName[norm(r.name)];
         if (re && re[c] != null) return re[c];
       }
-      if (tableKey === 'equipment') {
-        const ee = rel.equipByName[norm(r.name)];
+      if (tableKey === 'equipment' || tableKey === 'company_equipment') {
+        const ee = rel.equipByName[norm(r.equipment || r.name)];
         if (ee) {
           if (c === 'companies_list') return Array.from(ee.companies).join(', ') || 'Shared';
           if (ee[c] != null) return ee[c];
@@ -591,19 +801,23 @@
   }
 
   function fmtUSD(v, decimals = 0) {
-    const n = Number(v || 0);
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return String(v ?? '—');
     const abs = Math.abs(n);
     return (n < 0 ? '-$' : '$') + abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
   function fmtUSDk(v) {
-    const n = Number(v || 0);
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return String(v ?? '—');
     const a = Math.abs(n);
     if (a >= 1e6) return (n < 0 ? '-$' : '$') + (a / 1e6).toFixed(2) + 'M';
     if (a >= 1e3) return (n < 0 ? '-$' : '$') + Math.round(a / 1e3).toLocaleString('en-US') + 'K';
     return fmtUSD(n, 0);
   }
   function fmtNum(v, decimals = 0) {
-    return Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return String(v ?? '—');
+    return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
   function fmtPct(v, num, den) {
     if (num != null && den) return ((Number(num) / Number(den)) * 100).toFixed(1) + '%';
@@ -1310,7 +1524,7 @@
       (rec.suppliers || []).forEach(s => suppIvaMap.set(norm(s.name), s.iva ? 'Yes' : 'No'));
       (m.suppliers || []).forEach(s => suppIvaMap.set(norm(s.Supplier), s.IVA === 'Yes' ? 'Yes' : 'No'));
       const catClassMap = new Map();
-      (rec.expense_categories || []).forEach(c => catClassMap.set(norm(c.name), c.cost_class || 'Operating Expense'));
+      (rec.expense_categories || []).forEach(c => catClassMap.set(norm(c.name), deriveExpenseCostClass(c)));
       const equipMetaMap = new Map();
       (rec.equipment || []).forEach(e => equipMetaMap.set(norm(e.name), e));
       (m.equipment || []).forEach(e => { if (!equipMetaMap.has(norm(e.Equipment))) equipMetaMap.set(norm(e.Equipment), { name: e.Equipment, type: e.Type, ownership: e.Ownership, status: e.Status }); });
@@ -2401,7 +2615,8 @@
       stmtItems.forEach(it => { runBal = round2(runBal + it.debit - it.credit); it.running = runBal; });
       stmtItems.reverse();
 
-      const totalPosBal = custRows.reduce((a, r) => a + Math.max(0, Number(r.ar_balance || 0)), 0) || 1;
+      const arCustRows = [...custRows].sort((a, b) => Number(b.ar_balance || 0) - Number(a.ar_balance || 0) || Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0));
+      const totalPosBal = arCustRows.reduce((a, r) => a + Math.max(0, Number(r.ar_balance || 0)), 0) || 1;
 
       bodyHtml = `
         <div class="pbi-overview-bands">
@@ -2447,7 +2662,7 @@
             subtitle: 'FIFO open receivables by aging bucket · On account (unapplied customer advances) shown below zero',
             legend: [{ label: 'Current–30d', color: '#2B5C8F' }, { label: '31–60d', color: '#D9A54A' }, { label: '60+ Overdue', color: '#C8333B' }, { label: 'On account', color: '#1E7A6E' }]
           })}
-          ${pbiPanel('Balance by customer', buildHorizontalBarChart(custRows, 'Customer', 'ar_balance', v => fmtUSDk(v), { color: '#2B5C8F', maxItems: 10 }), {
+          ${pbiPanel('Balance by customer', buildHorizontalBarChart(arCustRows, 'Customer', 'ar_balance', v => fmtUSDk(v), { color: '#2B5C8F', maxItems: 10 }), {
             subtitle: 'Top customer balances as at period end (FIFO allocated)'
           })}
         </div>
@@ -2472,7 +2687,7 @@
             { label: 'Receipts', key: 'receipts', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Last sale', key: 'last_sale', mono: true, fmt: v => esc(String(v || '—').slice(0, 10)) }
-          ], custRows, {
+          ], arCustRows, {
             subtitle: 'Receipts are applied to the oldest open ticket first (FIFO) · Balance = Current + 1-10 + 11-30 + 31-60 + 60+ + On account',
             unitLabel: 'customers',
             foot: [
@@ -2579,10 +2794,10 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart(suppRows, 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#2B5C8F', maxItems: 10 }), {
+          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0)), 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#2B5C8F', maxItems: 10 }), {
             subtitle: 'Net closing AP balance (+ owed by company, − advance to supplier)'
           })}
-          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart(suppRows, 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
+          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0)), 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
             subtitle: 'Total raw material + haulage accrued'
           })}
         </div>
@@ -2598,7 +2813,7 @@
             { label: 'Leg 3 · Expenses ($)', raw: r => r.ap_expense || r.expenses || 0, r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Settlements Paid ($)', key: 'settlements_paid', r: true, fmt: v => `<span class="pbi-pos">${fmtUSD(v, 0)}</span>` },
             { label: 'Closing AP Balance ($)', key: 'ap_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], suppRows, {
+          ], [...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0) || (Number(b.raw_cost || 0) + Number(b.ap_expense || b.expenses || 0)) - (Number(a.raw_cost || 0) + Number(a.ap_expense || a.expenses || 0))), {
             subtitle: 'Every raw load splits into Material owed to Site Owner + Haulage owed to Truck Owner · Red negative = net advance/prepayment to supplier',
             unitLabel: 'suppliers'
           })}
@@ -2936,8 +3151,9 @@
         return s;
       }).sort((a, b) => b.earnings - a.earnings || b.paid - a.paid);
 
-      const siteStaffRows = staffPayrollRows.filter(s => s.site_days > 0 || s.site_allow > 0);
-      const freelanceContractStaff = empRows.filter(e => /Freelance|Daily/i.test(String(e.type || '')));
+      const siteStaffRows = staffPayrollRows.filter(s => s.site_days > 0 || s.site_allow > 0).sort((a, b) => b.site_allow - a.site_allow || b.earnings - a.earnings);
+      logRows.sort((a, b) => Number(b.daily_usd || b.usd_amount || 0) - Number(a.daily_usd || a.usd_amount || 0) || String(b.start_date || '').localeCompare(String(a.start_date || '')));
+      const freelanceContractStaff = empRows.filter(e => /Freelance|Daily/i.test(String(e.type || ''))).sort((a, b) => Number(b.daily_rate || b.salary_usd || 0) - Number(a.daily_rate || a.salary_usd || 0));
       const unmatchedSal = (prSn.unmatched_salary_by_staff || []).filter(matchCommon);
 
       const totBase = staffPayrollRows.reduce((a, r) => a + r.base, 0);
@@ -3186,7 +3402,7 @@
     else if (activePageId === 'p13_vat') {
       const isVatMethod = m => m === 'VAT' || m === 'VATConfig' || m === 'VAT Dis' || m === 'Cash VAT Dis';
       const vatInvRows = filterRecords(rec.vat_invoices, { ignorePeriod: true, ignoreSearch: true }).filter(matchCommon);
-      const vatCusts = custRows.filter(c => c['VAT Registered'] === 'Yes' || Number(c.sales_vat || 0) > 0 || Number(c.vat_receivable || 0) > 0);
+      const vatCusts = custRows.filter(c => c['VAT Registered'] === 'Yes' || Number(c.sales_vat || 0) > 0 || Number(c.vat_receivable || 0) > 0).sort((a, b) => Number(b.sales_vat || 0) - Number(a.sales_vat || 0) || Number(b.vat_receivable || 0) - Number(a.vat_receivable || 0));
       const vatSupps = suppRows.filter(s => s.IVA === 'Yes');
       const vatRecs = recRows.filter(r => isVatMethod(String(r.method || '').trim()) || /VAT/i.test(String(r.kind || '')) || r.vat_invoice);
       const vatCollected = Math.max(0, Number(k.sales_vat || 0) - Number(k.vat_receivable || 0));
@@ -3247,7 +3463,7 @@
 
         <div class="pbi-grid-2">
           ${pbiPanel('Output VAT by customer', buildHorizontalBarChart(vatCusts, 'Customer', 'sales_vat', v => fmtUSD(v, 0), { color: '#2B5C8F', maxItems: 8 }), { subtitle: 'Top IVA customers by 11% output VAT' })}
-          ${pbiPanel('VAT receivable (due) by customer', buildHorizontalBarChart(vatCusts, 'Customer', 'vat_receivable', v => fmtUSD(v, 0), { color: '#D9A54A', maxItems: 8 }), { subtitle: 'Uncollected 11% VAT inside open AR' })}
+          ${pbiPanel('VAT receivable (due) by customer', buildHorizontalBarChart([...vatCusts].sort((a, b) => Number(b.vat_receivable || 0) - Number(a.vat_receivable || 0)), 'Customer', 'vat_receivable', v => fmtUSD(v, 0), { color: '#D9A54A', maxItems: 8 }), { subtitle: 'Uncollected 11% VAT inside open AR' })}
         </div>
 
         <div class="pbi-grid-1">
@@ -3353,7 +3569,7 @@
         const cp = cellValue(r, 'counterparty');
         if (sl.counterparty && norm(cp) !== norm(sl.counterparty)) return false;
         return true;
-      });
+      }).sort((a, b) => Math.abs(Number(b.principal || 0)) - Math.abs(Number(a.principal || 0)));
       const loanSetRows = filterRecords(rec.loan_settlements, { ignoreSearch: true }).filter(r => {
         if (!matchSearch(r)) return false;
         const cp = cellValue(r, 'loan') || cellValue(r, 'counterparty');
@@ -3581,14 +3797,15 @@
     // PAGE 17: JV SITES (m18c_report.py Page 17 — 50/50 Stock Entitlement)
     // =========================================================================
     else if (activePageId === 'p17_jv') {
-      const jvSites = siteRows.filter(s => s.JV === 'Yes');
-      const jvParts = filterRecords(rec.jv_partnerships, { ignorePeriod: true }).filter(matchCommon);
+      const jvSites = siteRows.filter(s => s.JV === 'Yes').sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
+      const jvRel = getHubRelIndex(SEED);
+      const jvParts = filterRecords(rec.jv_partnerships, { ignorePeriod: true }).filter(matchCommon).sort((a, b) => Number(cellValue(b, 'distributions_total', 'jv_partnerships', jvRel) || 0) - Number(cellValue(a, 'distributions_total', 'jv_partnerships', jvRel) || 0) || Number(b.percentage || 0) - Number(a.percentage || 0));
       const jvDists = filterRecords(rec.jv_distributions, { ignoreSearch: true }).filter(d => {
         if (!matchCommon(d)) return false;
         if (sl.partner && norm(d.partner) !== norm(sl.partner)) return false;
         if (sl.jvBasis && norm(d.basis) !== norm(sl.jvBasis)) return false;
         return true;
-      });
+      }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || Number(b.amount || 0) - Number(a.amount || 0));
       const totJvRaw = jvSites.reduce((a, r) => a + Number(r.raw_cost || 0), 0);
       const totJvDist = jvDists.reduce((a, r) => a + Number(r.amount || 0), 0);
 
@@ -3877,7 +4094,7 @@
             { label: 'Credit Sales ($)', key: 'credit_sales', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Receipts ($)', key: 'receipts', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AR ($)', key: 'ar_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], custRows, { unitLabel: 'customers' })}
+          ], [...custRows].sort((a, b) => Math.abs(Number(b.ar_balance || 0)) - Math.abs(Number(a.ar_balance || 0)) || Number(b.credit_sales || 0) - Number(a.credit_sales || 0)), { unitLabel: 'customers' })}
 
           ${pbiTable('Top Supplier Sub-Account Reconciliation (3-Leg Accruals vs Settlements vs Closing AP)', [
             { label: 'Supplier / Hauler', key: 'Supplier', bold: true },
@@ -3885,7 +4102,7 @@
             { label: 'Total Accrued ($)', raw: r => Number(r.raw_cost || 0) + Number(r.ap_expense || 0), r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Settled ($)', key: 'settlements_paid', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AP ($)', key: 'ap_balance', r: true, bar: 'brass', negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], suppRows, { unitLabel: 'suppliers' })}
+          ], [...suppRows].sort((a, b) => Math.abs(Number(b.ap_balance || 0)) - Math.abs(Number(a.ap_balance || 0)) || (Number(b.raw_cost || 0) + Number(b.ap_expense || 0)) - (Number(a.raw_cost || 0) + Number(a.ap_expense || 0))), { unitLabel: 'suppliers' })}
         </div>
       `;
     }
@@ -4166,9 +4383,8 @@
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
     const activeView = views.find(v => v.id === activeViewId) || views[0];
     const filtered = activeView && activeView.fn ? baseFiltered.filter(r => activeView.fn(r, rel)) : baseFiltered;
-    const dateCol = meta.cols.includes('date') ? 'date' : (meta.cols.includes('start_date') ? 'start_date' : null);
-    const defSort = dateCol || (meta.cols[0] || 'name');
-    const rows = sortRows(filtered, 'tbl_' + meta.key, defSort, dateCol ? 'desc' : 'asc');
+    const defSortSpec = getHubTableDefaultSort(meta, activeView.id);
+    const rows = sortRows(filtered, 'tbl_' + meta.key, defSortSpec.key, defSortSpec.dir);
     const shown = rows.slice(0, shownCount('tbl_' + meta.key));
 
     const groups = Array.from(new Set(tablePool.map(t => t.group)));
@@ -4273,7 +4489,7 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('tbl_' + meta.key, hubColLabel(c, meta.key), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('tbl_' + meta.key, hubColLabel(c, meta.key), c, !NON_NUMERIC_HUB_COLS.test(c) && /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
@@ -4281,9 +4497,10 @@
                 <tr class="rrow" data-rkey="${esc(meta.key)}" data-rid="${esc(r.id)}">
                   ${meta.cols.map((c, ci) => {
                     const v = cellValue(r, c, meta.key, rel);
+                    const nonNum = NON_NUMERIC_HUB_COLS.test(c);
                     const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
-                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
-                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
+                    const isMoney = !isBool && !nonNum && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !nonNum && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
@@ -4293,7 +4510,7 @@
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : esc(cell)));
+                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : (c === 'cost_class' ? formatCostClassHtml(cell) : esc(cell))));
                     return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
@@ -4304,6 +4521,7 @@
               <tr>
                 ${(() => {
                   const isColNumeric = col => {
+                    if (NON_NUMERIC_HUB_COLS.test(col)) return { isM: false, isN: false, num: false };
                     const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(col);
                     const isM = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(col) && !/rate$/.test(col);
                     const isN = !isBoolCol && !isM && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
@@ -4404,8 +4622,8 @@
     const activeViewId = (STATE.tableViews && STATE.tableViews[meta.key]) || 'all';
     const activeView = views.find(v => v.id === activeViewId) || views[0];
     const filtered = activeView && activeView.fn ? baseFiltered.filter(r => activeView.fn(r, rel)) : baseFiltered;
-    const defSort = meta.cols[0] || 'name';
-    const rows = sortRows(filtered, 'ureg_' + meta.key, defSort, 'asc');
+    const defSortSpec = getHubTableDefaultSort(meta, activeView.id);
+    const rows = sortRows(filtered, 'ureg_' + meta.key, defSortSpec.key, defSortSpec.dir);
     const shown = rows.slice(0, shownCount('ureg_' + meta.key));
     const relTablesMeta = (meta.relTables || []).map(rk => TABLE_CATALOG.find(t => t.key === rk)).filter(Boolean);
     const groupTabsMeta = groupKeys.length > 1
@@ -4457,7 +4675,7 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                ${meta.cols.map(c => th('ureg_' + meta.key, hubColLabel(c, meta.key), c, /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
+                ${meta.cols.map(c => th('ureg_' + meta.key, hubColLabel(c, meta.key), c, !NON_NUMERIC_HUB_COLS.test(c) && /price|cost|amount|total|vat|limit|salary|balance|qty|litres|capacity|factor|pct|days|hours|_count$|loads|fills|rules|tickets/.test(c) ? 'r' : '')).join('')}
               </tr>
             </thead>
             <tbody>
@@ -4465,9 +4683,10 @@
                 <tr class="rrow" data-rkey="${esc(meta.key)}" data-rid="${esc(r.id)}">
                   ${meta.cols.map((c, ci) => {
                     const v = cellValue(r, c, meta.key, rel);
+                    const nonNum = NON_NUMERIC_HUB_COLS.test(c);
                     const isBool = typeof v === 'boolean' || (/^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(c) && (v === 0 || v === 1));
-                    const isMoney = !isBool && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
-                    const isNum = !isBool && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
+                    const isMoney = !isBool && !nonNum && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(c) && !/rate$/.test(c);
+                    const isNum = !isBool && !nonNum && !isMoney && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets/.test(c);
                     let cell = v == null || v === '' ? '—' : (isBool ? (v && v !== 0 ? 'Yes' : 'No') : String(v));
                     if (isMoney && v != null && v !== '') cell = fmtUSD(v, 2);
                     else if (isNum && v != null && v !== '') cell = fmtNum(v, /factor|qty|capacity|lat|long|percentage|interest/.test(c) ? 2 : 0);
@@ -4477,7 +4696,7 @@
                     const isLookup = lkTarget && lkTarget !== meta.key && v != null && v !== '' && cell !== '—';
                     const innerHtml = isLookup
                       ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(c.replace(/_/g, ' '))}: ${esc(v)}">${esc(cell)}<span class="rel-arr">↗</span></span>`
-                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : esc(cell)));
+                      : (c === 'company' ? shortCoHtml(cell) : (c === 'supplier_role' ? formatSupplierRoleHtml(cell) : (c === 'cost_class' ? formatCostClassHtml(cell) : esc(cell))));
                     return `<td class="${isMoney || isNum ? 'r' : ''}${/date|ticket|code|_no$|plate|version/.test(c) ? ' mono' : ''}">${ci === 0 ? `<b>${innerHtml}</b>${appCell(r, meta.key)}` : innerHtml}</td>`;
                   }).join('')}
                 </tr>
@@ -4488,6 +4707,7 @@
               <tr>
                 ${(() => {
                   const isColNumeric = col => {
+                    if (NON_NUMERIC_HUB_COLS.test(col)) return { isM: false, isN: false, num: false };
                     const isBoolCol = /^(is_|vat_registered|external_invoice|customer_declared_qty|ticket_product|fuel_item|input_product|iva$|overtime$)/.test(col);
                     const isM = !isBoolCol && /price|cost|amount|total|vat_amount|limit|salary|balance|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|overtime_rate/.test(col) && !/rate$/.test(col);
                     const isN = !isBoolCol && !isM && /qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|loads|fills|rules|tickets/.test(col);
@@ -4530,6 +4750,8 @@
     MOVED_PBI_PAGES,
     MODULE_ANALYTICS_CATALOG,
     TABLE_CATALOG,
+    deriveExpenseCostClass,
+    getHubTableDefaultSort,
     getHubRelIndex,
     cellValue,
     renderPbiStudio,
