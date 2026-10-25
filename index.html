@@ -5,20 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ISABI Systems | Command Center &amp; Double-Entry Ledger</title>
   <meta name="description" content="ISABI Systems — Command Center &amp; Double-Entry Ledger across 10 Industries (Manufacturing, Hospitality, Trading, Real Estate, Insurance &amp; Holding).">
-  <meta name="theme-color" content="#F7F8FA">
+  <meta name="theme-color" content="#F4F2EE">
   <script id="pre">
     // Pre-paint theme + iOS standalone + SW-resume detection (no white flash or auth-gate flash on reload) — PWA.md §3.1 & §3.3
     try {
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '15.1';
+      window.__MFG_SHELL_VER = '15.2';
       var t = localStorage.getItem('isabi_mfg_theme');
-      if (t === 'dark' || t === 'light') {
-        document.documentElement.setAttribute('data-theme', t);
-        var tm = document.querySelector('meta[name="theme-color"]');
-        if (tm) tm.setAttribute('content', t === 'dark' ? '#0B0D11' : '#F7F8FA');
-      }
+      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
       if (rw >= 176 && rw <= 420) document.documentElement.style.setProperty('--rail-w', rw + 'px');
       var isStandalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
@@ -43,22 +39,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=15.1">
+  <link rel="stylesheet" href="css/app.css?v=15.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
-    <!-- ==================== LEFT ARCHITECTURAL RAIL ==================== -->
+    <!-- ==================== LEFT INK RAIL (REV 10 "LEDGER") ==================== -->
     <aside class="rail" id="sidebar">
       <div class="brand">
         <a href="#overview" class="brand-lockup" id="brandHomeLink" aria-label="ISABI Systems Command Center">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="brand-badge" role="img" aria-label="ISABI Systems Badge">
-            <rect width="120" height="120" rx="26" fill="#111827" stroke="rgba(255,255,255,0.16)" stroke-width="3"/>
+            <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.35)" stroke-width="3"/>
             <g transform="translate(39.52,77.62) scale(0.74)">
-              <g fill="#F9FAFB">
+              <g fill="#F4F2EE">
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                 <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
               </g>
-              <g fill="#9CA3AF">
+              <g fill="#D9A54A">
                 <rect x="0" y="9.5" width="55.66" height="3.4"/>
                 <rect x="0" y="17.5" width="55.66" height="3.4"/>
               </g>
@@ -66,18 +62,18 @@
           </svg>
           <div class="brand-wordmark-wrap">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -82.8 346.86 160.76" class="brand-wordmark" role="img" aria-label="ISABI Systems">
-              <g fill="#F9FAFB">
+              <g fill="#F4F2EE">
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                 <path transform="translate(-12.95,0)" d="M82.46 1.2Q74.06 1.2 66.77 0.2Q59.48 -0.81 54 -3.31Q48.52 -5.82 45.43 -10.3Q42.33 -14.78 42.33 -21.68Q42.33 -21.88 42.33 -22.21Q42.33 -22.53 42.43 -22.84H62.38Q62.28 -22.44 62.25 -22Q62.23 -21.56 62.23 -21.08Q62.23 -18.03 64.55 -16.27Q66.87 -14.51 71.11 -13.8Q75.35 -13.09 80.96 -13.09Q83.32 -13.09 85.78 -13.23Q88.24 -13.38 90.53 -13.74Q92.82 -14.1 94.65 -14.79Q96.47 -15.47 97.56 -16.55Q98.65 -17.63 98.65 -19.15Q98.65 -21.32 96.35 -22.57Q94.05 -23.82 90.14 -24.58Q86.22 -25.33 81.35 -25.92Q76.49 -26.52 71.28 -27.34Q66.06 -28.16 61.2 -29.61Q56.33 -31.06 52.41 -33.47Q48.5 -35.88 46.2 -39.66Q43.9 -43.45 43.9 -48.91Q43.9 -54.37 46.67 -58.34Q49.43 -62.31 54.42 -64.89Q59.41 -67.46 66.2 -68.71Q73 -69.95 81.01 -69.95Q89.17 -69.95 95.82 -68.69Q102.46 -67.43 107.23 -64.88Q112 -62.33 114.57 -58.47Q117.13 -54.6 117.13 -49.39V-48.01H97.39V-48.82Q97.39 -50.91 95.59 -52.53Q93.78 -54.15 90.34 -55.12Q86.89 -56.1 81.96 -56.1Q76.07 -56.1 72.27 -55.36Q68.48 -54.62 66.68 -53.34Q64.88 -52.07 64.88 -50.55Q64.88 -48.52 67.17 -47.33Q69.47 -46.15 73.39 -45.47Q77.3 -44.78 82.17 -44.19Q87.03 -43.6 92.25 -42.78Q97.46 -41.96 102.32 -40.59Q107.19 -39.21 111.31 -36.84Q115.03 -34.46 117.32 -30.83Q119.62 -27.2 119.62 -21.89Q119.62 -13.62 114.83 -8.52Q110.04 -3.43 101.65 -1.11Q93.26 1.2 82.46 1.2Z"/>
                 <path transform="translate(-12.35,0)" d="M125.53 0 159.33 -68.75H181.97L215.77 0H193.74L188.55 -11.02H151.65L146.51 0ZM158.47 -25.93H181.73L175.47 -39.9Q175.08 -40.84 174.37 -42.55Q173.67 -44.27 172.91 -46.22Q172.15 -48.17 171.51 -49.85Q170.87 -51.52 170.55 -52.33H169.8Q169.07 -50.49 168.11 -48.11Q167.15 -45.73 166.26 -43.49Q165.37 -41.25 164.73 -39.85Z"/>
                 <path transform="translate(-14.35,0)" d="M225.75 0V-68.75H282.27Q287.86 -68.75 292.39 -66.6Q296.91 -64.45 299.54 -60.65Q302.18 -56.85 302.18 -51.81Q302.18 -47.31 300.57 -44.11Q298.96 -40.91 296.25 -38.92Q293.54 -36.94 290.23 -35.95V-35.55Q294.09 -34.75 297.19 -32.66Q300.3 -30.57 302.11 -27.09Q303.92 -23.62 303.92 -18.57Q303.92 -12.66 301.07 -8.52Q298.22 -4.37 293.39 -2.19Q288.55 0 282.6 0ZM246.11 -14.49H275.8Q279 -14.49 281.02 -16.24Q283.05 -17.98 283.05 -21.59Q283.05 -23.49 282.17 -25.01Q281.3 -26.53 279.61 -27.37Q277.93 -28.21 275.53 -28.21H246.11ZM246.11 -41.59H274.11Q276.44 -41.59 278.03 -42.43Q279.63 -43.27 280.49 -44.8Q281.35 -46.33 281.35 -48.4Q281.35 -51.33 279.38 -53.04Q277.4 -54.75 274.39 -54.75H246.11Z"/>
                 <path transform="translate(-18.65,0)" d="M317.15 0V-68.75H337.51V0Z"/>
               </g>
-              <g fill="#71717A">
+              <g fill="#D9A54A">
                 <rect x="0" y="9.5" width="318.86" height="3.4"/>
                 <rect x="0" y="17.5" width="318.86" height="3.4"/>
               </g>
-              <g fill="#F9FAFB" transform="translate(0,62.46) scale(0.42)">
+              <g fill="#F4F2EE" transform="translate(0,62.46) scale(0.42)">
                 <path transform="translate(-5.17,0)" d="M38 1.2Q31.29 1.2 25.32 0.09Q19.36 -1.01 14.83 -3.57Q10.3 -6.12 7.74 -10.29Q5.17 -14.45 5.17 -20.57Q5.17 -20.98 5.2 -21.44Q5.22 -21.89 5.27 -22.14H19.28Q19.24 -21.85 19.19 -21.3Q19.14 -20.75 19.14 -20.2Q19.14 -17 21.42 -14.84Q23.7 -12.68 27.98 -11.6Q32.25 -10.52 38.01 -10.52Q41.12 -10.52 43.86 -10.95Q46.6 -11.38 48.86 -11.81Q51.12 -12.44 52.78 -13.41Q54.43 -14.39 55.32 -15.72Q56.2 -17.04 56.2 -18.68Q56.2 -21.44 54.14 -23.17Q52.08 -24.9 48.57 -26.06Q45.06 -27.22 40.66 -28.1Q36.26 -28.98 31.59 -29.96Q26.91 -30.94 22.51 -32.44Q18.11 -33.94 14.6 -36.19Q11.3 -38.44 9.03 -41.93Q6.97 -45.43 6.97 -50.42Q6.97 -55.22 9.14 -58.86Q11.31 -62.51 15.42 -64.96Q19.53 -67.4 25.27 -68.63Q31.02 -69.85 38.16 -69.85Q45.15 -69.85 50.75 -68.58Q56.34 -67.31 60.28 -64.79Q64.22 -62.26 66.3 -58.56Q68.37 -54.86 68.37 -50V-48.6H54.56V-49.75Q54.56 -52.31 52.5 -54.17Q50.44 -56.02 46.83 -57.08Q43.22 -58.13 38.54 -58.13Q32.75 -58.13 28.92 -57.25Q25.1 -56.38 23.21 -54.78Q21.32 -53.18 21.32 -51.02Q21.32 -48.61 23.38 -47.06Q25.44 -45.5 28.95 -44.47Q32.46 -43.44 36.86 -42.58Q41.26 -41.72 45.93 -40.69Q50.61 -39.66 55.01 -38.21Q59.41 -36.76 62.92 -34.46Q66.42 -32.16 68.49 -28.74Q70.55 -25.32 70.55 -20.44Q70.55 -12.59 66.39 -7.82Q62.24 -3.05 54.89 -0.92Q47.55 1.2 38 1.2Z"/>
                 <path transform="translate(32.83,0)" d="M106.74 0V-27.85L76.88 -68.65H93.47L113.82 -39.79H114.56L134.96 -68.65H150.65L120.8 -27.85V0Z"/>
                 <path transform="translate(70.83,0)" d="M190 1.2Q183.29 1.2 177.32 0.09Q171.36 -1.01 166.83 -3.57Q162.3 -6.12 159.74 -10.29Q157.17 -14.45 157.17 -20.57Q157.17 -20.98 157.2 -21.44Q157.22 -21.89 157.27 -22.14H171.28Q171.24 -21.85 171.19 -21.3Q171.14 -20.75 171.14 -20.2Q171.14 -17 173.42 -14.84Q175.7 -12.68 179.98 -11.6Q184.25 -10.52 190.01 -10.52Q193.12 -10.52 195.86 -10.95Q198.6 -11.38 200.86 -11.81Q203.12 -12.44 204.78 -13.41Q206.43 -14.39 207.32 -15.72Q208.2 -17.04 208.2 -18.68Q208.2 -21.44 206.14 -23.17Q204.08 -24.9 200.57 -26.06Q197.06 -27.22 192.66 -28.1Q188.26 -28.98 183.59 -29.96Q178.91 -30.94 174.51 -32.44Q170.11 -33.94 166.6 -36.19Q163.1 -38.44 161.03 -41.93Q158.97 -45.43 158.97 -50.42Q158.97 -55.22 161.14 -58.86Q163.31 -62.51 167.42 -64.96Q171.53 -67.4 177.27 -68.63Q183.02 -69.85 190.16 -69.85Q197.15 -69.85 202.75 -68.58Q208.34 -67.31 212.38 -64.79Q216.22 -62.26 218.3 -58.56Q220.37 -54.86 220.37 -50V-48.6H206.56V-49.75Q206.56 -52.31 204.5 -54.17Q202.44 -56.02 198.83 -57.08Q195.22 -58.13 190.54 -58.13Q184.75 -58.13 180.92 -57.25Q177.1 -56.38 175.21 -54.78Q173.32 -53.18 173.32 -51.02Q173.32 -48.61 175.38 -47.06Q177.44 -45.5 180.95 -44.47Q184.46 -43.44 188.86 -42.58Q193.26 -41.72 197.93 -40.69Q202.61 -39.66 207.01 -38.21Q211.41 -36.76 214.92 -34.46Q218.42 -32.16 220.49 -28.74Q222.55 -25.32 222.55 -20.44Q222.55 -12.59 218.39 -7.82Q214.24 -3.05 206.89 -0.92Q199.55 1.2 190 1.2Z"/>
@@ -197,18 +193,18 @@
           <div class="top-mobile-actions">
             <button type="button" class="ask-isabi-trigger ask-isabi-mobile" id="mobileAskIsabiBtn" title="Open Ask ISABI Intelligence">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
-                <g fill="#F9FAFB">
+                <g fill="#F4F2EE">
                   <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                   <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
                 </g>
-                <g fill="#9CA3AF">
+                <g fill="#D9A54A">
                   <rect x="0" y="9.5" width="55.66" height="3.4"/>
                   <rect x="0" y="17.5" width="55.66" height="3.4"/>
                 </g>
               </svg>
               <span>ISABI</span>
             </button>
-            <button type="button" class="btn btn-ghost-bar mobile-theme-btn" id="mobileThemeBtn" title="Switch Light Stone / Dark Obsidian" aria-label="Toggle Theme">Dark</button>
+            <button type="button" class="btn btn-ghost-bar mobile-theme-btn" id="mobileThemeBtn" title="Switch Light Paper / Dark Ink" aria-label="Toggle Theme">Dark</button>
           </div>
         </div>
 
@@ -315,11 +311,11 @@
             <!-- Official Ask ISABI Trigger -->
             <button type="button" class="ask-isabi-trigger desktop-tool-btn" id="askIsabiBtn" title="Open Ask ISABI System Intelligence">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.5 -78.8 74.66 109.7" aria-hidden="true">
-                <g fill="#F9FAFB">
+                <g fill="#F4F2EE">
                   <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                   <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
                 </g>
-                <g fill="#9CA3AF">
+                <g fill="#D9A54A">
                   <rect x="0" y="9.5" width="55.66" height="3.4"/>
                   <rect x="0" y="17.5" width="55.66" height="3.4"/>
                 </g>
@@ -328,7 +324,7 @@
             </button>
 
             <!-- Theme Toggle -->
-            <button type="button" class="btn btn-ghost-bar desktop-tool-btn" id="themeToggleBtn" title="Switch Light Stone / Dark Obsidian">Dark</button>
+            <button type="button" class="btn btn-ghost-bar desktop-tool-btn" id="themeToggleBtn" title="Switch Light Paper / Dark Ink">Dark</button>
           </div>
         </div>
       </header>
@@ -372,13 +368,13 @@
     <div class="ai-console-hdr">
       <div class="ai-console-title">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="brand-badge-sm" role="img" aria-label="ISABI Systems Badge">
-          <rect width="120" height="120" rx="26" fill="#111827" stroke="rgba(255,255,255,0.18)" stroke-width="3"/>
+          <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.4)" stroke-width="3"/>
           <g transform="translate(39.52,77.62) scale(0.74)">
-            <g fill="#F9FAFB">
+            <g fill="#F4F2EE">
               <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
               <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
             </g>
-            <g fill="#9CA3AF">
+            <g fill="#D9A54A">
               <rect x="0" y="9.5" width="55.66" height="3.4"/>
               <rect x="0" y="17.5" width="55.66" height="3.4"/>
             </g>
@@ -442,13 +438,13 @@
       <div class="auth-left">
         <div class="auth-brand">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="auth-badge" role="img" aria-label="ISABI Systems Badge">
-            <rect width="120" height="120" rx="26" fill="#111827" stroke="rgba(255,255,255,0.18)" stroke-width="3"/>
+            <rect width="120" height="120" rx="26" fill="#081124" stroke="rgba(217,165,74,0.45)" stroke-width="3"/>
             <g transform="translate(39.52,77.62) scale(0.74)">
-              <g fill="#F9FAFB">
+              <g fill="#F4F2EE">
                 <path transform="translate(-8.45,0)" d="M8.45 0V-68.75H28.81V0Z"/>
                 <path transform="translate(-10.45,0)" d="M45.75 0V-68.75H66.11V0Z"/>
               </g>
-              <g fill="#9CA3AF">
+              <g fill="#D9A54A">
                 <rect x="0" y="9.5" width="55.66" height="3.4"/>
                 <rect x="0" y="17.5" width="55.66" height="3.4"/>
               </g>
@@ -460,7 +456,7 @@
           </div>
         </div>
 
-        <h1 class="auth-heading">The ERP Your Group <span class="brass-text">Actually Runs On</span>.</h1>
+        <h1 class="auth-heading">The Books Close on <span class="brass-text">ISABI</span>.</h1>
         <p class="auth-desc">
           Look at the camera to sign in with on-device <b>Face ID</b> (or verify your seat with PIN). Row-Level Security (RLS) scopes your session to your assigned entities (<b>WTC</b>, <b>BBConstruction</b>, <b>Lions Transport</b>).
         </p>
@@ -584,17 +580,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=15.1"></script>
-  <script src="js/face.js?v=15.1"></script>
-  <script src="js/endpoints.js?v=15.1"></script>
-  <script src="js/seed_data.js?v=15.1"></script>
-  <script src="js/icons.js?v=15.1"></script>
-  <script src="js/forms_engine.js?v=15.1"></script>
-  <script src="js/pbi_pages.js?v=15.1"></script>
-  <script src="js/rdl_reports.js?v=15.1"></script>
-  <script src="js/kiosk_print.js?v=15.1"></script>
-  <script src="js/table_columns.js?v=15.1"></script>
-  <script src="js/app.js?v=15.1"></script>
+  <script src="vendor/face-api.js?v=15.2"></script>
+  <script src="js/face.js?v=15.2"></script>
+  <script src="js/endpoints.js?v=15.2"></script>
+  <script src="js/seed_data.js?v=15.2"></script>
+  <script src="js/icons.js?v=15.2"></script>
+  <script src="js/forms_engine.js?v=15.2"></script>
+  <script src="js/pbi_pages.js?v=15.2"></script>
+  <script src="js/rdl_reports.js?v=15.2"></script>
+  <script src="js/kiosk_print.js?v=15.2"></script>
+  <script src="js/table_columns.js?v=15.2"></script>
+  <script src="js/app.js?v=15.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

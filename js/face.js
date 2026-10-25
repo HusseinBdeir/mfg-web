@@ -530,8 +530,8 @@ const Face = (() => {
     else if (kind === 1) kind = "left";
     else if (kind === 2) kind = "right";
     else if (kind === 3) kind = "done";
-    const W = "currentColor", B = "#94A3B8";
-    const cam = `<rect x="40" y="2" width="20" height="12" rx="3" fill="${B}"/><circle cx="50" cy="8" r="3.4" fill="#111827"/>`;
+    const W = "currentColor", B = "#D9A54A";
+    const cam = `<rect x="40" y="2" width="20" height="12" rx="3" fill="${B}"/><circle cx="50" cy="8" r="3.4" fill="#0f172a"/>`;
     const sight = `<path d="M50 16 V40" fill="none" stroke="${B}" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round"/>`;
     const earL = `<path d="M24.5 57 q-8 7 0 14" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;
     const earR = `<path d="M75.5 57 q8 7 0 14" fill="none" stroke="${W}" stroke-width="3.5" stroke-linecap="round"/>`;
@@ -568,7 +568,7 @@ const Face = (() => {
     const x = b.x * s + ox, y = b.y * s + oy, w = b.width * s, h = b.height * s;
     const col = (status && status.startsWith("#"))
       ? status
-      : ({ ok: "#22c55e", live: "#e2e8f0", warn: "#f59e0b", unknown: "#f59e0b", far: "#94a3b8", scan: "#94A3B8" }[status] || "#94A3B8");
+      : ({ ok: "#22c55e", live: "#38bdf8", warn: "#f59e0b", unknown: "#f59e0b", far: "#94a3b8", scan: "#D9A54A" }[status] || "#D9A54A");
     const L = Math.min(w, h) * 0.22;
 
     g.save();

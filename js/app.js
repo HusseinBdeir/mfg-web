@@ -432,6 +432,59 @@
     return (n < 0 ? '-' : '') + s + ' LL';
   }
 
+  function fmtSignedUSD(v, decimals = 2) {
+    const n = Number(v || 0);
+    if (Math.abs(n) < 0.005) return fmtUSD(0, decimals);
+    const abs = Math.abs(n);
+    const s = abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    return (n < 0 ? '-$' : '+$') + s;
+  }
+
+  function fmtSignedLBP(v) {
+    const n = Math.round(Number(v || 0));
+    if (Math.abs(n) <= 1) return '0 LL';
+    const s = Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return (n < 0 ? '-' : '+') + s + ' LL';
+  }
+
+  function convDirectionIsU2L(cv) {
+    if (!cv) return true;
+    const t = String(cv.type || '');
+    if (/LBP\s*(?:to|→|2)\s*USD/i.test(t)) return false;
+    if (/USD\s*(?:to|→|2)\s*LBP/i.test(t)) return true;
+    const fc = String(cv.from_currency || '').toUpperCase();
+    if (fc === 'LBP') return false;
+    if (fc === 'USD' && (cv.usd_delta != null || cv.usd_amount)) return true;
+    const nm = String(cv.name || '');
+    if (/LBP\s*(?:to|→|2)\s*USD/i.test(nm)) return false;
+    if (/USD\s*(?:to|→|2)\s*LBP/i.test(nm)) return true;
+    return fc !== 'LBP';
+  }
+
+  function convSignedDeltas(cv, fallbackRate = 89500) {
+    const u2l = convDirectionIsU2L(cv);
+    const usdMag = Math.abs(Number(cv && (cv.usd_amount != null ? cv.usd_amount : cv.usd_delta) || 0));
+    const lbpMag = Math.round(Math.abs(Number(cv && (cv.lbp_amount != null ? cv.lbp_amount : cv.lbp_delta) || 0)));
+    const usd = cv && cv.usd_delta != null && Number(cv.usd_delta) !== 0
+      ? Number(cv.usd_delta)
+      : round2(usdMag * (u2l ? -1 : 1));
+    const lbp = cv && cv.lbp_delta != null && Number(cv.lbp_delta) !== 0
+      ? Math.round(Number(cv.lbp_delta))
+      : lbpMag * (u2l ? 1 : -1);
+    const explicitRate = Number(cv && (cv.exchange_rate || cv.fx_rate) || 0);
+    const rate = explicitRate > 0 ? explicitRate : (usdMag > 0 && lbpMag > 0 ? lbpMag / usdMag : fallbackRate);
+    return {
+      u2l,
+      usdMag: round2(usdMag),
+      lbpMag,
+      usd: round2(usd),
+      lbp,
+      rate,
+      dirLabel: u2l ? 'USD → LBP' : 'LBP → USD',
+      typeLabel: u2l ? 'USD to LBP' : 'LBP to USD'
+    };
+  }
+
   function fmtLBPk(v) {
     const n = Math.round(Number(v || 0));
     const a = Math.abs(n);
@@ -1223,10 +1276,9 @@
       addMove(ls.date, isIn ? usd : 0, isIn ? 0 : usd, isIn ? lbp : 0, isIn ? 0 : lbp);
     });
     (cr.conversions || []).filter(matchCo).forEach(cv => {
-      const u = Number(cv.usd_amount || 0);
-      const l = Number(cv.lbp_amount || 0);
-      if (String(cv.from_currency || 'USD').toUpperCase() === 'USD') addMove(cv.date, 0, u, l, 0);
-      else addMove(cv.date, u, 0, 0, l);
+      const d = convSignedDeltas(cv);
+      if (d.u2l) addMove(cv.date, 0, d.usdMag, d.lbpMag, 0);
+      else addMove(cv.date, d.usdMag, 0, 0, d.lbpMag);
     });
     return { liveInU, liveOutU, liveInL, liveOutL, perInU, perOutU, perInL, perOutL, endNetU, endNetL };
   }
@@ -3582,7 +3634,7 @@
       if (['sales', 'raw', 'fuel'].includes(form)) return !!p.rights.enter_dispatch;
       if (['receipt', 'expense', 'settlement'].includes(form)) return !!p.rights.enter_accounting;
       if (['pricerule', 'vatinvoice', 'creditterm', 'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'attendance'].includes(form)) return !!p.rights.enter_master;
-      if (['salary', 'employment', 'allowance', 'overtimerate', 'extmovement', 'loan', 'loansettlement', 'conversion', 'jvpartnership', 'jvdistribution'].includes(form)) return !!p.rights.enter_payroll_jv;
+      if (['salary', 'employment', 'allowance', 'logistics', 'overtimerate', 'triprate', 'treasury', 'extmovement', 'loan', 'loansettlement', 'conversion', 'jv', 'jvpartnership', 'jvdistribution'].includes(form)) return !!p.rights.enter_payroll_jv;
       return !!(p.rights.enter_dispatch || p.rights.enter_accounting || p.rights.enter_master);
     }
     if (/Owner|Full Access/i.test(role)) return true;
@@ -4889,9 +4941,10 @@
   function coBadge(co) {
     const raw = String(co || '').trim();
     const short = /^bbconstruction$/i.test(raw) ? 'BBC' : (/^lions\s*transport$/i.test(raw) ? 'Lions' : (raw || 'WTC'));
+    const cls = /^bbconstruction$/i.test(raw) ? 'badge-info' : 'badge-brass';
     return short !== raw
-      ? `<span class="badge badge-neutral co-tbl-badge" title="${esc(raw)}">${esc(short)}<span class="sr-only"> ${esc(raw)}</span></span>`
-      : `<span class="badge badge-neutral co-tbl-badge">${esc(raw)}</span>`;
+      ? `<span class="badge ${cls} co-tbl-badge" title="${esc(raw)}">${esc(short)}<span class="sr-only"> ${esc(raw)}</span></span>`
+      : `<span class="badge ${cls} co-tbl-badge">${esc(raw)}</span>`;
   }
   function listPrice(name) {
     const n = norm(name);
@@ -8703,10 +8756,8 @@
       cashMoves.push({ id: s.id, rkey: 'settlements', date: s.date, company: s.company, cat: knd === 'VAT paid' ? 'Expense VAT (LL)' : 'AP Settlement', party: s.supplier || '—', ref: s.reference || s.name, method: s.method || 'Payment', usd, lbp, raw: s });
     });
     filterRecords(SEED.records.conversions, { ignoreSearch: true, basis: 'tx' }).forEach(cv => {
-      const u2l = String(cv.from_currency || 'USD').toUpperCase() === 'USD';
-      const u = Number(cv.usd_amount || 0) * (u2l ? -1 : 1);
-      const l = Math.round(Number(cv.lbp_amount || 0)) * (u2l ? 1 : -1);
-      cashMoves.push({ id: cv.id, rkey: 'conversions', date: cv.date, company: cv.company, cat: 'FX Conversion', party: u2l ? 'USD → LBP' : 'LBP → USD', ref: cv.name, method: `@ ${fmtNum(cv.exchange_rate || rate, 0)}`, usd: u, lbp: l, raw: cv });
+      const d = convSignedDeltas(cv, rate);
+      cashMoves.push({ id: cv.id, rkey: 'conversions', date: cv.date, company: cv.company, cat: 'FX Conversion', party: d.dirLabel, ref: cv.reference ? `${cv.name} · ${cv.reference}` : cv.name, method: `@ ${fmtNum(d.rate, 0)}`, usd: d.usd, lbp: d.lbp, raw: cv });
     });
 
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
@@ -9061,18 +9112,28 @@
           </div>
           <div class="table-wrap" style="border-top:1px solid var(--line)">
             <table class="ledger-table">
-              <thead><tr><th>Conversion Direction</th><th class="r">From</th><th class="r">To</th></tr></thead>
+              <thead><tr><th>Conversion Direction</th><th class="r">USD Change ($)</th><th class="r">LBP Change (LL)</th></tr></thead>
               <tbody>
                 ${(tConv.rows || []).map(r => {
                   const isU2L = /USD to LBP/i.test(r.type);
+                  const uDelta = isU2L ? -Number(r.from_amt || 0) : Number(r.to_amt || 0);
+                  const lDelta = isU2L ? Math.round(Number(r.to_amt || 0)) : -Math.round(Number(r.from_amt || 0));
                   return `
                   <tr>
-                    <td><strong>${esc(r.type)}</strong></td>
-                    <td class="r mono">${isU2L ? fmtUSD(r.from_amt, 2) : fmtLBP(r.from_amt)}</td>
-                    <td class="r mono">${isU2L ? fmtLBP(r.to_amt) : fmtUSD(r.to_amt, 2)}</td>
+                    <td><strong>${isU2L ? 'USD → LBP' : 'LBP → USD'}</strong></td>
+                    <td class="r mono"><strong style="color:${uDelta < -0.005 ? 'var(--crit)' : (uDelta > 0.005 ? 'var(--good)' : 'inherit')}">${uDelta ? fmtSignedUSD(uDelta, 2) : '—'}</strong></td>
+                    <td class="r mono"><strong style="color:${lDelta < -1 ? 'var(--crit)' : (lDelta > 1 ? 'var(--good)' : 'inherit')}">${lDelta ? fmtSignedLBP(lDelta) : '—'}</strong></td>
                   </tr>`;
                 }).join('') || emptyRow(3, 'No currency conversions')}
               </tbody>
+              ${(tConv.rows || []).length ? `
+              <tfoot>
+                <tr>
+                  <td><b>NET FX CONVERSION IMPACT</b></td>
+                  <td class="r mono"><b style="color:${round2(l2uRow.to_amt - u2lRow.from_amt) < -0.005 ? 'var(--crit)' : (round2(l2uRow.to_amt - u2lRow.from_amt) > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(round2(l2uRow.to_amt - u2lRow.from_amt), 2)}</b></td>
+                  <td class="r mono"><b style="color:${Math.round(u2lRow.to_amt - l2uRow.from_amt) < -1 ? 'var(--crit)' : (Math.round(u2lRow.to_amt - l2uRow.from_amt) > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(Math.round(u2lRow.to_amt - l2uRow.from_amt))}</b></td>
+                </tr>
+              </tfoot>` : ''}
             </table>
           </div>
         </div>
@@ -9084,18 +9145,28 @@
         </div>
         <div class="table-wrap">
           <table class="ledger-table">
-            <thead><tr><th>Conversion Direction</th><th class="r">Sold From Drawer</th><th class="r">Received Into Drawer</th></tr></thead>
+            <thead><tr><th>Conversion Direction</th><th class="r">USD Change ($)</th><th class="r">LBP Change (LL)</th></tr></thead>
             <tbody>
               ${(tConv.rows || []).map(r => {
                 const isU2L = /USD to LBP/i.test(r.type);
+                const uDelta = isU2L ? -Number(r.from_amt || 0) : Number(r.to_amt || 0);
+                const lDelta = isU2L ? Math.round(Number(r.to_amt || 0)) : -Math.round(Number(r.from_amt || 0));
                 return `
                 <tr>
-                  <td><strong>${esc(r.type)}</strong></td>
-                  <td class="r mono">${isU2L ? fmtUSD(r.from_amt, 2) : fmtLBP(r.from_amt)}</td>
-                  <td class="r mono">${isU2L ? fmtLBP(r.to_amt) : fmtUSD(r.to_amt, 2)}</td>
+                  <td><strong>${isU2L ? 'USD → LBP' : 'LBP → USD'}</strong></td>
+                  <td class="r mono"><strong style="color:${uDelta < -0.005 ? 'var(--crit)' : (uDelta > 0.005 ? 'var(--good)' : 'inherit')}">${uDelta ? fmtSignedUSD(uDelta, 2) : '—'}</strong></td>
+                  <td class="r mono"><strong style="color:${lDelta < -1 ? 'var(--crit)' : (lDelta > 1 ? 'var(--good)' : 'inherit')}">${lDelta ? fmtSignedLBP(lDelta) : '—'}</strong></td>
                 </tr>`;
               }).join('') || emptyRow(3, 'No currency conversions')}
             </tbody>
+            ${(tConv.rows || []).length ? `
+            <tfoot>
+              <tr>
+                <td><b>NET FX CONVERSION IMPACT</b></td>
+                <td class="r mono"><b style="color:${round2(l2uRow.to_amt - u2lRow.from_amt) < -0.005 ? 'var(--crit)' : (round2(l2uRow.to_amt - u2lRow.from_amt) > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(round2(l2uRow.to_amt - u2lRow.from_amt), 2)}</b></td>
+                <td class="r mono"><b style="color:${Math.round(u2lRow.to_amt - l2uRow.from_amt) < -1 ? 'var(--crit)' : (Math.round(u2lRow.to_amt - l2uRow.from_amt) > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(Math.round(u2lRow.to_amt - l2uRow.from_amt))}</b></td>
+              </tr>
+            </tfoot>` : ''}
           </table>
         </div>
       </div>`}
@@ -9111,8 +9182,9 @@
               ${chip('cf_fx', 'FX Conversions')}
             </div>
           </div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             ${exportBtn('tillRecentPanel', 'Daily_Cash_Till_Movements')}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn btn-primary" data-open-modal="conversion">+ FX Conversion</button>' : ''}
           </div>
         </div>
         <div class="table-wrap">
@@ -9130,16 +9202,16 @@
                   <td><span class="badge badge-info">${esc(r.cat)}</span></td>
                   <td><strong>${esc(r.party)}</strong>${appCell(r.raw, r.rkey)}</td>
                   <td class="mono">${esc(r.ref || '—')} <span class="mu">· ${esc(r.method)}</span></td>
-                  <td class="r"><strong style="color:${r.usd < -0.005 ? 'var(--crit)' : (r.usd > 0.005 ? 'var(--good)' : 'inherit')}">${r.usd ? fmtUSD(r.usd, 2) : '—'}</strong></td>
-                  <td class="r"><strong style="color:${r.lbp < -1 ? 'var(--crit)' : (r.lbp > 1 ? 'var(--good)' : 'inherit')}">${r.lbp ? fmtLBP(r.lbp) : '—'}</strong></td>
+                  <td class="r"><strong style="color:${r.usd < -0.005 ? 'var(--crit)' : (r.usd > 0.005 ? 'var(--good)' : 'inherit')}">${Math.abs(r.usd) >= 0.005 ? fmtSignedUSD(r.usd, 2) : '—'}</strong></td>
+                  <td class="r"><strong style="color:${r.lbp < -1 ? 'var(--crit)' : (r.lbp > 1 ? 'var(--good)' : 'inherit')}">${Math.abs(r.lbp) > 1 ? fmtSignedLBP(r.lbp) : '—'}</strong></td>
                 </tr>`).join('') || emptyRow(7, 'No cash movements match the active filter')}
               ${showMoreRow('cf_moves', filteredMoves.length, 7)}
             </tbody>
             <tfoot>
               <tr>
                 <td colspan="5"><b>FILTERED REGISTER TOTAL (${fmtNum(filteredMoves.length)} ENTRIES)</b></td>
-                <td class="r"><b>${fmtUSD(mvUsdSum, 2)}</b></td>
-                <td class="r"><b>${fmtLBP(mvLbpSum)}</b></td>
+                <td class="r"><b style="color:${mvUsdSum < -0.005 ? 'var(--crit)' : (mvUsdSum > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(mvUsdSum, 2)}</b></td>
+                <td class="r"><b style="color:${mvLbpSum < -1 ? 'var(--crit)' : (mvLbpSum > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(mvLbpSum)}</b></td>
               </tr>
             </tfoot>
           </table>
@@ -9557,7 +9629,9 @@
     const sumPrincipal = loanRows.reduce((a, l) => a + Number(l.principal || 0), 0);
     const sumSettled = loanRows.reduce((a, l) => a + Number(l.settled_amount || 0), 0);
     const sumMoves = moveRows.reduce((a, m) => a + Number(m.usd_amount || 0), 0);
-    const sumFxUsd = fxRows.reduce((a, f) => a + Number(f.usd_amount || 0), 0);
+    const sumFxVolUsd = fxRows.reduce((a, f) => a + convSignedDeltas(f).usdMag, 0);
+    const sumFxNetUsd = round2(fxRows.reduce((a, f) => a + convSignedDeltas(f).usd, 0));
+    const sumFxNetLbp = Math.round(fxRows.reduce((a, f) => a + convSignedDeltas(f).lbp, 0));
 
     return `
       <div class="cockpit-banner has-insights">
@@ -9595,9 +9669,9 @@
             label: 'USD ↔ LBP FX Desk',
             badge: `${fmtNum(fxAll.length)} Conversions`,
             badgeCls: 'amber',
-            val: fmtUSD(sumFxUsd, 0),
+            val: fmtUSD(sumFxVolUsd, 0),
             valCls: 'amber',
-            sub: `Dual-currency treasury exchange conversions`,
+            sub: `Net Drawer: <b>${fmtSignedUSD(sumFxNetUsd, 0)}</b> · <b>${sumFxNetLbp >= 0 ? '+' : ''}${fmtLBPk(sumFxNetLbp)}</b>`,
             tone: 'amber'
           })}
         </div>
@@ -9700,28 +9774,31 @@
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('tr_fx', 'Date', 'date')}${th('tr_fx', 'Co.', 'company')}${th('tr_fx', 'Pair', 'from_currency')}
-                  ${th('tr_fx', 'USD ($)', 'usd_amount', 'r')}${th('tr_fx', 'LBP (LL)', 'lbp_amount', 'r')}${th('tr_fx', 'Rate', 'exchange_rate', 'r')}
+                  ${th('tr_fx', 'Date', 'date')}${th('tr_fx', 'Co.', 'company')}${th('tr_fx', 'Direction', 'type')}
+                  ${th('tr_fx', 'USD Change ($)', 'usd_delta', 'r')}${th('tr_fx', 'LBP Change (LL)', 'lbp_delta', 'r')}${th('tr_fx', 'Rate', 'exchange_rate', 'r')}
                 </tr>
               </thead>
               <tbody>
-                ${shownFx.map(f => `
+                ${shownFx.map(f => {
+                  const d = convSignedDeltas(f);
+                  return `
                   <tr class="rrow" data-rkey="conversions" data-rid="${esc(f.id)}">
                     <td class="mono">${esc(fmtDateDMY(f.date))}${appCell(f, 'conversions')}</td>
                     <td>${coBadge(f.company)}</td>
-                    <td class="mono">${esc((f.from_currency || 'USD') + ' → ' + (f.to_currency || 'LBP'))}</td>
-                    <td class="r"><strong>${fmtUSD(f.usd_amount || 0, 2)}</strong></td>
-                    <td class="r mono">${fmtNum(f.lbp_amount || 0, 0)}</td>
-                    <td class="r mono">${fmtNum(f.exchange_rate || 89500, 0)}</td>
-                  </tr>
-                `).join('') || emptyRow(6, 'No FX conversions in this period')}
+                    <td class="mono"><strong>${esc(d.dirLabel)}</strong></td>
+                    <td class="r mono"><strong style="color:${d.usd < -0.005 ? 'var(--crit)' : (d.usd > 0.005 ? 'var(--good)' : 'inherit')}">${d.usd ? fmtSignedUSD(d.usd, 2) : '—'}</strong></td>
+                    <td class="r mono"><strong style="color:${d.lbp < -1 ? 'var(--crit)' : (d.lbp > 1 ? 'var(--good)' : 'inherit')}">${d.lbp ? fmtSignedLBP(d.lbp) : '—'}</strong></td>
+                    <td class="r mono">${fmtNum(d.rate, 0)}</td>
+                  </tr>`;
+                }).join('') || emptyRow(6, 'No FX conversions in this period')}
                 ${showMoreRow('tr_fx', fxRows.length, 6)}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3"><b>TOTAL (${fmtNum(fxRows.length)} CONVERSIONS)</b></td>
-                  <td class="r"><b>${fmtUSD(sumFxUsd, 2)}</b></td>
-                  <td colspan="2"></td>
+                  <td colspan="3"><b>NET DRAWER IMPACT (${fmtNum(fxRows.length)} CONVERSIONS)</b></td>
+                  <td class="r mono"><b style="color:${sumFxNetUsd < -0.005 ? 'var(--crit)' : (sumFxNetUsd > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(sumFxNetUsd, 2)}</b></td>
+                  <td class="r mono"><b style="color:${sumFxNetLbp < -1 ? 'var(--crit)' : (sumFxNetLbp > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(sumFxNetLbp)}</b></td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>
@@ -9967,15 +10044,15 @@
       <div class="a4-sheet" id="printableSheet">
         <div class="a4-header">
           <div>
-            <div class="mono" style="font-size:10px;color:#475569;letter-spacing:0.14em;text-transform:uppercase">
+            <div class="mono" style="font-size:10px;color:#B8883B;letter-spacing:0.14em;text-transform:uppercase">
               ISABI SYSTEMS · AUDITED FINANCIAL &amp; OPERATIONAL STATEMENT #${esc(st.code)} · ${esc(st.cat)}
             </div>
             <div class="a4-title">${esc(st.name)}</div>
-            <div style="font-size:12px;color:#525866;margin-top:3px">
+            <div style="font-size:12px;color:#5A657D;margin-top:3px">
               Entity: <strong>${esc(COMPANY_LABELS[STATE.company])}</strong> · Period: <strong>${esc(k.label || 'All-Time')}</strong> · Basis: <strong>${STATE.basis === 'rep' ? 'Reporting Date' : 'Transaction Date'}</strong>
             </div>
           </div>
-          <div style="text-align:right;font-family:var(--font-mono);font-size:11px;color:#1F2937">
+          <div style="text-align:right;font-family:var(--font-mono);font-size:11px;color:#2C364C">
             <div><strong>PRINTED:</strong> ${todayISO()} · ${esc(activeUser().full_name)}</div>
             <div><strong>CURRENCY:</strong> USD ($1 = 90,000 LBP)</div>
             <div><strong>TB VARIANCE:</strong> ${fmtUSD(k.tb_check || 0, 2)}</div>
@@ -12601,7 +12678,35 @@
   function recalcFormInner() {
     try {
       if (['salary', 'logistics', 'treasury'].includes(STATE.modalForm)) {
+        const isConv = STATE.modalForm === 'treasury' && val('f_trtype') === 'conversion';
+        if (STATE.modalForm === 'treasury') {
+          setFieldVisible('wrap_tr_cp', !isConv);
+          setFieldVisible('wrap_tr_dir', !isConv);
+          setFieldVisible('wrap_f_amount', !isConv);
+          setFieldVisible('wrap_conv_dir', isConv);
+          setFieldVisible('wrap_conv_rate', isConv);
+          const usdLbl = document.querySelector('#wrap_tr_usd .pa-fld-lbl');
+          const lbpLbl = document.querySelector('#wrap_tr_lbp .pa-fld-lbl');
+          if (isConv) {
+            if ($('f_counterparty') && $('f_counterparty').value) $('f_counterparty').value = '';
+            const isU2L = !/LBP/i.test(String(val('f_conv_dir') || 'USD to LBP').slice(0, 4));
+            if (usdLbl) usdLbl.textContent = isU2L ? 'USD Decreased ($) *' : 'USD Increased ($) *';
+            if (lbpLbl) lbpLbl.textContent = isU2L ? 'LBP Increased (LL) *' : 'LBP Decreased (LL) *';
+          } else {
+            if (usdLbl) usdLbl.textContent = 'USD Amount ($)';
+            if (lbpLbl) lbpLbl.textContent = 'LBP Amount (L.L.)';
+          }
+        }
         const usd = num('f_usd'), lbp = num('f_lbp');
+        if (isConv) {
+          const fxEl = $('f_fxrate');
+          if (fxEl && usd > 0 && lbp > 0 && document.activeElement !== fxEl) {
+            fxEl.value = String(Math.round(lbp / usd));
+          }
+          commonDateChecks([]);
+          renderAdminLockBar();
+          return { usd, lbp, amount: usd };
+        }
         const tot = round2(usd + lbp / 90000);
         const aEl = $('f_amount');
         const amtLocked = applyFieldLockState('f_amount', true, 'Dual-Currency FX Lock: Total USD = USD + LBP ÷ 90,000');
@@ -14363,12 +14468,41 @@
       if (!(amt > 0)) addErr('f_amount', 'Rate > 0 is required.');
       record = { ...base, name: nm, site: val('f_site'), region: val('f_site'), category: val('f_category') || 'Truck', rate_usd: amt, amount: amt, start_date: date };
     } else if (f === 'treasury') {
-      const trt = val('f_trtype') || 'loan', cp = val('f_counterparty'), amt = round2(num('f_amount'));
-      if (!cp) addErr('f_counterparty', 'Counterparty is required.');
-      if (!(amt > 0)) addErr('f_usd', 'Amount > 0 is required.');
-      crKey = trt === 'loan_settlement' ? 'loan_settlements' : (trt === 'external' ? 'external_movements' : (trt === 'conversion' ? 'conversions' : 'loans'));
-      const dirn = val('f_direction') || 'Inflow';
-      record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, rep_date: repDate, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: dirn, method: dirn, type: trt === 'loan_settlement' ? 'Repayment' : (trt === 'loan' ? 'Drawdown' : ''), from_currency: trt === 'conversion' ? 'LBP' : 'USD', to_currency: trt === 'conversion' ? 'USD' : '', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, exchange_rate: 90000, amount: amt, principal: amt, interest_rate: 0, balance: amt, start_date: date, reference: val('f_reference') };
+      const trt = val('f_trtype') || 'loan';
+      if (trt === 'conversion') {
+        const convDir = val('f_conv_dir') || 'USD to LBP';
+        const isU2L = !/LBP/i.test(convDir.slice(0, 4));
+        const usd = round2(num('f_usd'));
+        const lbp = Math.round(num('f_lbp'));
+        if (!(usd > 0)) addErr('f_usd', isU2L ? 'USD Decreased ($) > 0 is required.' : 'USD Increased ($) > 0 is required.');
+        if (!(lbp > 0)) addErr('f_lbp', isU2L ? 'LBP Increased (LL) > 0 is required.' : 'LBP Decreased (LL) > 0 is required.');
+        const fxRate = (usd > 0 && lbp > 0) ? round2(lbp / usd) : (num('f_fxrate') || 89500);
+        crKey = 'conversions';
+        const refVal = val('f_reference');
+        record = {
+          ...base,
+          name: `CONV ${date} ${convDir}${refVal ? ' · ' + refVal : ''}`,
+          rep_date: repDate,
+          type: convDir,
+          from_currency: isU2L ? 'USD' : 'LBP',
+          to_currency: isU2L ? 'LBP' : 'USD',
+          usd_amount: usd,
+          lbp_amount: lbp,
+          usd_delta: isU2L ? -usd : usd,
+          lbp_delta: isU2L ? lbp : -lbp,
+          fx_rate: fxRate,
+          exchange_rate: fxRate,
+          amount: usd,
+          reference: refVal
+        };
+      } else {
+        const cp = val('f_counterparty'), amt = round2(num('f_amount'));
+        if (!cp) addErr('f_counterparty', 'Counterparty is required.');
+        if (!(amt > 0)) addErr('f_usd', 'Amount > 0 is required.');
+        crKey = trt === 'loan_settlement' ? 'loan_settlements' : (trt === 'external' ? 'external_movements' : 'loans');
+        const dirn = val('f_direction') || 'Inflow';
+        record = { ...base, name: `${trt.toUpperCase()} ${date} ${cp}`, rep_date: repDate, counterparty: cp, lender: cp, borrower: company, loan: cp, direction: dirn, method: dirn, type: trt === 'loan_settlement' ? 'Repayment' : (trt === 'loan' ? 'Drawdown' : ''), from_currency: 'USD', to_currency: '', usd_amount: round2(num('f_usd')), lbp_amount: round2(num('f_lbp')), fx_rate: 90000, exchange_rate: 90000, amount: amt, principal: amt, interest_rate: 0, balance: amt, start_date: date, reference: val('f_reference') };
+      }
     } else if (f === 'jv') {
       const jvt = val('f_jvtype') || 'distribution', st = val('f_site'), pt = val('f_counterparty');
       if (!st) addErr('f_site', 'JV Site is required.');
@@ -14681,7 +14815,9 @@
   }
 
   function openEntryModal(formType) {
-    const form = FORM_TITLES[formType] ? formType : 'sales';
+    const preselectConv = formType === 'conversion';
+    const resolvedForm = preselectConv ? 'treasury' : formType;
+    const form = FORM_TITLES[resolvedForm] ? resolvedForm : 'sales';
     if (!canEnterForm(form)) { toast('Your seat has no entry rights for this form', 'err'); return; }
     const kBody = $('kioskFormBody');
     if (kBody) kBody.innerHTML = ''; // Prevent duplicate #f_* IDs while #entryModal is open
@@ -14755,6 +14891,9 @@
       if (card) card.scrollTop = 0;
     }
     document.body.classList.add('modal-open');
+    if (preselectConv && $('f_trtype')) {
+      $('f_trtype').value = 'conversion';
+    }
     wireModalLiveCalc(wasClosed);
   }
 
@@ -14824,6 +14963,9 @@
     if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
     if (typeof v === 'object') return JSON.stringify(v);
     if (typeof v === 'number') {
+      if (key === 'lbp_delta') return fmtSignedLBP(v);
+      if (/^lbp_|_lbp$/.test(key)) return fmtLBP(v);
+      if (key === 'usd_delta') return fmtSignedUSD(v, 2);
       if (/price|cost|amount|total|vat|discount|tip|limit|salary|balance|adj|principal|value|change|rate_usd|daily_usd|paid|spent|sales_ttc|raw_cost/.test(key) && !/rate$|pct|factor|ton_factor|exchange|count|loads|days|hours/.test(key)) return fmtUSD(v, 2);
       return fmtNum(v, Number.isInteger(v) ? 0 : 2);
     }
@@ -14943,6 +15085,13 @@
       return {
         tone: 'info',
         text: `Product & Grade Master: ${row.name} (${row.type || 'Material'} · Default UoM ${row.uom || 'm³'} · Tonnage Factor ${row.ton_factor || 1.5} t/m³)  |  List Price Benchmark: ${lp != null ? fmtUSD(lp, 2) : '—'}  |  Active Price Agreements: ${rulesCnt}  |  CoA Revenue Account: ${row.revenue_account || '701001'}`
+      };
+    }
+    if (key === 'conversions') {
+      const d = convSignedDeltas(row);
+      return {
+        tone: 'info',
+        text: `FX Conversion (${d.dirLabel}): USD Drawer ${fmtSignedUSD(d.usd, 2)} (${d.u2l ? 'Decreased' : 'Increased'})  |  LBP Drawer ${fmtSignedLBP(d.lbp)} (${d.u2l ? 'Increased' : 'Decreased'})  |  Effective Rate: ${fmtNum(d.rate, 2)} LL/$  |  Entity: ${row.company || 'WTC'}`
       };
     }
     return {
@@ -15065,6 +15214,21 @@
           { lbl: 'MATERIAL & HAULAGE LOADS', tag: `${fmtNum(matLoads.length + haulLoads.length)} TICKETS`, tone: 'info', val: fmtNum(si.raw_loads || (matLoads.length + haulLoads.length)), sub1: `As Site Owner: ${fmtNum(matLoads.length)} · As Hauler: ${fmtNum(haulLoads.length)}`, sub2: `Expenses Billed: ${fmtNum(exps.length)} vouchers`, pct: 80 },
           { lbl: 'SETTLEMENTS DISBURSED', tag: `${fmtNum(spays.length)} PAYMENTS`, tone: 'good', val: fmtUSD(si.settlements_paid || spays.reduce((a, s) => a + Number(s.amount || 0), 0), 0), sub1: `${fmtNum(spays.length)} settlement vouchers in register`, sub2: `IVA Registered: ${row.iva || si.iva ? 'Yes' : 'No'}`, pct: 85 },
           { lbl: 'FLEET & AGREEMENTS', tag: row.is_truck_owner ? 'HAULER FLEET' : 'VENDOR', tone: 'info', val: `${fmtNum(row.trucks_count || (row.trucks || []).length || 0)} Trucks`, sub1: `Drivers Linked: ${fmtNum((row.drivers || []).length)}`, sub2: `Active Price Rules: ${activeRulesCountFor('supplier', name)}`, pct: 70 }
+        ]
+      };
+    }
+
+    if (key === 'conversions') {
+      const d = convSignedDeltas(row);
+      return {
+        bu,
+        title,
+        pill: `${fmtSignedUSD(d.usd, 2)} · ${fmtSignedLBP(d.lbp)}`,
+        cards: [
+          { lbl: 'USD DRAWER CHANGE', tag: d.u2l ? 'USD OUTFLOW' : 'USD INFLOW', tone: d.u2l ? 'crit' : 'good', val: fmtSignedUSD(d.usd, 2), sub1: d.u2l ? 'USD sold from cash till' : 'USD received into cash till', sub2: `Direction: ${d.dirLabel}`, pct: 85 },
+          { lbl: 'LBP DRAWER CHANGE', tag: d.u2l ? 'LBP INFLOW' : 'LBP OUTFLOW', tone: d.u2l ? 'good' : 'crit', val: fmtSignedLBP(d.lbp), sub1: d.u2l ? 'LBP received into cash till' : 'LBP sold from cash till', sub2: `Dual-currency 5300 leg`, pct: 85 },
+          { lbl: 'EFFECTIVE FX RATE', tag: 'LL / USD', tone: 'info', val: `${fmtNum(d.rate, 0)} LL/$`, sub1: `Exact Rate: ${fmtNum(d.rate, 2)} LL/$`, sub2: `Tx Date: ${row.date || '—'}`, pct: 80 },
+          { lbl: 'AUDIT & LEDGER SOURCE', tag: isAppRecord(row) ? 'WEB APP' : 'DATAVERSE', tone: 'info', val: isAppRecord(row) ? 'App Entry' : 'Synced Book', sub1: isAppRecord(row) ? `Posted by ${row.entered_by || 'User'}` : `Snapshot ${SEED_DATE}`, sub2: `Cash Till 5300 Reconciled`, pct: 100 }
         ]
       };
     }
@@ -15394,8 +15558,8 @@
     const allKeys = Object.keys(row).filter(k => !hidden.has(k) && row[k] !== '' && row[k] != null && !(typeof row[k] === 'number' && row[k] === 0 && /tip|discount|tier|adj|difference/.test(k)));
 
     const idFields = new Set(['name', 'official_name', 'ticket_no', 'invoice_no', 'date', 'rep_date', 'payroll_month', 'company', 'sale_type', 'rule_type', 'type', 'status', 'customer', 'supplier', 'staff', 'driver', 'partner', 'counterparty', 'mof_no', 'financial_no', 'vat_registered', 'iva', 'phone', 'contact', 'address', 'location']);
-    const opsFields = new Set(['product', 'item', 'input_product', 'site', 'region', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'equipment', 'plate_no', 'ownership', 'capacity', 'default_driver', 'day_operator', 'night_operator', 'working_days', 'start_date', 'end_date', 'latitude', 'longitude', 'is_jv', 'is_truck_owner', 'trucks_count', 'trucks', 'drivers', 'category', 'subcategory', 'category1', 'category2']);
-    const finFields = new Set(['qty', 'uom', 'unit', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'unit_price', 'price', 'indiff_price', 'trans_unit_price', 'trans_indiff_price', 'delivered_indiff_price', 'trans_price', 'unit_cost', 'cost', 'trans_cost', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'discount', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
+    const opsFields = new Set(['product', 'item', 'input_product', 'site', 'region', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'equipment', 'plate_no', 'ownership', 'capacity', 'default_driver', 'day_operator', 'night_operator', 'working_days', 'start_date', 'end_date', 'latitude', 'longitude', 'is_jv', 'is_truck_owner', 'trucks_count', 'trucks', 'drivers', 'category', 'subcategory', 'category1', 'category2', 'from_currency', 'to_currency']);
+    const finFields = new Set(['qty', 'uom', 'unit', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'unit_price', 'price', 'indiff_price', 'trans_unit_price', 'trans_indiff_price', 'delivered_indiff_price', 'trans_price', 'unit_cost', 'cost', 'trans_cost', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'usd_delta', 'lbp_delta', 'discount', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
 
     const s1 = [], s2 = [], s3 = [];
     allKeys.forEach(k => {
@@ -15423,7 +15587,7 @@
     const renderCell = (k, valOverride) => {
       const v = valOverride !== undefined ? valOverride : row[k];
       const formatted = inspectorValue(k, v);
-      const lkTarget = INSPECT_LOOKUP_FIELD_TARGET[k];
+      const lkTarget = (k === 'type' && key !== 'products') ? null : INSPECT_LOOKUP_FIELD_TARGET[k];
       const canLink = lkTarget && lkTarget !== key && v != null && v !== '' && formatted !== '—';
       const valHtml = canLink
         ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(k.replace(/_/g, ' '))}: ${esc(v)}">${esc(formatted)}<span class="rel-arr">↗</span></span>`
@@ -17214,7 +17378,7 @@
           return;
         }
         if (overlayEl && window.Face.drawOverlay) {
-          const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#64748B') : '#DC2626';
+          const color = det && !det.multiple ? (FACE_STATE.streakCount > 0 ? '#16A34A' : '#B8883B') : '#DC2626';
           window.Face.drawOverlay(overlayEl, videoEl, det, color, FACE_STATE.streakUser ? FACE_STATE.streakUser.name : '');
         }
         await handleAuthDescriptor(det, '', { liveCamera: true, videoEl });
@@ -18220,7 +18384,7 @@
           if (window.Face.snapshot) FACE_STATE.lastLiveEnrolSnap = window.Face.snapshot(videoEl);
         }
         if (overlayEl && window.Face.drawOverlay) {
-          const col = det && det.descriptor ? '#22c55e' : '#94A3B8';
+          const col = det && det.descriptor ? '#22c55e' : '#D9A54A';
           window.Face.drawOverlay(overlayEl, videoEl, det, col);
         }
         if (hudTel) {
@@ -20754,7 +20918,7 @@
     const mThemeBtn = $('mobileThemeBtn');
     if (mThemeBtn) mThemeBtn.innerHTML = STATE.theme === 'dark' ? ic('sun') : ic('moon');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0B0D11' : '#F7F8FA');
+    if (themeMeta) themeMeta.setAttribute('content', STATE.theme === 'dark' ? '#0E1A2E' : '#F4F2EE');
 
     applyUserRlsAndPermissions();
     const user = activeUser();

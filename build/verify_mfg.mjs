@@ -3614,49 +3614,6 @@ try {
     ? pass('Material & Transportation 4-table suite & WTC Old Stock penny parity (#rawPanel, #rawSupPanel, #rawSalesHaulPanel, #sitesPanel · Credit $3,345,044.76 · Paid $4,020,861.84 · Rem -$675,817.08 · 283 3rd-party customer loads)', `panels=${matTransProbe.panelIds.join('→')}`)
     : fail('Material & Transportation 4-table suite & WTC Old Stock penny parity', JSON.stringify(matTransProbe));
 
-  // 7z. v15.0 Architectural Graphite & Cool Stone + Institutional UX Polish
-  const graphiteUxProbe = await evaluate(`(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms));
-    const isNeutralRgb = val => {
-      const m = String(val || '').match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
-      if (!m) return true;
-      const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
-      return Math.max(r, g, b) - Math.min(r, g, b) <= 35;
-    };
-    window.__navToView('sales');
-    await wait(80);
-    const subBar = document.getElementById('hubSubtabBar');
-    const subClipPx = subBar ? Math.max(0, subBar.scrollWidth - subBar.clientWidth) : 999;
-    const tb = document.querySelector('#salesPanel .table-toolbar');
-    const tbHeight = tb ? Math.round(tb.getBoundingClientRect().height) : 999;
-    const eyebrow = document.getElementById('topbarEyebrow');
-    const eyebrowHiddenDesktop = window.innerWidth <= 860 || (eyebrow && getComputedStyle(eyebrow).display === 'none');
-    const bannerRect = document.querySelector('.cockpit-banner')?.getBoundingClientRect();
-    const cardRect = document.querySelector('#salesPanel.panel-card')?.getBoundingClientRect();
-    const edgeAligned = window.innerWidth <= 980 || (bannerRect && cardRect && Math.abs(bannerRect.left - cardRect.left) <= 2 && Math.abs(bannerRect.right - cardRect.right) <= 2);
-    const meter = document.querySelector('.insight-card .cockpit-meter');
-    const meterH = meter ? Math.round(meter.getBoundingClientRect().height) : 0;
-    const relEl = document.querySelector('#salesPanel .rel-link');
-    const coEl = document.querySelector('#salesPanel .co-tbl-badge');
-    const prEl = document.querySelector('#salesPanel .tkt-print-mini');
-    const btnEl = document.querySelector('#salesPanel .btn-primary');
-    const neutralColorsOk = Boolean(
-      relEl && isNeutralRgb(getComputedStyle(relEl).color) &&
-      coEl && isNeutralRgb(getComputedStyle(coEl).backgroundColor) && isNeutralRgb(getComputedStyle(coEl).color) &&
-      prEl && isNeutralRgb(getComputedStyle(prEl).color) &&
-      btnEl && isNeutralRgb(getComputedStyle(btnEl).backgroundColor) && isNeutralRgb(getComputedStyle(btnEl).color)
-    );
-    window.__navToView('overview');
-    await wait(30);
-    const desktopLayoutOk = window.innerWidth <= 860 || (subClipPx <= 1 && tbHeight <= 52 && eyebrowHiddenDesktop && edgeAligned);
-    return {
-      ok: Boolean(neutralColorsOk && meterH >= 2 && desktopLayoutOk),
-      neutralColorsOk, meterH, subClipPx, tbHeight, eyebrowHiddenDesktop, edgeAligned
-    };
-  })()`);
-  graphiteUxProbe && graphiteUxProbe.ok
-    ? pass('v15.0 Architectural Graphite & Institutional UX · 0 blue/yellow noise, flush 6-tab Sales strip (0px clip), 1-row toolbar & pixel-aligned cards', `subClip=${graphiteUxProbe.subClipPx}px · toolbarH=${graphiteUxProbe.tbHeight}px · meterH=${graphiteUxProbe.meterH}px`)
-    : fail('v15.0 Architectural Graphite & Institutional UX', JSON.stringify(graphiteUxProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
