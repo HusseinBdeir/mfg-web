@@ -8650,30 +8650,8 @@
   }
 
   // ==========================================================================
-  // VIEW 9B: CASH FLOW & TILL (DUAL-CURRENCY USD & LBP PLANT TILL + DRAWER CHECK)
+  // VIEW 9B: CASH FLOW & TILL (DUAL-CURRENCY USD & LBP PLANT TILL)
   // ==========================================================================
-  function computeDrawerStatusHtml(coKey, expUsd, expLbp) {
-    const store = STATE.tillCheck || {};
-    const entry = store[coKey] || {};
-    const rawU = entry.usd == null ? '' : String(entry.usd).trim();
-    const rawL = entry.lbp == null ? '' : String(entry.lbp).trim();
-    if (rawU === '' && rawL === '') {
-      return `<span class="badge badge-ok" id="tillVarianceBadge">Book Till: ${fmtUSD(expUsd, 2)} · ${fmtLBP(expLbp)}</span>`;
-    }
-    const cntU = rawU === '' ? expUsd : (Number(rawU.replace(/,/g, '')) || 0);
-    const cntL = rawL === '' ? expLbp : Math.round(Number(rawL.replace(/,/g, '')) || 0);
-    const diffU = round2(cntU - expUsd);
-    const diffL = Math.round(cntL - expLbp);
-    const okU = Math.abs(diffU) < 0.01;
-    const okL = Math.abs(diffL) <= 100;
-    if (okU && okL) {
-      return `<span class="badge badge-ok" id="tillVarianceBadge">✓ Exact Match — Drawer Verified (${fmtUSD(cntU, 2)} · ${fmtLBP(cntL)})</span>`;
-    }
-    const uPart = okU ? '$0.00 USD' : `${diffU > 0 ? '+' : ''}${fmtUSD(diffU, 2)} USD`;
-    const lPart = okL ? '0 LL' : `${diffL > 0 ? '+' : ''}${fmtLBP(diffL)}`;
-    return `<span class="badge badge-crit" id="tillVarianceBadge">⚠ Variance: ${uPart} · ${lPart}</span>`;
-  }
-
   function renderCashFlowTill() {
     const u = activeUser();
     const effKey = resolveEffectiveModelKey(STATE.company);
@@ -8686,9 +8664,6 @@
     const liveTot = Number(k.cash_till != null ? k.cash_till : 0);
     const q = STATE.search.trim().toLowerCase();
     const fullFin = isOwner(u) || u.pbi_access === 'full' || (u.custom_perms && u.custom_perms.rights && u.custom_perms.rights.read_fin);
-
-    if (!STATE.tillCheck) STATE.tillCheck = {};
-    const curCheck = STATE.tillCheck[effKey] || { usd: '', lbp: '' };
 
     const allowedNames = allowedCompanyNames(u);
     const showGroupSplit = STATE.company === 'manufacturing-group' && allowedNames.includes('WTC') && allowedNames.includes('BBConstruction');
@@ -8779,7 +8754,7 @@
     return `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
-          <div class="cockpit-eyebrow">PHYSICAL DRAWER RECONCILIATION &amp; DUAL-CURRENCY CASH FLOW (5300)</div>
+          <div class="cockpit-eyebrow">DUAL-CURRENCY CASH TILL &amp; CASH FLOW RECONCILIATION (5300)</div>
           <div class="cockpit-title">Cash Flow &amp; Till</div>
         </div>
         <div class="cockpit-pills insight-grid">
@@ -8855,33 +8830,6 @@
           </div>
         </div>
       </div>` : '')}
-
-      <div class="panel-card" id="tillVerifyPanel" style="margin-bottom:14px">
-        <div class="panel-head">
-          <div class="panel-title"><span>PHYSICAL CASH DRAWER VERIFICATION (${esc(COMPANY_LABELS[STATE.company] || 'Active Plant')})</span></div>
-          <span class="panel-meta" id="tillVarianceStatus" data-exp-usd="${liveUsd}" data-exp-lbp="${liveLbp}" data-co-key="${esc(effKey)}">${computeDrawerStatusHtml(effKey, liveUsd, liveLbp)}</span>
-        </div>
-        <div style="padding:12px 16px;display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap">
-          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-            <div>
-              <label for="tillCountUsdInput" style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Counted USD ($) · Expected ${fmtUSD(liveUsd, 2)}</label>
-              <input type="text" inputmode="decimal" id="tillCountUsdInput" class="search-input" style="width:170px;font-family:var(--font-mono);font-weight:700" placeholder="${fmtUSD(liveUsd, 2)}" value="${esc(curCheck.usd)}">
-            </div>
-            <div>
-              <label for="tillCountLbpInput" style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Counted LBP (LL) · Expected ${fmtLBP(liveLbp)}</label>
-              <input type="text" inputmode="numeric" id="tillCountLbpInput" class="search-input" style="width:190px;font-family:var(--font-mono);font-weight:700" placeholder="${fmtLBP(liveLbp)}" value="${esc(curCheck.lbp)}">
-            </div>
-            <button type="button" class="btn btn-ghost-bar" id="tillMatchBtn">✓ Confirm Exact (${fmtTillPair(liveUsd, liveLbp, true)})</button>
-            <button type="button" class="btn btn-ghost-bar" id="tillClearBtn">Reset</button>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${canEnterForm('sales', u) ? '<button type="button" class="btn btn-primary" data-open-modal="sales">+ Cash Sale</button>' : ''}
-            ${canEnterForm('receipt', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="receipt">+ AR Receipt</button>' : ''}
-            ${canEnterForm('expense', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="expense">+ Cash Expense</button>' : ''}
-            ${canEnterForm('settlement', u) ? '<button type="button" class="btn btn-ghost-bar" data-open-modal="settlement">+ AP Settlement</button>' : ''}
-          </div>
-        </div>
-      </div>
 
       <div class="panel-card" id="tillBridgePanel" style="margin-bottom:14px">
         <div class="panel-head">
@@ -20968,43 +20916,6 @@
     const allowedCos = getAllowedCompanyKeys(activeUserRow);
     const allowedNames = allowedCompanyNames(activeUserRow);
     const totalCatCount = getCompanyCatalog().length;
-
-    // Cash Flow & Till physical drawer count verification controls
-    const tillStatusEl = container.querySelector('#tillVarianceStatus');
-    if (tillStatusEl) {
-      const coKey = tillStatusEl.getAttribute('data-co-key') || resolveEffectiveModelKey(STATE.company);
-      const expUsd = Number(tillStatusEl.getAttribute('data-exp-usd') || 0);
-      const expLbp = Math.round(Number(tillStatusEl.getAttribute('data-exp-lbp') || 0));
-      const uInp = container.querySelector('#tillCountUsdInput');
-      const lInp = container.querySelector('#tillCountLbpInput');
-      const syncDrawerStatus = () => {
-        if (!STATE.tillCheck) STATE.tillCheck = {};
-        STATE.tillCheck[coKey] = {
-          usd: uInp ? uInp.value : '',
-          lbp: lInp ? lInp.value : ''
-        };
-        tillStatusEl.innerHTML = computeDrawerStatusHtml(coKey, expUsd, expLbp);
-      };
-      if (uInp) uInp.addEventListener('input', syncDrawerStatus);
-      if (lInp) lInp.addEventListener('input', syncDrawerStatus);
-      const matchBtn = container.querySelector('#tillMatchBtn');
-      if (matchBtn) {
-        matchBtn.addEventListener('click', () => {
-          if (uInp) uInp.value = String(expUsd.toFixed(2));
-          if (lInp) lInp.value = String(expLbp);
-          syncDrawerStatus();
-          toast(`Drawer verified: ${fmtUSD(expUsd, 2)} · ${fmtLBP(expLbp)}`, 'ok');
-        });
-      }
-      const clrBtn = container.querySelector('#tillClearBtn');
-      if (clrBtn) {
-        clrBtn.addEventListener('click', () => {
-          if (uInp) uInp.value = '';
-          if (lInp) lInp.value = '';
-          syncDrawerStatus();
-        });
-      }
-    }
 
     // Enforce RLS & permission consistency across entity recon cards, reset buttons & jump links
     container.querySelectorAll('.sales-recon-card[data-jump-co]').forEach(card => {

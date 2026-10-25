@@ -3364,7 +3364,7 @@ try {
     ? pass('iOS standalone & mobile bottom dock flush parity (PWA.md §3.1 — 100vh shell, 0px bottom gap, 22px dock home-indicator clearance)', `pos=${iosStandaloneDockProbe.shPos} · bottom=${iosStandaloneDockProbe.shBottom}/${iosStandaloneDockProbe.vh}px · dockPadBottom=${iosStandaloneDockProbe.dockPadBottom}`)
     : fail('iOS standalone & mobile bottom dock flush parity', JSON.stringify(iosStandaloneDockProbe));
 
-  // 7q. Cash Flow & Till Dual-Currency SharePoint Parity ($0.00 & 0 LL WTC, $622.00 & 5,035,000 LL BBConstruction) + Entry-User Physical Drawer Verification
+  // 7q. Cash Flow & Till Dual-Currency SharePoint Parity ($0.00 & 0 LL WTC, $622.00 & 5,035,000 LL BBConstruction) + Entry-User Access (no Physical Cash Drawer Verification card)
   const cashFlowTillProbe = await evaluate(`(async () => {
     const T = window.MFG_FACE_TEST;
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -3402,24 +3402,14 @@ try {
     if (grainAllBtn) grainAllBtn.click();
     await wait(30);
 
-    // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity & Physical Drawer Check
+    // 2. Open dedicated #cashflow page on WTC: verify $0.00 & 0 LL, SharePoint 7-table parity & Physical Drawer Check removed
     window.__navToView('cashflow');
     await wait(40);
     const wtcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcSalesTfoot = (document.querySelector('#cfSalesPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcExpTfoot = (document.querySelector('#cfExpPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const wtcBridgeTfoot = (document.querySelector('#tillBridgePanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
-
-    // Interactive Physical Cash Drawer Verification
-    const usdInp = document.getElementById('tillCountUsdInput');
-    const lbpInp = document.getElementById('tillCountLbpInput');
-    usdInp.value = '50';
-    usdInp.dispatchEvent(new Event('input', { bubbles: true }));
-    const badgeVariance = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
-    document.getElementById('tillMatchBtn').click();
-    const badgeMatch = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
-    document.getElementById('tillClearBtn').click();
-    const badgeReset = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+    const noDrawerVerifyCard = !document.getElementById('tillVerifyPanel') && !document.getElementById('tillCountUsdInput') && !document.getElementById('tillCountLbpInput');
 
     // 3. Switch to BBConstruction: verify $622.00 & 5,035,000 LL ($678.26 combined)
     document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
@@ -3433,15 +3423,16 @@ try {
     const u4NavVisible = Boolean(u4NavBtn && !u4NavBtn.hidden);
     if (u4NavBtn) u4NavBtn.click();
     await wait(30);
-    const u4VerifyPanel = Boolean(document.getElementById('tillVerifyPanel'));
+    const u4BridgePanel = Boolean(document.getElementById('tillBridgePanel'));
+    const u4NoVerifyPanel = !document.getElementById('tillVerifyPanel');
     const u4ConfSalHidden = !document.getElementById('cfSalPanel') && !document.getElementById('cfBorPanel');
-    const u4TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+    const u4HeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
 
     await T.performLogin('batch.bbc@bhfirms.com', '5555', { bypass2FA: true });
     const u6NavBtn = document.querySelector('#sidebarNav .nav-item[data-hub="cashflow"]');
     if (u6NavBtn) u6NavBtn.click();
     await wait(30);
-    const u6TillBadge = (document.getElementById('tillVarianceBadge') || {}).textContent?.trim() || '';
+    const u6HeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
 
     // Restore Owner & Group All-Time
     await T.performLogin('husseinbdeir@bhfirms.com', '1111', { bypass2FA: true });
@@ -3451,18 +3442,17 @@ try {
 
     const wtcZeroOk = /\\$0\\.00/.test(wtcAllText) && /0 LL/.test(wtcAllText) && /\\$0\\.00/.test(wtcCustomText) && /0 LL/.test(wtcCustomText) && wtcNavPillAll === '$0 · 0 LL';
     const wtcTablesOk = /\\$9,994,762\\.51/.test(wtcSalesTfoot) && /30,125,396,148 LL/.test(wtcSalesTfoot) && /\\$8,311,011\\.29/.test(wtcExpTfoot) && /\\$0\\.00/.test(wtcBridgeTfoot) && /0 LL/.test(wtcBridgeTfoot);
-    const drawerCheckOk = /Variance:\\s*\\+\\$50\\.00 USD/.test(badgeVariance) && /Exact Match/.test(badgeMatch) && /Book Till:\\s*\\$0\\.00\\s*·\\s*0 LL/.test(badgeReset);
     const bbcParityOk = /\\$622\\.00/.test(bbcCfHeroText) && /5,035,000 LL/.test(bbcCfHeroText) && /\\$678\\.26/.test(bbcCfHeroText);
-    const entryUsersOk = u4NavVisible && u4VerifyPanel && u4ConfSalHidden && /\\$0\\.00\\s*·\\s*0 LL/.test(u4TillBadge) && /\\$622\\.00\\s*·\\s*5,035,000 LL/.test(u6TillBadge);
+    const entryUsersOk = u4NavVisible && u4BridgePanel && u4NoVerifyPanel && u4ConfSalHidden && /\\$0\\.00/.test(u4HeroText) && /0 LL/.test(u4HeroText) && /\\$622\\.00/.test(u6HeroText) && /5,035,000 LL/.test(u6HeroText);
 
     return {
-      ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && drawerCheckOk && bbcParityOk && entryUsersOk),
-      noStale996Or32M, wtcZeroOk, wtcTablesOk, drawerCheckOk, bbcParityOk, entryUsersOk,
-      wtcAllText, wtcCustomText, wtcNavPillAll, bbcNavPill, badgeVariance, badgeMatch, u4TillBadge, u6TillBadge
+      ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && noDrawerVerifyCard && bbcParityOk && entryUsersOk),
+      noStale996Or32M, wtcZeroOk, wtcTablesOk, noDrawerVerifyCard, bbcParityOk, entryUsersOk,
+      wtcAllText, wtcCustomText, wtcNavPillAll, bbcNavPill
     };
   })()`);
   cashFlowTillProbe && cashFlowTillProbe.ok
-    ? pass('cash flow & till parity · WTC $0.00 & 0 LL (All-Time + Rep Date custom window), BBC $622.00 & 5,035,000 LL, SharePoint 7-table parity, physical drawer count check & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill} · u4="${cashFlowTillProbe.u4TillBadge}" · u6="${cashFlowTillProbe.u6TillBadge}"`)
+    ? pass('cash flow & till parity · WTC $0.00 & 0 LL (All-Time + Rep Date custom window), BBC $622.00 & 5,035,000 LL, SharePoint 7-table parity, no drawer verification card & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill}`)
     : fail('cash flow & till parity + entry-seat access', JSON.stringify(cashFlowTillProbe));
 
   // 7q. Institutional Vector Icon System & #fleet Thermal Ticket Cell Parity (js/icons.js)
