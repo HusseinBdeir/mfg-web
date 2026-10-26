@@ -4009,6 +4009,94 @@ try {
     ? pass('Institutional Chart Explanation Popover (#mfgChartPopover & #execChartTip) · 0 native <title> black boxes, light Rev 10 Ledger card + multi-series swatches', `popTitle=${chartPopoverProbe.popTitle} · pbiPopCount=${chartPopoverProbe.pbiPopCount} · bg=${chartPopoverProbe.popBg}`)
     : fail('Institutional Chart Explanation Popover', JSON.stringify(chartPopoverProbe));
 
+  // Overhead Analytics (#expenses_analytics / p07_ap) horizontal bar chart & 3-leg schedule descending ranking (All-Time & Period-filtered)
+  const apRankingProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const parseMoney = s => {
+      const m = String(s || '').replace(/,/g, '').match(/-?\\$?\\d+(?:\\.\\d+)?/);
+      if (!m) return 0;
+      const clean = m[0].replace('$', '');
+      return Number(clean) || 0;
+    };
+    // Switch to WTC + #expenses_analytics
+    const wtcBtn = document.querySelector('#companySwitchList [data-company="wtc"]');
+    if (wtcBtn) wtcBtn.click();
+    window.__navToView('expenses_analytics');
+    await wait(60);
+    const resetBtn = document.getElementById('dateRangeResetBtn');
+    if (resetBtn && !resetBtn.hidden) resetBtn.click();
+    await wait(40);
+
+    const getBarPanelVals = titleText => {
+      const panels = Array.from(document.querySelectorAll('#workspace .pbi-panel'));
+      const pnl = panels.find(p => (p.querySelector('.pbi-panel-title')?.textContent || '').includes(titleText));
+      if (!pnl) return [];
+      return Array.from(pnl.querySelectorAll('.pbi-hbar-row')).map(r => ({
+        label: (r.querySelector('.pbi-hbar-lbl strong')?.textContent || '').trim(),
+        val: parseMoney(r.querySelector('.pbi-hbar-val')?.textContent || '')
+      }));
+    };
+
+    const allTimeApBars = getBarPanelVals('Payables by supplier / hauler');
+    const allTimeVolBars = getBarPanelVals('Raw material & haulage volume by supplier');
+    const allTimeApSorted = allTimeApBars.length >= 5 && allTimeApBars.every((r, i) => i === 0 || r.val <= allTimeApBars[i - 1].val + 0.01);
+    const allTimeVolSorted = allTimeVolBars.length >= 5 && allTimeVolBars.every((r, i) => i === 0 || r.val <= allTimeVolBars[i - 1].val + 0.01);
+
+    // Apply 2025-12-31 to 2027-01-01 date range
+    const df = document.getElementById('dateFromInput');
+    const dt = document.getElementById('dateToInput');
+    if (df && dt) {
+      df.value = '2025-12-31';
+      df.dispatchEvent(new Event('change', { bubbles: true }));
+      dt.value = '2027-01-01';
+      dt.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    await wait(60);
+
+    const periodApBars = getBarPanelVals('Payables by supplier / hauler');
+    const periodVolBars = getBarPanelVals('Raw material & haulage volume by supplier');
+    const periodApSorted = periodApBars.length >= 5 && periodApBars[0].label === 'Haj Ibrahim' && periodApBars.every((r, i) => i === 0 || r.val <= periodApBars[i - 1].val + 0.01);
+    const periodVolSorted = periodVolBars.length >= 5 && periodVolBars[0].label === 'ALI KLAIT' && periodVolBars[1].label === 'Haj Ibrahim' && periodVolBars.every((r, i) => i === 0 || r.val <= periodVolBars[i - 1].val + 0.01);
+
+    // Check 3-leg schedule table sorted by Closing AP Balance desc & Leg 1 + Leg 2 == Total Raw Cost
+    const schedPanel = Array.from(document.querySelectorAll('#workspace .pbi-panel')).find(p => (p.querySelector('.pbi-panel-title')?.textContent || '').includes('Supplier 3-leg payables'));
+    const schedRows = schedPanel ? Array.from(schedPanel.querySelectorAll('tbody tr')).slice(0, 10).map(tr => {
+      const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+      return {
+        supp: tds[0],
+        rawCost: parseMoney(tds[3]),
+        leg1: parseMoney(tds[4]),
+        leg2: parseMoney(tds[5]),
+        closingAp: parseMoney(tds[8])
+      };
+    }) : [];
+    const schedSortedOk = schedRows.length >= 5 && schedRows[0].supp === 'Haj Ibrahim' && schedRows.every((r, i) => i === 0 || r.closingAp <= schedRows[i - 1].closingAp + 0.01);
+    const schedLegsConsistent = schedRows.length >= 5 && schedRows.every(r => Math.abs((r.leg1 + r.leg2) - r.rawCost) <= 2);
+
+    // Restore All-Time + All Group
+    const rst = document.getElementById('dateRangeResetBtn');
+    if (rst && !rst.hidden) rst.click();
+    const allGrpBtn = document.querySelector('#companySwitchList [data-company="manufacturing-group"]');
+    if (allGrpBtn) allGrpBtn.click();
+    window.__navToView('overview');
+    await wait(40);
+
+    return {
+      ok: Boolean(allTimeApSorted && allTimeVolSorted && periodApSorted && periodVolSorted && schedSortedOk && schedLegsConsistent),
+      allTimeApSorted,
+      allTimeVolSorted,
+      periodApSorted,
+      periodVolSorted,
+      schedSortedOk,
+      schedLegsConsistent,
+      topAp: periodApBars.slice(0, 3).map(x => x.label + ':' + x.val).join(', '),
+      topVol: periodVolBars.slice(0, 3).map(x => x.label + ':' + x.val).join(', ')
+    };
+  })()`);
+  apRankingProbe && apRankingProbe.ok
+    ? pass('Overhead Analytics (#expenses_analytics) bar chart & 3-leg schedule ranking · descending by metric (All-Time & Period-filtered) + period Leg 1+Leg 2 = Total Raw Cost', `AP=[${apRankingProbe.topAp}] · Vol=[${apRankingProbe.topVol}]`)
+    : fail('Overhead Analytics bar chart & 3-leg schedule ranking', JSON.stringify(apRankingProbe));
+
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
