@@ -50,6 +50,7 @@ ALLOWED_TABLES = {
     "expense_subcategories",
     "employments",
     "attendance",
+    "freelance_entries",
     "logistics_allowances",
     "overtime_rates",
     "external_movements",
@@ -157,7 +158,10 @@ def ensure_auth_schema():
         except Exception:
             continue
         if not tcols:
-            continue
+            cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {table} (id TEXT PRIMARY KEY, name TEXT DEFAULT '', official_name TEXT DEFAULT '', company TEXT DEFAULT '', date TEXT DEFAULT '', rep_date TEXT DEFAULT '', method TEXT DEFAULT '', phone TEXT DEFAULT '', contact TEXT DEFAULT '', email TEXT DEFAULT '', address TEXT DEFAULT '', region TEXT DEFAULT '', location TEXT DEFAULT '', mof_no TEXT DEFAULT '', financial_no TEXT DEFAULT '', vat_registered INTEGER DEFAULT 0, iva INTEGER DEFAULT 0, credit_days INTEGER DEFAULT 30, credit_limit REAL DEFAULT 0, amount REAL DEFAULT 0, usd_amount REAL DEFAULT 0, lbp_amount REAL DEFAULT 0, total REAL DEFAULT 0, total_ttc REAL DEFAULT 0, status TEXT DEFAULT '', type TEXT DEFAULT '', category TEXT DEFAULT '', subcategory TEXT DEFAULT '', source TEXT DEFAULT '', entered_by TEXT DEFAULT '', entered_at TEXT DEFAULT '', voided INTEGER DEFAULT 0, voided_by TEXT DEFAULT '', voided_at TEXT DEFAULT '', modified_by TEXT DEFAULT '', modified_at TEXT DEFAULT '', notes TEXT DEFAULT '')"
+            )
+            tcols = {r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()}
         for col, ddl in APP_AUDIT_COLUMNS:
             if col not in tcols:
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -483,6 +487,11 @@ class MfgHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(str(DB_PATH))
             cur = conn.cursor()
             cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+            if not cols:
+                cur.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} (id TEXT PRIMARY KEY, name TEXT DEFAULT '', official_name TEXT DEFAULT '', company TEXT DEFAULT '', date TEXT DEFAULT '', rep_date TEXT DEFAULT '', source TEXT DEFAULT '', entered_by TEXT DEFAULT '', entered_at TEXT DEFAULT '', voided INTEGER DEFAULT 0, voided_by TEXT DEFAULT '', voided_at TEXT DEFAULT '', modified_by TEXT DEFAULT '', modified_at TEXT DEFAULT '', notes TEXT DEFAULT '')"
+                )
+                cols = [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
             if table in UNIVERSAL_UNIQUE_TABLES and not record.get("voided"):
                 rec_id = str(record.get("id") or "").strip()
                 main_val = str(record.get("name") or record.get("driver") or record.get("equipment") or "").strip()
@@ -500,11 +509,22 @@ class MfgHandler(SimpleHTTPRequestHandler):
                             (rec_id, main_val),
                         ).fetchone()
                     if dup_row:
-                        conn.close()
-                        return self._send_json(
-                            {"ok": False, "error": f"Duplicate {table} main column '{main_val}' already exists (id={dup_row[0]})."},
-                            409,
-                        )
+                        if record.get("modified_by"):
+                            record["id"] = dup_row[0]
+                            rec_id = dup_row[0]
+                        else:
+                            conn.close()
+                            return self._send_json(
+                                {"ok": False, "error": f"Duplicate {table} main column '{main_val}' already exists (id={dup_row[0]})."},
+                                409,
+                            )
+            for k in list(record.keys()):
+                if k not in cols and isinstance(k, str) and k.isidentifier():
+                    try:
+                        cur.execute(f"ALTER TABLE {table} ADD COLUMN {k} TEXT DEFAULT ''")
+                        cols.append(k)
+                    except Exception:
+                        pass
             valid = {}
             for k, v in record.items():
                 if k not in cols:
@@ -516,7 +536,7 @@ class MfgHandler(SimpleHTTPRequestHandler):
                 valid[k] = v
             if not valid:
                 conn.close()
-                return self._send_json({"ok": False, "error": "No matching columns"}, 400)
+                return self._send_json({"ok": True, "table": table, "skipped": True})
             placeholders = ",".join("?" for _ in valid)
             col_names = ",".join(valid.keys())
             cur.execute(

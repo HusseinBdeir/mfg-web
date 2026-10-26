@@ -2603,6 +2603,38 @@
       { key: 'item', label: 'Item' },
       { key: 'litres', label: 'Litres (L)', kind: 'numeric' }
     ],
+    fueleff: [
+      { key: 'Equipment', label: 'Equipment' },
+      { key: 'Type', label: 'Type' },
+      { key: 'Ownership', label: 'Ownership' },
+      { key: 'fills', label: 'Fills', kind: 'numeric' },
+      { key: 'diesel_litres', label: 'Diesel (L)', kind: 'numeric' },
+      { key: 'lube_litres', label: 'Lubricants (L)', kind: 'numeric' },
+      { key: 'total_litres', label: 'Total (L)', kind: 'numeric' },
+      { key: 'km_run', label: 'Km Run', kind: 'numeric' },
+      { key: 'l_per_100km', label: 'L / 100 km', kind: 'numeric' }
+    ],
+    drvot: [
+      { key: 'driver', label: 'Driver' },
+      { key: 'is_company', label: 'Company Driver' },
+      { key: 'trucksStr', label: 'Assigned Trucks' },
+      { key: 'trips', label: 'Total Trips', kind: 'numeric' },
+      { key: 'sales_trips', label: 'Sales Trips', kind: 'numeric' },
+      { key: 'raw_trips', label: 'Raw Trips', kind: 'numeric' },
+      { key: 'fleet_trips', label: 'Own-Fleet Trips', kind: 'numeric' },
+      { key: 'ot_trips', label: 'OT Trips', kind: 'numeric' },
+      { key: 'ot_bonus', label: 'OT Bonus ($)', kind: 'numeric' }
+    ],
+    codrv: [
+      { key: 'company', label: 'Company' },
+      { key: 'driver', label: 'Driver' },
+      { key: 'staff', label: 'Staff Member' }
+    ],
+    otrate: [
+      { key: 'company', label: 'Company' },
+      { key: 'region', label: 'Region' },
+      { key: 'amount', label: 'Rate / Trip ($)', kind: 'numeric' }
+    ],
     pricing: [
       { key: 'company', label: 'Company' },
       { key: 'rule_type', label: 'Rule Type' },
@@ -2786,9 +2818,9 @@
 
   function isNumericColKey(colKey) {
     const k = String(colKey || '');
-    if (/^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i.test(k)) return false;
+    if (/^(cost_class|cost_bucket|working_days|assigned_trucks|trucksStr|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i.test(k)) return false;
     if (isBooleanColKey(k)) return false;
-    return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|remaining|haul|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|in_usd|out_usd|net_usd|open_usd|close_usd|in_lbp|out_lbp|net_lbp|close_lbp|close_combined|usd_delta|lbp_delta|^lbp$|entries_cnt|overtime_rate|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
+    return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|remaining|haul|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|in_usd|out_usd|net_usd|open_usd|close_usd|in_lbp|out_lbp|net_lbp|close_lbp|close_combined|usd_delta|lbp_delta|^lbp$|entries_cnt|overtime_rate|ot_bonus|l_per_100km|flag_count|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
   }
 
   function isDefaultDescSortKey(colKey) {
@@ -4117,22 +4149,22 @@
   const UNIV_REGISTRY_GROUPS = {
     reg_customers: ['customers', 'products', 'product_types', 'uoms'],
     reg_products: ['customers', 'products', 'product_types', 'uoms'],
-    reg_sites: ['sites', 'regions'],
-    reg_regions: ['sites', 'regions'],
-    reg_categories: ['expense_categories', 'expense_subcategories'],
-    reg_equipment: ['equipment'],
-    reg_drivers: ['drivers'],
-    reg_suppliers: ['suppliers']
+    reg_suppliers: ['suppliers', 'sites', 'regions', 'expense_categories', 'expense_subcategories'],
+    reg_sites: ['suppliers', 'sites', 'regions', 'expense_categories', 'expense_subcategories'],
+    reg_regions: ['suppliers', 'sites', 'regions', 'expense_categories', 'expense_subcategories'],
+    reg_categories: ['suppliers', 'sites', 'regions', 'expense_categories', 'expense_subcategories'],
+    reg_equipment: ['equipment', 'drivers'],
+    reg_drivers: ['equipment', 'drivers']
   };
 
   const HUB_TITLES = {
     overview: 'Executive Overview',
     sales: 'Sales & Customers',
-    raw: 'Material & Suppliers',
+    raw: 'Material, Expenses & AP',
     fleet: 'Fleet & Diesel',
     kiosks: 'Kiosk Terminals',
     cashflow: 'Cash Flow & Till',
-    expenses: 'Expenses & Overhead',
+    expenses: 'Material, Expenses & AP',
     payroll: 'Payroll & Workforce',
     ledger: 'Ledger & Reports',
     users: 'System & Access'
@@ -4167,10 +4199,10 @@
       group: 'dispatch',
       tabs: [
         { view: 'raw', label: 'Material & Transportation', icon: 'raw', pillFn: (_u, k) => (k && k.raw_loads != null ? fmtNum(k.raw_loads) : '') },
+        { view: 'expenses', label: 'Expenses & Overhead', icon: 'expenses', pillFn: (_u, k) => (k && k.expenses != null ? fmtUSDk(k.expenses) : '') },
         { view: 'suppliers', match: ['suppliers', 'ap'], label: 'Suppliers & Payables', icon: 'suppliers', pillFn: (_u, k) => (k && k.ap_balance != null ? fmtUSDk(k.ap_balance) : '3 Legs') },
-        { view: 'reg_suppliers', label: 'Suppliers & Haulers', icon: 'reg_suppliers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'reg_sites', match: ['reg_sites', 'reg_regions'], label: 'Sites & Regions', icon: 'reg_sites', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'raw_analytics', label: 'JV & Stock Analytics', icon: 'raw_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+        { view: 'raw_analytics', match: ['raw_analytics', 'expenses_analytics'], label: 'JV & Stock Analytics', icon: 'raw_analytics', pillCls: 'brass', pillFn: () => 'Analytics' },
+        { view: 'reg_suppliers', match: ['reg_suppliers', 'reg_sites', 'reg_regions', 'reg_categories'], label: 'Suppliers, Sites & Categories', icon: 'reg_suppliers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' }
       ]
     },
     {
@@ -4178,10 +4210,10 @@
       title: HUB_TITLES.fleet,
       group: 'dispatch',
       tabs: [
-        { view: 'fleet', label: 'Fleet & Diesel Control', icon: 'fleet', pillFn: (_u, k) => (k && k.active_equip != null ? fmtNum(k.active_equip) : '') },
-        { view: 'reg_equipment', label: 'Equipment & Trucks', icon: 'reg_equipment', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'reg_drivers', label: 'Drivers & Operators', icon: 'reg_drivers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'fleet_analytics', label: 'Fleet & Driver Analytics', icon: 'fleet_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+        { view: 'fleet', label: 'Diesel & Lubricants', icon: 'fleet', pillFn: () => fmtNum(filterRecords(SEED.records.fuel_intakes || []).length) },
+        { view: 'fleet_equip', label: 'Fleet & Running Costs', icon: 'fleet_equip', pillFn: (_u, k) => (k && k.active_equip != null ? fmtNum(k.active_equip) : '') },
+        { view: 'fleet_drivers', match: ['fleet_drivers', 'fleet_analytics'], label: 'Drivers & Overtime', icon: 'fleet_drivers', pillFn: (_u, k) => (k && Number(k.overtime_bonus || 0) > 0 ? fmtUSDk(k.overtime_bonus) : fmtNum(filterRecords(SEED.records.company_drivers || [], { ignorePeriod: true }).length) + ' Drv') },
+        { view: 'reg_equipment', match: ['reg_equipment', 'reg_drivers'], label: 'Equipment & Drivers', icon: 'reg_equipment', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' }
       ]
     },
     {
@@ -4201,16 +4233,6 @@
         { view: 'external', label: 'External Entries', icon: 'external', pillFn: () => fmtNum(filterRecords(SEED.records.external_movements || []).length) },
         { view: 'ledger_treasury', label: 'Loans & Settlements', icon: 'ledger_treasury', pillFn: () => fmtNum(filterRecords(SEED.records.loans || [], { ignorePeriod: true }).length) },
         { view: 'conversions', label: 'FX Conversions', icon: 'conversions', pillFn: () => fmtNum(filterRecords(SEED.records.conversions || []).length) }
-      ]
-    },
-    {
-      id: 'expenses',
-      title: HUB_TITLES.expenses,
-      group: 'books',
-      tabs: [
-        { view: 'expenses', label: 'Expenses & Overhead', icon: 'expenses', pillFn: (_u, k) => (k && k.expenses != null ? fmtUSDk(k.expenses) : '') },
-        { view: 'reg_categories', label: 'Expense Categories', icon: 'reg_categories', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'expenses_analytics', label: 'Overhead Analytics', icon: 'expenses_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
       ]
     },
     {
@@ -4258,6 +4280,7 @@
     if (view === 'sales_vat') return canAccessTable('vat_invoices', u) || canAccessTable('credit_terms', u) || canAccessPbiPage('p13_vat', u);
     if (view === 'sales_analytics') return canAccessPbiPage('p18_tickets', u) || canAccessPbiPage('p04_sales', u) || canAccessPbiPage('p05_pricing', u) || canAccessPbiPage('p06_ar', u);
     if (view === 'raw_analytics') return canViewView('raw', u) && (canAccessPbiPage('p17_jv', u) || canAccessPbiPage('p08_stock', u) || canAccessPbiPage('p07_ap', u));
+    if (view === 'fleet_equip' || view === 'fleet_drivers') return canViewView('fleet', u);
     if (view === 'fleet_analytics') return canViewView('fleet', u) && (canAccessPbiPage('p11_drivers', u) || canAccessPbiPage('p09_fuel', u) || canAccessPbiPage('p10_fleet', u));
     if (view === 'cashflow_analytics') return canViewView('cashflow', u) && canAccessPbiPage('p14_cashflow', u);
     if (view === 'expenses_analytics') return canViewView('expenses', u) && canAccessPbiPage('p07_ap', u);
@@ -4307,7 +4330,7 @@
     u = u || activeUser();
     const h = getHubDef(hubId);
     if (!h) return canViewView(hubId, u);
-    if (hubId === 'raw') return canViewView('raw', u) || canViewView('suppliers', u);
+    if (hubId === 'raw') return canViewView('raw', u) || canViewView('expenses', u) || canViewView('suppliers', u);
     if (hubId === 'fleet') return canViewView('fleet', u);
     if (hubId === 'expenses') return canViewView('expenses', u);
     return h.tabs.some(t => canViewView(t.view, u));
@@ -4486,7 +4509,7 @@
     const loans = rec.loans || [];
     const extMovs = rec.external_movements || [];
     const overs = rec.overtime_rates || [];
-    const key = `${sales.length}:${raws.length}:${exps.length}:${rcpts.length}:${settles.length}:${fuels.length}:${sals.length}:${rules.length}`;
+    const key = `${sales.length}:${raws.length}:${exps.length}:${rcpts.length}:${settles.length}:${fuels.length}:${sals.length}:${rules.length}:${SEED._customRev || 0}`;
     if (_FREQ_IDX && _FREQ_IDX.key === key) return _FREQ_IDX;
 
     const inc = (map, val, w = 1) => {
@@ -5020,10 +5043,17 @@
       fIdx._custInfoMap.set(n, null);
       return null;
     }
-    const res = Object.assign({}, dvn || {}, mdl || {}, {
-      Customer: (mdl && mdl.Customer) || (dvn && dvn.name) || name,
+    const hasDvnVat = dvn && typeof dvn.vat_registered === 'boolean';
+    const isVatReg = hasDvnVat ? dvn.vat_registered : Boolean((mdl && mdl['VAT Registered'] === 'Yes') || (dvn && dvn.vat_registered));
+    const res = Object.assign({}, mdl || {}, dvn || {}, {
+      Customer: (dvn && dvn.name) || (mdl && mdl.Customer) || name,
       method: (dvn && dvn.method) || (mdl && mdl.Method) || 'Credit',
-      'VAT Registered': ((mdl && mdl['VAT Registered'] === 'Yes') || (dvn && dvn.vat_registered)) ? 'Yes' : 'No',
+      vat_registered: isVatReg,
+      'VAT Registered': isVatReg ? 'Yes' : 'No',
+      phone: (dvn && (dvn.phone || dvn.contact)) || (mdl && mdl.phone) || '',
+      address: (dvn && (dvn.address || dvn.region)) || (mdl && mdl.address) || '',
+      region: (dvn && (dvn.region || dvn.address)) || (mdl && mdl.region) || '',
+      mof_no: (dvn && (dvn.mof_no || dvn.financial_no)) || (mdl && mdl.mof_no) || '',
       customer_declared_qty: !!((dvn && dvn.customer_declared_qty) || _CUST_DECL_QTY_SET.has(n)),
       external_invoice: !!((dvn && dvn.external_invoice) || _CUST_EXT_INV_SET.has(n)),
       // the AR book only carries the model's top-60 customers — null = "not in the sample", never $0.00
@@ -5058,11 +5088,20 @@
     const isTo = !!((dvn && (dvn.is_truck_owner || Number(dvn.trucks_count || 0) > 0)) || rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c))));
     if (isTo && !rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) rawCats.unshift('Hauler / Truck Owner');
     const categories = parseSupplierCategories(rawCats);
-    const res = Object.assign({}, dvn || {}, mdl || {}, {
-      Supplier: (mdl && mdl.Supplier) || (dvn && dvn.name) || name,
+    const hasDvnIva = dvn && typeof dvn.iva === 'boolean';
+    const isIva = hasDvnIva ? dvn.iva : Boolean((dvn && dvn.iva) || (mdl && mdl.IVA === 'Yes'));
+    const res = Object.assign({}, mdl || {}, dvn || {}, {
+      Supplier: (dvn && dvn.name) || (mdl && mdl.Supplier) || name,
       categories,
       category: categories.join(', '),
-      iva: !!((dvn && dvn.iva) || (mdl && mdl.IVA === 'Yes')),
+      method: (dvn && dvn.method) || (mdl && mdl.Method) || 'Credit',
+      phone: (dvn && (dvn.phone || dvn.contact)) || (mdl && mdl.phone) || '',
+      contact: (dvn && (dvn.contact || dvn.phone)) || (mdl && mdl.contact) || '',
+      location: (dvn && (dvn.location || dvn.region)) || (mdl && mdl.location) || '',
+      region: (dvn && (dvn.region || dvn.location)) || (mdl && mdl.region) || '',
+      mof_no: (dvn && (dvn.mof_no || dvn.financial_no)) || (mdl && mdl.mof_no) || '',
+      financial_no: (dvn && (dvn.financial_no || dvn.mof_no)) || (mdl && mdl.financial_no) || '',
+      iva: isIva,
       is_truck_owner: isTo,
       ap_balance: mdl ? Number(mdl.ap_balance || 0) : null,
       in_ap_book: !!mdl
@@ -7519,10 +7558,13 @@
     const base = filterRecords(SEED.records.fuel_intakes);
     const isOwnEquip = e => /^own/i.test(String((e && (e.Ownership || e.ownership)) || ''));
     const isTruckEquip = e => /truck/i.test(String((e && (e.Type || e.type)) || 'Truck'));
+    const isDieselFill = f => /diesel|mazout/i.test(String(f.item || f.fuel_type || 'Diesel'));
+    const dieselBaseCount = base.filter(isDieselFill).length;
+    const lubeBaseCount = base.length - dieselBaseCount;
     const fuelRows = sortRows(base.filter(f => {
       if (STATE.chipFilter === 'flag') { const g = guards.get(f.id); return g && g.cls !== 'badge-ok' && g.cls !== ''; }
-      if (STATE.chipFilter === 'diesel') return /diesel/i.test(f.item || f.fuel_type || '');
-      if (STATE.chipFilter === 'lube') return !/diesel/i.test(f.item || f.fuel_type || '');
+      if (STATE.chipFilter === 'diesel') return isDieselFill(f);
+      if (STATE.chipFilter === 'lube') return !isDieselFill(f);
       if (STATE.chipFilter === 'own') { const eq = equipInfo(f.equipment); return !eq || isOwnEquip(eq); }
       if (STATE.chipFilter === 'transporter') { const eq = equipInfo(f.equipment); return !!(eq && !isOwnEquip(eq)); }
       if (STATE.chipFilter === 'truck') { const eq = equipInfo(f.equipment); return !eq || isTruckEquip(eq); }
@@ -7531,104 +7573,144 @@
       return true;
     }), 'fuel', 'date', 'desc');
     const shownFuel = fuelRows.slice(0, shownCount('fuel'));
-    let litres = 0, dieselLitres = 0, lubeLitres = 0;
+    let litres = 0, dieselLitres = 0, lubeLitres = 0, lubeCount = 0;
+    let ownFuelLitres = 0, transFuelLitres = 0;
     const byCoFuel = {
-      WTC: { n: 0, litres: 0, diesel: 0, lube: 0 },
-      BBConstruction: { n: 0, litres: 0, diesel: 0, lube: 0 }
+      WTC: { n: 0, litres: 0, diesel: 0, lube: 0, flags: 0 },
+      BBConstruction: { n: 0, litres: 0, diesel: 0, lube: 0, flags: 0 }
     };
+    const eqFuelMap = new Map();
+    (m.equipment || []).forEach(e => {
+      if (!e || !e.Equipment) return;
+      eqFuelMap.set(norm(e.Equipment), {
+        Equipment: e.Equipment,
+        Type: e.Type || 'Truck',
+        Ownership: e.Ownership || 'Own',
+        fills: 0,
+        diesel_litres: 0,
+        lube_litres: 0,
+        total_litres: 0,
+        km_run: Number(e.km_run || 0),
+        l_per_100km: e.l_per_100km != null ? Number(e.l_per_100km) : null,
+        flag_count: 0
+      });
+    });
+
     fuelRows.forEach(f => {
       const l = Number(f.litres || 0);
-      const isD = /diesel|mazout/i.test(String(f.item || f.fuel_type || 'Diesel'));
+      const isD = isDieselFill(f);
+      const g = guards.get(f.id);
+      const isFlag = Boolean(g && (g.cls === 'badge-err' || g.cls === 'badge-warn'));
       litres += l;
       if (isD) dieselLitres += l;
-      else lubeLitres += l;
+      else { lubeLitres += l; lubeCount += 1; }
+      const eqRec = equipInfo(f.equipment);
+      if (!eqRec || isOwnEquip(eqRec)) ownFuelLitres += l;
+      else transFuelLitres += l;
       const b = byCoFuel[f.company];
       if (b) {
         b.n += 1;
         b.litres += l;
         if (isD) b.diesel += l;
         else b.lube += l;
+        if (isFlag) b.flags += 1;
+      }
+      if (f.equipment) {
+        const ek = norm(f.equipment);
+        let ef = eqFuelMap.get(ek);
+        if (!ef) {
+          ef = {
+            Equipment: f.equipment,
+            Type: (eqRec && (eqRec.type || eqRec.Type)) || 'Truck',
+            Ownership: (eqRec && (eqRec.ownership || eqRec.Ownership)) || 'Own',
+            fills: 0,
+            diesel_litres: 0,
+            lube_litres: 0,
+            total_litres: 0,
+            km_run: 0,
+            l_per_100km: null,
+            flag_count: 0
+          };
+          eqFuelMap.set(ek, ef);
+        }
+        ef.fills += 1;
+        if (isD) ef.diesel_litres = round2(ef.diesel_litres + l);
+        else ef.lube_litres = round2(ef.lube_litres + l);
+        ef.total_litres = round2(ef.total_litres + l);
+        if (isFlag) ef.flag_count += 1;
       }
     });
+
+    const fuelEffAll = Array.from(eqFuelMap.values()).filter(ef => ef.total_litres > 0 || ef.fills > 0).map(ef => {
+      if ((ef.l_per_100km == null || !ef.l_per_100km) && ef.km_run > 0 && ef.diesel_litres > 0) {
+        ef.l_per_100km = round2((ef.diesel_litres / ef.km_run) * 100);
+      }
+      return ef;
+    });
+    const fuelEffRows = sortRows(fuelEffAll, 'fueleff', 'total_litres', 'desc');
+    const shownFuelEff = fuelEffRows.slice(0, shownCount('fueleff'));
+    const ownFuelUnitsCount = fuelEffAll.filter(isOwnEquip).length;
+    const transFuelUnitsCount = fuelEffAll.length - ownFuelUnitsCount;
+
     const wtcFl = byCoFuel.WTC;
     const bbcFl = byCoFuel.BBConstruction;
     const isGroupScope = STATE.company === 'manufacturing-group';
     const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
-    const flagged = allFuel.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
+    const flagged = base.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length;
     const tank = fleet.diesel_stock_balance_l != null ? Number(fleet.diesel_stock_balance_l) : Number(k.diesel_in_tank || 0);
-    const equipAll = m.equipment || [];
-    const ownCount = equipAll.filter(isOwnEquip).length;
-    const transCount = equipAll.length - ownCount;
-    const equipBase = equipAll.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
-    const equipRows = sortRows(equipBase.filter(e => {
-      if (STATE.chipFilter === 'own') return isOwnEquip(e);
-      if (STATE.chipFilter === 'transporter') return !isOwnEquip(e);
-      if (STATE.chipFilter === 'truck') return isTruckEquip(e);
-      if (STATE.chipFilter === 'machinery') return !isTruckEquip(e);
-      if (STATE.chipFilter === 'diesel') return Number(e.diesel_litres || 0) > 0;
-      if (STATE.chipFilter === 'app') {
-        const eqRec = equipInfo(e.Equipment);
-        return isAppRecord(e) || Boolean(eqRec && isAppRecord(eqRec));
-      }
-      return true;
-    }), 'equip', 'total_cost', 'desc');
-    const shownEquip = equipRows.slice(0, shownCount('equip'));
-    const coEqBase = filterRecords(SEED.records.company_equipment || [], { ignorePeriod: true });
-    const coEquipRows = sortRows(coEqBase.filter(ce => {
-      if (STATE.chipFilter === 'own') return /^own/i.test(ce.ownership || '');
-      if (STATE.chipFilter === 'transporter') return !/^own/i.test(ce.ownership || '');
-      if (STATE.chipFilter === 'app') return isAppRecord(ce);
-      return true;
-    }), 'coeq', 'loads_hauled', 'desc');
-
-    const ownPct = equipAll.length > 0 ? (ownCount / equipAll.length) * 100 : 0;
+    const boughtL = fleet.diesel_purchased_l != null ? Number(fleet.diesel_purchased_l) : Number(k.diesel_purchased || 0);
     const avgIntakeL = fuelRows.length > 0 ? (litres / fuelRows.length) : 0;
     const dieselPct = litres > 0 ? (dieselLitres / litres) * 100 : 100;
+    const ownFuelLitresPct = litres > 0 ? (ownFuelLitres / litres) * 100 : 100;
+    const okCount = Math.max(0, fuelRows.length - fuelRows.filter(f => { const g = guards.get(f.id); return g && (g.cls === 'badge-err' || g.cls === 'badge-warn'); }).length);
 
     return `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
-          <div class="cockpit-eyebrow">BU FLEET TELEMETRY, RUNNING COSTS &amp; METER TOLERANCE GUARD</div>
-          <div class="cockpit-title">Fleet &amp; Diesel Control</div>
+          <div class="cockpit-eyebrow">DIESEL TANK BALANCE, LUBRICANTS &amp; ODOMETER / HOUR-METER TOLERANCE GUARD</div>
+          <div class="cockpit-title">Diesel &amp; Lubricants</div>
         </div>
         <div class="cockpit-pills insight-grid">
           ${insightCard({
-            label: 'Unit Hauling Efficiency',
-            badge: `Cost / m³: ${fmtUSD(k.cost_per_unit, 2)}`,
-            badgeCls: 'emerald',
-            val: `${fmtUSD(k.cost_per_ton, 2)} <small>/ ton</small>`,
+            label: 'Diesel Issued & Tank Stock',
+            badge: tank < 0 ? 'Tank Unreconciled' : `${fmtNum(tank, 0)} L in tank`,
+            badgeCls: tank < 0 ? 'amber' : 'emerald',
+            val: `<span class="insight-drill ${STATE.chipFilter === 'diesel' ? 'is-active' : ''}" data-chip="diesel" title="Click to filter Diesel intakes">${fmtNum(dieselLitres, 0)} L <small>diesel</small></span>`,
             valCls: 'emerald',
-            sub: `Across <b>${fmtNum(k.active_equip)}</b> active units · Running &amp; driver cost <b>${fmtUSD(k.total_equip_cost, 0)}</b>`,
+            pct: dieselPct,
+            pct2: 100 - dieselPct,
+            sub: `Bulk bought <b>${fmtNum(boughtL, 0)} L</b> · Tank <b>${fmtNum(tank, 0)} L</b> · Sold <b>${fmtNum(k.diesel_sold || 0, 0)} L</b>`,
             tone: 'emerald'
           })}
           ${insightCard({
-            label: 'Fleet Ownership Mix',
-            badge: `${ownCount} Own · ${transCount} Hauler`,
+            label: 'Lubricants & Fuel Mix',
+            badge: `${fmtNum(avgIntakeL, 1)} L / fill`,
             badgeCls: 'brass',
-            val: `${ownPct.toFixed(1)}% <small>Own Fleet</small>`,
+            val: `<span class="insight-drill ${STATE.chipFilter === 'lube' ? 'is-active' : ''}" data-chip="lube" title="Click to filter Lubricant &amp; Oil intakes">${fmtNum(lubeLitres, 0)} L <small>lubricants</small></span>`,
             valCls: 'brass',
-            pct: ownPct,
-            pct2: 100 - ownPct,
-            sub: `Company units <b>${fmtNum(ownCount)}</b> vs third-party transporter trucks <b>${fmtNum(transCount)}</b>`,
+            pct: Math.max(10, (100 - dieselPct) * 8),
+            sub: `Across <b>${fmtNum(lubeCount)}</b> oil &amp; lubricant fills · <b>${dieselPct.toFixed(1)}%</b> diesel vs <b>${(100 - dieselPct).toFixed(1)}%</b> lube`,
             tone: 'brass'
           })}
           ${insightCard({
-            label: 'Avg Fuel Fill & Mix',
-            badge: `${fmtNum(fuelRows.length)} Intakes`,
-            val: `${fmtNum(avgIntakeL, 1)} L <small>/ fill</small>`,
-            pct: dieselPct,
-            pct2: 100 - dieselPct,
-            sub: `Diesel <b>${dieselPct.toFixed(1)}%</b> (${fmtNum(dieselLitres, 0)} L) · Lubricants <b>${fmtNum(lubeLitres, 0)} L</b>`,
+            label: 'Fueled Fleet & Ownership Split',
+            badge: `${ownFuelUnitsCount} Own · ${transFuelUnitsCount} Hauler`,
+            val: `<span class="insight-drill" data-scroll-panel="fuelEffPanel" title="Click to jump to Equipment Fuel &amp; Lubricant Efficiency">${fmtNum(fuelEffAll.length)} <small>Fueled Units ↘</small></span>`,
+            pct: ownFuelLitresPct,
+            pct2: 100 - ownFuelLitresPct,
+            sub: `<span class="insight-drill ${STATE.chipFilter === 'own' ? 'is-active' : ''}" data-chip="own">Own fleet: <b>${fmtNum(ownFuelLitres, 0)} L</b> (${ownFuelLitresPct.toFixed(1)}%)</span> · <span class="insight-drill ${STATE.chipFilter === 'transporter' ? 'is-active' : ''}" data-chip="transporter">Haulers: <b>${fmtNum(transFuelLitres, 0)} L</b></span>`,
             tone: 'steel'
           })}
           ${insightCard({
-            label: 'Tank Stock & Meter Guard',
+            label: 'Meter Tolerance Guard',
             badge: flagged ? `${flagged} Guard Flags` : '0 Guard Flags',
             badgeCls: flagged ? 'amber' : 'emerald',
-            val: `${fmtNum(tank, 0)} L <small>in tank</small>`,
-            valCls: tank < 0 ? 'amber' : 'emerald',
-            sub: `Issued <b>${fmtNum(k.diesel_litres, 0)} L</b> · <b>${fmtNum(flagged)}</b> odometer/hour tolerance alerts`,
-            tone: (flagged || tank < 0) ? 'amber' : 'emerald'
+            badgeChip: 'flag',
+            val: `<span class="insight-drill ${STATE.chipFilter === 'flag' ? 'is-active' : ''}" data-chip="flag" title="Click to filter Meter Guard flagged intakes">${fmtNum(flagged)} <small>Flags</small></span> · ${fmtNum(okCount)} <small>OK</small>`,
+            valCls: flagged ? 'amber' : 'emerald',
+            pct: fuelRows.length > 0 ? Math.max(10, (okCount / fuelRows.length) * 100) : 100,
+            sub: `Odometer (km) &amp; hour-meter (h) checks · <b>${fmtNum((fleet.consumption_outliers || []).length)}</b> burn outliers (&gt;80 L/100km)`,
+            tone: flagged ? 'amber' : 'emerald'
           })}
           ${appPill('fuel_intakes', 'litres', 'intakes (L)')}
         </div>
@@ -7638,7 +7720,7 @@
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${searchBox('Search ticket #, equipment, plate, driver, item...')}
-            <div class="chip-bar">${chip('all', `All Intakes (${base.length})`)}${chip('diesel', 'Diesel')}${chip('lube', 'Lubricants')}${chip('flag', `Guard flags (${flagged})`)}${chip('own', `Own Fleet (${ownCount})`)}${chip('transporter', `Transporter (${transCount})`)}${chip('truck', 'Trucks')}${chip('machinery', 'Machinery')}${chip('app', 'App-entered')}</div>
+            <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('diesel', `Diesel (${dieselBaseCount})`)}${chip('lube', `Lubricants (${lubeBaseCount})`)}${chip('flag', `Guard Flags (${flagged})`)}${chip('own', 'Own Fleet')}${chip('transporter', 'Haulers')}${chip('truck', 'Trucks')}${chip('machinery', 'Machinery')}${chip('app', 'App-entered')}</div>
           </div>
           <div style="display:flex;gap:6px">
             <button type="button" class="btn btn-ghost-bar" data-kiosk-jump="fuel" title="Open Touch Fuel &amp; Lubricants Kiosk">${ic('fuel')} Fuel Kiosk</button>
@@ -7651,17 +7733,19 @@
           <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
             <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>${fmtNum(wtcFl.n)} Fuel Tickets</b><span class="sales-recon-act">Filter WTC Only →</span></div>
             <div class="sales-recon-metrics">
-              <span><small>Diesel Issued</small><b class="brass">${fmtNum(wtcFl.diesel, 1)} L</b></span>
-              <span><small>Lubricants</small><b>${fmtNum(wtcFl.lube, 1)} L</b></span>
-              <span><small>Total Intake</small><b>${fmtNum(wtcFl.litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'diesel' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="diesel" title="Click to filter WTC Diesel Intakes"><small>Diesel Issued</small><b class="brass">${fmtNum(wtcFl.diesel, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'lube' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="lube" title="Click to filter WTC Lubricants"><small>Lubricants</small><b>${fmtNum(wtcFl.lube, 1)} L</b></span>
+              <span class="recon-metric-slice" data-recon-co="wtc" data-recon-chip="all" title="Click to filter WTC All Intakes"><small>Total Intake</small><b>${fmtNum(wtcFl.litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'flag' ? 'is-active' : ''}" data-recon-co="wtc" data-recon-chip="flag" title="Click to filter WTC Meter Guard Flags"><small>Guard Flags</small><b>${fmtNum(wtcFl.flags)}</b></span>
             </div>
           </div>
           <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
             <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>${fmtNum(bbcFl.n)} Fuel Tickets</b><span class="sales-recon-act">Filter BBC Only →</span></div>
             <div class="sales-recon-metrics">
-              <span><small>Diesel Issued</small><b class="brass">${fmtNum(bbcFl.diesel, 1)} L</b></span>
-              <span><small>Lubricants</small><b>${fmtNum(bbcFl.lube, 1)} L</b></span>
-              <span><small>Total Intake</small><b>${fmtNum(bbcFl.litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'diesel' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="diesel" title="Click to filter BBConstruction Diesel Intakes"><small>Diesel Issued</small><b class="brass">${fmtNum(bbcFl.diesel, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'lube' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="lube" title="Click to filter BBConstruction Lubricants"><small>Lubricants</small><b>${fmtNum(bbcFl.lube, 1)} L</b></span>
+              <span class="recon-metric-slice" data-recon-co="bbconstruction" data-recon-chip="all" title="Click to filter BBConstruction All Intakes"><small>Total Intake</small><b>${fmtNum(bbcFl.litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'flag' ? 'is-active' : ''}" data-recon-co="bbconstruction" data-recon-chip="flag" title="Click to filter BBConstruction Meter Guard Flags"><small>Guard Flags</small><b>${fmtNum(bbcFl.flags)}</b></span>
             </div>
           </div>
         </div>
@@ -7674,9 +7758,10 @@
               <button type="button" class="btn sales-recon-reset" data-jump-co="manufacturing-group">Show All Group (3)</button>
             </div>
             <div class="sales-recon-metrics">
-              <span><small>Diesel Issued</small><b class="brass">${fmtNum(dieselLitres, 1)} L</b></span>
-              <span><small>Lubricants</small><b>${fmtNum(lubeLitres, 1)} L</b></span>
-              <span><small>Total Intake</small><b>${fmtNum(litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'diesel' ? 'is-active' : ''}" data-recon-chip="diesel" title="Click to toggle Diesel filter"><small>Diesel Issued</small><b class="brass">${fmtNum(dieselLitres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'lube' ? 'is-active' : ''}" data-recon-chip="lube" title="Click to toggle Lubricants filter"><small>Lubricants</small><b>${fmtNum(lubeLitres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'all' ? 'is-active' : ''}" data-recon-chip="all" title="Click to show all intakes"><small>Total Intake</small><b>${fmtNum(litres, 1)} L</b></span>
+              <span class="recon-metric-slice ${STATE.chipFilter === 'flag' ? 'is-active' : ''}" data-recon-chip="flag" title="Click to toggle Meter Guard Flags filter"><small>Guard Flags</small><b>${fmtNum(flagged)}</b></span>
             </div>
           </div>
         </div>
@@ -7722,87 +7807,492 @@
         </div>
       </div>
 
-      <div class="split-grid-2">
-        <div class="panel-card" id="equipPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>EQUIPMENT RUNNING COSTS &amp; FLEET UTILIZATION (${fmtNum(equipRows.length)} ACTIVE UNITS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">${exportBtn('equipPanel', 'Equipment_Costs')}</span>
+      ${(window.MFG_PBI && typeof window.MFG_PBI.renderFuelVisualsSection === 'function')
+        ? window.MFG_PBI.renderFuelVisualsSection({ months: getScopedMonthly(m.monthly, 14), topUnits: fuelEffAll })
+        : ''}
+
+      <div class="panel-card" id="fuelEffPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>EQUIPMENT FUEL &amp; LUBRICANT EFFICIENCY — DIESEL, LUBRICANTS, KM RUN &amp; L / 100 KM (${fmtNum(fuelEffRows.length)} FUELED UNITS)</span></div>
+          <span class="panel-meta" style="display:flex;gap:6px;align-items:center">
+            <button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="fleet_equip">Fleet &amp; Running Costs →</button>
+            ${exportBtn('fuelEffPanel', 'Equipment_Fuel_Efficiency')}
+          </span>
+        </div>
+        ${renderColFilterBar('fueleff')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('fueleff', 'Equipment / Plate', 'Equipment')}${th('fueleff', 'Type', 'Type')}${th('fueleff', 'Ownership', 'Ownership')}${th('fueleff', 'Fills', 'fills', 'r')}
+                ${th('fueleff', 'Diesel (L)', 'diesel_litres', 'r')}${th('fueleff', 'Lubricants (L)', 'lube_litres', 'r')}${th('fueleff', 'Total (L)', 'total_litres', 'r')}
+                ${th('fueleff', 'Km Run', 'km_run', 'r')}${th('fueleff', 'L / 100 km', 'l_per_100km', 'r')}${th('fueleff', 'Guard Flags', 'flag_count', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownFuelEff.map(ef => `
+                <tr class="rrow" data-rkey="equipment" data-rid="${esc((equipInfo(ef.Equipment) || {}).id || ef.Equipment)}">
+                  <td class="mono">${relLink('equipment', ef.Equipment, ef.Equipment, true)}${appCell(equipInfo(ef.Equipment) || { id: ef.Equipment, name: ef.Equipment }, 'equipment')}</td>
+                  <td>${esc(ef.Type || 'Truck')}</td>
+                  <td><span class="badge ${isOwnEquip(ef) ? 'badge-ok' : 'badge-info'}">${esc(ef.Ownership || 'Transporter')}</span></td>
+                  <td class="r">${fmtNum(ef.fills)}</td>
+                  <td class="r">${fmtNum(ef.diesel_litres, 1)} L</td>
+                  <td class="r">${ef.lube_litres > 0 ? fmtNum(ef.lube_litres, 1) + ' L' : '—'}</td>
+                  <td class="r"><strong>${fmtNum(ef.total_litres, 1)} L</strong></td>
+                  <td class="r">${ef.km_run > 0 ? fmtNum(ef.km_run, 0) + ' km' : '—'}</td>
+                  <td class="r">${ef.l_per_100km != null && ef.l_per_100km > 0 ? `<strong>${fmtNum(ef.l_per_100km, 1)}</strong>` : '—'}</td>
+                  <td class="r">${ef.flag_count > 0 ? `<span class="badge badge-warn">${fmtNum(ef.flag_count)}</span>` : '<span class="badge badge-ok">● OK</span>'}</td>
+                </tr>
+              `).join('') || emptyRow(10, 'No fueled equipment units match the active filter')}
+              ${showMoreRow('fueleff', fuelEffRows.length, 10)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3"><b>TOTAL (${fmtNum(fuelEffRows.length)} FUELED UNITS)</b></td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.fills || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.diesel_litres || 0), 0), 1)} L</b></td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.lube_litres || 0), 0), 1)} L</b></td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.total_litres || 0), 0), 1)} L</b></td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.km_run || 0), 0), 0)} km</b></td>
+                <td class="r">—</td>
+                <td class="r"><b>${fmtNum(fuelEffRows.reduce((a, r) => a + Number(r.flag_count || 0), 0))}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFleetEquipment() {
+    const k = getKPI();
+    const m = getModel();
+    const isOwnEquip = e => /^own/i.test(String((e && (e.Ownership || e.ownership)) || ''));
+    const isTruckEquip = e => /truck/i.test(String((e && (e.Type || e.type)) || 'Truck'));
+    const equipAll = m.equipment || [];
+    const ownCount = equipAll.filter(isOwnEquip).length;
+    const transCount = equipAll.length - ownCount;
+    const equipBase = equipAll.filter(e => !STATE.search || Object.values(e).join(' ').toLowerCase().includes(STATE.search.toLowerCase()));
+    const equipRows = sortRows(equipBase.filter(e => {
+      if (STATE.chipFilter === 'own') return isOwnEquip(e);
+      if (STATE.chipFilter === 'transporter') return !isOwnEquip(e);
+      if (STATE.chipFilter === 'truck') return isTruckEquip(e);
+      if (STATE.chipFilter === 'machinery') return !isTruckEquip(e);
+      if (STATE.chipFilter === 'cost') return Number(e.total_cost || 0) > 0;
+      if (STATE.chipFilter === 'diesel') return Number(e.diesel_litres || 0) > 0;
+      if (STATE.chipFilter === 'app') {
+        const eqRec = equipInfo(e.Equipment);
+        return isAppRecord(e) || Boolean(eqRec && isAppRecord(eqRec));
+      }
+      return true;
+    }), 'equip', 'total_cost', 'desc');
+    const shownEquip = equipRows.slice(0, shownCount('equip'));
+
+    const coEqBase = filterRecords(SEED.records.company_equipment || [], { ignorePeriod: true });
+    const activeCoEqCount = coEqBase.filter(ce => /active/i.test(ce.status || 'Active') && !ce.end_date).length;
+    const coEquipRows = sortRows(coEqBase.filter(ce => {
+      if (STATE.chipFilter === 'own') return /^own/i.test(ce.ownership || '');
+      if (STATE.chipFilter === 'transporter') return !/^own/i.test(ce.ownership || '');
+      if (STATE.chipFilter === 'app') return isAppRecord(ce);
+      return true;
+    }), 'coeq', 'loads_hauled', 'desc');
+
+    const ownPct = equipAll.length > 0 ? (ownCount / equipAll.length) * 100 : 0;
+    const sumEqRunning = equipAll.reduce((a, r) => a + Number(r.running_cost || 0), 0);
+    const sumEqDriver = equipAll.reduce((a, r) => a + Number(r.driver_cost || 0), 0);
+    const sumEqTotal = equipAll.reduce((a, r) => a + Number(r.total_cost || 0), 0);
+    const runSharePct = sumEqTotal > 0 ? (sumEqRunning / sumEqTotal) * 100 : 50;
+    const activeCostUnits = equipAll.filter(e => Number(e.total_cost || 0) > 0 || Number(e.trips || 0) > 0 || Number(e.diesel_litres || 0) > 0);
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">EQUIPMENT UTILIZATION, RUNNING COSTS, COST PER TON &amp; BU ASSIGNMENTS</div>
+          <div class="cockpit-title">Fleet &amp; Running Costs</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'Unit Hauling Efficiency',
+            badge: `Cost / m³: ${fmtUSD(k.cost_per_unit, 2)}`,
+            badgeCls: 'emerald',
+            val: `${fmtUSD(k.cost_per_ton, 2)} <small>/ ton</small>`,
+            valCls: 'emerald',
+            sub: `Across <b>${fmtNum(k.active_equip)}</b> active units · <b>${fmtNum(k.own_fleet_loads || 0)}</b> company-fleet loads`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'Total Fleet Running Cost',
+            badge: `Running ${fmtUSDk(sumEqRunning)} · Driver ${fmtUSDk(sumEqDriver)}`,
+            badgeCls: 'brass',
+            val: fmtUSD(k.total_equip_cost || sumEqTotal, 0),
+            valCls: 'brass',
+            pct: runSharePct,
+            pct2: 100 - runSharePct,
+            sub: `Fuel, tires &amp; repairs <b>${fmtUSD(sumEqRunning, 0)}</b> · Allocated driver pay <b>${fmtUSD(sumEqDriver, 0)}</b>`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Fleet Ownership Mix',
+            badge: `${ownCount} Own · ${transCount} Hauler`,
+            val: `${ownPct.toFixed(1)}% <small>Own Fleet</small>`,
+            pct: ownPct,
+            pct2: 100 - ownPct,
+            sub: `<span class="insight-drill ${STATE.chipFilter === 'own' ? 'is-active' : ''}" data-chip="own">Company units: <b>${fmtNum(ownCount)}</b></span> · <span class="insight-drill ${STATE.chipFilter === 'transporter' ? 'is-active' : ''}" data-chip="transporter">3rd-party haulers: <b>${fmtNum(transCount)}</b></span>`,
+            tone: 'steel'
+          })}
+          ${insightCard({
+            label: 'BU Fleet & Driver Assignments',
+            badge: `${fmtNum(activeCoEqCount)} Active Windows`,
+            badgeCls: 'emerald',
+            val: `<span class="insight-drill" data-scroll-panel="coFleetAssignPanel" title="Click to jump to BU Company-Equipment &amp; Driver Assignment Windows">${fmtNum(coEquipRows.length)} <small>Assignments ↘</small></span>`,
+            valCls: 'emerald',
+            pct: coEqBase.length > 0 ? (activeCoEqCount / coEqBase.length) * 100 : 100,
+            sub: `Dated equipment-driver windows locking Sales, Raw &amp; Fuel tickets`,
+            tone: 'emerald'
+          })}
+          ${appPill('company_equipment', null, 'assignments')}
+        </div>
+      </div>
+
+      <div class="panel-card" id="equipPanel">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search equipment, plate, type, ownership...')}
+            <div class="chip-bar">${chip('all', `All Units (${equipBase.length})`)}${chip('own', `Own Fleet (${ownCount})`)}${chip('transporter', `Haulers (${transCount})`)}${chip('truck', 'Trucks')}${chip('machinery', 'Machinery')}${chip('cost', 'With Cost')}${chip('diesel', 'With Fuel')}${chip('app', 'App-entered')}</div>
           </div>
-          ${renderColFilterBar('equip')}
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="reg_equipment">Equipment &amp; Drivers (All BUs) →</button>
+            ${exportBtn('equipPanel', 'Equipment_Costs')}
+            ${canEnterForm('companyequipment') ? '<button class="btn btn-primary" data-open-modal="companyequipment">+ New Company Fleet Unit</button>' : ''}
+          </div>
+        </div>
+        ${renderColFilterBar('equip')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('equip', 'Equipment / Plate', 'Equipment')}${th('equip', 'Type', 'Type')}${th('equip', 'Ownership', 'Ownership')}${th('equip', 'Trips', 'trips', 'r')}${th('equip', 'Sales Loads', 'loads', 'r')}${th('equip', 'Raw Loads', 'raw_loads', 'r')}
+                ${th('equip', 'Diesel (L)', 'diesel_litres', 'r')}${th('equip', 'Km Run', 'km_run', 'r')}${th('equip', 'Running ($)', 'running_cost', 'r')}${th('equip', 'Driver ($)', 'driver_cost', 'r')}${th('equip', 'Total Cost', 'total_cost', 'r')}${th('equip', '$/Ton', 'cost_per_ton', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownEquip.map(e => `
+                <tr class="rrow" data-rkey="equipment" data-rid="${esc((equipInfo(e.Equipment) || {}).id || e.Equipment)}">
+                  <td class="mono">${relLink('equipment', e.Equipment, e.Equipment, true)}${appCell(equipInfo(e.Equipment) || { id: e.Equipment, name: e.Equipment }, 'equipment')}</td>
+                  <td>${esc(e.Type || 'Truck')}</td>
+                  <td><span class="badge ${e.Ownership === 'Owned' || e.Ownership === 'Own' ? 'badge-ok' : 'badge-info'}">${esc(e.Ownership || 'Transporter')}</span></td>
+                  <td class="r">${fmtNum(e.trips)}</td>
+                  <td class="r">${fmtNum(e.loads)}</td>
+                  <td class="r">${fmtNum(e.raw_loads)}</td>
+                  <td class="r">${fmtNum(e.diesel_litres, 0)}</td>
+                  <td class="r">${fmtNum(e.km_run, 0)}</td>
+                  <td class="r">${fmtUSD(e.running_cost, 0)}</td>
+                  <td class="r">${fmtUSD(e.driver_cost, 0)}</td>
+                  <td class="r"><strong>${fmtUSD(e.total_cost, 0)}</strong></td>
+                  <td class="r">${e.cost_per_ton ? fmtUSD(e.cost_per_ton, 2) : '—'}</td>
+                </tr>
+              `).join('') || emptyRow(12, 'No equipment cost rows for this entity')}
+              ${showMoreRow('equip', equipRows.length, 12)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3"><b>TOTAL (${fmtNum(equipRows.length)} ACTIVE UNITS)</b></td>
+                <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.loads || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.raw_loads || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.diesel_litres || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.km_run || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.running_cost || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.driver_cost || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.total_cost || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(k.cost_per_ton, 2)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      ${(window.MFG_PBI && typeof window.MFG_PBI.renderFleetEconVisualsSection === 'function')
+        ? window.MFG_PBI.renderFleetEconVisualsSection({ months: getScopedMonthly(m.monthly, 14), activeUnits: activeCostUnits })
+        : ''}
+
+      <div class="panel-card" id="coFleetAssignPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>BU COMPANY-EQUIPMENT &amp; DRIVER ASSIGNMENT WINDOWS (${fmtNum(coEquipRows.length)} ASSIGNMENTS)</span></div>
+          <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_equipment">Universal Equipment Registry →</button>${exportBtn('coFleetAssignPanel', 'BU_Company_Equipment')}${canEnterForm('companyequipment') ? '<button class="btn btn-primary" data-open-modal="companyequipment">+ New Company Fleet Unit</button>' : ''}</span>
+        </div>
+        ${renderColFilterBar('coeq')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('coeq', 'Equipment / Plate', 'equipment')}${th('coeq', 'Co.', 'company')}${th('coeq', 'Ownership', 'ownership')}${th('coeq', 'Status', 'status')}
+                ${th('coeq', 'Default Driver', 'default_driver')}${th('coeq', 'Day Operator', 'day_operator')}${th('coeq', 'Site', 'site')}${th('coeq', 'Start Date', 'start_date')}${th('coeq', 'End Date', 'end_date')}
+              </tr>
+            </thead>
+            <tbody>
+              ${coEquipRows.slice(0, shownCount('coeq')).map(ce => `
+                <tr class="rrow" data-rkey="company_equipment" data-rid="${esc(ce.id || ce.equipment)}">
+                  <td class="mono">${relLink('equipment', ce.equipment, ce.equipment, true)}${appCell(ce, 'company_equipment')}</td>
+                  <td>${coBadge(ce.company)}</td>
+                  <td><span class="badge ${/^own/i.test(ce.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(ce.ownership || 'Owned')}</span></td>
+                  <td><span class="badge ${/active/i.test(ce.status || 'Active') && !ce.end_date ? 'badge-ok' : 'badge-warn'}">${esc(ce.status || 'Active')}</span></td>
+                  <td>${ce.default_driver ? relLink('drivers', ce.default_driver) : '—'}</td>
+                  <td>${ce.day_operator ? relLink('drivers', ce.day_operator) : '—'}</td>
+                  <td>${ce.site ? relLink('sites', ce.site) : '—'}</td>
+                  <td class="mono">${esc(fmtDateDMY(ce.start_date))}</td>
+                  <td class="mono">${ce.end_date ? esc(fmtDateDMY(ce.end_date)) : '—'}</td>
+                </tr>
+              `).join('') || emptyRow(9, 'No BU company-equipment assignments match the active filter')}
+              ${showMoreRow('coeq', coEquipRows.length, 9)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4"><b>TOTAL (${fmtNum(coEquipRows.length)} BU FLEET ASSIGNMENTS)</b></td>
+                <td colspan="5"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFleetDrivers() {
+    const k = getKPI();
+    const m = getModel();
+    const { fleet } = sentinelSlice();
+    const salesRows = filterRecords(SEED.records.sales_tickets, { ignoreSearch: true });
+    const rawRows = filterRecords(SEED.records.raw_purchases, { ignoreSearch: true });
+    const coDriversBase = filterRecords(SEED.records.company_drivers || [], { ignorePeriod: true });
+    const coDriverSet = new Set(coDriversBase.map(cd => norm(cd.driver)));
+    const drvMap = new Map();
+    salesRows.concat(rawRows).forEach(t => {
+      const dName = t.driver || '';
+      if (!dName) return;
+      const isCoDrv = coDriverSet.has(norm(dName)) ? 'Yes' : 'No';
+      const cur = drvMap.get(dName) || { driver: dName, is_company: isCoDrv, trips: 0, sales_trips: 0, raw_trips: 0, fleet_trips: 0, ot_trips: 0, ot_bonus: 0, qty: 0, trucks: new Set() };
+      cur.trips += 1;
+      if (t.sale_type) cur.sales_trips += 1;
+      else cur.raw_trips += 1;
+      if (t.transport_by === 'Company fleet') cur.fleet_trips += 1;
+      if (t.overtime) {
+        cur.ot_trips += 1;
+        cur.ot_bonus += 7;
+      }
+      cur.qty += Number(t.qty || 0);
+      if (t.truck) cur.trucks.add(t.truck);
+      drvMap.set(dName, cur);
+    });
+    const drvAll = Array.from(drvMap.values()).map(d => ({
+      ...d,
+      trucksStr: Array.from(d.trucks).slice(0, 3).join(', ')
+    }));
+    const qDrv = STATE.search.trim().toLowerCase();
+    const drvBase = drvAll.filter(d => !qDrv || `${d.driver} ${d.trucksStr} ${d.is_company}`.toLowerCase().includes(qDrv));
+    const drvRows = sortRows(drvBase.filter(d => {
+      if (STATE.chipFilter === 'company') return d.is_company === 'Yes';
+      if (STATE.chipFilter === 'third') return d.is_company !== 'Yes';
+      if (STATE.chipFilter === 'ot') return d.ot_trips > 0;
+      if (STATE.chipFilter === 'fleet') return d.fleet_trips > 0;
+      return true;
+    }), 'drvot', 'trips', 'desc');
+    const shownDrv = drvRows.slice(0, shownCount('drvot'));
+
+    const coDriversRows = sortRows(filterRecords(SEED.records.company_drivers || [], { ignorePeriod: true }), 'codrv', 'driver', 'asc');
+    const otRateRows = sortRows(filterRecords(SEED.records.overtime_rates || [], { ignorePeriod: true }), 'otrate', 'start_date', 'desc');
+
+    let totalDrvTrips = 0, totalSalesTrips = 0, totalRawTrips = 0, totalFleetTrips = 0, totalOtTrips = 0, totalOtBonus = 0, coDrvTrips = 0;
+    drvAll.forEach(d => {
+      totalDrvTrips += d.trips;
+      totalSalesTrips += d.sales_trips;
+      totalRawTrips += d.raw_trips;
+      totalFleetTrips += d.fleet_trips;
+      totalOtTrips += d.ot_trips;
+      totalOtBonus += d.ot_bonus;
+      if (d.is_company === 'Yes') coDrvTrips += d.trips;
+    });
+    const coDrvActiveCount = drvAll.filter(d => d.is_company === 'Yes').length;
+    const otDrvCount = drvAll.filter(d => d.ot_trips > 0).length;
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">DRIVER DISPATCH VOLUME, SHIFT SPLIT &amp; COMPANY-FLEET OVERTIME BONUS</div>
+          <div class="cockpit-title">Drivers &amp; Overtime</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'Overtime Bonus Accrued',
+            badge: `${fmtNum(totalOtTrips)} Night OT Trips`,
+            badgeCls: 'brass',
+            badgeChip: 'ot',
+            val: `<span class="insight-drill ${STATE.chipFilter === 'ot' ? 'is-active' : ''}" data-chip="ot" title="Click to filter drivers with Night Overtime">${fmtUSD(k.overtime_bonus || totalOtBonus, 0)}</span>`,
+            valCls: 'brass',
+            pct: totalDrvTrips > 0 ? Math.max(12, (totalOtTrips / totalDrvTrips) * 100 * 3) : 20,
+            sub: `Sales night OT <b>${fmtUSD(fleet.sales_overtime_bonus_usd || 0, 0)}</b> · Raw night OT <b>${fmtUSD(fleet.raw_overtime_bonus_usd || 0, 0)}</b>`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Dispatched Driver Trips',
+            badge: `${fmtNum(drvAll.length)} Active Drivers`,
+            badgeCls: 'emerald',
+            val: `${fmtNum(totalDrvTrips)} <small>Trips</small>`,
+            valCls: 'emerald',
+            pct: totalDrvTrips > 0 ? (totalSalesTrips / totalDrvTrips) * 100 : 50,
+            pct2: totalDrvTrips > 0 ? (totalRawTrips / totalDrvTrips) * 100 : 50,
+            sub: `Sales deliveries <b>${fmtNum(totalSalesTrips)}</b> · Raw material hauls <b>${fmtNum(totalRawTrips)}</b>`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'Company vs. Hauler Drivers',
+            badge: '3rd-Party OT: $0.00',
+            badgeCls: 'emerald',
+            val: `${fmtNum(coDrvActiveCount)} <small>Co. Drivers</small>`,
+            pct: drvAll.length > 0 ? (coDrvActiveCount / drvAll.length) * 100 : 25,
+            pct2: drvAll.length > 0 ? ((drvAll.length - coDrvActiveCount) / drvAll.length) * 100 : 75,
+            sub: `<span class="insight-drill ${STATE.chipFilter === 'company' ? 'is-active' : ''}" data-chip="company">Company: <b>${fmtNum(coDrvTrips)} trips</b></span> · <span class="insight-drill ${STATE.chipFilter === 'third' ? 'is-active' : ''}" data-chip="third">Haulers: <b>${fmtNum(totalDrvTrips - coDrvTrips)} trips</b></span>`,
+            tone: 'steel'
+          })}
+          ${insightCard({
+            label: 'Overtime Rules & BU Roster',
+            badge: `${fmtNum(otRateRows.length)} Rate Rules`,
+            val: `<span class="insight-drill" data-scroll-panel="coDriversPanel" title="Click to jump to BU Company-Driver Roster &amp; Regional OT Rates">${fmtNum(coDriversRows.length)} <small>BU Drivers ↘</small></span>`,
+            pct: 100,
+            sub: `Company-fleet loads outside 06:00–17:59 · Unattributed pay: <b>${fmtUSD(fleet.unallocated_driver_payroll_usd || 0, 0)}</b>`,
+            tone: 'steel'
+          })}
+          ${appPill('overtime_rates', 'amount', 'OT rules')}
+        </div>
+      </div>
+
+      <div class="panel-card" id="driversOtPanel">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search driver, assigned truck, company status...')}
+            <div class="chip-bar">${chip('all', `All Drivers (${drvBase.length})`)}${chip('company', `Company Drivers (${coDrvActiveCount})`)}${chip('third', `3rd-Party (${Math.max(0, drvBase.length - coDrvActiveCount)})`)}${chip('ot', `With Overtime (${otDrvCount})`)}${chip('fleet', 'Own-Fleet Hauls')}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="reg_drivers">Drivers Registry (All BUs) →</button>
+            ${exportBtn('driversOtPanel', 'Drivers_Overtime')}
+            ${canEnterForm('triprate') ? '<button class="btn btn-primary" data-open-modal="triprate">+ New Overtime Rate</button>' : ''}
+          </div>
+        </div>
+        ${renderColFilterBar('drvot')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('drvot', 'Driver', 'driver')}${th('drvot', 'Company Driver', 'is_company')}${th('drvot', 'Assigned Trucks', 'trucksStr')}
+                ${th('drvot', 'Total Trips', 'trips', 'r')}${th('drvot', 'Sales Trips', 'sales_trips', 'r')}${th('drvot', 'Raw Trips', 'raw_trips', 'r')}
+                ${th('drvot', 'Own-Fleet Trips', 'fleet_trips', 'r')}${th('drvot', 'OT Trips', 'ot_trips', 'r')}${th('drvot', 'OT Bonus ($)', 'ot_bonus', 'r')}${th('drvot', 'Qty Hauled', 'qty', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownDrv.map(d => `
+                <tr class="rrow" data-rkey="drivers" data-rid="${esc((driverInfo(d.driver) || {}).id || d.driver)}">
+                  <td><strong>${relLink('drivers', d.driver, d.driver, true)}</strong></td>
+                  <td><span class="badge ${d.is_company === 'Yes' ? 'badge-ok' : 'badge-info'}">${esc(d.is_company)}</span></td>
+                  <td class="mono">${d.trucksStr ? esc(d.trucksStr) : '—'}</td>
+                  <td class="r"><strong>${fmtNum(d.trips)}</strong></td>
+                  <td class="r">${fmtNum(d.sales_trips)}</td>
+                  <td class="r">${fmtNum(d.raw_trips)}</td>
+                  <td class="r">${fmtNum(d.fleet_trips)}</td>
+                  <td class="r">${d.ot_trips > 0 ? `<span class="badge badge-warn">${fmtNum(d.ot_trips)}</span>` : '0'}</td>
+                  <td class="r">${d.ot_bonus > 0 ? `<strong>${fmtUSD(d.ot_bonus, 0)}</strong>` : '—'}</td>
+                  <td class="r">${fmtNum(d.qty, 0)}</td>
+                </tr>
+              `).join('') || emptyRow(10, 'No driver dispatch rows match the active filter')}
+              ${showMoreRow('drvot', drvRows.length, 10)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3"><b>TOTAL (${fmtNum(drvRows.length)} DRIVERS)</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.sales_trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.raw_trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.fleet_trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.ot_trips || 0), 0))}</b></td>
+                <td class="r"><b>${fmtUSD(drvRows.reduce((a, d) => a + Number(d.ot_bonus || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtNum(drvRows.reduce((a, d) => a + Number(d.qty || 0), 0), 0)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      ${(window.MFG_PBI && typeof window.MFG_PBI.renderDriversVisualsSection === 'function')
+        ? window.MFG_PBI.renderDriversVisualsSection({ months: getScopedMonthly(m.monthly, 14), drvList: drvAll })
+        : ''}
+
+      <div class="split-grid-2">
+        <div class="panel-card" id="coDriversPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>BU COMPANY-DRIVER ROSTER &amp; PAYROLL LINKS (${fmtNum(coDriversRows.length)} COMPANY DRIVERS)</span></div>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">${exportBtn('coDriversPanel', 'BU_Company_Drivers')}${canEnterForm('driver') ? '<button class="btn btn-primary" data-open-modal="driver">+ New Driver</button>' : ''}</span>
+          </div>
+          ${renderColFilterBar('codrv')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('equip', 'Equipment / Plate', 'Equipment')}${th('equip', 'Type', 'Type')}${th('equip', 'Ownership', 'Ownership')}${th('equip', 'Trips', 'trips', 'r')}${th('equip', 'Diesel (L)', 'diesel_litres', 'r')}
-                  ${th('equip', 'Km Run', 'km_run', 'r')}${th('equip', 'Running ($)', 'running_cost', 'r')}${th('equip', 'Driver ($)', 'driver_cost', 'r')}${th('equip', 'Total Cost', 'total_cost', 'r')}${th('equip', '$/Ton', 'cost_per_ton', 'r')}
+                  ${th('codrv', 'Driver', 'driver')}${th('codrv', 'Co.', 'company')}${th('codrv', 'Staff Member (Payroll)', 'staff')}${th('codrv', 'Start Date', 'start_date')}${th('codrv', 'End Date', 'end_date')}
                 </tr>
               </thead>
               <tbody>
-                ${shownEquip.map(e => `
-                  <tr class="rrow" data-rkey="equipment" data-rid="${esc((equipInfo(e.Equipment) || {}).id || e.Equipment)}">
-                    <td class="mono">${relLink('equipment', e.Equipment, e.Equipment, true)}${appCell(equipInfo(e.Equipment) || { id: e.Equipment, name: e.Equipment }, 'equipment')}</td>
-                    <td>${esc(e.Type || 'Truck')}</td>
-                    <td><span class="badge ${e.Ownership === 'Owned' || e.Ownership === 'Own' ? 'badge-ok' : 'badge-info'}">${esc(e.Ownership || 'Transporter')}</span></td>
-                    <td class="r">${fmtNum(e.trips)}</td>
-                    <td class="r">${fmtNum(e.diesel_litres, 0)}</td>
-                    <td class="r">${fmtNum(e.km_run, 0)}</td>
-                    <td class="r">${fmtUSD(e.running_cost, 0)}</td>
-                    <td class="r">${fmtUSD(e.driver_cost, 0)}</td>
-                    <td class="r"><strong>${fmtUSD(e.total_cost, 0)}</strong></td>
-                    <td class="r">${e.cost_per_ton ? fmtUSD(e.cost_per_ton, 2) : '—'}</td>
+                ${coDriversRows.slice(0, shownCount('codrv')).map(cd => `
+                  <tr class="rrow" data-rkey="company_drivers" data-rid="${esc(cd.id || cd.driver)}">
+                    <td><strong>${relLink('drivers', cd.driver, cd.driver, true)}</strong>${appCell(cd, 'company_drivers')}</td>
+                    <td>${coBadge(cd.company)}</td>
+                    <td>${cd.staff ? relLink('employments', cd.staff) : '—'}</td>
+                    <td class="mono">${cd.start_date ? esc(fmtDateDMY(cd.start_date)) : '—'}</td>
+                    <td class="mono">${cd.end_date ? esc(fmtDateDMY(cd.end_date)) : '—'}</td>
                   </tr>
-                `).join('') || emptyRow(10, 'No equipment cost rows for this entity')}
-                ${showMoreRow('equip', equipRows.length, 10)}
+                `).join('') || emptyRow(5, 'No BU company-driver rows match the active filter')}
+                ${showMoreRow('codrv', coDriversRows.length, 5)}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3"><b>TOTAL (${fmtNum(equipRows.length)} ACTIVE UNITS)</b></td>
-                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.trips || 0), 0))}</b></td>
-                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.diesel_litres || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtNum(equipRows.reduce((a, e) => a + Number(e.km_run || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.running_cost || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.driver_cost || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(equipRows.reduce((a, e) => a + Number(e.total_cost || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(k.cost_per_ton, 2)}</b></td>
+                  <td colspan="5"><b>TOTAL (${fmtNum(coDriversRows.length)} BU COMPANY DRIVERS)</b></td>
                 </tr>
               </tfoot>
             </table>
           </div>
         </div>
 
-        <div class="panel-card" id="coFleetAssignPanel">
+        <div class="panel-card" id="otRatesPanel">
           <div class="panel-head">
-            <div class="panel-title"><span>BU COMPANY-EQUIPMENT ASSIGNMENTS (${fmtNum(coEquipRows.length)} ASSIGNMENTS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_equipment">Universal Equipment Registry →</button>${exportBtn('coFleetAssignPanel', 'BU_Company_Equipment')}${canEnterForm('companyequipment') ? '<button class="btn btn-primary" data-open-modal="companyequipment">+ New Company Fleet Unit</button>' : ''}</span>
+            <div class="panel-title"><span>OVERTIME ALLOWANCE RATES BY REGION (${fmtNum(otRateRows.length)} RULES)</span></div>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">${exportBtn('otRatesPanel', 'Overtime_Rates')}${canEnterForm('triprate') ? '<button class="btn btn-primary" data-open-modal="triprate">+ New Overtime Rate</button>' : ''}</span>
           </div>
-          ${renderColFilterBar('coeq')}
+          ${renderColFilterBar('otrate')}
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('coeq', 'Equipment / Plate', 'equipment')}${th('coeq', 'Co.', 'company')}${th('coeq', 'Ownership', 'ownership')}${th('coeq', 'Status', 'status')}
-                  ${th('coeq', 'Default Driver', 'default_driver')}${th('coeq', 'Day Operator', 'day_operator')}${th('coeq', 'Site', 'site')}${th('coeq', 'Start Date', 'start_date')}
+                  ${th('otrate', 'Rule Name', 'name')}${th('otrate', 'Co.', 'company')}${th('otrate', 'Region', 'region')}${th('otrate', 'Rate / Trip ($)', 'amount', 'r')}${th('otrate', 'Start Date', 'start_date')}${th('otrate', 'End Date', 'end_date')}
                 </tr>
               </thead>
               <tbody>
-                ${coEquipRows.slice(0, shownCount('coeq')).map(ce => `
-                  <tr class="rrow" data-rkey="company_equipment" data-rid="${esc(ce.id || ce.equipment)}">
-                    <td class="mono">${relLink('equipment', ce.equipment, ce.equipment, true)}${appCell(ce, 'company_equipment')}</td>
-                    <td>${coBadge(ce.company)}</td>
-                    <td><span class="badge ${/^own/i.test(ce.ownership || '') ? 'badge-ok' : 'badge-info'}">${esc(ce.ownership || 'Owned')}</span></td>
-                    <td><span class="badge ${/active/i.test(ce.status || 'Active') && !ce.end_date ? 'badge-ok' : 'badge-warn'}">${esc(ce.status || 'Active')}</span></td>
-                    <td>${ce.default_driver ? relLink('drivers', ce.default_driver) : '—'}</td>
-                    <td>${ce.day_operator ? relLink('drivers', ce.day_operator) : '—'}</td>
-                    <td>${ce.site ? relLink('sites', ce.site) : '—'}</td>
-                    <td class="mono">${esc(fmtDateDMY(ce.start_date))}</td>
+                ${otRateRows.slice(0, shownCount('otrate')).map(or => `
+                  <tr class="rrow" data-rkey="overtime_rates" data-rid="${esc(or.id || or.name)}">
+                    <td class="mono"><strong>${esc(or.name || '—')}</strong>${appCell(or, 'overtime_rates')}</td>
+                    <td>${coBadge(or.company)}</td>
+                    <td>${or.region ? relLink('regions', or.region) : '—'}</td>
+                    <td class="r"><strong>${fmtUSD(or.amount != null ? or.amount : or.usd_amount, 2)}</strong></td>
+                    <td class="mono">${or.start_date ? esc(fmtDateDMY(or.start_date)) : '—'}</td>
+                    <td class="mono">${or.end_date ? esc(fmtDateDMY(or.end_date)) : '—'}</td>
                   </tr>
-                `).join('') || emptyRow(8, 'No BU company-equipment assignments match the active filter')}
-                ${showMoreRow('coeq', coEquipRows.length, 8)}
+                `).join('') || emptyRow(6, 'No regional overtime rate rules match the active filter')}
+                ${showMoreRow('otrate', otRateRows.length, 6)}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="4"><b>TOTAL (${fmtNum(coEquipRows.length)} BU FLEET ASSIGNMENTS)</b></td>
-                  <td colspan="4"></td>
+                  <td colspan="3"><b>TOTAL (${fmtNum(otRateRows.length)} OVERTIME RULES)</b></td>
+                  <td class="r"><b><span class="tfoot-avg-tag">Avg </span>${fmtUSD(otRateRows.length ? otRateRows.reduce((a, r) => a + Number(r.amount != null ? r.amount : r.usd_amount || 0), 0) / otRateRows.length : 0, 2)}</b></td>
+                  <td colspan="2"></td>
                 </tr>
               </tfoot>
             </table>
@@ -8688,7 +9178,7 @@
         <div class="panel-card" id="supPanel">
           <div class="panel-head">
             <div class="panel-title"><span>SUPPLIER &amp; HAULER 3-LEG AP BALANCES (${fmtNum(sups.length)} SUPPLIERS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_suppliers">Universal Suppliers Registry →</button>${exportBtn('supPanel', 'AP_Legs')}</span>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="expenses">Expense Vouchers →</button><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_suppliers">Universal Suppliers Registry →</button>${exportBtn('supPanel', 'AP_Legs')}</span>
           </div>
           ${renderColFilterBar('sups')}
           <div class="table-wrap">
@@ -8727,6 +9217,56 @@
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_on_credit || 0), 0), 0)}</b></td>
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(hasApRange ? (s.settlements_paid || 0) : (s.ap_settled != null ? s.ap_settled : (s.settlements_paid || 0))), 0), 0)}</b></td>
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_balance || 0), 0), 2)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="apLegBridgePanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>3-LEG ACCOUNTS PAYABLE ARCHITECTURE &amp; COUNTERPARTY ROLE SUMMARY</span></div>
+            <span class="panel-meta">${exportBtn('apLegBridgePanel', 'AP_3Leg_Architecture')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>Payable Leg</th><th>Counterparty Role</th><th>Source Ledger</th><th class="r">Active Payees</th><th class="r">Credit Accrued ($)</th><th class="r">% Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge badge-brass">Leg 1 · Material</span></td>
+                  <td>Quarry &amp; Site Owners</td>
+                  <td><button type="button" class="btn btn-ghost-bar" style="padding:2px 8px;font-size:11px" data-nav-jump="raw">Material &amp; Transportation →</button></td>
+                  <td class="r">${fmtNum(matLegSupSet.size)}</td>
+                  <td class="r"><strong>${fmtUSD(k.ap_material, 2)}</strong></td>
+                  <td class="r">${matLegPct.toFixed(1)}%</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">Leg 2 · Haulage</span></td>
+                  <td>3rd-Party Truck Owners ($0 Own Fleet)</td>
+                  <td><button type="button" class="btn btn-ghost-bar" style="padding:2px 8px;font-size:11px" data-nav-jump="raw">3rd-Party Haulage →</button></td>
+                  <td class="r">${fmtNum(haulLegSupSet.size)}</td>
+                  <td class="r"><strong>${fmtUSD(k.ap_haulage, 2)}</strong></td>
+                  <td class="r">${haulLegPct.toFixed(1)}%</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-ok">Leg 3 · Expenses</span></td>
+                  <td>Parts, Maintenance &amp; Overhead Vendors</td>
+                  <td><button type="button" class="btn btn-ghost-bar" style="padding:2px 8px;font-size:11px" data-nav-jump="expenses">Expenses &amp; Overhead →</button></td>
+                  <td class="r">${fmtNum(expLegSupSet.size)}</td>
+                  <td class="r"><strong>${fmtUSD(k.ap_expense, 2)}</strong></td>
+                  <td class="r">${expLegPct.toFixed(1)}%</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL 3-LEG AP ACCRUED · Settled ${fmtUSD(k.settlements_paid, 0)} · Net Open AP ${fmtUSD(k.ap_balance, 2)}</b></td>
+                  <td class="r"><b>${fmtNum(sups.length)}</b></td>
+                  <td class="r"><b>${fmtUSD(Number(k.ap_material || 0) + Number(k.ap_haulage || 0) + Number(k.ap_expense || 0), 2)}</b></td>
+                  <td class="r"><b>100.0%</b></td>
                 </tr>
               </tfoot>
             </table>
@@ -8798,6 +9338,34 @@
     });
     const expCatRows = sortRows(Array.from(catAggMap.values()), 'exp_cat', 'total', 'desc');
     const shownExpCat = expCatRows.slice(0, shownCount('exp_cat'));
+    const expSupMap = new Map();
+    expRows.forEach(r => {
+      const sgn = expenseSign(r);
+      if (sgn === 0) return;
+      const a = sgn * Number(r.amount || 0);
+      const isCr = isCreditExpense(r);
+      const sName = String(r.supplier || '(Direct Cash / Petty Cash)').trim() || '(Direct Cash / Petty Cash)';
+      const sk = norm(sName);
+      if (!expSupMap.has(sk)) {
+        const si = sName.startsWith('(') ? null : supplierInfo(sName);
+        expSupMap.set(sk, {
+          id: (si && si.id) || sName,
+          supplier: sName,
+          vouchers: 0,
+          unit_tagged: 0,
+          cash: 0,
+          credit: 0,
+          total: 0
+        });
+      }
+      const sg = expSupMap.get(sk);
+      sg.vouchers += 1;
+      if (r.equipment) sg.unit_tagged += 1;
+      if (isCr) sg.credit += a; else sg.cash += a;
+      sg.total += a;
+    });
+    const expVendorRows = sortRows(Array.from(expSupMap.values()), 'exp_sup', 'total', 'desc');
+    const shownExpVendors = expVendorRows.slice(0, shownCount('exp_sup'));
     const wtcEx = byCoExp.WTC;
     const bbcEx = byCoExp.BBConstruction;
     const isGroupScope = STATE.company === 'manufacturing-group';
@@ -8951,6 +9519,7 @@
           <div class="panel-head">
             <div class="panel-title"><span>EXPENSE BREAKDOWN BY CATEGORY &amp; COST CLASS (${fmtNum(expCatRows.length)} CATEGORIES)</span></div>
             <span class="panel-meta" style="display:flex;gap:6px;align-items:center">
+              <button type="button" class="btn btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="suppliers">3-Leg AP Sub-Ledger →</button>
               <button type="button" class="btn btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="reg_categories">Universal Expense Categories →</button>
               ${exportBtn('expCatPanel', 'Expense_Categories_Summary')}
             </span>
@@ -8984,6 +9553,54 @@
               <tfoot>
                 <tr>
                   <td colspan="2"><b>TOTAL (${fmtNum(expCatRows.length)} CATEGORIES)</b></td>
+                  <td class="r"><b>${fmtNum(expRows.length)}</b></td>
+                  <td class="r"><b>${fmtNum(equipLinkedCount)}</b></td>
+                  <td class="r"><b>${fmtUSD(sumCashExp, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(sumCredExp, 2)}</b></td>
+                  <td class="r"><b>${fmtUSD(sumExp, 2)}</b></td>
+                  <td class="r"><b>100.0%</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card" id="expVendorPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>EXPENSE &amp; OVERHEAD SPEND BY VENDOR — CASH VS CREDIT LEG 3 AP (${fmtNum(expVendorRows.length)} COUNTERPARTIES)</span></div>
+            <span class="panel-meta" style="display:flex;gap:6px;align-items:center">
+              <button type="button" class="btn btn-ghost-bar" style="padding:3px 9px;font-size:11px" data-nav-jump="suppliers">Settle in Suppliers &amp; Payables →</button>
+              ${exportBtn('expVendorPanel', 'Expense_Vendors_Summary')}
+            </span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('exp_sup', 'Vendor / Counterparty', 'supplier')}${th('exp_sup', 'Vouchers', 'vouchers', 'r')}${th('exp_sup', 'Unit-Tagged', 'unit_tagged', 'r')}
+                  ${th('exp_sup', 'Cash ($)', 'cash', 'r')}${th('exp_sup', 'Credit Leg 3 AP ($)', 'credit', 'r')}${th('exp_sup', 'Total Spend ($)', 'total', 'r')}<th class="r">% Spend</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${shownExpVendors.map(v => {
+                  const pct = sumExp > 0 ? Math.max(0, (v.total / sumExp) * 100) : 0;
+                  const isDirect = v.supplier.startsWith('(');
+                  return `
+                  <tr class="${isDirect ? '' : 'rrow'}" ${isDirect ? '' : `data-rkey="suppliers" data-rid="${esc(v.id)}"`}>
+                    <td>${isDirect ? `<span class="mu">${esc(v.supplier)}</span>` : relLink('suppliers', v.supplier, v.supplier, true)}</td>
+                    <td class="r">${fmtNum(v.vouchers)}</td>
+                    <td class="r">${fmtNum(v.unit_tagged)}</td>
+                    <td class="r">${fmtUSD(v.cash, 2)}</td>
+                    <td class="r">${v.credit !== 0 ? `<strong style="color:var(--brass)">${fmtUSD(v.credit, 2)}</strong>` : '—'}</td>
+                    <td class="r"><strong>${fmtUSD(v.total, 2)}</strong></td>
+                    <td class="r">${pct.toFixed(1)}%</td>
+                  </tr>`;
+                }).join('') || emptyRow(7, 'No vendor expense totals for this entity')}
+                ${showMoreRow('exp_sup', expVendorRows.length, 7)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><b>TOTAL (${fmtNum(expVendorRows.length)} VENDORS)</b></td>
                   <td class="r"><b>${fmtNum(expRows.length)}</b></td>
                   <td class="r"><b>${fmtNum(equipLinkedCount)}</b></td>
                   <td class="r"><b>${fmtUSD(sumCashExp, 2)}</b></td>
@@ -9320,6 +9937,37 @@
                   <tr>
                     <td colspan="6"><b>TOTAL (${fmtNum(logAll.length)} ARRANGEMENTS)</b></td>
                     <td class="r"><b>${fmtUSD(logAll.reduce((a, l) => a + Number(l.daily_usd || l.usd_amount || (Number(l.lbp_amount || 0) / 89500) || 0), 0), 2)} / day</b></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel-card" id="payOtRatesPanel">
+            <div class="panel-head">
+              <div class="panel-title"><span>DRIVER TRIP &amp; NIGHT OVERTIME RATES BY REGION (${fmtNum(otRates.length)} RULES)</span></div>
+              <span class="panel-meta">${exportBtn('payOtRatesPanel', 'Overtime_Rates')} ${canEnterForm('triprate') ? '<button class="btn" style="padding:3px 9px;font-size:11px" data-open-modal="triprate">+ Overtime Rate</button>' : ''}</span>
+            </div>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead><tr>${th('otrate', 'Rule Name', 'name')}${th('otrate', 'Co.', 'company')}${th('otrate', 'Region', 'region')}${th('otrate', 'Rate / Trip ($)', 'amount', 'r')}${th('otrate', 'Start Date', 'start_date')}${th('otrate', 'End Date', 'end_date')}</tr></thead>
+                <tbody>
+                  ${sortRows(otRates, 'otrate', 'start_date', 'desc').slice(0, shownCount('otrate')).map(or => `
+                    <tr class="rrow" data-rkey="overtime_rates" data-rid="${esc(or.id || or.name)}">
+                      <td class="mono"><strong>${esc(or.name || '—')}</strong>${appCell(or, 'overtime_rates')}</td>
+                      <td>${coBadge(or.company)}</td>
+                      <td>${or.region ? relLink('regions', or.region) : '—'}</td>
+                      <td class="r"><strong>${fmtUSD(or.amount != null ? or.amount : or.usd_amount, 2)}</strong></td>
+                      <td class="mono">${or.start_date ? esc(fmtDateDMY(or.start_date)) : '—'}</td>
+                      <td class="mono">${or.end_date ? esc(fmtDateDMY(or.end_date)) : 'Open'}</td>
+                    </tr>`).join('') || emptyRow(6, 'No regional overtime rate rules match filter')}
+                  ${showMoreRow('otrate', otRates.length, 6)}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3"><b>TOTAL (${fmtNum(otRates.length)} OVERTIME RULES)</b></td>
+                    <td class="r"><b>Avg ${fmtUSD(otRates.length ? otRates.reduce((a, r) => a + Number(r.amount != null ? r.amount : r.usd_amount || 0), 0) / otRates.length : 0, 2)}</b></td>
+                    <td colspan="2"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -14733,9 +15381,7 @@
         return { net, vat, ttc: round2(net + vat) };
       }
       if (STATE.modalForm === 'customer') {
-        const isVat = val('f_vatreg') === 'Yes';
-        setFieldVisible('wrap_cust_mof', isVat);
-        if (!isVat && $('f_mof') && $('f_mof').value) $('f_mof').value = '';
+        setFieldVisible('wrap_cust_mof', true);
         syncUniversalMainDupHint('f_customer', 'customers', 'Customer');
         return {};
       }
@@ -16267,7 +16913,8 @@
         const dup = findUniversalDuplicate('customers', nm);
         if (dup) addErr('f_customer', `Customer "${universalMainValue('customers', dup) || nm}" already exists in the Universal Customer Registry. Duplicate names are not allowed.`);
       }
-      record = { ...base, name: nm, method: val('f_method') || 'Credit', vat_registered: val('f_vatreg') === 'Yes', mof_no: val('f_mof'), phone: val('f_phone'), region: val('f_region'), customer_declared_qty: !!($('f_declqty') && $('f_declqty').checked), external_invoice: !!($('f_extinv') && $('f_extinv').checked) };
+      const regVal = val('f_region');
+      record = { ...base, name: nm, official_name: val('f_official_name') || nm, method: val('f_method') || 'Credit', vat_registered: val('f_vatreg') === 'Yes', mof_no: val('f_mof'), phone: val('f_phone'), region: regVal, address: regVal, customer_declared_qty: !!($('f_declqty') && $('f_declqty').checked), external_invoice: !!($('f_extinv') && $('f_extinv').checked) };
     } else if (f === 'supplier') {
       const nm = val('f_supplier');
       if (!nm) addErr('f_supplier', 'Supplier Name is required.');
@@ -16290,9 +16937,11 @@
       }
       const isTo = isHaulerCategoryList(cats) || allDrvNames.length > 0 || allTruckNames.length > 0;
       if (isTo && !isHaulerCategoryList(cats)) cats.unshift('Hauler / Truck Owner');
+      const supReg = val('f_region');
       record = {
         ...base,
         name: nm,
+        official_name: val('f_official_name') || nm,
         categories: cats,
         category: cats.join(', '),
         category1: cats[0] || '',
@@ -16300,6 +16949,9 @@
         category3: cats[2] || '',
         method: val('f_method') || 'Credit',
         phone: val('f_phone'),
+        contact: val('f_phone'),
+        region: supReg,
+        location: supReg,
         mof_no: val('f_mof'),
         financial_no: val('f_mof'),
         is_truck_owner: isTo,
@@ -16550,7 +17202,7 @@
   }
 
   async function postRecordToLocalApi(crKey, record) {
-    if (!HAS_LOCAL_API) return;
+    if (!HAS_LOCAL_API || !CR_TABLE[crKey] || !record || !record.id) return;
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 8000);
@@ -16985,7 +17637,7 @@
       const rulesCnt = activeRulesCountFor('supplier', row.name || row.Supplier);
       return {
         tone: 'info',
-        text: `Supplier & Hauler 3-Leg AP Ledger (m192): Net AP Balance ${fmtUSD(si.ap_balance || 0, 2)} (Material Leg: ${fmtUSD(si.ap_material || 0, 0)} · Haulage Leg: ${fmtUSD(si.ap_haulage || 0, 0)} · Expense Leg: ${fmtUSD(si.ap_expense || 0, 0)})  |  Active Agreements: ${rulesCnt}  |  Registered Trucks: ${fmtNum(row.trucks_count || (row.trucks || []).length || 0)}`
+        text: `Supplier & Hauler 3-Leg AP Ledger: Net AP Balance ${fmtUSD(si.ap_balance || 0, 2)} (Material Leg: ${fmtUSD(si.ap_material || 0, 0)} · Haulage Leg: ${fmtUSD(si.ap_haulage || 0, 0)} · Expense Leg: ${fmtUSD(si.ap_expense || 0, 0)})  |  Active Agreements: ${rulesCnt}  |  Registered Trucks: ${fmtNum(row.trucks_count || (row.trucks || []).length || 0)}`
       };
     }
     if (key === 'equipment') {
@@ -17021,7 +17673,7 @@
     }
     return {
       tone: 'info',
-      text: `Power Apps Relational Record (${INSPECT_DVN[key] || key}) · Connected to live Dataverse tables & SOA double-entry ledger (${SEED_DATE}). Click any blue lookup pill or related subgrid row below to drill across entities.`
+      text: `Relational Record (${INSPECT_LABELS[key] || key}) · Connected to live Dataverse tables & SOA double-entry ledger (${SEED_DATE}). Click any blue lookup pill or related subgrid row below to drill across entities.`
     };
   }
 
@@ -17100,7 +17752,7 @@
           { lbl: 'LEG 1 · RAW MATERIAL', tag: 'SITE OWNER', tone: 'good', val: fmtUSD(row.cost, 2), sub1: `Payee: ${row.site_owner || '—'} · Rate: ${fmtUSD(row.unit_cost, 2)}/${row.uom || 'm³'}`, sub2: `Site: ${row.site || '—'} · Open AP: ${fmtUSD(siSite.ap_balance || 0, 0)}`, pct: tot > 0 ? Math.round((Number(row.cost || 0) / tot) * 100) : 60 },
           { lbl: 'LEG 2 · HAULAGE / FREIGHT', tag: /company/i.test(row.transport_by || '') ? 'OWN FLEET' : 'HAULER AP', tone: 'info', val: fmtUSD(row.trans_cost, 2), sub1: `Hauler: ${row.truck_owner || row.transport_by || '—'}`, sub2: `Truck: ${row.truck || '—'} · Hauler AP: ${fmtUSD(siHaul.ap_balance || 0, 0)}`, pct: tot > 0 ? Math.round((Number(row.trans_cost || 0) / tot) * 100) : 40 },
           { lbl: 'INTAKE VOLUME & TONNAGE', tag: row.uom || 'M³', tone: 'good', val: `${fmtNum(row.qty, 2)} ${row.uom || 'm³'}`, sub1: `Estimated Weight: ${fmtNum(ticketTons(row), 1)} tons`, sub2: `Grade: ${row.product || 'Raw Aggregate'}`, pct: 80 },
-          { lbl: 'COMBINED LANDED COST', tag: 'M192 SPLIT', tone: 'info', val: fmtUSD(tot, 2), sub1: `Landed Unit Cost: ${row.qty > 0 ? fmtUSD(tot / row.qty, 2) : '—'}/${row.uom || 'm³'}`, sub2: `Tx Date: ${row.date || '—'} · Rep Date: ${row.rep_date || row.date || '—'}`, pct: 90 }
+          { lbl: 'COMBINED LANDED COST', tag: '2-LEG SPLIT', tone: 'info', val: fmtUSD(tot, 2), sub1: `Landed Unit Cost: ${row.qty > 0 ? fmtUSD(tot / row.qty, 2) : '—'}/${row.uom || 'm³'}`, sub2: `Tx Date: ${row.date || '—'} · Rep Date: ${row.rep_date || row.date || '—'}`, pct: 90 }
         ]
       };
     }
@@ -17118,7 +17770,7 @@
         cards: [
           { lbl: 'OPEN FIFO AR BALANCE', tag: Number(ci.ar_60_plus || 0) > 0 ? 'AGED 60+D' : 'ACTIVE AR', tone: Number(ci.ar_60_plus || 0) > 0 ? 'warn' : 'good', val: fmtUSD(arBal, 2), sub1: `Current: ${fmtUSD(ci.ar_current || 0, 0)} · 60+d: ${fmtUSD(ci.ar_60_plus || 0, 0)}`, sub2: `VAT Status: ${(row.vat_registered || ci['VAT Registered'] === 'Yes') ? '11% VAT' : 'Standard'}`, pct: 75 },
           { lbl: 'LIFETIME SALES & LOADS', tag: `${fmtNum(ci.loads || tickets.length)} LOADS`, tone: 'info', val: fmtUSD(ci.sales_ttc || tickets.reduce((a, t) => a + Number(t.total_ttc || 0), 0), 0), sub1: `${fmtNum(tickets.length)} tickets in register`, sub2: `Last Sale: ${ci.last_sale || (tickets[0] && tickets[0].date) || '—'}`, pct: 85 },
-          { lbl: 'RECEIPTS COLLECTED', tag: `${fmtNum(rcpts.length)} VOUCHERS`, tone: 'good', val: fmtUSD(ci.receipts || rcpts.reduce((a, r) => a + Number(r.amount || 0), 0), 0), sub1: `Oldest-First FIFO Relief (m165)`, sub2: `Default Method: ${row.method || ci.method || 'Credit'}`, pct: 80 },
+          { lbl: 'RECEIPTS COLLECTED', tag: `${fmtNum(rcpts.length)} VOUCHERS`, tone: 'good', val: fmtUSD(ci.receipts || rcpts.reduce((a, r) => a + Number(r.amount || 0), 0), 0), sub1: `Oldest-First FIFO Relief`, sub2: `Default Method: ${row.method || ci.method || 'Credit'}`, pct: 80 },
           { lbl: 'AGREEMENTS & CREDIT TERMS', tag: `${rules.filter(r => !r.end_date).length} ACTIVE`, tone: 'info', val: ct ? `${ct.credit_days || 30} Days` : 'Open Terms', sub1: `Credit Limit: ${ct ? fmtUSD(ct.credit_limit, 0) : 'Not capped'}`, sub2: `${rules.length} total price agreements on file`, pct: 70 }
         ]
       };
@@ -17135,7 +17787,7 @@
       return {
         bu: 'ALL BUs', title, pill: `AP ${fmtUSD(apBal, 2)}`,
         cards: [
-          { lbl: 'NET 3-LEG AP BALANCE', tag: 'M192 ENGINE', tone: apBal > 0 ? 'warn' : 'good', val: fmtUSD(apBal, 2), sub1: `Mat: ${fmtUSD(si.ap_material || 0, 0)} · Haul: ${fmtUSD(si.ap_haulage || 0, 0)}`, sub2: `Expense Leg: ${fmtUSD(si.ap_expense || 0, 0)}`, pct: 75 },
+          { lbl: 'NET 3-LEG AP BALANCE', tag: '3-LEG AP', tone: apBal > 0 ? 'warn' : 'good', val: fmtUSD(apBal, 2), sub1: `Mat: ${fmtUSD(si.ap_material || 0, 0)} · Haul: ${fmtUSD(si.ap_haulage || 0, 0)}`, sub2: `Expense Leg: ${fmtUSD(si.ap_expense || 0, 0)}`, pct: 75 },
           { lbl: 'MATERIAL & HAULAGE LOADS', tag: `${fmtNum(matLoads.length + haulLoads.length)} TICKETS`, tone: 'info', val: fmtNum(si.raw_loads || (matLoads.length + haulLoads.length)), sub1: `As Site Owner: ${fmtNum(matLoads.length)} · As Hauler: ${fmtNum(haulLoads.length)}`, sub2: `Expenses Billed: ${fmtNum(exps.length)} vouchers`, pct: 80 },
           { lbl: 'SETTLEMENTS DISBURSED', tag: `${fmtNum(spays.length)} PAYMENTS`, tone: 'good', val: fmtUSD(si.settlements_paid || spays.reduce((a, s) => a + Number(s.amount || 0), 0), 0), sub1: `${fmtNum(spays.length)} settlement vouchers in register`, sub2: `IVA Registered: ${row.iva || si.iva ? 'Yes' : 'No'}`, pct: 85 },
           { lbl: 'FLEET & AGREEMENTS', tag: row.is_truck_owner ? 'HAULER FLEET' : 'VENDOR', tone: 'info', val: `${fmtNum(row.trucks_count || (row.trucks || []).length || 0)} Trucks`, sub1: `Drivers Linked: ${fmtNum((row.drivers || []).length)}`, sub2: `Active Price Rules: ${activeRulesCountFor('supplier', name)}`, pct: 70 }
@@ -17168,7 +17820,7 @@
       title,
       pill: primaryMoney != null ? fmtUSD(primaryMoney, 2) : `${fmtNum(totalRel)} Linked Rows`,
       cards: [
-        { lbl: 'PRIMARY RECORD VALUE', tag: (INSPECT_DVN[key] || key).toUpperCase(), tone: 'good', val: primaryMoney != null ? fmtUSD(primaryMoney, 2) : (row.name || row.ticket_no || String(row.id).slice(0, 10)), sub1: `Entity: ${INSPECT_LABELS[key] || key}`, sub2: `Company Scope: ${row.company || 'Shared / Root BU'}`, pct: 82 },
+        { lbl: 'PRIMARY RECORD VALUE', tag: (INSPECT_LABELS[key] || key).toUpperCase().slice(0, 18), tone: 'good', val: primaryMoney != null ? fmtUSD(primaryMoney, 2) : (row.name || row.ticket_no || String(row.id).slice(0, 10)), sub1: `Entity: ${INSPECT_LABELS[key] || key}`, sub2: `Company Scope: ${row.company || 'Shared / Root BU'}`, pct: 82 },
         { lbl: 'CONNECTED SUBGRIDS', tag: `${subgrids.length} TABLES`, tone: 'info', val: `${fmtNum(totalRel)} Rows`, sub1: subgrids.slice(0, 2).map(s => `${s.shortLabel}: ${fmtNum(s.rows.length)}`).join(' · ') || 'Direct master record', sub2: subgrids.slice(2, 4).map(s => `${s.shortLabel}: ${fmtNum(s.rows.length)}`).join(' · ') || 'Click any row below to inspect', pct: Math.min(100, Math.max(25, totalRel * 5)) },
         { lbl: 'EFFECTIVE DATES & TIMELINE', tag: row.end_date ? 'DATED' : 'ACTIVE', tone: row.end_date && String(row.end_date) < SEED_DATE ? 'warn' : 'good', val: String(row.date || row.start_date || SEED_DATE).slice(0, 10), sub1: `Rep / Start: ${row.rep_date || row.start_date || row.date || '—'}`, sub2: `End Date: ${row.end_date || 'Open / Current'}`, pct: 75 },
         { lbl: 'AUDIT & LEDGER SOURCE', tag: isAppRecord(row) ? 'WEB APP' : 'DATAVERSE', tone: 'info', val: isAppRecord(row) ? 'App Entry' : 'Synced Book', sub1: isAppRecord(row) ? `Posted by ${row.entered_by || 'User'}` : `Snapshot ${SEED_DATE}`, sub2: `Double-Entry SOA Verified`, pct: 100 }
@@ -17501,18 +18153,472 @@
     return subgrids;
   }
 
+  function getInspectorEditableSchema(key, row, targetEqRow) {
+    const uomOpts = uniqSorted(((SEED.records && SEED.records.uoms) || []).map(u => u.name).concat(['m³', 'Ton', 'Truck', 'Piece', 'Bag', 'Litre', 'Unit']), getFreqIndex().uom);
+    const prodTypeOpts = uniqSorted(((SEED.records && SEED.records.product_types) || []).map(pt => pt.name).concat(['Material', 'Aggregate', 'Oil', 'Lubricant', 'Grease', 'Spare Parts', 'Consumables', 'Other']));
+    const expCatOpts = expenseCategories().map(c => c.category);
+    const suppCatOpts = ['Raw Material Settlements', 'Hauler / Truck Owner', 'Transportation', 'Fuel', 'Oils', 'Spare Parts', 'Repairs and Maintenance', 'Tools', 'Minor Equipment', 'Utilities', 'Office Supplies', 'Licences and Fees', 'Insurance', 'Social Security', 'Rent', 'Skilled Labor', 'Capital Expenditures', 'Tips', 'Other Costs'];
+    const revAcctOpts = [
+      ['701 Sales of goods (resale)', '701 · Sales of goods (resale)'],
+      ['7085 Transport and ancillary charges invoiced', '7085 · Transport & ancillary charges invoiced'],
+      ['713 Services revenue', '713 · Services revenue'],
+      ['7135 Variation of finished products inventory', '7135 · Variation of finished products inventory'],
+      ['7612 Rental income', '7612 · Rental income'],
+      ['709 Discounts allowed on goods', '709 · Discounts allowed on goods'],
+      ['7581 Tips and gratuities collected for staff', '7581 · Tips & gratuities collected'],
+      ['7881 Exceptional income', '7881 · Exceptional income'],
+      ['187 Revenue from branches / related companies', '187 · Revenue from branches / related companies'],
+      ['4427 VAT on sales (collected)', '4427 · VAT on sales (collected)']
+    ];
+    const purAcctOpts = [
+      ['601 Purchase of goods for resale', '601 · Purchase of goods for resale'],
+      ['61121 Fuel', '61121 · Fuel & Diesel'],
+      ['6122 Maintenance products and workshop consumables', '6122 · Maintenance & workshop consumables'],
+      ['62611 Transport of goods', '62611 · Transport of goods (Haulage)'],
+      ['6262 Repairs and maintenance', '6262 · Repairs & maintenance'],
+      ['621 Purchases from sub-contractors', '621 · Purchases from sub-contractors'],
+      ['6135 Rental of equipment and vehicles', '6135 · Rental of equipment & vehicles'],
+      ['6268 Insurance premiums', '6268 · Insurance premiums'],
+      ['6222 Commissions and brokerage', '6222 · Commissions & brokerage'],
+      ['6269 Other external services', '6269 · Other external services'],
+      ['6311 Salaries', '6311 · Salaries & payroll'],
+      ['60186 Other purchase charges', '60186 · Other purchase charges'],
+      ['7733 Discounts received', '7733 · Discounts received'],
+      ['225 Transport vehicles', '225 · Transport vehicles (Capex)']
+    ];
+
+    const schemas = {
+      customers: [
+        { key: 'name', label: 'Customer Name *', type: 'text', sec: 1 },
+        { key: 'official_name', label: 'Official / Legal Name', type: 'text', sec: 1, placeholder: 'Legal billing entity name' },
+        { key: 'method', label: 'Default Payment Method *', type: 'select', options: [['Credit', 'Credit (Account / AR)'], ['Cash', 'Cash (Immediate Settlement)']], sec: 3 },
+        { key: 'phone', label: 'Phone / Contact Number', type: 'tel', sec: 1, placeholder: '+961 ...', getVal: r => r.phone || r.contact || (customerInfo(r.name || r.Customer) || {}).phone || '' },
+        { key: 'email', label: 'Email Address', type: 'text', sec: 1, placeholder: 'billing@client.com' },
+        { key: 'address', label: 'Region / Address', type: 'combo', dl: 'dl_insp_regions', sec: 1, placeholder: 'Select or type region / address...', getVal: r => r.address || r.region || (customerInfo(r.name || r.Customer) || {}).address || '' },
+        { key: 'vat_registered', label: 'VAT 11% Registered', type: 'bool', sec: 1, getVal: r => Boolean(r.vat_registered || (customerInfo(r.name || r.Customer) || {})['VAT Registered'] === 'Yes') },
+        { key: 'mof_no', label: 'MOF Tax Number', type: 'text', sec: 1, placeholder: 'Ministry of Finance #...', getVal: r => r.mof_no || r.financial_no || (customerInfo(r.name || r.Customer) || {}).mof_no || '' },
+        { key: 'credit_days', label: 'Credit Terms (Days)', type: 'number', step: '1', min: '0', sec: 3, placeholder: 'e.g. 30', getVal: r => { if (r.credit_days != null && r.credit_days !== '') return r.credit_days; const ct = creditTermsForCustomer(r.name || r.Customer); return ct && ct.credit_days != null ? ct.credit_days : ''; } },
+        { key: 'credit_limit', label: 'Credit Limit ($)', type: 'number', step: '100', min: '0', sec: 3, placeholder: 'e.g. 25000', getVal: r => { if (r.credit_limit != null && r.credit_limit !== '') return r.credit_limit; const ct = creditTermsForCustomer(r.name || r.Customer); return ct && ct.credit_limit != null ? ct.credit_limit : ''; } },
+        { key: 'customer_declared_qty', label: 'Customer-Declared Qty on Tickets', type: 'bool', sec: 2, getVal: r => Boolean(r.customer_declared_qty || (customerInfo(r.name || r.Customer) || {}).customer_declared_qty) },
+        { key: 'external_invoice', label: 'Requires External Invoice #', type: 'bool', sec: 2, getVal: r => Boolean(r.external_invoice || (customerInfo(r.name || r.Customer) || {}).external_invoice) },
+        { key: 'notes', label: 'Notes & Special Instructions', type: 'text', sec: 3, span: true, placeholder: 'Account notes, delivery instructions, or contact person...' }
+      ],
+      suppliers: [
+        { key: 'name', label: 'Supplier / Hauler Name *', type: 'text', sec: 1 },
+        { key: 'official_name', label: 'Official / Legal Name', type: 'text', sec: 1, placeholder: 'Legal vendor entity name' },
+        { key: 'method', label: 'Default Settlement Method *', type: 'select', options: [['Credit', 'Credit (Account / AP)'], ['Cash', 'Cash (Immediate Settlement)']], sec: 3 },
+        { key: 'category1', label: 'Primary Supplier Category *', type: 'select', options: [['', '— Select Primary Category —']].concat(suppCatOpts.map(c => [c, c])), sec: 2, getVal: r => r.category1 || (Array.isArray(r.categories) && r.categories[0]) || (r.category ? String(r.category).split(/\s*,\s*/)[0] : '') || '' },
+        { key: 'category2', label: 'Secondary Category (Optional)', type: 'select', options: [['', '— None —']].concat(suppCatOpts.map(c => [c, c])), sec: 2, getVal: r => r.category2 || (Array.isArray(r.categories) && r.categories[1]) || (r.category ? String(r.category).split(/\s*,\s*/)[1] : '') || '' },
+        { key: 'phone', label: 'Phone / Contact Number', type: 'tel', sec: 1, placeholder: '+961 ...', getVal: r => r.phone || r.contact || (supplierInfo(r.name || r.Supplier) || {}).phone || '' },
+        { key: 'location', label: 'Region / Location', type: 'combo', dl: 'dl_insp_regions', sec: 1, placeholder: 'Select or type region / location...', getVal: r => r.location || r.region || (supplierInfo(r.name || r.Supplier) || {}).location || '' },
+        { key: 'iva', label: 'VAT / IVA Registered', type: 'bool', sec: 1, getVal: r => Boolean(r.iva || (supplierInfo(r.name || r.Supplier) || {}).iva) },
+        { key: 'mof_no', label: 'MOF / Financial Number', type: 'text', sec: 1, placeholder: 'Ministry of Finance #...', getVal: r => r.mof_no || r.financial_no || (supplierInfo(r.name || r.Supplier) || {}).mof_no || '' },
+        { key: 'is_truck_owner', label: 'Registered Hauler / Truck Owner', type: 'bool', sec: 2, getVal: r => Boolean(r.is_truck_owner || (supplierInfo(r.name || r.Supplier) || {}).is_truck_owner) },
+        { key: 'notes', label: 'Notes & Payment Terms', type: 'text', sec: 3, span: true, placeholder: 'Bank IBAN, quarry terms, or hauler instructions...' }
+      ],
+      sales_tickets: [
+        { key: 'date', label: 'Transaction Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'time', label: 'Dispatch Time', type: 'time', sec: 1 },
+        { key: 'ticket_no', label: 'Ticket / Invoice No. *', type: 'text', sec: 1 },
+        { key: 'sale_type', label: 'Sale Type *', type: 'select', options: [['Pickup', 'Pick-up (Material Only)'], ['Delivery', 'Delivery (Material + Transport)'], ['Unregistered', 'Unregistered (Spot Cash)']], sec: 1 },
+        { key: 'transport_by', label: 'Transported By', type: 'select', options: [['Company fleet', 'Company fleet (Own Truck)'], ['Third-party truck', 'Third-party truck (Hauler)']], sec: 2 },
+        { key: 'customer', label: 'Customer *', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'product', label: 'Product / Grade *', type: 'combo', dl: 'dl_insp_products', sec: 2 },
+        { key: 'site', label: 'Destination Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'truck_owner', label: 'Truck Owner (Hauler)', type: 'combo', dl: 'dl_insp_suppliers', sec: 2 },
+        { key: 'truck', label: 'Truck *', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'driver', label: 'Driver', type: 'combo', dl: 'dl_insp_drivers', sec: 2 },
+        { key: 'qty', label: 'Quantity *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'uom', label: 'Unit (UoM)', type: 'select', options: uomOpts, sec: 3 },
+        { key: 'external_qty', label: 'Customer-Declared Qty', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'unit_price', label: 'Material Unit Price ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'trans_unit_price', label: 'Transport Unit Price ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'discount', label: 'Discount ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'tip', label: 'Driver Tip ($)', type: 'number', step: '0.50', min: '0', sec: 3 },
+        { key: 'method', label: 'Payment Method *', type: 'select', options: [['Credit', 'Credit'], ['Cash', 'Cash'], ['Free', 'Free (Zero Charge)'], ['CR Return', 'CR Return'], ['C Return', 'C Return']], sec: 3 },
+        { key: 'vat_invoice', label: 'VAT Invoice Serial', type: 'text', sec: 3 },
+        { key: 'external_invoice', label: 'External Invoice #', type: 'text', sec: 3 },
+        { key: 'reference', label: 'Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      raw_purchases: [
+        { key: 'date', label: 'Transaction Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'time', label: 'Dispatch Time', type: 'time', sec: 1 },
+        { key: 'ticket_no', label: 'Ticket No. *', type: 'text', sec: 1 },
+        { key: 'product', label: 'Raw Material Grade *', type: 'combo', dl: 'dl_insp_products', sec: 2 },
+        { key: 'site', label: 'Source Site *', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'site_owner', label: 'Site Owner (Material Payee)', type: 'combo', dl: 'dl_insp_suppliers', sec: 1 },
+        { key: 'transport_by', label: 'Transported By *', type: 'select', options: [['Company fleet', 'Company fleet (Own Truck)'], ['Third-party truck', 'Third-party truck (Hauler)']], sec: 2 },
+        { key: 'truck_owner', label: 'Truck Owner (Hauler Payee)', type: 'combo', dl: 'dl_insp_suppliers', sec: 2 },
+        { key: 'truck', label: 'Truck *', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'driver', label: 'Driver', type: 'combo', dl: 'dl_insp_drivers', sec: 2 },
+        { key: 'qty', label: 'Quantity *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'uom', label: 'Unit (UoM)', type: 'select', options: uomOpts, sec: 3 },
+        { key: 'unit_cost', label: 'Material Unit Cost ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'trans_unit_cost', label: 'Haulage Unit Cost ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'discount', label: 'Discount ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'method', label: 'Settlement Method *', type: 'select', options: [['Credit', 'Credit (AP)'], ['Cash', 'Cash']], sec: 3 },
+        { key: 'external_invoice', label: 'Supplier Invoice #', type: 'text', sec: 3 },
+        { key: 'reference', label: 'Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      fuel_intakes: [
+        { key: 'date', label: 'Intake Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'ticket_no', label: 'Voucher / Ticket No.', type: 'text', sec: 1 },
+        { key: 'fuel_type', label: 'Fuel / Fluid Type *', type: 'select', options: ['Diesel', 'Lubricant', 'Hydraulic Oil', 'Grease'], sec: 2 },
+        { key: 'item', label: 'Specific Product / Grade', type: 'combo', dl: 'dl_insp_products', sec: 2 },
+        { key: 'equipment', label: 'Equipment / Truck *', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'driver', label: 'Operator / Driver', type: 'combo', dl: 'dl_insp_drivers', sec: 2 },
+        { key: 'litres', label: 'Quantity (Litres) *', type: 'number', step: '0.1', min: '0', sec: 3 },
+        { key: 'odometer', label: 'Odometer Reading (km)', type: 'number', step: '1', min: '0', sec: 3 },
+        { key: 'hours', label: 'Engine Hours (hr)', type: 'number', step: '0.1', min: '0', sec: 3 },
+        { key: 'location', label: 'Dispensing Tank / Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      expenses: [
+        { key: 'date', label: 'Expense Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'category', label: 'Expense Category *', type: 'select', options: expCatOpts, sec: 2 },
+        { key: 'subcategory', label: 'Expense Subcategory', type: 'combo', dl: 'dl_insp_subcategories', sec: 2 },
+        { key: 'supplier', label: 'Vendor / Supplier', type: 'combo', dl: 'dl_insp_suppliers', sec: 1 },
+        { key: 'equipment', label: 'Equipment / Truck (if Fleet)', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'qty', label: 'Quantity', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'amount', label: 'Total Amount ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'method', label: 'Payment Method *', type: 'select', options: [['Cash', 'Cash'], ['Credit', 'Credit (Vendor AP)'], ['Check', 'Check'], ['Bank Transfer', 'Bank Transfer'], ['CR Return', 'CR Return'], ['C Return', 'C Return']], sec: 3 },
+        { key: 'reference', label: 'Invoice / Reference #', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes / Description', type: 'text', sec: 3, span: true }
+      ],
+      receipts: [
+        { key: 'date', label: 'Receipt Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'customer', label: 'Customer *', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'method', label: 'Receipt Method *', type: 'select', options: ['Payment', 'Cash', 'Check', 'Bank Transfer', 'Barter', 'VAT', 'VATRent', 'Rent', 'IVA', 'JV Adjusted', 'Config', 'VATConfig', 'RentConfig'], sec: 3 },
+        { key: 'amount', label: 'Amount Received ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'discount', label: 'Settlement Discount ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'vat_invoice', label: 'Linked VAT Invoice #', type: 'text', sec: 3 },
+        { key: 'reference', label: 'Check / Wire Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      settlements: [
+        { key: 'date', label: 'Settlement Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'supplier', label: 'Supplier / Hauler *', type: 'combo', dl: 'dl_insp_suppliers', sec: 1 },
+        { key: 'method', label: 'Settlement Method *', type: 'select', options: ['Payment', 'Cash', 'Check', 'Bank Transfer', 'Barter', 'VAT', 'IVA', 'Config', 'VATConfig'], sec: 3 },
+        { key: 'amount', label: 'Amount Paid ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'discount', label: 'Discount Received ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'raw_ticket', label: 'Linked Raw Ticket #', type: 'text', sec: 3 },
+        { key: 'expense_record', label: 'Linked Expense Voucher', type: 'text', sec: 3 },
+        { key: 'reference', label: 'Payment Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      salaries: [
+        { key: 'date', label: 'Payment Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'payroll_month', label: 'Payroll Month (YYYY-MM)', type: 'month', sec: 1 },
+        { key: 'staff', label: 'Staff Member *', type: 'combo', dl: 'dl_insp_staff', sec: 1 },
+        { key: 'equipment', label: 'Assigned Unit / Truck', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'method', label: 'Payment Method *', type: 'select', options: ['Cash', 'Bank Transfer', 'Check'], sec: 3 },
+        { key: 'usd_amount', label: 'USD Paid ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'lbp_amount', label: 'LBP Paid (LL)', type: 'number', step: '1000', min: '0', sec: 3 },
+        { key: 'amount', label: 'Total USD Equivalent ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      price_rules: [
+        { key: 'name', label: 'Agreement Code', type: 'text', sec: 1 },
+        { key: 'rule_type', label: 'Agreement Type *', type: 'select', options: ['Sales (Delivery)', 'Sales (Pickup)', 'Purchase Price (Site)', 'Transport Price (Site)', 'List Price', 'Commission'], sec: 1 },
+        { key: 'customer', label: 'Customer', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'supplier', label: 'Supplier / Hauler', type: 'combo', dl: 'dl_insp_suppliers', sec: 1 },
+        { key: 'site', label: 'Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'product', label: 'Product / Grade', type: 'combo', dl: 'dl_insp_products', sec: 2 },
+        { key: 'unit', label: 'Pricing Unit', type: 'select', options: uomOpts, sec: 3 },
+        { key: 'rate_per', label: 'Rate Basis', type: 'select', options: ['m³', 'Ton', 'Truck', 'Unit'], sec: 3 },
+        { key: 'unit_price', label: 'Material Unit Price ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'indiff_price', label: 'Indifference Price ($ · Flat / Load)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'trans_unit_price', label: 'Transport Unit Price ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'truck_size', label: 'Client / Site Truck Size (m³)', type: 'number', step: '0.5', sec: 2 },
+        { key: 'truck', label: 'Target Truck Plate (Optional)', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'qty1', label: 'Tier 1 Truck Size (m³)', type: 'number', step: '0.5', sec: 3 },
+        { key: 'adj1', label: 'Tier 1 Price Adj ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'trans_adj1', label: 'Tier 1 Trans Adj ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'qty2', label: 'Tier 2 Truck Size (m³)', type: 'number', step: '0.5', sec: 3 },
+        { key: 'adj2', label: 'Tier 2 Price Adj ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'trans_adj2', label: 'Tier 2 Trans Adj ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'start_date', label: 'Effective Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'End Date (Blank = Open)', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      credit_terms: [
+        { key: 'customer', label: 'Customer *', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'credit_days', label: 'Credit Terms (Days) *', type: 'number', step: '1', min: '0', sec: 3 },
+        { key: 'credit_limit', label: 'Credit Limit ($) *', type: 'number', step: '100', min: '0', sec: 3 },
+        { key: 'start_date', label: 'Effective Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'End Date (Blank = Active)', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      vat_invoices: [
+        { key: 'invoice_no', label: 'VAT Invoice Serial No. *', type: 'text', sec: 1 },
+        { key: 'date', label: 'Invoice Date *', type: 'date', sec: 1 },
+        { key: 'customer', label: 'Customer *', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'start_date', label: 'Period Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'Period End Date', type: 'date', sec: 2 },
+        { key: 'net_amount', label: 'Net Amount HT ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'vat_amount', label: 'Statutory 11% VAT ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'total_ttc', label: 'Total TTC ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'status', label: 'Invoice Status *', type: 'select', options: ['Open', 'Paid', 'Partial', 'Voided'], sec: 1 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      products: [
+        { key: 'name', label: 'Product / Grade Name *', type: 'text', sec: 1 },
+        { key: 'type', label: 'Product Family *', type: 'select', options: prodTypeOpts, sec: 2 },
+        { key: 'uom', label: 'Default Unit (UoM) *', type: 'select', options: uomOpts, sec: 3 },
+        { key: 'ton_factor', label: 'Tonnage Factor (t / m³)', type: 'number', step: '0.05', min: '0', sec: 3 },
+        { key: 'list_price', label: 'Benchmark List Price ($)', type: 'number', step: '0.01', min: '0', sec: 3, getVal: r => r.list_price != null ? r.list_price : (listPrice(r.name) ?? '') },
+        { key: 'ticket_product', label: 'Weighbridge Ticket Grade', type: 'bool', sec: 2 },
+        { key: 'fuel_item', label: 'Fuel / Lubricant Item', type: 'bool', sec: 2 },
+        { key: 'input_product', label: 'Raw Material Input', type: 'bool', sec: 2 },
+        { key: 'revenue_account', label: 'CoA Revenue Account', type: 'select', options: [['', '— Default Revenue Account —']].concat(revAcctOpts), sec: 3 },
+        { key: 'purchase_account', label: 'CoA Purchase Account', type: 'select', options: [['', '— Default Purchase Account —']].concat(purAcctOpts), sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      product_types: [
+        { key: 'name', label: 'Product Family Name *', type: 'text', sec: 1 },
+        { key: 'revenue_account', label: 'Default CoA Revenue Account', type: 'select', options: [['', '— Select Revenue Account —']].concat(revAcctOpts), sec: 3 },
+        { key: 'purchase_account', label: 'Default CoA Purchase Account', type: 'select', options: [['', '— Select Purchase Account —']].concat(purAcctOpts), sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      uoms: [
+        { key: 'name', label: 'Unit of Measure Symbol *', type: 'text', sec: 1 },
+        { key: 'notes', label: 'Description / Notes', type: 'text', sec: 3, span: true }
+      ],
+      sites: [
+        { key: 'name', label: 'Site Name *', type: 'text', sec: 1 },
+        { key: 'region', label: 'Region / Zone *', type: 'combo', dl: 'dl_insp_regions', sec: 2 },
+        { key: 'supplier', label: 'Default Site Owner (Supplier)', type: 'combo', dl: 'dl_insp_suppliers', sec: 1 },
+        { key: 'customer', label: 'Linked Customer (if Client Site)', type: 'combo', dl: 'dl_insp_customers', sec: 1 },
+        { key: 'is_jv', label: 'JV 50/50 Partnership Site', type: 'bool', sec: 2 },
+        { key: 'latitude', label: 'GPS Latitude', type: 'number', step: '0.000001', sec: 2 },
+        { key: 'longitude', label: 'GPS Longitude', type: 'number', step: '0.000001', sec: 2 },
+        { key: 'notes', label: 'Notes / Directions', type: 'text', sec: 3, span: true }
+      ],
+      regions: [
+        { key: 'name', label: 'Region / Zone Name *', type: 'text', sec: 1 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      equipment: [
+        { key: 'effective_from', label: 'Effective From Date', type: 'date', sec: 2, getVal: () => todayISO(), drawerOnly: true },
+        { key: 'effective_to', label: 'Effective To Date (Blank = Permanent)', type: 'date', sec: 2, getVal: () => '', drawerOnly: true },
+        { key: 'name', label: 'Unit Code / Callsign *', type: 'text', sec: 1 },
+        { key: 'plate_no', label: 'License Plate No.', type: 'text', sec: 2, getVal: r => r.plate_no ?? (targetEqRow && targetEqRow.plate_no) ?? '' },
+        { key: 'type', label: 'Equipment Category *', type: 'select', options: ['Truck', 'Mixer', 'Wheel Loader', 'Excavator', 'Bulldozer', 'Crusher', 'Generator', 'Vehicle', 'Plant', 'Other'], sec: 1 },
+        { key: 'ownership', label: 'Ownership *', type: 'select', options: [['Own', 'Company Owned'], ['Third Party', 'Third-Party Hauler'], ['Rented', 'Rented']], sec: 2 },
+        { key: 'capacity', label: 'Box Capacity (m³)', type: 'number', step: '0.5', min: '0', sec: 2, getVal: r => r.capacity ?? (targetEqRow && targetEqRow.capacity) ?? '' },
+        { key: 'supplier', label: 'Truck Owner (Supplier)', type: 'combo', dl: 'dl_insp_suppliers', sec: 2, getVal: r => r.supplier ?? (targetEqRow && targetEqRow.supplier) ?? '' },
+        { key: 'default_driver', label: 'Active / Default Driver', type: 'combo', dl: 'dl_insp_drivers', sec: 2, getVal: r => r.default_driver ?? (targetEqRow && targetEqRow.default_driver) ?? '' },
+        { key: 'model', label: 'Make & Model', type: 'text', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      company_equipment: [
+        { key: 'effective_from', label: 'Effective From Date', type: 'date', sec: 2, getVal: () => todayISO(), drawerOnly: true },
+        { key: 'effective_to', label: 'Effective To Date (Blank = Permanent)', type: 'date', sec: 2, getVal: () => '', drawerOnly: true },
+        { key: 'equipment', label: 'Equipment / Truck *', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'ownership', label: 'Ownership *', type: 'select', options: [['Own', 'Company Owned'], ['Third Party', 'Third-Party Hauler'], ['Rented', 'Rented']], sec: 2 },
+        { key: 'status', label: 'Operational Status *', type: 'select', options: ['Active', 'Idle', 'Sold / retired'], sec: 1 },
+        { key: 'capacity', label: 'Box Capacity (m³)', type: 'number', step: '0.5', min: '0', sec: 2, getVal: r => r.capacity ?? (targetEqRow && targetEqRow.capacity) ?? '' },
+        { key: 'supplier', label: 'Truck Owner (Supplier)', type: 'combo', dl: 'dl_insp_suppliers', sec: 2, getVal: r => r.supplier ?? (targetEqRow && targetEqRow.supplier) ?? '' },
+        { key: 'default_driver', label: 'Default Driver', type: 'combo', dl: 'dl_insp_drivers', sec: 2, getVal: r => r.default_driver ?? (targetEqRow && targetEqRow.default_driver) ?? '' },
+        { key: 'day_operator', label: 'Day Shift Operator', type: 'combo', dl: 'dl_insp_drivers', sec: 2 },
+        { key: 'night_operator', label: 'Night Shift Operator', type: 'combo', dl: 'dl_insp_drivers', sec: 2 },
+        { key: 'site', label: 'Assigned Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'start_date', label: 'Assignment Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'Assignment End Date', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      drivers: [
+        { key: 'name', label: 'Driver Full Name *', type: 'text', sec: 1, getVal: r => r.name || r.driver || '' },
+        { key: 'phone', label: 'Phone / Mobile Number', type: 'tel', sec: 1, placeholder: '+961 ...' },
+        { key: 'truck_owner', label: 'Truck Owner (Hauler / Supplier)', type: 'combo', dl: 'dl_insp_suppliers', sec: 2 },
+        { key: 'truck', label: 'Default Assigned Truck', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'is_company_driver', label: 'Company Payroll Driver', type: 'bool', sec: 1 },
+        { key: 'notes', label: 'Notes / License Details', type: 'text', sec: 3, span: true }
+      ],
+      company_drivers: [
+        { key: 'driver', label: 'Driver Name *', type: 'combo', dl: 'dl_insp_drivers', sec: 1 },
+        { key: 'staff', label: 'Linked Staff Record', type: 'combo', dl: 'dl_insp_staff', sec: 1 },
+        { key: 'start_date', label: 'Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'End Date (Blank = Active)', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      expense_categories: [
+        { key: 'name', label: 'Expense Category Name *', type: 'text', sec: 1 },
+        { key: 'cost_class', label: 'Cost Classification', type: 'select', options: [['', '— Select Classification —'], ['Direct COGS', 'Direct COGS'], ['Fleet & Haulage', 'Fleet & Haulage'], ['Site Operations', 'Site Operations'], ['G&A Overhead', 'G&A Overhead'], ['Capex', 'Capital Expenditure']], sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      expense_subcategories: [
+        { key: 'name', label: 'Subcategory Name *', type: 'text', sec: 1 },
+        { key: 'category', label: 'Parent Expense Category *', type: 'select', options: expCatOpts, sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      employments: [
+        { key: 'staff', label: 'Staff Full Name *', type: 'text', sec: 1, getVal: r => r.staff || r.name || '' },
+        { key: 'role', label: 'Job Title / Role', type: 'text', sec: 1, placeholder: 'e.g. Plant Operator, Scale Clerk, Driver' },
+        { key: 'type', label: 'Contract Type *', type: 'select', options: ['Regular', 'Daily', 'Freelance'], sec: 1 },
+        { key: 'status', label: 'Employment Status *', type: 'select', options: ['Active', 'Inactive', 'Terminated'], sec: 1 },
+        { key: 'phone', label: 'Phone / Contact Number', type: 'tel', sec: 1, placeholder: '+961 ...' },
+        { key: 'salary_usd', label: 'Monthly Base Salary ($)', type: 'number', step: '10', min: '0', sec: 3 },
+        { key: 'daily_rate', label: 'Daily Rate ($ / day)', type: 'number', step: '1', min: '0', sec: 3 },
+        { key: 'start_date', label: 'Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'End Date (Blank = Active)', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      attendance: [
+        { key: 'date', label: 'Attendance Date *', type: 'date', sec: 1 },
+        { key: 'staff', label: 'Staff Member *', type: 'combo', dl: 'dl_insp_staff', sec: 1 },
+        { key: 'status', label: 'Attendance / Entry Type *', type: 'select', options: ['Present', 'Overtime', 'Absent', 'Absence', 'Sick Leave', 'VacAbsence', 'Leave', 'Lateness', 'Half Day', 'Extra USD', 'Extra LBP', 'Config USD', 'Config LBP', 'Config VacAbsence'], sec: 1 },
+        { key: 'site', label: 'Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'regular_hours', label: 'Regular Hours', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'overtime_hours', label: 'Overtime Hours', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'late_hours', label: 'Late Hours', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'usd_amount', label: 'USD Adjustment ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      freelance_entries: [
+        { key: 'date', label: 'Work Date *', type: 'date', sec: 1 },
+        { key: 'staff', label: 'Freelancer / Operator *', type: 'combo', dl: 'dl_insp_staff', sec: 1 },
+        { key: 'site', label: 'Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'hours', label: 'Regular Hours / Days', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'extra_hours', label: 'Extra / Overtime Hours', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'rate_usd', label: 'Rate ($)', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'total', label: 'Total Amount ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      logistics_allowances: [
+        { key: 'staff', label: 'Staff Member *', type: 'combo', dl: 'dl_insp_staff', sec: 1 },
+        { key: 'site', label: 'Assigned Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'equipment', label: 'Assigned Unit / Truck', type: 'combo', dl: 'dl_insp_equip', sec: 2 },
+        { key: 'working_days', label: 'Working Days (Mon–Sun)', type: 'text', sec: 2, placeholder: 'Mon, Tue, Wed, Thu, Fri, Sat' },
+        { key: 'days_count', label: 'Days Count', type: 'number', step: '1', min: '0', max: '7', sec: 3 },
+        { key: 'daily_usd', label: 'Daily Allowance ($)', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'usd_amount', label: 'USD Paid ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'lbp_amount', label: 'LBP Paid (LL)', type: 'number', step: '1000', min: '0', sec: 3 },
+        { key: 'amount', label: 'Total Allowance ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'start_date', label: 'Week Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'Week End Date', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      overtime_rates: [
+        { key: 'name', label: 'Route / Rate Name *', type: 'text', sec: 1 },
+        { key: 'region', label: 'Region / Destination', type: 'combo', dl: 'dl_insp_regions', sec: 2 },
+        { key: 'site', label: 'Site', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'amount', label: 'Trip / Overtime Rate ($) *', type: 'number', step: '0.5', min: '0', sec: 3 },
+        { key: 'start_date', label: 'Effective Start Date', type: 'date', sec: 2 },
+        { key: 'end_date', label: 'End Date (Blank = Active)', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      external_movements: [
+        { key: 'date', label: 'Transaction Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'counterparty', label: 'Counterparty *', type: 'combo', dl: 'dl_insp_counterparties', sec: 1 },
+        { key: 'direction', label: 'Cash Direction *', type: 'select', options: ['Inflow', 'Outflow'], sec: 1 },
+        { key: 'method', label: 'Movement Classification *', type: 'select', options: ['External Revenue', 'External Expense', 'Config', 'Inflow', 'Outflow'], sec: 3 },
+        { key: 'usd_amount', label: 'USD Amount ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'lbp_amount', label: 'LBP Amount (LL)', type: 'number', step: '1000', min: '0', sec: 3 },
+        { key: 'amount', label: 'Total USD Equivalent ($)', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'reference', label: 'Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      loans: [
+        { key: 'name', label: 'Loan / Advance Reference *', type: 'text', sec: 1 },
+        { key: 'counterparty', label: 'Partner / Counterparty *', type: 'combo', dl: 'dl_insp_counterparties', sec: 1, getVal: r => r.counterparty || r.lender || '' },
+        { key: 'direction', label: 'Loan Direction *', type: 'select', options: ['Company borrows', 'Company lends', 'Inflow', 'Outflow'], sec: 1 },
+        { key: 'principal', label: 'Principal Amount ($) *', type: 'number', step: '100', min: '0', sec: 3 },
+        { key: 'interest_rate', label: 'Interest Rate (%)', type: 'number', step: '0.1', min: '0', sec: 3 },
+        { key: 'start_date', label: 'Start Date', type: 'date', sec: 2 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      loan_settlements: [
+        { key: 'date', label: 'Settlement Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'loan', label: 'Loan / Counterparty *', type: 'combo', dl: 'dl_insp_counterparties', sec: 1, getVal: r => r.loan || r.counterparty || '' },
+        { key: 'type', label: 'Transaction Type *', type: 'select', options: ['Repayment', 'Drawdown'], sec: 1 },
+        { key: 'method', label: 'Direction / Method *', type: 'select', options: ['Inflow', 'Outflow', 'Cash', 'Bank Transfer', 'Check'], sec: 3 },
+        { key: 'usd_amount', label: 'USD Amount ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'lbp_amount', label: 'LBP Amount (LL)', type: 'number', step: '1000', min: '0', sec: 3 },
+        { key: 'reference', label: 'Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      conversions: [
+        { key: 'date', label: 'Conversion Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'type', label: 'Conversion Direction *', type: 'select', options: [['USD to LBP', 'USD → LBP (Sell USD / Buy LBP)'], ['LBP to USD', 'LBP → USD (Buy USD / Sell LBP)']], sec: 2 },
+        { key: 'usd_amount', label: 'USD Amount ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'lbp_amount', label: 'LBP Amount (LL) *', type: 'number', step: '1000', min: '0', sec: 3 },
+        { key: 'exchange_rate', label: 'Effective FX Rate (LL / $)', type: 'number', step: '1', min: '1', sec: 3, getVal: r => r.exchange_rate || r.fx_rate || 89500 },
+        { key: 'reference', label: 'Exchange Reference', type: 'text', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      jv_partnerships: [
+        { key: 'name', label: 'Partnership Title *', type: 'text', sec: 1 },
+        { key: 'site', label: 'JV Site *', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'partner', label: 'JV Partner *', type: 'combo', dl: 'dl_insp_counterparties', sec: 1 },
+        { key: 'percentage', label: 'Profit Share (%) *', type: 'number', step: '0.5', min: '0', max: '100', sec: 3, getVal: r => r.percentage ?? r.share_pct ?? 50 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ],
+      jv_distributions: [
+        { key: 'date', label: 'Distribution Date *', type: 'date', sec: 1 },
+        { key: 'rep_date', label: 'Reporting Date', type: 'date', sec: 1, getVal: r => r.rep_date || r.date || '' },
+        { key: 'site', label: 'JV Site *', type: 'combo', dl: 'dl_insp_sites', sec: 2 },
+        { key: 'partner', label: 'JV Partner *', type: 'combo', dl: 'dl_insp_counterparties', sec: 1 },
+        { key: 'basis', label: 'Distribution Basis *', type: 'select', options: ['Revenue', 'Stock', 'Net Profit', 'Volume'], sec: 3 },
+        { key: 'amount', label: 'Distribution Amount ($) *', type: 'number', step: '0.01', min: '0', sec: 3 },
+        { key: 'difference', label: 'Reconciliation Adj ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'total', label: 'Net Total Distributed ($)', type: 'number', step: '0.01', sec: 3 },
+        { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+      ]
+    };
+
+    return schemas[key] || [
+      { key: 'name', label: 'Record Name', type: 'text', sec: 1 },
+      { key: 'notes', label: 'Notes', type: 'text', sec: 3, span: true }
+    ];
+  }
+
   // Group record fields into structured Power Apps Form Sections (m12_forms.py parity)
   function buildInspectorSections(key, row) {
-    const hidden = new Set(['id', 'customer_id', 'sale_type_code', 'transport_by_code', 'fuel_type_code', 'rule_type_code', 'rate_per_code', 'category_code', 'ownership_code', 'entered_by_email']);
-    const allKeys = Object.keys(row).filter(k => !hidden.has(k) && row[k] !== '' && row[k] != null && !(typeof row[k] === 'number' && row[k] === 0 && /tip|discount|tier|adj|difference/.test(k)));
+    const isEquipInspect = key === 'equipment' || key === 'company_equipment';
+    const targetEqRow = isEquipInspect
+      ? (key === 'equipment' ? row : (getFleetIndex().eqByName.get(norm(row.equipment || row.name)) || row))
+      : null;
+    const schema = getInspectorEditableSchema(key, row, targetEqRow);
+    const schemaByKey = new Map();
+    schema.forEach(f => {
+      if (!f.drawerOnly) schemaByKey.set(f.key, f);
+    });
 
-    const idFields = new Set(['name', 'official_name', 'ticket_no', 'invoice_no', 'date', 'rep_date', 'payroll_month', 'company', 'sale_type', 'rule_type', 'type', 'status', 'customer', 'supplier', 'staff', 'driver', 'partner', 'counterparty', 'mof_no', 'financial_no', 'vat_registered', 'iva', 'phone', 'contact', 'address', 'location']);
-    const opsFields = new Set(['product', 'item', 'input_product', 'site', 'region', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'equipment', 'plate_no', 'ownership', 'capacity', 'default_driver', 'day_operator', 'night_operator', 'working_days', 'start_date', 'end_date', 'latitude', 'longitude', 'is_jv', 'is_truck_owner', 'trucks_count', 'trucks', 'drivers', 'category', 'subcategory', 'category1', 'category2', 'from_currency', 'to_currency']);
-    const finFields = new Set(['qty', 'uom', 'unit', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'unit_price', 'price', 'indiff_price', 'trans_unit_price', 'trans_indiff_price', 'delivered_indiff_price', 'trans_price', 'unit_cost', 'cost', 'trans_cost', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'usd_delta', 'lbp_delta', 'discount', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
+    const hidden = new Set(['id', 'customer_id', 'sale_type_code', 'transport_by_code', 'fuel_type_code', 'rule_type_code', 'rate_per_code', 'category_code', 'ownership_code', 'entered_by_email', 'adj_windows', 'driver_rows']);
+    if (key === 'customers') { hidden.add('region'); hidden.add('Customer'); hidden.add('Method'); hidden.add('VAT Registered'); }
+    if (key === 'suppliers') { hidden.add('contact'); hidden.add('region'); hidden.add('financial_no'); hidden.add('Supplier'); hidden.add('Method'); hidden.add('IVA'); }
+
+    const populatedKeys = Object.keys(row).filter(k => !hidden.has(k) && row[k] !== '' && row[k] != null && !(typeof row[k] === 'number' && row[k] === 0 && /tip|discount|tier|adj|difference/.test(k) && !schemaByKey.has(k)));
+    const allKeysSet = new Set(populatedKeys);
+    schema.forEach(f => {
+      if (!f.drawerOnly && !hidden.has(f.key)) allKeysSet.add(f.key);
+    });
+    const allKeys = Array.from(allKeysSet);
+
+    const idFields = new Set(['name', 'official_name', 'ticket_no', 'invoice_no', 'date', 'rep_date', 'time', 'payroll_month', 'company', 'sale_type', 'rule_type', 'type', 'status', 'customer', 'supplier', 'staff', 'driver', 'partner', 'counterparty', 'loan', 'role', 'mof_no', 'financial_no', 'vat_registered', 'iva', 'phone', 'contact', 'email', 'address', 'location', 'direction', 'is_company_driver']);
+    const opsFields = new Set(['product', 'item', 'input_product', 'fuel_type', 'site', 'region', 'site_owner', 'transport_by', 'truck_owner', 'truck', 'equipment', 'plate_no', 'ownership', 'capacity', 'truck_size', 'default_driver', 'day_operator', 'night_operator', 'model', 'working_days', 'start_date', 'end_date', 'latitude', 'longitude', 'is_jv', 'is_truck_owner', 'ticket_product', 'fuel_item', 'customer_declared_qty', 'external_invoice', 'trucks_count', 'trucks', 'drivers', 'category', 'subcategory', 'category1', 'category2', 'cost_class', 'from_currency', 'to_currency']);
+    const finFields = new Set(['qty', 'external_qty', 'uom', 'unit', 'rate_per', 'ton_factor', 'litres', 'odometer', 'hours', 'regular_hours', 'overtime_hours', 'late_hours', 'extra_hours', 'days_count', 'unit_price', 'price', 'list_price', 'indiff_price', 'trans_unit_price', 'trans_indiff_price', 'delivered_indiff_price', 'trans_price', 'unit_cost', 'cost', 'trans_unit_cost', 'trans_cost', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'vat', 'vat_amount', 'net_amount', 'total', 'total_ttc', 'amount', 'usd_amount', 'lbp_amount', 'usd_delta', 'lbp_delta', 'discount', 'tip', 'salary_usd', 'daily_rate', 'daily_usd', 'rate_usd', 'credit_days', 'credit_limit', 'principal', 'interest_rate', 'exchange_rate', 'percentage', 'basis', 'difference', 'ar_balance', 'ap_balance', 'loads', 'raw_loads', 'sales_ttc', 'raw_cost', 'receipts', 'settlements_paid', 'method', 'vat_invoice', 'record_ticket', 'raw_ticket', 'expense_record', 'invoice', 'reference', 'revenue_account', 'purchase_account', 'notes']);
 
     const s1 = [], s2 = [], s3 = [];
     allKeys.forEach(k => {
-      if (idFields.has(k)) s1.push(k);
+      const fDef = schemaByKey.get(k);
+      if (fDef && fDef.sec === 1) s1.push(k);
+      else if (fDef && fDef.sec === 2) s2.push(k);
+      else if (fDef && fDef.sec === 3) s3.push(k);
+      else if (idFields.has(k)) s1.push(k);
       else if (opsFields.has(k)) s2.push(k);
       else if (finFields.has(k)) s3.push(k);
       else s2.push(k);
@@ -17533,15 +18639,26 @@
       if (!(ek in row)) { extraPairs.push([ek, ev]); totalCount++; }
     }
 
+    const canEdit = canModifyData();
     const renderCell = (k, valOverride) => {
-      const v = valOverride !== undefined ? valOverride : row[k];
+      const fDef = schemaByKey.get(k);
+      const v = valOverride !== undefined ? valOverride : (fDef && typeof fDef.getVal === 'function' ? fDef.getVal(row) : row[k]);
       const formatted = inspectorValue(k, v);
+      const isEmpty = formatted === '—';
       const lkTarget = (k === 'type' && key !== 'products') ? null : INSPECT_LOOKUP_FIELD_TARGET[k];
-      const canLink = lkTarget && lkTarget !== key && v != null && v !== '' && formatted !== '—';
-      const valHtml = canLink
-        ? `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(k.replace(/_/g, ' '))}: ${esc(v)}">${esc(formatted)}<span class="rel-arr">↗</span></span>`
-        : esc(formatted);
-      return `<div class="inspector-cell"><small>${esc(k.replace(/_/g, ' '))}</small><b>${valHtml}</b></div>`;
+      const canLink = lkTarget && lkTarget !== key && v != null && v !== '' && !isEmpty;
+      const lblText = fDef ? fDef.label.replace(/\s*\*$/, '') : k.replace(/_/g, ' ');
+      const editableAttr = (canEdit && fDef && valOverride === undefined) ? ` data-edit-field="${esc(k)}" title="Click to modify ${esc(lblText)}"` : '';
+      const cellCls = `inspector-cell${editableAttr ? ' is-editable-cell' : ''}${isEmpty && editableAttr ? ' is-empty-cell' : ''}`;
+      let valHtml;
+      if (canLink) {
+        valHtml = `<span class="rel-link" data-rel-key="${esc(lkTarget)}" data-rel-val="${esc(v)}" title="Open related ${esc(lblText)}: ${esc(v)}">${esc(formatted)}<span class="rel-arr">↗</span></span>`;
+      } else if (isEmpty && editableAttr) {
+        valHtml = `<span class="insp-empty-add">+ Set ${esc(lblText)}</span>`;
+      } else {
+        valHtml = esc(formatted);
+      }
+      return `<div class="${cellCls}"${editableAttr}><small>${esc(lblText)}${editableAttr ? '<i class="insp-cell-edit-ico" aria-hidden="true">✎</i>' : ''}</small><b>${valHtml}</b></div>`;
     };
 
     const sections = [];
@@ -17667,31 +18784,77 @@
       ? (key === 'equipment' ? row : (getFleetIndex().eqByName.get(norm(row.equipment || row.name)) || row))
       : null;
     const eqWindows = (targetEqRow && Array.isArray(targetEqRow.adj_windows)) ? targetEqRow.adj_windows : [];
-    const modFieldsList = key === 'price_rules'
-      ? ['unit_price', 'indiff_price', 'trans_unit_price', 'truck_size', 'truck', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2', 'start_date', 'end_date', 'notes']
-      : (isEquipInspect
-          ? ['effective_from', 'effective_to', 'capacity', 'supplier', 'default_driver', 'plate_no', 'notes']
-          : ['date', 'qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'default_driver', 'supplier', 'truck_owner', 'truck', 'driver', 'phone', 'method', 'reference', 'notes'].filter(f => f in row || f === 'notes' || f === 'reference').slice(0, 6));
-    const modFieldLabels = {
-      effective_from: 'Effective From Date',
-      effective_to: 'Effective To Date (Blank = Open / Substitute End)',
-      capacity: 'Capacity (m³)',
-      supplier: isEquipInspect ? 'Truck Owner (Supplier)' : 'Supplier / Hauler',
-      default_driver: 'Active / Default Driver (Locked onto Tickets)',
-      plate_no: 'License Plate No.',
-      unit_price: 'Material Unit Price ($)',
-      indiff_price: 'Indifference Price ($ · Flat / Load)',
-      trans_unit_price: 'Transport Unit Price ($)',
-      truck_size: 'Client / Site Truck Size (m³)',
-      truck: key === 'price_rules' ? 'Target Truck Plate (Optional)' : 'Truck',
-      qty1: 'Tier 1 Truck Size (m³)',
-      adj1: 'Tier 1 Price Adj ($)',
-      trans_adj1: 'Tier 1 Trans Adj ($)',
-      qty2: 'Tier 2 Truck Size (m³)',
-      adj2: 'Tier 2 Price Adj ($)',
-      trans_adj2: 'Tier 2 Trans Adj ($)',
-      start_date: 'Start Date',
-      end_date: 'End Date'
+    const editSchema = getInspectorEditableSchema(key, row, targetEqRow);
+    const inspRegions = uniqSorted(
+      ((SEED.records && SEED.records.regions) || []).map(r => r.name)
+        .concat(((SEED.records && SEED.records.sites) || []).map(s => s.region))
+        .concat(((SEED.records && SEED.records.customers) || []).map(c => c.address || c.region))
+        .concat(((SEED.records && SEED.records.suppliers) || []).map(s => s.location || s.region))
+        .concat(['Beirut', 'Mount Lebanon', 'South Lebanon', 'Nabatieh', 'Bekaa', 'North Lebanon', 'Chouf', 'Saida', 'Tyre', 'Baabda', 'Metn', 'Keserwan', 'Aley'])
+    );
+    const inspSubcats = uniqSorted(
+      ((SEED.records && SEED.records.expense_subcategories) || []).map(sc => sc.name)
+        .concat(((SEED.records && SEED.records.expenses) || []).map(x => x.subcategory))
+    );
+    const inspCounterparties = uniqSorted(
+      ((SEED.records && SEED.records.loans) || []).map(l => l.counterparty || l.lender || l.name)
+        .concat(((SEED.records && SEED.records.external_movements) || []).map(x => x.counterparty))
+        .concat(((SEED.records && SEED.records.jv_partnerships) || []).map(j => j.partner))
+        .concat(supplierNames(), customerNames())
+    );
+    const inspProds = uniqSorted(((SEED.records && SEED.records.products) || []).map(p => p.name));
+
+    const renderModFieldHtml = (fDef) => {
+      const f = fDef.key;
+      const rawCur = typeof fDef.getVal === 'function'
+        ? fDef.getVal(row)
+        : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : ''));
+      const lbl = fDef.label || f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const spanCls = fDef.span ? ' span-3' : '';
+      if (fDef.type === 'bool') {
+        const isYes = Boolean(rawCur === true || rawCur === 'Yes' || rawCur === 'true' || rawCur === 1);
+        return `
+          <div class="form-field${spanCls}">
+            <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
+            <select id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" data-mod-type="bool">
+              <option value="No" ${!isYes ? 'selected' : ''}>No</option>
+              <option value="Yes" ${isYes ? 'selected' : ''}>Yes</option>
+            </select>
+          </div>
+        `;
+      }
+      if (fDef.type === 'select') {
+        const curStr = String(rawCur == null ? '' : rawCur);
+        const normOpts = (fDef.options || []).map(o => Array.isArray(o) ? [String(o[0]), String(o[1])] : [String(o), String(o)]);
+        if (curStr && !normOpts.some(([ov]) => ov.toLowerCase() === curStr.toLowerCase())) {
+          normOpts.unshift([curStr, curStr]);
+        }
+        return `
+          <div class="form-field${spanCls}">
+            <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
+            <select id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" data-mod-type="select">
+              ${normOpts.map(([ov, ol]) => `<option value="${esc(ov)}" ${ov.toLowerCase() === curStr.toLowerCase() ? 'selected' : ''}>${esc(ol)}</option>`).join('')}
+            </select>
+          </div>
+        `;
+      }
+      if (fDef.type === 'combo') {
+        return `
+          <div class="form-field${spanCls}">
+            <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
+            <input type="text" id="insp_edit_${esc(f)}" list="${esc(fDef.dl || '')}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" data-mod-type="combo" value="${esc(rawCur == null ? '' : rawCur)}" placeholder="${esc(fDef.placeholder || 'Select or type...')}" autocomplete="off">
+          </div>
+        `;
+      }
+      const inpType = fDef.type === 'number' ? 'number' : (fDef.type === 'date' ? 'date' : (fDef.type === 'time' ? 'time' : (fDef.type === 'month' ? 'month' : (fDef.type === 'tel' ? 'tel' : 'text'))));
+      const stepAttr = fDef.type === 'number' ? ` step="${esc(fDef.step || '0.01')}"${fDef.min != null ? ` min="${esc(fDef.min)}"` : ''}${fDef.max != null ? ` max="${esc(fDef.max)}"` : ''} inputmode="decimal"` : '';
+      const phAttr = fDef.placeholder ? ` placeholder="${esc(fDef.placeholder)}"` : '';
+      return `
+        <div class="form-field${spanCls}">
+          <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
+          <input type="${inpType}"${stepAttr}${phAttr} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" data-mod-type="${esc(fDef.type || 'text')}" value="${esc(rawCur == null ? '' : rawCur)}" autocomplete="off">
+        </div>
+      `;
     };
 
     const REL_TO_VIEW_COL = {
@@ -17709,6 +18872,20 @@
 
     const bodyEl = $('inspectorBody');
     bodyEl.innerHTML = `
+      <!-- Shared Searchable Datalists for Inspector Modification Drawer & Equipment Log -->
+      <div hidden aria-hidden="true">
+        <datalist id="dl_insp_customers">${customerNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_suppliers">${supplierNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_products">${inspProds.map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_sites">${siteNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_regions">${inspRegions.map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_equip">${equipmentNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_drivers">${driverNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_staff">${staffNames().map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_subcategories">${inspSubcats.map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+        <datalist id="dl_insp_counterparties">${inspCounterparties.map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+      </div>
+
       <!-- Top Command Bar & Relational Breadcrumb Trail -->
       <div class="pa-cmd-bar">
         <div class="pa-breadcrumbs">
@@ -17732,26 +18909,21 @@
       <!-- Inline Record Modification Drawer (Gated by Role Modify Data Permission) -->
       <div class="insp-modify-drawer" id="inspModifyDrawer" hidden>
         <div class="insp-modify-hdr">
-          <strong>${ic('edit')} Inline Record Modification · Authorized by ${esc(activeUser().role)} (${esc(activeUser().full_name)})</strong>
+          <div>
+            <strong>${ic('edit')} Modify ${esc(INSPECT_LABELS[key] || key)} · ${esc(recTitle)}</strong>
+            <span class="insp-modify-sub">Authorized by ${esc(activeUser().role)} (${esc(activeUser().full_name)}) · Tip: click any field in the General form below to jump straight to it</span>
+          </div>
           <span class="badge badge-brass">MODIFY DATA PRIVILEGE VERIFIED</span>
         </div>
-        <div class="form-grid-3" style="margin-top:8px">
-          ${modFieldsList.map(f => {
-            const isNumField = ['qty', 'unit_price', 'indiff_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2'].includes(f);
-            const isDateField = f === 'date' || f === 'start_date' || f === 'end_date' || f === 'effective_from' || f === 'effective_to';
-            const curV = f === 'effective_from' ? todayISO() : (f === 'effective_to' ? '' : (row[f] != null ? row[f] : (targetEqRow && targetEqRow[f] != null ? targetEqRow[f] : '')));
-            const lbl = modFieldLabels[f] || f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            return `
-              <div class="form-field">
-                <label for="insp_edit_${esc(f)}">${esc(lbl)}</label>
-                <input type="${isDateField ? 'date' : (isNumField ? 'number' : 'text')}" ${isNumField ? 'step="0.01"' : ''} id="insp_edit_${esc(f)}" data-insp-edit-field="${esc(f)}" data-mod-field="${esc(f)}" value="${esc(curV)}">
-              </div>
-            `;
-          }).join('')}
+        <div class="form-grid-3" style="margin-top:10px">
+          ${editSchema.map(renderModFieldHtml).join('')}
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-          <button type="button" class="btn" id="inspCancelModifyBtn">Cancel</button>
-          <button type="button" class="btn btn-primary" id="inspSaveModifyBtn">✓ Save Record Modifications</button>
+        <div class="insp-modify-foot">
+          <div id="inspModLiveCalc" class="insp-mod-live-calc"></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-left:auto">
+            <button type="button" class="btn" id="inspCancelModifyBtn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="inspSaveModifyBtn">✓ Save Record Modifications</button>
+          </div>
         </div>
       </div>
 
@@ -17846,7 +19018,7 @@
             <div class="form-grid-3" style="padding:10px 12px;background:rgba(196,154,69,0.06);border-bottom:1px solid var(--line)">
               <div class="form-field">
                 <label for="insp_tw_co">Company / BU</label>
-                <select id="insp_tw_co" data-native-select="1">
+                <select id="insp_tw_co">
                   <option value="WTC" ${row.company === 'BBConstruction' ? '' : 'selected'}>WTC</option>
                   <option value="BBConstruction" ${row.company === 'BBConstruction' ? 'selected' : ''}>BBConstruction</option>
                   <option value="Lions Transport" ${row.company === 'Lions Transport' ? 'selected' : ''}>Lions Transport</option>
@@ -17854,7 +19026,7 @@
               </div>
               <div class="form-field">
                 <label for="insp_tw_side">Applies To Tables</label>
-                <select id="insp_tw_side" data-native-select="1">
+                <select id="insp_tw_side">
                   <option value="both" selected>All Tables (Sales, Raw, Lubricant &amp; Diesel)</option>
                   <option value="sales">Sales Side Only</option>
                   <option value="raw">Raw Material &amp; Transport Side Only</option>
@@ -17875,21 +19047,20 @@
               </div>
               <div class="form-field">
                 <label for="insp_tw_own">Truck Owner (Supplier)</label>
-                <input type="text" id="insp_tw_own" value="${esc(targetEqRow.supplier || '')}" placeholder="e.g. Hussein Bdeir, Karim Bdeir, WTC">
+                <input type="text" id="insp_tw_own" list="dl_insp_suppliers" value="${esc(targetEqRow.supplier || '')}" placeholder="e.g. Hussein Bdeir, Karim Bdeir, WTC" autocomplete="off">
               </div>
               <div class="form-field">
                 <label for="insp_tw_drv">Active / Substitute Driver *</label>
-                <input type="text" id="insp_tw_drv" list="dl_insp_drivers" value="${esc(targetEqRow.default_driver || '')}" placeholder="Driver name">
-                <datalist id="dl_insp_drivers">${driverNames().map(d => `<option value="${esc(d)}">`).join('')}</datalist>
+                <input type="text" id="insp_tw_drv" list="dl_insp_drivers" value="${esc(targetEqRow.default_driver || '')}" placeholder="Driver name" autocomplete="off">
               </div>
               <div class="form-field">
                 <label for="insp_tw_cust">Client Override (Optional)</label>
-                <input type="text" id="insp_tw_cust" value="" placeholder="All clients (or type client name)...">
+                <input type="text" id="insp_tw_cust" list="dl_insp_customers" value="" placeholder="All clients (or type client name)..." autocomplete="off">
               </div>
               <div class="form-field">
                 <label for="insp_tw_site">Site Override (Optional)</label>
                 <div style="display:flex;gap:6px">
-                  <input type="text" id="insp_tw_site" value="" placeholder="All sites (or type site name)..." style="flex:1">
+                  <input type="text" id="insp_tw_site" list="dl_insp_sites" value="" placeholder="All sites (or type site name)..." style="flex:1" autocomplete="off">
                   <button type="button" class="btn btn-primary" id="inspAddTruckWinBtn" style="white-space:nowrap">+ Add Log Entry</button>
                 </div>
               </div>
@@ -18030,12 +19201,127 @@
 
     const modBtn = $('inspModifyRecordBtn');
     const modDrawer = $('inspModifyDrawer');
+    const modLiveCalcEl = $('inspModLiveCalc');
+    const getModVal = fk => {
+      const el = $('insp_edit_' + fk);
+      return el ? String(el.value || '').trim() : '';
+    };
+    const getModNum = fk => {
+      const v = getModVal(fk);
+      if (v === '') return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const syncModifyLiveSummary = () => {
+      if (!modDrawer || !modLiveCalcEl) return;
+      let html = '';
+      if (key === 'sales_tickets') {
+        const qty = getModNum('qty');
+        const up = getModNum('unit_price');
+        const tp = getModNum('trans_unit_price');
+        const disc = getModNum('discount');
+        const mat = round2(Math.max(0, qty * up + Number(row.tier_adj || 0) - disc));
+        const tr = round2(Math.max(0, qty * tp + Number(row.trans_tier_adj || 0)));
+        const net = round2(mat + tr);
+        const ci = customerInfo(getModVal('customer') || row.customer) || {};
+        const hasVat = Boolean(row.vat > 0 || row.vat_invoice || getModVal('vat_invoice') || ci.vat_registered || ci['VAT Registered'] === 'Yes');
+        const vat = hasVat ? round2(net * VAT_RATE) : 0;
+        const ttc = round2(net + vat);
+        html = `<span>Material: <b>${fmtUSD(mat, 2)}</b></span><span>Transport: <b>${fmtUSD(tr, 2)}</b></span><span>VAT 11%: <b>${fmtUSD(vat, 2)}</b></span><span>Total TTC: <b>${fmtUSD(ttc, 2)}</b></span>`;
+      } else if (key === 'raw_purchases') {
+        const qty = getModNum('qty');
+        const uc = getModNum('unit_cost');
+        const tuc = getModNum('trans_unit_cost');
+        const disc = getModNum('discount');
+        const cost = round2(Math.max(0, qty * uc - disc));
+        const trCost = round2(Math.max(0, qty * tuc));
+        const tot = round2(cost + trCost);
+        html = `<span>Material Leg: <b>${fmtUSD(cost, 2)}</b></span><span>Haulage Leg: <b>${fmtUSD(trCost, 2)}</b></span><span>Total Payable: <b>${fmtUSD(tot, 2)}</b></span>`;
+      } else if (key === 'vat_invoices') {
+        const net = getModNum('net_amount');
+        const vat = $('insp_edit_vat_amount') && $('insp_edit_vat_amount').dataset.userEdited === '1'
+          ? getModNum('vat_amount')
+          : round2(net * VAT_RATE);
+        if ($('insp_edit_vat_amount') && $('insp_edit_vat_amount').dataset.userEdited !== '1') {
+          $('insp_edit_vat_amount').value = vat.toFixed(2);
+        }
+        const ttc = round2(net + vat);
+        if ($('insp_edit_total_ttc')) $('insp_edit_total_ttc').value = ttc.toFixed(2);
+        html = `<span>Net HT: <b>${fmtUSD(net, 2)}</b></span><span>VAT 11%: <b>${fmtUSD(vat, 2)}</b></span><span>Total TTC: <b>${fmtUSD(ttc, 2)}</b></span>`;
+      } else if (key === 'conversions') {
+        const dir = getModVal('type') || row.type || 'USD to LBP';
+        const isU2L = !/^lbp/i.test(dir);
+        const usd = getModNum('usd_amount');
+        const lbp = Math.round(getModNum('lbp_amount'));
+        const rate = (usd > 0 && lbp > 0) ? round2(lbp / usd) : (getModNum('exchange_rate') || 89500);
+        if ($('insp_edit_exchange_rate') && usd > 0 && lbp > 0) $('insp_edit_exchange_rate').value = String(rate);
+        html = `<span>USD Drawer: <b>${fmtSignedUSD(isU2L ? -usd : usd, 2)}</b></span><span>LBP Drawer: <b>${fmtSignedLBP(isU2L ? lbp : -lbp)}</b></span><span>Rate: <b>${fmtNum(rate, 2)} LL/$</b></span>`;
+      } else if (key === 'customers') {
+        const m = getModVal('method') || 'Credit';
+        const vr = getModVal('vat_registered') === 'Yes';
+        const cd = getModVal('credit_days');
+        const cl = getModVal('credit_limit');
+        html = `<span>Default Method: <b>${esc(m)}</b></span><span>VAT Status: <b>${vr ? '11% VAT Registered' : 'Non-VAT'}</b></span>${cd || cl ? `<span>Credit Policy: <b>${esc(cd || '30')}d · Limit ${fmtUSD(Number(cl || 0), 0)}</b></span>` : ''}`;
+      } else if (key === 'suppliers') {
+        const m = getModVal('method') || 'Credit';
+        const c1 = getModVal('category1');
+        const c2 = getModVal('category2');
+        const iva = getModVal('iva') === 'Yes';
+        html = `<span>Default Method: <b>${esc(m)}</b></span><span>Category: <b>${esc([c1, c2].filter(Boolean).join(', ') || 'General')}</b></span><span>IVA: <b>${iva ? 'Yes' : 'No'}</b></span>`;
+      }
+      modLiveCalcEl.innerHTML = html;
+      modLiveCalcEl.hidden = !html;
+    };
+
+    const openModifyDrawerAndFocus = (focusFieldKey) => {
+      if (!modDrawer || !canModifyData()) return;
+      modDrawer.hidden = false;
+      syncModifyLiveSummary();
+      const targetInp = focusFieldKey ? $('insp_edit_' + focusFieldKey) : modDrawer.querySelector('input:not([type="hidden"]), select');
+      if (targetInp) {
+        setTimeout(() => {
+          try {
+            targetInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            window.__mfgSuppressAutoFocusMenu = true;
+            targetInp.focus({ preventScroll: true });
+            if (targetInp.select && targetInp.tagName === 'INPUT' && targetInp.type !== 'date') targetInp.select();
+          } catch (_) {
+          } finally {
+            setTimeout(() => { window.__mfgSuppressAutoFocusMenu = false; }, 80);
+          }
+        }, 30);
+      } else {
+        modDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+
     if (modBtn && modDrawer) {
       modBtn.addEventListener('click', () => {
-        modDrawer.hidden = !modDrawer.hidden;
-        if (!modDrawer.hidden) modDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (modDrawer.hidden) openModifyDrawerAndFocus('');
+        else modDrawer.hidden = true;
       });
     }
+    if (modDrawer) {
+      modDrawer.querySelectorAll('input, select').forEach(el => {
+        if (el.id === 'insp_edit_vat_amount') {
+          el.addEventListener('input', () => { el.dataset.userEdited = '1'; syncModifyLiveSummary(); });
+        } else {
+          el.addEventListener('input', syncModifyLiveSummary);
+          el.addEventListener('change', syncModifyLiveSummary);
+        }
+      });
+      syncModifyLiveSummary();
+    }
+
+    // Wire click-to-edit on any editable cell in the General 360° form
+    bodyEl.querySelectorAll('.inspector-cell[data-edit-field]').forEach(cell => {
+      cell.addEventListener('click', e => {
+        if (e.target && e.target.closest('[data-rel-key]')) return;
+        const fk = cell.getAttribute('data-edit-field');
+        if (fk) openModifyDrawerAndFocus(fk);
+      });
+    });
+
     const cancelModBtn = $('inspCancelModifyBtn');
     if (cancelModBtn && modDrawer) {
       cancelModBtn.addEventListener('click', () => { modDrawer.hidden = true; });
@@ -18044,13 +19330,17 @@
     if (saveModBtn && modDrawer) {
       saveModBtn.addEventListener('click', () => {
         if (!canModifyData()) { toast('Your seat does not have Modify Existing Records permission', 'err'); return; }
-        const numKeys = new Set(['qty', 'unit_price', 'trans_unit_price', 'discount', 'amount', 'litres', 'capacity', 'truck_size', 'qty1', 'adj1', 'trans_adj1', 'qty2', 'adj2', 'trans_adj2']);
+        const schemaMap = new Map(editSchema.map(f => [f.key, f]));
         const pendingUpdates = {};
         let effFromDate = todayISO();
         let effToDate = '';
+        let validationError = '';
+
         modDrawer.querySelectorAll('[data-mod-field]').forEach(inp => {
+          if (validationError) return;
           const fk = inp.getAttribute('data-mod-field');
           if (!fk) return;
+          const fDef = schemaMap.get(fk) || {};
           if (fk === 'effective_from') {
             effFromDate = inp.value || todayISO();
             return;
@@ -18059,14 +19349,39 @@
             effToDate = inp.value || '';
             return;
           }
-          const prevVal = row[fk] !== undefined ? row[fk] : (targetEqRow ? targetEqRow[fk] : undefined);
-          const nextRaw = inp.value;
-          const isNumericFk = numKeys.has(fk) || typeof prevVal === 'number';
-          const nextVal = isNumericFk ? (nextRaw === '' ? null : (!Number.isNaN(Number(nextRaw)) ? Number(nextRaw) : nextRaw)) : nextRaw;
-          if (String(prevVal ?? '') !== String(nextVal ?? '')) {
+          const prevVal = typeof fDef.getVal === 'function'
+            ? fDef.getVal(row)
+            : (row[fk] !== undefined ? row[fk] : (targetEqRow ? targetEqRow[fk] : undefined));
+          const nextRaw = String(inp.value ?? '').trim();
+
+          if (fDef.type === 'select' && Array.isArray(fDef.options) && fDef.options.length) {
+            const allowedVals = fDef.options.map(o => String(Array.isArray(o) ? o[0] : o));
+            if (nextRaw && !allowedVals.some(av => av.toLowerCase() === nextRaw.toLowerCase()) && String(prevVal ?? '').toLowerCase() !== nextRaw.toLowerCase()) {
+              validationError = `Invalid ${fDef.label || fk}: "${nextRaw}". Please choose from the valid list options.`;
+              return;
+            }
+          }
+
+          let nextVal;
+          if (fDef.type === 'bool') {
+            nextVal = nextRaw === 'Yes' || nextRaw === 'true' || nextRaw === '1';
+          } else if (fDef.type === 'number' || typeof prevVal === 'number') {
+            nextVal = nextRaw === '' ? null : (!Number.isNaN(Number(nextRaw)) ? Number(nextRaw) : nextRaw);
+          } else {
+            nextVal = nextRaw;
+          }
+
+          const prevNorm = typeof prevVal === 'boolean' ? String(prevVal) : String(prevVal ?? '');
+          const nextNorm = typeof nextVal === 'boolean' ? String(nextVal) : String(nextVal ?? '');
+          if (prevNorm !== nextNorm) {
             pendingUpdates[fk] = nextVal;
           }
         });
+
+        if (validationError) {
+          toast(validationError, 'err');
+          return;
+        }
         if (effToDate && effToDate < effFromDate) {
           toast('Effective To Date cannot be before Effective From Date.', 'err');
           return;
@@ -18074,6 +19389,10 @@
         if (UNIVERSAL_MAIN_SPEC[key]) {
           const candidate = Object.assign({}, row, pendingUpdates);
           const mainVal = universalMainValue(key, candidate);
+          if (!mainVal) {
+            toast(`${UNIVERSAL_MAIN_SPEC[key].label} Name cannot be blank.`, 'err');
+            return;
+          }
           const dup = findUniversalDuplicate(key, mainVal, { excludeId: row.id, plateNo: candidate.plate_no, category: candidate.category });
           if (dup) {
             toast(`Duplicate ${UNIVERSAL_MAIN_SPEC[key].label} "${mainVal}" already exists — modification blocked.`, 'err');
@@ -18091,10 +19410,145 @@
           if (targetEqRow && targetEqRow !== row && ['capacity', 'supplier', 'default_driver', 'plate_no'].includes(fk)) {
             targetEqRow[fk] = nextVal;
           }
-          if (key === 'drivers' && fk === 'driver') row.name = nextVal;
-          if (key === 'equipment' && fk === 'equipment') row.name = nextVal;
+          if (key === 'drivers' && (fk === 'driver' || fk === 'name')) { row.name = nextVal; row.driver = nextVal; }
+          if (key === 'equipment' && (fk === 'equipment' || fk === 'name')) { row.name = nextVal; row.equipment = nextVal; }
+          if (key === 'employments' && (fk === 'staff' || fk === 'name')) { row.staff = nextVal; row.name = nextVal; }
           changedCount++;
         });
+
+        // Synchronize aliases & linked master/transactional calculations
+        if (key === 'customers') {
+          if ('name' in pendingUpdates) {
+            row.Customer = row.name;
+            if (!row.official_name) row.official_name = row.name;
+          }
+          if ('address' in pendingUpdates) row.region = row.address;
+          if ('region' in pendingUpdates) row.address = row.region;
+          if ('method' in pendingUpdates) row.Method = row.method;
+          if ('vat_registered' in pendingUpdates) row['VAT Registered'] = row.vat_registered ? 'Yes' : 'No';
+          if ('credit_days' in pendingUpdates || 'credit_limit' in pendingUpdates) {
+            const custName = row.name || row.Customer;
+            const cDays = row.credit_days != null ? Number(row.credit_days) : 30;
+            const cLim = row.credit_limit != null ? Number(row.credit_limit) : 0;
+            if (!Array.isArray(SEED.records.credit_terms)) SEED.records.credit_terms = [];
+            if (!Array.isArray(STATE.customRecords.credit_terms)) STATE.customRecords.credit_terms = [];
+            let ctRow = creditTermsForCustomer(custName);
+            if (ctRow) {
+              ctRow.credit_days = cDays;
+              ctRow.payment_days = cDays;
+              ctRow.credit_limit = cLim;
+              ctRow.name = `${custName} · Net ${cDays}d`;
+              const ctIdx = STATE.customRecords.credit_terms.findIndex(x => String(x.id) === String(ctRow.id));
+              if (ctIdx >= 0) Object.assign(STATE.customRecords.credit_terms[ctIdx], ctRow);
+              else STATE.customRecords.credit_terms.unshift(Object.assign({}, ctRow));
+            } else if (custName) {
+              ctRow = {
+                id: uid('ct'),
+                name: `${custName} · Net ${cDays}d`,
+                company: row.company || 'WTC',
+                customer: custName,
+                credit_days: cDays,
+                payment_days: cDays,
+                credit_limit: cLim,
+                start_date: todayISO(),
+                source: 'app',
+                entered_by: activeUser().full_name,
+                entered_by_email: activeUser().email,
+                entered_at: nowStamp(),
+                voided: false
+              };
+              SEED.records.credit_terms.unshift(ctRow);
+              STATE.customRecords.credit_terms.unshift(Object.assign({}, ctRow));
+            }
+          }
+        } else if (key === 'suppliers') {
+          if ('name' in pendingUpdates) {
+            row.Supplier = row.name;
+            if (!row.official_name) row.official_name = row.name;
+          }
+          if ('phone' in pendingUpdates) row.contact = row.phone;
+          if ('location' in pendingUpdates) row.region = row.location;
+          if ('mof_no' in pendingUpdates) row.financial_no = row.mof_no;
+          if ('iva' in pendingUpdates) row.IVA = row.iva ? 'Yes' : 'No';
+          if ('category1' in pendingUpdates || 'category2' in pendingUpdates || 'is_truck_owner' in pendingUpdates) {
+            const rawCats = [row.category1, row.category2, row.category3].filter(Boolean);
+            if (row.is_truck_owner && !rawCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) {
+              rawCats.unshift('Hauler / Truck Owner');
+            }
+            const cleanCats = parseSupplierCategories(rawCats);
+            row.categories = cleanCats;
+            row.category = cleanCats.join(', ');
+            if (!row.category1 && cleanCats[0]) row.category1 = cleanCats[0];
+            if (cleanCats.some(c => /hauler|truck\s*owner|transport/i.test(String(c)))) row.is_truck_owner = true;
+          }
+        } else if (key === 'sales_tickets') {
+          const qty = Number(row.qty || 0);
+          const up = Number(row.unit_price || 0);
+          const tp = Number(row.trans_unit_price || 0);
+          const disc = Number(row.discount || 0);
+          row.price = round2(Math.max(0, qty * up + Number(row.tier_adj || 0) - disc));
+          row.trans_price = row.sale_type === 'Pickup' ? 0 : round2(Math.max(0, qty * tp + Number(row.trans_tier_adj || 0)));
+          row.total = round2(row.price + row.trans_price);
+          const ci = customerInfo(row.customer) || {};
+          const hasVat = Boolean(row.vat > 0 || row.vat_invoice || ci.vat_registered || ci['VAT Registered'] === 'Yes');
+          row.vat = hasVat ? round2(row.total * VAT_RATE) : 0;
+          row.total_ttc = round2(row.total + row.vat);
+        } else if (key === 'raw_purchases') {
+          const qty = Number(row.qty || 0);
+          const uc = Number(row.unit_cost || 0);
+          const tuc = Number(row.trans_unit_cost || 0);
+          const disc = Number(row.discount || 0);
+          row.cost = round2(Math.max(0, qty * uc - disc));
+          row.trans_cost = /company/i.test(row.transport_by || '') ? 0 : round2(Math.max(0, qty * tuc));
+          row.total = round2(row.cost + row.trans_cost);
+        } else if (key === 'vat_invoices') {
+          const net = round2(Number(row.net_amount || 0));
+          const vat = ('vat_amount' in pendingUpdates && row.vat_amount != null) ? round2(Number(row.vat_amount)) : round2(net * VAT_RATE);
+          row.net_amount = net;
+          row.vat_amount = vat;
+          row.total_ttc = round2(net + vat);
+          if ('invoice_no' in pendingUpdates && row.invoice_no) row.name = row.invoice_no;
+        } else if (key === 'salaries') {
+          if (('usd_amount' in pendingUpdates || 'lbp_amount' in pendingUpdates) && !('amount' in pendingUpdates)) {
+            row.amount = round2(Number(row.usd_amount || 0) + Number(row.lbp_amount || 0) / 89500);
+          }
+        } else if (key === 'logistics_allowances') {
+          if ('days_count' in pendingUpdates || 'daily_usd' in pendingUpdates) {
+            const dc = Number(row.days_count || 0);
+            const du = Number(row.daily_usd || 0);
+            if (dc > 0 && du > 0 && !('amount' in pendingUpdates)) {
+              row.amount = round2(dc * du);
+              row.usd_amount = row.amount;
+            }
+          }
+        } else if (key === 'freelance_entries') {
+          if (('hours' in pendingUpdates || 'extra_hours' in pendingUpdates || 'rate_usd' in pendingUpdates) && !('total' in pendingUpdates)) {
+            const hrs = Number(row.hours || 0) + Number(row.extra_hours || 0);
+            row.total = round2(hrs * Number(row.rate_usd || 0));
+          }
+        } else if (key === 'conversions') {
+          const isU2L = !/^lbp/i.test(row.type || 'USD to LBP');
+          const usd = round2(Number(row.usd_amount || 0));
+          const lbp = Math.round(Number(row.lbp_amount || 0));
+          const fx = (usd > 0 && lbp > 0) ? round2(lbp / usd) : Number(row.exchange_rate || row.fx_rate || 89500);
+          row.from_currency = isU2L ? 'USD' : 'LBP';
+          row.to_currency = isU2L ? 'LBP' : 'USD';
+          row.usd_delta = isU2L ? -usd : usd;
+          row.lbp_delta = isU2L ? lbp : -lbp;
+          row.exchange_rate = fx;
+          row.fx_rate = fx;
+          row.amount = usd;
+        } else if (key === 'jv_distributions') {
+          if (('amount' in pendingUpdates || 'difference' in pendingUpdates) && !('total' in pendingUpdates)) {
+            row.total = round2(Number(row.amount || 0) + Number(row.difference || 0));
+          }
+        } else if (key === 'price_rules') {
+          const up = Number(row.unit_price || 0);
+          row.price = up || null;
+          if (row.qty1 != null && up > 0) row.total1 = round2(Number(row.qty1) * up + Number(row.adj1 || 0));
+          if (row.qty2 != null && up > 0) row.total2 = round2(Number(row.qty2) * up + Number(row.adj2 || 0));
+        }
+
         if (isEquipInspect && targetEqRow && ('capacity' in pendingUpdates || 'supplier' in pendingUpdates || 'default_driver' in pendingUpdates || Boolean(effToDate))) {
           appendOrUpdateTruckWindow(targetEqRow, {
             co: row.company || 'WTC',
@@ -18124,7 +19578,7 @@
         postRecordToLocalApi(key, row);
         syncWithCloud(true);
         toast(changedCount ? `✓ Record modified (${changedCount} field${changedCount === 1 ? '' : 's'} updated)` : '✓ Record saved');
-        showRecordInspector(key, row.id || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
+        showRecordInspector(key, row.id || row.name || idOrName, { fromCrumbIdx: STATE.inspectorHistory.length - 1, tab: activeTab });
       });
     }
 
@@ -18226,6 +19680,7 @@
     panel.hidden = false;
     bodyEl.scrollTop = 0;
     document.body.classList.add('modal-open');
+    wireModalSuggestions(bodyEl);
     if (window.MFG_TABLE_COLS && typeof window.MFG_TABLE_COLS.enhanceAllTables === 'function') {
       window.MFG_TABLE_COLS.enhanceAllTables(bodyEl);
     }
@@ -18489,12 +19944,46 @@
       });
       voidedMasterNames[mk] = s;
     });
+    const custByNorm = new Map();
+    (SEED.records.customers || []).forEach(c => {
+      if (c && c.name) custByNorm.set(norm(c.name), c);
+    });
+    const suppByNorm = new Map();
+    (SEED.records.suppliers || []).forEach(s => {
+      if (s && s.name) suppByNorm.set(normOwnerName(s.name), s);
+    });
     Object.entries(SEED.models || {}).forEach(([mk, m]) => {
       const orig = SEED._origModelMasters[mk];
       if (!m || !orig) return;
       if (orig.equipment) m.equipment = voidedMasterNames.equipment.size ? orig.equipment.filter(x => !voidedMasterNames.equipment.has(norm(x.Equipment || x.name))) : orig.equipment.slice();
-      if (orig.customers) m.customers = voidedMasterNames.customers.size ? orig.customers.filter(x => !voidedMasterNames.customers.has(norm(x.Customer || x.name))) : orig.customers.slice();
-      if (orig.suppliers) m.suppliers = voidedMasterNames.suppliers.size ? orig.suppliers.filter(x => !voidedMasterNames.suppliers.has(norm(x.Supplier || x.name))) : orig.suppliers.slice();
+      if (orig.customers) {
+        const baseCusts = voidedMasterNames.customers.size ? orig.customers.filter(x => !voidedMasterNames.customers.has(norm(x.Customer || x.name))) : orig.customers.slice();
+        m.customers = baseCusts.map(x => {
+          const dvn = custByNorm.get(norm(x.Customer || x.name));
+          if (!dvn) return x;
+          const out = Object.assign({}, x);
+          if (dvn.method) { out.Method = dvn.method; out.method = dvn.method; }
+          if (typeof dvn.vat_registered === 'boolean') { out['VAT Registered'] = dvn.vat_registered ? 'Yes' : 'No'; out.vat_registered = dvn.vat_registered; }
+          if (dvn.phone) out.phone = dvn.phone;
+          if (dvn.address || dvn.region) { out.address = dvn.address || dvn.region; out.region = dvn.region || dvn.address; }
+          if (dvn.mof_no) out.mof_no = dvn.mof_no;
+          return out;
+        });
+      }
+      if (orig.suppliers) {
+        const baseSupps = voidedMasterNames.suppliers.size ? orig.suppliers.filter(x => !voidedMasterNames.suppliers.has(norm(x.Supplier || x.name))) : orig.suppliers.slice();
+        m.suppliers = baseSupps.map(x => {
+          const dvn = suppByNorm.get(normOwnerName(x.Supplier || x.name));
+          if (!dvn) return x;
+          const out = Object.assign({}, x);
+          if (dvn.method) { out.Method = dvn.method; out.method = dvn.method; }
+          if (typeof dvn.iva === 'boolean') { out.IVA = dvn.iva ? 'Yes' : 'No'; out.iva = dvn.iva; }
+          if (dvn.phone || dvn.contact) { out.phone = dvn.phone || dvn.contact; out.contact = dvn.contact || dvn.phone; }
+          if (dvn.location || dvn.region) { out.location = dvn.location || dvn.region; out.region = dvn.region || dvn.location; }
+          if (dvn.mof_no || dvn.financial_no) { out.mof_no = dvn.mof_no || dvn.financial_no; out.financial_no = dvn.financial_no || dvn.mof_no; }
+          return out;
+        });
+      }
       if (orig.products) m.products = voidedMasterNames.products.size ? orig.products.filter(x => !voidedMasterNames.products.has(norm(x.Product || x.name))) : orig.products.slice();
       if (orig.sites) m.sites = voidedMasterNames.sites.size ? orig.sites.filter(x => !voidedMasterNames.sites.has(norm(x.Site || x.name))) : orig.sites.slice();
     });
@@ -20695,8 +22184,10 @@
     sales_analytics: 'Sales Analytics',
     raw: 'Material & Transportation',
     raw_analytics: 'JV & Stock Analytics',
-    fleet: 'Fleet & Diesel Control',
-    fleet_analytics: 'Fleet & Driver Analytics',
+    fleet: 'Diesel & Lubricants',
+    fleet_equip: 'Fleet & Running Costs',
+    fleet_drivers: 'Drivers & Overtime',
+    fleet_analytics: 'Drivers & Overtime',
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
     cashflow_analytics: 'Cash Flow Analytics',
@@ -20738,8 +22229,10 @@
     sales_analytics: 'Sales Analytics',
     raw: 'Material & Transportation',
     raw_analytics: 'JV & Stock Analytics',
-    fleet: 'Fleet & Diesel Control',
-    fleet_analytics: 'Fleet & Driver Analytics',
+    fleet: 'Diesel & Lubricants',
+    fleet_equip: 'Fleet & Running Costs',
+    fleet_drivers: 'Drivers & Overtime',
+    fleet_analytics: 'Drivers & Overtime',
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
     cashflow_analytics: 'Cash Flow Analytics',
@@ -21420,7 +22913,7 @@
     const map = {
       kiosks: 'sales', sales: 'sales', sales_vat: 'vatinvoice', sales_analytics: 'sales',
       raw: 'raw', raw_analytics: 'raw',
-      fleet: 'fuel', fleet_analytics: 'fuel',
+      fleet: 'fuel', fleet_equip: 'companyequipment', fleet_drivers: 'triprate', fleet_analytics: 'triprate',
       pricing: 'pricerule',
       cashflow: 'receipt', cashflow_analytics: 'receipt',
       external: 'external', conversions: 'conversion',
@@ -21494,7 +22987,9 @@
     const pillsHtml = permittedTabs.map(t => {
       const matchViews = t.match || [t.view];
       const isActive = matchViews.includes(STATE.view);
-      const lbl = t.shortLabel || t.label || VIEW_TITLES[t.view] || t.view;
+      const lbl = (isActive && !UNIV_VIEW_TO_TABLE_KEY[STATE.view] && VIEW_TITLES[STATE.view])
+        ? VIEW_TITLES[STATE.view]
+        : (t.shortLabel || t.label || VIEW_TITLES[t.view] || t.view);
       const rawPill = typeof t.pillFn === 'function' ? t.pillFn(user, k, sentinelsOpen) : (t.pill || '');
       const pCls = typeof t.pillCls === 'function' ? t.pillCls(user, k, sentinelsOpen) : (t.pillCls || '');
       const pillHtml = rawPill ? `<em class="hub-subtab-pill${pCls ? ' ' + pCls : ''}">${esc(rawPill)}</em>` : '';
@@ -23016,13 +24511,15 @@
       case 'sales_vat': wsHtml = renderSalesVatAndCredit(); break;
       case 'sales_analytics':
       case 'raw_analytics':
-      case 'fleet_analytics':
       case 'expenses_analytics':
       case 'payroll_analytics':
         wsHtml = renderHubAnalyticsView(STATE.view);
         break;
       case 'raw': wsHtml = renderRaw(); break;
       case 'fleet': wsHtml = renderFleet(); break;
+      case 'fleet_equip': wsHtml = renderFleetEquipment(); break;
+      case 'fleet_drivers':
+      case 'fleet_analytics': wsHtml = renderFleetDrivers(); break;
       case 'pricing': wsHtml = renderPricing(); break;
       case 'cashflow_analytics':
       case 'cashflow': wsHtml = renderCashFlowTill(); break;
@@ -23873,8 +25370,9 @@
         return;
       }
       if (e.target.closest('[data-rel-key], button, a, input, select')) return;
-      const sel = String(window.getSelection && window.getSelection() || '');
-      if (sel.length > 1) return; // the user is copying text, not opening the row
+      const selObj = window.getSelection ? window.getSelection() : null;
+      const sel = (selObj && selObj.anchorNode && tr.contains(selObj.anchorNode)) ? String(selObj) : '';
+      if (sel.length > 1) return; // the user is copying text inside the row, not opening the row
       showRecordInspector(tr.getAttribute('data-rkey'), tr.getAttribute('data-rid'));
     }));
     container.querySelectorAll('[data-open-modal]').forEach(btn => btn.addEventListener('click', () => openEntryModal(btn.getAttribute('data-open-modal'))));
@@ -24203,6 +25701,7 @@
     if (view === 'cashflow_analytics') view = 'cashflow';
     if (view === 'sales_vat') view = 'customers';
     if (view === 'sales_analytics') view = 'sales';
+    if (view === 'fleet_analytics') view = 'fleet_drivers';
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
     if (STATE.kioskLocked && view !== 'kiosks') {
@@ -24283,7 +25782,7 @@
       }
     } catch (_) {}
     const rawQView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
-    const qView = rawQView === 'cashflow_analytics' ? 'cashflow' : (rawQView === 'sales_vat' ? 'customers' : (rawQView === 'sales_analytics' ? 'sales' : rawQView));
+    const qView = rawQView === 'cashflow_analytics' ? 'cashflow' : (rawQView === 'sales_vat' ? 'customers' : (rawQView === 'sales_analytics' ? 'sales' : (rawQView === 'fleet_analytics' ? 'fleet_drivers' : rawQView)));
     if (qView && VIEW_TITLES[qView]) STATE.view = qView;
     const qKiosk = PARAMS.get('kiosk');
     if (qKiosk && ['sales', 'raw', 'fuel', 'attendance'].includes(qKiosk.toLowerCase())) {

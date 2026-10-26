@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '16.8';
+      window.__MFG_SHELL_VER = '17.1';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') { document.documentElement.setAttribute('data-theme', t); var tm = document.querySelector('meta[name="theme-color"]'); if (tm) tm.setAttribute('content', t === 'dark' ? '#081124' : '#F4F2EE'); }
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=16.8">
+  <link rel="stylesheet" href="css/app.css?v=17.1">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -109,9 +109,9 @@
           <span>Sales &amp; Customers</span>
           <em class="nav-pill" id="navCountSales">25,884</em>
         </button>
-        <button type="button" class="nav-item" data-hub="raw" data-view="raw" aria-label="Material &amp; Suppliers">
+        <button type="button" class="nav-item" data-hub="raw" data-view="raw" aria-label="Material, Expenses &amp; AP">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2.5 19.5 6.3-11.2 4.2 6.4 3.3-4.9 5.2 9.7H2.5z"/><path d="m11.2 9.8 2.1-3.3 4.2 6.5"/></svg></i>
-          <span>Material &amp; Suppliers</span>
+          <span>Material, Expenses &amp; AP</span>
           <em class="nav-pill" id="navCountRaw">24,037</em>
         </button>
         <button type="button" class="nav-item" data-hub="fleet" data-view="fleet" aria-label="Fleet &amp; Diesel">
@@ -130,11 +130,6 @@
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><circle cx="12" cy="12" r="2.8"/><line x1="6" y1="9" x2="6.01" y2="9"/><line x1="18" y1="9" x2="18.01" y2="9"/><line x1="6" y1="15" x2="6.01" y2="15"/><line x1="18" y1="15" x2="18.01" y2="15"/></svg></i>
           <span>Cash Flow &amp; Till</span>
           <em class="nav-pill good" id="navCountTill">$0 · 0 LL</em>
-        </button>
-        <button type="button" class="nav-item" data-hub="expenses" data-view="expenses" aria-label="Expenses &amp; Overhead">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h13v18l-2.2-1.6-2.1 1.6-2.2-1.6-2.2 1.6-2.1-1.6L5.5 21V3z"/><line x1="9" y1="8.2" x2="15" y2="8.2"/><line x1="9" y1="12.2" x2="15" y2="12.2"/><line x1="9" y1="16" x2="12.5" y2="16"/></svg></i>
-          <span>Expenses &amp; Overhead</span>
-          <em class="nav-pill" id="navCountExp">—</em>
         </button>
         <button type="button" class="nav-item" data-hub="payroll" data-view="payroll" aria-label="Payroll &amp; Workforce">
           <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 21v-1.8a3.8 3.8 0 0 0-3.8-3.8H6.8A3.8 3.8 0 0 0 3 19.2V21"/><circle cx="9.8" cy="7.5" r="3.6"/><path d="M21 21v-1.8a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.7 4.1a3.6 3.6 0 0 1 0 6.9"/></svg></i>
@@ -574,17 +569,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=16.8"></script>
-  <script src="js/face.js?v=16.8"></script>
-  <script src="js/endpoints.js?v=16.8"></script>
-  <script src="js/seed_data.js?v=16.8"></script>
-  <script src="js/icons.js?v=16.8"></script>
-  <script src="js/forms_engine.js?v=16.8"></script>
-  <script src="js/pbi_pages.js?v=16.8"></script>
-  <script src="js/rdl_reports.js?v=16.8"></script>
-  <script src="js/kiosk_print.js?v=16.8"></script>
-  <script src="js/table_columns.js?v=16.8"></script>
-  <script src="js/app.js?v=16.8"></script>
+  <script src="vendor/face-api.js?v=17.1"></script>
+  <script src="js/face.js?v=17.1"></script>
+  <script src="js/endpoints.js?v=17.1"></script>
+  <script src="js/seed_data.js?v=17.1"></script>
+  <script src="js/icons.js?v=17.1"></script>
+  <script src="js/forms_engine.js?v=17.1"></script>
+  <script src="js/pbi_pages.js?v=17.1"></script>
+  <script src="js/rdl_reports.js?v=17.1"></script>
+  <script src="js/kiosk_print.js?v=17.1"></script>
+  <script src="js/table_columns.js?v=17.1"></script>
+  <script src="js/app.js?v=17.1"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

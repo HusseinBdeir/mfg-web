@@ -134,37 +134,39 @@ try {
       : fail(`overflow · ${label}`, `horiz=${o.horiz}px vertRoot=${o.vertRoot}px scrollY=${o.scrollY}px shellTop=${o.shellTop}px bottomGap=${o.shellBottomGap}px`);
   };
 
-  // 2. Option A 10-Hub Left Sidebar Architecture + 28 Sub-Views + 1-to-1 Title & Overflow Parity
+  // 2. Option A 9-Hub Left Sidebar Architecture + 28 Sub-Views + 1-to-1 Title & Overflow Parity
   await evaluate(`(() => {
     window.__navToView = function(v) {
       const H = window.MFG_HUBS;
       const hubId = (H && H.VIEW_TO_HUB && H.VIEW_TO_HUB[v]) || v;
       const hubBtn = document.querySelector('#sidebarNav .nav-item[data-hub="' + hubId + '"]');
       if (hubBtn && !hubBtn.hidden) hubBtn.click();
-      if (v === 'reg_products') {
+      if (v === 'reg_products' || v === 'reg_customers') {
         const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_customers"]');
         if (sub && !sub.classList.contains('active')) sub.click();
-        const pill = document.querySelector('[data-univ-reg-key="products"]');
-        if (pill) pill.click();
+        const defKey = v === 'reg_products' ? 'products' : 'customers';
+        const pill = document.querySelector('[data-univ-reg-key="' + defKey + '"]');
+        if (pill && !pill.classList.contains('active')) pill.click();
         return 1;
       }
-      if (v === 'reg_regions') {
-        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_sites"]');
+      if (v === 'reg_suppliers' || v === 'reg_sites' || v === 'reg_regions' || v === 'reg_categories') {
+        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_suppliers"]');
         if (sub && !sub.classList.contains('active')) sub.click();
-        const pill = document.querySelector('[data-univ-reg-key="regions"]');
-        if (pill) pill.click();
+        const defKey = v === 'reg_sites' ? 'sites' : (v === 'reg_regions' ? 'regions' : (v === 'reg_categories' ? 'expense_categories' : 'suppliers'));
+        const pill = document.querySelector('[data-univ-reg-key="' + defKey + '"]');
+        if (pill && !pill.classList.contains('active')) pill.click();
         return 1;
       }
-      if (v === 'reg_customers' || v === 'reg_sites' || v === 'reg_categories') {
-        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="' + v + '"]');
-        if (sub) sub.click();
-        const defKey = v === 'reg_customers' ? 'customers' : (v === 'reg_sites' ? 'sites' : 'expense_categories');
+      if (v === 'reg_equipment' || v === 'reg_drivers') {
+        const sub = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_equipment"]');
+        if (sub && !sub.classList.contains('active')) sub.click();
+        const defKey = v === 'reg_drivers' ? 'drivers' : 'equipment';
         const pill = document.querySelector('[data-univ-reg-key="' + defKey + '"]');
         if (pill && !pill.classList.contains('active')) pill.click();
         return 1;
       }
       const subBtn = document.querySelector('#hubSubtabBar [data-hub-subtab="' + v + '"]');
-      if (subBtn && !subBtn.classList.contains('active')) subBtn.click();
+      if (subBtn && !subBtn.classList.contains('active') && v !== 'expenses_analytics') subBtn.click();
       else if (H && H.setView && location.hash !== '#' + v) H.setView(v);
       return 1;
     };
@@ -179,7 +181,7 @@ try {
     const railVertScrollPx = navEl ? Math.max(0, navEl.scrollHeight - navEl.clientHeight) : 999;
     return {
       ok: grps.join('|') === 'Executive|Plant & Dispatch|Treasury & Governance' &&
-          hubs.join(',') === 'overview,sales,raw,fleet,kiosks,cashflow,expenses,payroll,ledger,users' &&
+          hubs.join(',') === 'overview,sales,raw,fleet,kiosks,cashflow,payroll,ledger,users' &&
           cleanFooter &&
           (window.innerWidth <= 860 || railVertScrollPx <= 1),
       grps,
@@ -189,14 +191,14 @@ try {
     };
   })()`);
   hubRailProbe.ok
-    ? pass('10-hub left sidebar architecture · 3 business-cycle groups, 10 parent hubs, clean user-only footer & 0px vertical rail scroll at 1366×768', `hubs=${hubRailProbe.hubs.length} · railScroll=${hubRailProbe.railVertScrollPx}px`)
-    : fail('10-hub left sidebar architecture', JSON.stringify(hubRailProbe));
+    ? pass('9-hub left sidebar architecture · 3 business-cycle groups, 9 parent hubs (Material, Expenses & AP unified), clean user-only footer & 0px vertical rail scroll at 1366×768', `hubs=${hubRailProbe.hubs.length} · railScroll=${hubRailProbe.railVertScrollPx}px`)
+    : fail('9-hub left sidebar architecture', JSON.stringify(hubRailProbe));
 
   const views = [
     'overview', 'entities', 'pbi', 'tables', 'sentinels', 'kiosks',
     'sales', 'customers', 'pricing',
     'raw', 'suppliers', 'raw_analytics',
-    'fleet', 'fleet_analytics',
+    'fleet', 'fleet_equip', 'fleet_drivers',
     'cashflow', 'external', 'ledger_treasury', 'conversions',
     'expenses', 'expenses_analytics',
     'payroll', 'payroll_attendance', 'payroll_contracts', 'payroll_analytics',
@@ -225,7 +227,7 @@ try {
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
       const subtabBar = document.getElementById('hubSubtabBar');
       const activeSubtabLbl = subtabBar ? (subtabBar.querySelector('.hub-subtab.active .hub-subtab-lbl')?.textContent?.trim() || '') : topbarTitle;
-      const subtabCountOk = ('${v}' === 'kiosks') ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
+      const subtabCountOk = ('${v}' === 'kiosks') ? !subtabBar : Boolean(subtabBar && (activeSubtabLbl === topbarTitle || ('${v}' === 'expenses_analytics' && activeSubtabLbl === 'JV & Stock Analytics')));
       const allMatch = Boolean(
         railLabel &&
         railLabel === expectedHubTitle &&
@@ -315,7 +317,9 @@ try {
   const moduleToolbarSpecs = [
     { view: 'sales', panel: '#salesPanel', modal: 'sales', secondPanel: '#salesProdPanel' },
     { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#rawSupPanel' },
-    { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#equipPanel' },
+    { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#fuelEffPanel' },
+    { view: 'fleet_equip', panel: '#equipPanel', modal: 'companyequipment', secondPanel: '#coFleetAssignPanel' },
+    { view: 'fleet_drivers', panel: '#driversOtPanel', modal: 'triprate', secondPanel: '#coDriversPanel' },
     { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule', secondPanel: '#listPricePanel' },
     { view: 'customers', panel: '#rcptPanel', modal: 'receipt', secondPanel: '#custPanel' },
     { view: 'suppliers', panel: '#settlePanel', modal: 'settlement', secondPanel: '#supPanel' },
@@ -2093,14 +2097,14 @@ try {
     const salesHubPresent = !!document.getElementById('salesPadPanel');
 
     // Verify operational register tabs have ZERO stacked .mod-analytics-hub at the bottom
-    const opsViews = ['sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger'];
+    const opsViews = ['sales', 'raw', 'fleet', 'fleet_equip', 'fleet_drivers', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger'];
     const noStackedOnOps = opsViews.every(v => {
       window.__navToView(v);
       return !document.querySelector('#workspace .mod-analytics-hub');
     });
 
-    // Verify all 7 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
-    const modViews = ['raw_analytics', 'fleet_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
+    // Verify all 6 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
+    const modViews = ['raw_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
     const modResults = [];
     for (const v of modViews) {
       window.__navToView(v);
@@ -2334,9 +2338,10 @@ try {
     const subcatTitleOk = (document.getElementById('topbarTitle')?.textContent || '').trim() === ((window.MFG_PBI.TABLE_CATALOG.find(t => t.key === 'expense_subcategories') || {}).label || '');
     const inlinePillsOk = ptTitleOk && uomTitleOk && subcatTitleOk;
 
-    // 2. Fleet & Diesel Control (#fleet) no longer mixes Universal Equipment & Driver Registry onto a BU page
+    // 2. Diesel & Lubricants (#fleet) and Fleet & Running Costs (#fleet_equip) no longer mix Universal Equipment & Driver Registry onto a BU page
     window.__navToView('fleet');
     const fleetHasOldUnivPanel = Boolean(document.getElementById('driverPanel')) || /UNIVERSAL EQUIPMENT & DRIVER REGISTRY/i.test(document.getElementById('workspace').innerText);
+    window.__navToView('fleet_equip');
     const fleetHasBuAssignPanel = Boolean(document.getElementById('coFleetAssignPanel'));
 
     // 3. TABLE_CATALOG groups all 11 universal registries in "3 · Universal Registries (All BUs)" and separates BU-specific company_equipment / company_drivers
@@ -3581,7 +3586,7 @@ try {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const hasIconsApi = Boolean(window.MFG_ICONS && typeof window.MFG_ICONS.svg === 'function' && typeof window.MFG_ICONS.nav === 'function');
     const navBtns = Array.from(document.querySelectorAll('#sidebarNav button.nav-item'));
-    const allNavHaveSvg = navBtns.length === 10 && navBtns.every(b => {
+    const allNavHaveSvg = navBtns.length === 9 && navBtns.every(b => {
       const ico = b.querySelector('i.nav-ico svg.ic');
       const sp = b.querySelector('span');
       return Boolean(ico && sp && sp.textContent.trim().length > 0 && !b.hasAttribute('title') && !sp.hasAttribute('title'));
@@ -3660,7 +3665,7 @@ try {
     const activeSubLabel = (document.querySelector('#hubSubtabBar .hub-subtab.active .hub-subtab-lbl')?.textContent || '').trim();
     const topbarTitle = (document.getElementById('topbarTitle')?.textContent || '').trim();
     const cockpitTitle = (document.querySelector('#workspace .cockpit-title')?.textContent || '').trim();
-    const namingOk = navLabel === 'Material & Suppliers' && activeSubLabel === 'Material & Transportation' && topbarTitle === 'Material & Transportation' && cockpitTitle === 'Material & Transportation';
+    const namingOk = navLabel === 'Material, Expenses & AP' && activeSubLabel === 'Material & Transportation' && topbarTitle === 'Material & Transportation' && cockpitTitle === 'Material & Transportation';
 
     // Apply WTC + 2024-01-01 .. 2026-09-30 + Rep Date (exact WTC Old Stock screenshot baseline)
     document.querySelector('#companySwitch .entity-btn[data-company="wtc"]').click();
@@ -4179,10 +4184,245 @@ try {
     ? pass('Sales & Customers 4-tab consolidation · merged Sales Analytics, VAT & Credit & Pricing Corridors into Sales, Customers & Pricing (0 standalone $0 credit-limit table; billed VAT invoices sorted first)', `tabs=[${salesConsolidationProbe.salesSubtabs.join(', ')}] · pads=${salesConsolidationProbe.padRowsCount}`)
     : fail('Sales & Customers 4-tab consolidation', JSON.stringify(salesConsolidationProbe));
 
+  // 7z-2. 4-Tab Fleet & Diesel Consolidation Probe (Diesel & Lubricants, Fleet & Running Costs, Drivers & Overtime, Equipment & Drivers All BUs)
+  const fleetConsolidationProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('fleet');
+    await wait(60);
+    const fleetSubtabs = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab]')).map(b => b.getAttribute('data-hub-subtab'));
+    const fleetSubtabLabels = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab] .hub-subtab-lbl')).map(el => el.textContent.trim());
+    const fourTabsOk = fleetSubtabs.length === 4 &&
+      fleetSubtabs.join(',') === 'fleet,fleet_equip,fleet_drivers,reg_equipment' &&
+      fleetSubtabLabels.join('|') === 'Diesel & Lubricants|Fleet & Running Costs|Drivers & Overtime|Equipment & Drivers';
+
+    // Tab 1 (#fleet): Diesel & Lubricants — #fuelPanel + #fuelChartsRow + #fuelEffPanel
+    const tab1TitleOk = (document.getElementById('topbarTitle') || {}).textContent?.trim() === 'Diesel & Lubricants';
+    const hasFuelPanel = !!document.getElementById('fuelPanel');
+    const hasFuelCharts = !!document.getElementById('fuelChartsRow');
+    const hasFuelEffPanel = !!document.getElementById('fuelEffPanel');
+    const fuelEffRows = document.querySelectorAll('#fuelEffPanel tbody tr.rrow').length;
+
+    // Tab 2 (#fleet_equip): Fleet & Running Costs — #equipPanel + #fleetEconChartsRow + #coFleetAssignPanel
+    window.__navToView('fleet_equip');
+    await wait(60);
+    const tab2TitleOk = (document.getElementById('topbarTitle') || {}).textContent?.trim() === 'Fleet & Running Costs';
+    const hasEquipPanel = !!document.getElementById('equipPanel');
+    const hasFleetEconCharts = !!document.getElementById('fleetEconChartsRow');
+    const hasCoFleetAssignPanel = !!document.getElementById('coFleetAssignPanel');
+    const equipRows = document.querySelectorAll('#equipPanel tbody tr.rrow').length;
+    const assignRows = document.querySelectorAll('#coFleetAssignPanel tbody tr.rrow').length;
+
+    // Tab 3 (#fleet_drivers & legacy #fleet_analytics redirect): Drivers & Overtime — #driversOtPanel + #driversChartsRow + #coDriversPanel + #otRatesPanel
+    window.__navToView('fleet_analytics');
+    await wait(60);
+    const tab3RedirectOk = (document.getElementById('topbarTitle') || {}).textContent?.trim() === 'Drivers & Overtime';
+    const hasDriversOtPanel = !!document.getElementById('driversOtPanel');
+    const hasDriversCharts = !!document.getElementById('driversChartsRow');
+    const hasCoDriversPanel = !!document.getElementById('coDriversPanel');
+    const hasOtRatesPanel = !!document.getElementById('otRatesPanel');
+    const drvOtRows = document.querySelectorAll('#driversOtPanel tbody tr.rrow').length;
+    const coDrvRows = document.querySelectorAll('#coDriversPanel tbody tr.rrow').length;
+    const otRateRows = document.querySelectorAll('#otRatesPanel tbody tr.rrow').length;
+
+    // Tab 4 (#reg_equipment): Equipment & Drivers (All BUs) with inline [data-univ-reg-key] switcher pills for equipment + drivers
+    window.__navToView('reg_equipment');
+    await wait(60);
+    const regSubtabActive = document.querySelector('#hubSubtabBar [data-hub-subtab="reg_equipment"]')?.classList.contains('active');
+    const univRegPills = Array.from(document.querySelectorAll('#univRegPanel [data-univ-reg-key]')).map(b => b.getAttribute('data-univ-reg-key'));
+    const univPillsOk = Boolean(regSubtabActive && univRegPills.join(',') === 'equipment,drivers');
+    const drvPill = document.querySelector('#univRegPanel [data-univ-reg-key="drivers"]');
+    if (drvPill) drvPill.click();
+    await wait(40);
+    const drvPillTitleOk = (document.getElementById('topbarTitle') || {}).textContent?.trim() === 'Drivers & Operators' &&
+      document.querySelector('#hubSubtabBar [data-hub-subtab="reg_equipment"]')?.classList.contains('active');
+
+    window.__navToView('overview');
+    await wait(40);
+    return {
+      ok: Boolean(
+        fourTabsOk &&
+        tab1TitleOk && hasFuelPanel && hasFuelCharts && hasFuelEffPanel && fuelEffRows > 0 &&
+        tab2TitleOk && hasEquipPanel && hasFleetEconCharts && hasCoFleetAssignPanel && equipRows > 0 && assignRows > 0 &&
+        tab3RedirectOk && hasDriversOtPanel && hasDriversCharts && hasCoDriversPanel && hasOtRatesPanel && drvOtRows > 0 && coDrvRows > 0 && otRateRows > 0 &&
+        univPillsOk && drvPillTitleOk
+      ),
+      fleetSubtabs, fleetSubtabLabels, fuelEffRows, equipRows, assignRows, drvOtRows, coDrvRows, otRateRows, univRegPills, drvPillTitleOk
+    };
+  })()`);
+  fleetConsolidationProbe && fleetConsolidationProbe.ok
+    ? pass('Fleet & Diesel 4-tab consolidation · Diesel & Lubricants (#fleet), Fleet & Running Costs (#fleet_equip), Drivers & Overtime (#fleet_drivers) & Equipment & Drivers All BUs (#reg_equipment)', `tabs=[${fleetConsolidationProbe.fleetSubtabLabels.join(' · ')}] · eff=${fleetConsolidationProbe.fuelEffRows} · equip=${fleetConsolidationProbe.equipRows} · drv=${fleetConsolidationProbe.drvOtRows}`)
+    : fail('Fleet & Diesel 4-tab consolidation', JSON.stringify(fleetConsolidationProbe));
+
+  // 7z-3. 5-Tab Material, Expenses & AP Consolidation Probe (Material & Transportation, Expenses & Overhead, Suppliers & Payables, JV & Stock Analytics, Suppliers, Sites & Categories)
+  const rawExpensesApConsolidationProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('raw');
+    await wait(60);
+    const rawSubtabs = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab]')).map(b => b.getAttribute('data-hub-subtab'));
+    const rawSubtabLabels = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab] .hub-subtab-lbl')).map(el => el.textContent.trim());
+    const fiveTabsOk = rawSubtabs.length === 5 &&
+      rawSubtabs.join(',') === 'raw,expenses,suppliers,raw_analytics,reg_suppliers' &&
+      rawSubtabLabels.join('|') === 'Material & Transportation|Expenses & Overhead|Suppliers & Payables|JV & Stock Analytics|Suppliers, Sites & Categories';
+
+    // Tab 2 (#expenses): Expenses & Overhead — #expPanel + #expCatPanel + #expVendorPanel
+    window.__navToView('expenses');
+    await wait(60);
+    const hasExpPanel = !!document.getElementById('expPanel');
+    const hasExpCatPanel = !!document.getElementById('expCatPanel');
+    const hasExpVendorPanel = !!document.getElementById('expVendorPanel');
+    const expVendorRows = document.querySelectorAll('#expVendorPanel tbody tr').length;
+
+    // Tab 3 (#suppliers): Suppliers & Payables — #settlePanel + #supPanel + #apLegBridgePanel
+    window.__navToView('suppliers');
+    await wait(60);
+    const hasSettlePanel = !!document.getElementById('settlePanel');
+    const hasSupPanel = !!document.getElementById('supPanel');
+    const hasApLegBridgePanel = !!document.getElementById('apLegBridgePanel');
+    const apLegBridgeRows = document.querySelectorAll('#apLegBridgePanel tbody tr').length;
+
+    // Tab 5 (#reg_suppliers): 5-pill Universal Registry switcher (suppliers, sites, regions, expense_categories, expense_subcategories)
+    window.__navToView('reg_suppliers');
+    await wait(60);
+    const univRegPills = Array.from(document.querySelectorAll('#univRegPanel [data-univ-reg-key]')).map(b => b.getAttribute('data-univ-reg-key'));
+    const fivePillsOk = univRegPills.join(',') === 'suppliers,sites,regions,expense_categories,expense_subcategories';
+
+    // Payroll Contracts & Allowances (#payroll_contracts): #payOtRatesPanel added
+    window.__navToView('payroll_contracts');
+    await wait(60);
+    const hasPayOtRatesPanel = !!document.getElementById('payOtRatesPanel');
+    const payOtRatesRows = document.querySelectorAll('#payOtRatesPanel tbody tr.rrow').length;
+
+    window.__navToView('overview');
+    await wait(40);
+    return {
+      ok: Boolean(
+        fiveTabsOk &&
+        hasExpPanel && hasExpCatPanel && hasExpVendorPanel && expVendorRows > 0 &&
+        hasSettlePanel && hasSupPanel && hasApLegBridgePanel && apLegBridgeRows === 3 &&
+        fivePillsOk &&
+        hasPayOtRatesPanel && payOtRatesRows > 0
+      ),
+      rawSubtabs, rawSubtabLabels, expVendorRows, apLegBridgeRows, univRegPills, payOtRatesRows
+    };
+  })()`);
+  rawExpensesApConsolidationProbe && rawExpensesApConsolidationProbe.ok
+    ? pass('Material, Expenses & AP 5-tab consolidation · merged Material & Suppliers + Expenses & Overhead into 1 hub (#raw, #expenses, #suppliers, #raw_analytics, #reg_suppliers 5-pill switcher) + added #expVendorPanel, #apLegBridgePanel & #payOtRatesPanel', `tabs=[${rawExpensesApConsolidationProbe.rawSubtabLabels.join(' · ')}] · vendors=${rawExpensesApConsolidationProbe.expVendorRows} · otRules=${rawExpensesApConsolidationProbe.payOtRatesRows}`)
+    : fail('Material, Expenses & AP 5-tab consolidation', JSON.stringify(rawExpensesApConsolidationProbe));
+
+
+  // 7z-4. 360° Record Inspector Typed Modification Drawer, Click-to-Edit Cells & 34-Table Strict Select/Combobox Audit
+  const inspectorModifyProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('customers');
+    await wait(60);
+    // Open Customer 360° for Tony AL Nar (or first customer row)
+    const custRows = Array.from(document.querySelectorAll('#custPanel tbody tr.rrow'));
+    const tonyRow = custRows.find(tr => /tony\s+al\s+nar/i.test(tr.textContent || '')) || custRows[0];
+    if (tonyRow) tonyRow.click();
+    await wait(80);
+
+    const inspOpen = !document.getElementById('recordInspector')?.hidden;
+    const methodEl = document.getElementById('insp_edit_method');
+    const methodIsSelect = Boolean(methodEl && methodEl.tagName === 'SELECT' && methodEl.closest('.pa-select-wrap'));
+    const methodOpts = methodEl ? Array.from(methodEl.options).map(o => o.value) : [];
+    const hasPhoneField = !!document.getElementById('insp_edit_phone');
+    const hasEmailField = !!document.getElementById('insp_edit_email');
+    const hasAddressCombo = Boolean(document.getElementById('insp_edit_address') && document.getElementById('insp_edit_address').dataset.suggestList === 'dl_insp_regions');
+    const hasVatSelect = Boolean(document.getElementById('insp_edit_vat_registered') && document.getElementById('insp_edit_vat_registered').tagName === 'SELECT');
+    const hasMofField = !!document.getElementById('insp_edit_mof_no');
+    const hasCreditDaysField = !!document.getElementById('insp_edit_credit_days');
+    const hasCreditLimitField = !!document.getElementById('insp_edit_credit_limit');
+    const noScriptCodeLeak = !/\(m165\)|\(m192\)|\bM192\b/.test(document.getElementById('inspectorBody')?.innerText || '');
+
+    // Click-to-edit on Phone cell in General tab opens #inspModifyDrawer and focuses #insp_edit_phone
+    const phoneCell = document.querySelector('#inspectorBody .inspector-cell[data-edit-field="phone"]');
+    const drawerBeforeClick = document.getElementById('inspModifyDrawer')?.hidden === true;
+    if (phoneCell) phoneCell.click();
+    await wait(60);
+    const drawerAfterClick = document.getElementById('inspModifyDrawer')?.hidden === false;
+    const phoneFocused = document.activeElement && document.activeElement.id === 'insp_edit_phone';
+
+    // Save Phone + Region + Method + Credit Limit and verify live update in Customer 360°
+    const origMethod = methodEl ? methodEl.value : 'Cash';
+    const phInp = document.getElementById('insp_edit_phone');
+    const adrInp = document.getElementById('insp_edit_address');
+    const clInp = document.getElementById('insp_edit_credit_limit');
+    if (phInp) { phInp.value = '+961 3 555 777'; phInp.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (adrInp) { adrInp.value = 'Mount Lebanon'; adrInp.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (methodEl) { methodEl.value = 'Credit'; methodEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (clInp) { clInp.value = '18000'; clInp.dispatchEvent(new Event('input', { bubbles: true })); }
+    document.getElementById('inspSaveModifyBtn')?.click();
+    await wait(80);
+
+    const savedPhoneCellTxt = (document.querySelector('#inspectorBody .inspector-cell[data-edit-field="phone"] b') || {}).textContent || '';
+    const savedAddrCellTxt = (document.querySelector('#inspectorBody .inspector-cell[data-edit-field="address"] b') || {}).textContent || '';
+    const savedMethodCellTxt = (document.querySelector('#inspectorBody .inspector-cell[data-edit-field="method"] b') || {}).textContent || '';
+    const bannerTxt = (document.getElementById('inspLiveBanner') || {}).textContent || '';
+    const savedOk = savedPhoneCellTxt.includes('+961 3 555 777') && savedAddrCellTxt.includes('Mount Lebanon') && savedMethodCellTxt === 'Credit' && bannerTxt.includes('$18,000');
+
+    // Restore original method & clear test phone
+    const phInp2 = document.getElementById('insp_edit_phone');
+    const methodEl2 = document.getElementById('insp_edit_method');
+    if (phInp2) phInp2.value = '';
+    if (methodEl2) methodEl2.value = origMethod;
+    document.getElementById('inspSaveModifyBtn')?.click();
+    await wait(40);
+
+    // Sweep all 34 tables via Hub Tables view to confirm 0 free-text method/status/enum inputs and 0 unwired selects/lists
+    window.__navToView('tables');
+    await wait(40);
+    const strictSelectCols = ['method', 'status', 'sale_type', 'transport_by', 'vat_registered', 'iva', 'ownership', 'rule_type'];
+    const freeTextEnumViolations = [];
+    const unwiredViolations = [];
+    let tablesChecked = 0;
+    const allTableKeys = Object.keys(window.MFG_SEED.records || {}).filter(k => Array.isArray(window.MFG_SEED.records[k]) && window.MFG_SEED.records[k].length > 0);
+    for (const tk of allTableKeys) {
+      const btn = document.querySelector('[data-table-key="' + tk + '"]');
+      if (!btn) continue;
+      btn.click();
+      const firstRow = document.querySelector('#tablesHubPanel tbody tr.rrow');
+      if (!firstRow) continue;
+      firstRow.click();
+      tablesChecked++;
+      const drawer = document.getElementById('inspModifyDrawer');
+      if (!drawer) { freeTextEnumViolations.push(tk + ':no_drawer'); continue; }
+      const modFields = drawer.querySelectorAll('[data-mod-field]');
+      if (modFields.length < 2) freeTextEnumViolations.push(tk + ':too_few_fields(' + modFields.length + ')');
+      for (const sc of strictSelectCols) {
+        const el = drawer.querySelector('[data-mod-field="' + sc + '"]');
+        if (el && el.tagName !== 'SELECT') {
+          freeTextEnumViolations.push(tk + ':' + sc + '(' + el.tagName + ')');
+        }
+      }
+      const unwiredSel = document.querySelectorAll('#inspectorBody select:not([data-select-wired="1"])').length;
+      const rawList = document.querySelectorAll('#inspectorBody input[list]').length;
+      if (unwiredSel > 0 || rawList > 0) {
+        unwiredViolations.push(tk + ':sel=' + unwiredSel + ',list=' + rawList);
+      }
+    }
+    document.getElementById('inspectorCloseBtn')?.click();
+    window.__navToView('overview');
+    await wait(40);
+
+    return {
+      ok: Boolean(
+        inspOpen && methodIsSelect && methodOpts.join(',') === 'Credit,Cash' &&
+        hasPhoneField && hasEmailField && hasAddressCombo && hasVatSelect && hasMofField && hasCreditDaysField && hasCreditLimitField &&
+        noScriptCodeLeak && drawerBeforeClick && drawerAfterClick && phoneFocused && savedOk &&
+        tablesChecked >= 30 && freeTextEnumViolations.length === 0 && unwiredViolations.length === 0
+      ),
+      methodIsSelect, methodOpts, hasPhoneField, hasEmailField, hasAddressCombo, hasVatSelect, hasMofField, hasCreditDaysField, hasCreditLimitField,
+      noScriptCodeLeak, drawerBeforeClick, drawerAfterClick, phoneFocused, savedOk, savedPhoneCellTxt, savedAddrCellTxt, savedMethodCellTxt,
+      tablesChecked, freeTextEnumViolations, unwiredViolations
+    };
+  })()`);
+  inspectorModifyProbe && inspectorModifyProbe.ok
+    ? pass('360° Record Inspector Modify Drawer · Customer 360° method is strict <select>, phone/email/address/MOF/credit_days/credit_limit editable + click-to-edit cells + all 34 tables use searchable <select>/comboboxes with 0 free-text method inputs', `tables=${inspectorModifyProbe.tablesChecked} · methodOpts=[${inspectorModifyProbe.methodOpts.join(', ')}] · clickToEdit=phone · violations=0`)
+    : fail('360° Record Inspector Modify Drawer', JSON.stringify(inspectorModifyProbe));
 
   // 8. Runtime errors
   const errs = events.filter(e => e.method === 'Runtime.exceptionThrown').map(e => (e.params.exceptionDetails.exception || {}).description || e.params.exceptionDetails.text);
-  const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test(e.params.entry.text)).map(e => e.params.entry.text);
+  const logErrs = events.filter(e => e.method === 'Log.entryAdded' && e.params.entry.level === 'error' && !/favicon|fonts|net::ERR|relay|404/.test((e.params.entry.text || '') + ' ' + (e.params.entry.url || ''))).map(e => e.params.entry.text);
   errs.length === 0 ? pass('0 runtime exceptions') : fail('runtime exceptions', errs.slice(0, 3).join(' || '));
   logErrs.length === 0 ? pass('0 console errors') : fail('console errors', logErrs.slice(0, 3).join(' || '));
 } catch (e) {

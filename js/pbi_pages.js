@@ -30,7 +30,7 @@
     p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',       modSec: 'exceptions', short: 'Action Items',       targetLabel: 'AI Sentinels & Audit' },
     p18_tickets:    { id: 'p18_tickets',    view: 'sales',           modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'Sales & Deliveries', scrollPanel: 'salesPadPanel' },
     p17_jv:         { id: 'p17_jv',         view: 'raw_analytics',   modSec: 'jv',         short: 'JV 50/50 Sites',     targetLabel: 'JV & Stock Analytics' },
-    p11_drivers:    { id: 'p11_drivers',    view: 'fleet_analytics', modSec: 'drivers',    short: 'Drivers & Overtime', targetLabel: 'Fleet & Driver Analytics' },
+    p11_drivers:    { id: 'p11_drivers',    view: 'fleet_drivers',   modSec: 'drivers',    short: 'Drivers & Overtime', targetLabel: 'Drivers & Overtime', scrollPanel: 'driversOtPanel' },
     p13_vat:        { id: 'p13_vat',        view: 'customers',       modSec: 'vat',        short: 'VAT & Invoices',     targetLabel: 'Customers & Receivables', scrollPanel: 'vatInvPanel' },
     p15_treasury:   { id: 'p15_treasury',   view: 'ledger_treasury', modSec: 'treasury',   short: 'Treasury & Loans',   targetLabel: 'Loans & Settlements' },
     p19_changelog:  { id: 'p19_changelog',  view: 'sentinels',       modSec: 'changelog',  short: 'Change Log & Drift', targetLabel: 'AI Sentinels & Audit' },
@@ -3348,7 +3348,7 @@
             { label: 'L / 100 km', key: 'l_per_100km', r: true, fmt: v => v ? fmtNum(v, 1) : '—' }
           ], topDieselUnits, { subtitle: 'Pale navy row = Own company fleet unit', rowNavy: r => r.Ownership === 'Own', limit: 40, unitLabel: 'units' })}
 
-          ${movedRegisterBanner('Fuel & Lubricant Intakes Register + Driver Overtime Analytics', 'Individual diesel & lubricant fill tickets (with m142 odometer/hour-meter guard) and Driver Trips & Overtime analytics live inside Fleet & Diesel Control.', 'fleet', 'Fleet & Diesel Control', 'drivers')}
+          ${movedRegisterBanner('Diesel & Lubricant Intakes Register + Driver Overtime', 'Individual diesel & lubricant fill tickets (with m142 odometer/hour-meter guard) live inside Diesel & Lubricants, and Driver Trips & Overtime live inside Drivers & Overtime.', 'fleet', 'Diesel & Lubricants', 'drivers')}
         </div>
       `;
     }
@@ -5131,11 +5131,13 @@
       ]
     },
     expenses_analytics: {
-      title: 'Cost-Class Breakdown & Overhead Analytics',
-      subtitle: 'Production Cost, Operating Expense & Capital Expenditure Category Analytics',
+      title: '3-Leg AP, Cost-Class Breakdown & JV Stock Analytics',
+      subtitle: '3-Leg Accounts Payable, Expense Cost Classes (60/61/62/22), JV 50/50 Stock & Unit Economics',
       defaultSec: 'costclass',
       sections: [
-        { id: 'costclass', label: 'Expense Cost Classes & Category Breakdown', pageId: 'p07_ap', badge: 'Analytics' }
+        { id: 'costclass', label: '3-Leg AP & Expense Cost Classes', pageId: 'p07_ap', badge: 'Analytics' },
+        { id: 'jv', label: 'JV 50/50 Sites & Partner Stock Entitlement', pageId: 'p17_jv', badge: 'Moved Page' },
+        { id: 'stock', label: 'Unit Economics & Transport Cost Recovery', pageId: 'p08_stock', badge: 'Analytics' }
       ]
     },
     payroll_analytics: {
@@ -6159,6 +6161,76 @@
     `;
   }
 
+  function renderFuelVisualsSection(ctx) {
+    const months = (ctx && ctx.months) || [];
+    const topUnits = (ctx && ctx.topUnits) || [];
+    return `
+      <div class="pbi-grid-2" id="fuelChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Diesel Bought, Issued & Sold with Tank Balance (L)', buildComboChartSvg(months, [
+          { key: 'diesel_bought', label: 'Bought (L)', color: '#1E7A6E' },
+          { key: 'diesel_issued', label: 'Issued (L)', color: '#1E293B' },
+          { key: 'diesel_sold', label: 'Sold (L)', color: '#0D9488' }
+        ], { label: 'Tank Balance (L)', key: 'diesel_tank', color: '#C8333B', isMoney: false }, { isMoney: false }), {
+          subtitle: 'Monthly bulk diesel purchases vs fleet issues and tank balance trajectory',
+          legend: [
+            { label: 'Bought', color: '#1E7A6E' },
+            { label: 'Issued', color: '#1E293B' },
+            { label: 'Sold', color: '#0D9488' },
+            { label: 'Tank (L)', color: '#C8333B', line: true }
+          ]
+        })}
+        ${pbiPanel('Diesel & Lubricant Issued by Equipment Unit (Litres)', buildHorizontalBarChart(topUnits, 'Equipment', 'total_litres', v => fmtNum(v, 0) + ' L', { subKey: 'Type', color: '#1E293B', maxItems: 10 }), {
+          subtitle: 'Top fuel-consuming trucks, loaders, excavators and plant generators'
+        })}
+      </div>
+    `;
+  }
+
+  function renderFleetEconVisualsSection(ctx) {
+    const months = (ctx && ctx.months) || [];
+    const activeUnits = (ctx && ctx.activeUnits) || [];
+    return `
+      <div class="pbi-grid-2" id="fleetEconChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Fleet Running Cost vs. General Expenses ($)', buildClusteredColumnSvg(months, [
+          { key: 'equip_cost', label: 'Fleet Total Cost', color: '#1E293B' },
+          { key: 'expenses', label: 'General Expenses', color: '#8A94A6' }
+        ]), {
+          subtitle: 'Monthly equipment fuel, repair & allocated driver cost vs general overhead',
+          legend: [
+            { label: 'Fleet Cost', color: '#1E293B' },
+            { label: 'All Expenses', color: '#8A94A6' }
+          ]
+        })}
+        ${pbiPanel('Cost by Equipment Unit — Running + Driver ($)', buildHorizontalBarChart(activeUnits, 'Equipment', 'total_cost', v => fmtUSD(v, 0), { subKey: 'Type', color: '#0F766E', maxItems: 10 }), {
+          subtitle: 'Top cost-bearing plant and fleet units in the selected period'
+        })}
+      </div>
+    `;
+  }
+
+  function renderDriversVisualsSection(ctx) {
+    const months = (ctx && ctx.months) || [];
+    const drvList = (ctx && ctx.drvList) || [];
+    return `
+      <div class="pbi-grid-2" id="driversChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Overtime Bonus ($) vs. Dispatched Loads', buildComboChartSvg(months, [
+          { key: 'delivery_loads', label: 'Delivery Loads', color: '#1E293B' },
+          { key: 'raw_loads', label: 'Raw Loads', color: '#8A94A6' }
+        ], { label: 'Overtime Bonus ($)', key: 'overtime_due', color: '#0D9488', isMoney: true }, { isMoney: false }), {
+          subtitle: 'Monthly dispatch loads vs accrued company-fleet driver overtime bonus ($)',
+          legend: [
+            { label: 'Delivery Loads', color: '#1E293B' },
+            { label: 'Raw Loads', color: '#8A94A6' },
+            { label: 'OT Bonus ($)', color: '#0D9488', line: true }
+          ]
+        })}
+        ${pbiPanel('Dispatched Trips by Driver (Sales + Raw)', buildHorizontalBarChart(drvList, 'driver', 'trips', v => fmtNum(v) + ' trips', { subKey: 'trucksStr', color: '#1E293B', maxItems: 10 }), {
+          subtitle: 'Top drivers by dispatched trips in the active period'
+        })}
+      </div>
+    `;
+  }
+
   window.MFG_PBI = {
     PBI_PAGES,
     MOVED_PBI_PAGES,
@@ -6176,6 +6248,9 @@
     renderCashFlowVisualsSection,
     renderSalesVisualsSection,
     renderCustomersVisualsSection,
-    renderPricingVisualsSection
+    renderPricingVisualsSection,
+    renderFuelVisualsSection,
+    renderFleetEconVisualsSection,
+    renderDriversVisualsSection
   };
 })();
