@@ -914,6 +914,14 @@
       return Math.abs(rawM3 - halfSnap) < 0.01 ? halfSnap : round2(rawM3);
     }
     if (tUom === 'truck' || tUom === 'trucks' || (tUom === 'unit' && pType === 'material')) {
+      if (r.truck) {
+        const eq = getFleetIndex().eqByName.get(norm(r.truck));
+        if (eq) {
+          const win = resolveTruckWindow(eq, r.company, String(r.date || '').slice(0, 10), { side: r.customer ? 'sales' : 'raw', customer: r.customer, site: r.site });
+          const cap = Number((win && win.cap) || eq.capacity || 0);
+          if (cap > 0) return q * cap;
+        }
+      }
       return q * 27;
     }
     return 0;
@@ -967,7 +975,7 @@
   }
   function isCreditExpense(x) {
     const m = String((x && x.method) || '').trim();
-    return m === 'Credit' || m === 'CR Return' || m === 'IVA' || m === 'VAT' || m === 'VAT Dis';
+    return m === 'Credit' || m === 'Barter' || m === 'CR Return' || m === 'IVA' || m === 'VAT' || m === 'VAT Dis';
   }
 
   // m18a RECEIPTS_BASE & SETTLE_BASE
@@ -1041,7 +1049,7 @@
 
     let loads = 0, delivery_loads = 0, pickup_loads = 0, unregistered_loads = 0;
     let sales_ttc = 0, sales_vat = 0, net_sales = 0, gross_sales = 0, trans_rev = 0, qty_sold = 0, tons_sold = 0;
-    let cash_sales = 0, credit_sales = 0;
+    let cash_sales = 0, credit_sales = 0, sales_haulage_credit = 0;
     sales.forEach(s => {
       const sgn = ticketSign(s);
       if (sgn === 1) {
@@ -1065,6 +1073,9 @@
       tons_sold += ticketTons(s) * sgn;
       if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') cash_sales += net;
       else if (sgn !== 0) credit_sales += net;
+      if (s.transport_by === 'Third-party truck' && (s.method === 'Credit' || s.method === 'CR Return' || s.method === 'Credit Return')) {
+        sales_haulage_credit += tr;
+      }
     });
 
     let raw_loads = 0, raw_mat_cost = 0, raw_haulage = 0, raw_cost = 0, raw_qty = 0, raw_tons = 0;
@@ -1144,9 +1155,9 @@
       cash_expenses: round2(cash_expenses),
       credit_expenses: round2(credit_expenses),
       ap_material: range ? round2(raw_mat_cost) : round2(Number(baseKpi.ap_material != null ? baseKpi.ap_material : raw_mat_cost)),
-      ap_haulage: range ? round2(raw_haulage) : round2(Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : raw_haulage)),
+      ap_haulage: range ? round2(raw_haulage + sales_haulage_credit) : round2(Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : (raw_haulage + sales_haulage_credit))),
       ap_expense: range ? round2(credit_expenses) : round2(Number(baseKpi.ap_expense != null ? baseKpi.ap_expense : credit_expenses)),
-      ap_on_credit: range ? round2(raw_mat_cost + raw_haulage + credit_expenses) : round2(Number(baseKpi.ap_material != null ? baseKpi.ap_material : raw_mat_cost) + Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : raw_haulage) + Number(baseKpi.ap_expense != null ? baseKpi.ap_expense : credit_expenses)),
+      ap_on_credit: range ? round2(raw_mat_cost + raw_haulage + sales_haulage_credit + credit_expenses) : round2(Number(baseKpi.ap_material != null ? baseKpi.ap_material : raw_mat_cost) + Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : (raw_haulage + sales_haulage_credit)) + Number(baseKpi.ap_expense != null ? baseKpi.ap_expense : credit_expenses)),
       salaries_paid: round2(salaries_paid),
       gross_margin,
       operating_profit,
@@ -1369,7 +1380,7 @@
     k.net_cash_lbp = nl;
     k.cash_inflow = round2(iu + il / rate);
     k.cash_outflow = round2(ou + ol / rate);
-    k.net_cash_flow = round2(k.cash_inflow - k.cash_outflow);
+    k.net_cash_flow = round2(nu + nl / rate);
     return k;
   }
 
@@ -1390,13 +1401,13 @@
 
     const txRaw = computeLocalKPI(m, range, 'tx', coKey);
     if (anchor) {
-      anchor.qty_sold = txRaw.qty_sold;
-      anchor.raw_qty = txRaw.raw_qty;
+      if (crCount > 0 || anchor.qty_sold == null) anchor.qty_sold = txRaw.qty_sold;
+      if (crCount > 0 || anchor.raw_qty == null) anchor.raw_qty = txRaw.raw_qty;
       anchor.tons_sold = txRaw.tons_sold || anchor.tons_sold;
       anchor.raw_tons = txRaw.raw_tons || anchor.raw_tons;
       if (range) {
         anchor.ap_material = round2(Number(anchor.raw_mat_cost != null ? anchor.raw_mat_cost : txRaw.raw_mat_cost || 0));
-        anchor.ap_haulage = round2(Number(anchor.raw_haulage != null ? anchor.raw_haulage : txRaw.raw_haulage || 0));
+        anchor.ap_haulage = round2(Number(txRaw.ap_haulage != null ? txRaw.ap_haulage : (anchor.raw_haulage != null ? anchor.raw_haulage : txRaw.raw_haulage || 0)));
         anchor.ap_expense = round2(Number(anchor.credit_expenses != null ? anchor.credit_expenses : txRaw.credit_expenses || 0));
         anchor.ap_on_credit = round2(anchor.ap_material + anchor.ap_haulage + anchor.ap_expense);
       }
@@ -9203,18 +9214,36 @@
       }
     });
 
-    // 2. Customer Receipts (AR Settlements + VAT Received in LBP)
+    // 2. Customer Receipts (AR Settlements + VAT Received in LBP + Sales Commissions Paid Out on BBConstruction)
     filterRecords(SEED.records.receipts, { ignoreSearch: true, ignorePeriod: Boolean(opts.ignorePeriod), basis: 'tx', user: u }).forEach(r => {
+      const mth = String(r.method || '').trim();
       const knd = receiptKind(r);
-      if (knd !== 'Settlement' && knd !== 'VAT received') return;
-      const lbp = Math.round(Number(r.lbp_amount || (knd === 'VAT received' ? Number(r.amount || 0) * rate : 0)));
-      const usd = knd === 'VAT received' ? 0 : (r.lbp_amount ? Number(r.usd_amount || 0) : Number(r.usd_amount != null ? r.usd_amount : r.amount || 0));
+      const isRentComm = mth === 'Rent' || mth === 'VATRent';
+      if (knd !== 'Settlement' && knd !== 'VAT received' && !isRentComm) return;
+      let lbp = 0, usd = 0, cat = 'AR Receipt';
+      if (mth === 'VATRent') {
+        lbp = -Math.round(Number(r.lbp_amount || ((Number(r.amount || 0) + Number(r.discount || 0)) * rate)));
+        usd = 0;
+        cat = 'Commission VAT (LL)';
+      } else if (mth === 'Rent') {
+        lbp = 0;
+        usd = -Number(r.usd_amount != null ? r.usd_amount : r.amount || 0);
+        cat = 'Sales Commission';
+      } else if (knd === 'VAT received') {
+        lbp = Math.round(Number(r.lbp_amount || (Number(r.amount || 0) * rate)));
+        usd = 0;
+        cat = 'Sales VAT (LL)';
+      } else {
+        lbp = Math.round(Number(r.lbp_amount || 0));
+        usd = r.lbp_amount ? Number(r.usd_amount || 0) : Number(r.usd_amount != null ? r.usd_amount : r.amount || 0);
+        cat = 'AR Receipt';
+      }
       const det = [r.vat_invoice ? `VAT Inv ${r.vat_invoice}` : '', cleanLedgerNote(r.notes)].filter(Boolean).join(' · ');
       pushMove({
         id: r.id, rkey: 'receipts', date: r.date, company: r.company,
-        stream: 'sales', cat: knd === 'VAT received' ? 'Sales VAT (LL)' : 'AR Receipt',
+        stream: 'sales', cat,
         party: r.customer || '—', partyRel: r.customer ? 'customers' : '',
-        detail: det || (knd === 'VAT received' ? '11% VAT collection in LBP' : 'Customer account receipt'),
+        detail: det || (isRentComm ? 'Sales commission / VAT payout' : (knd === 'VAT received' ? '11% VAT collection in LBP' : 'Customer account receipt')),
         ref: shortVoucherRef(r.reference || r.name),
         method: r.method || 'Payment', usd, lbp, raw: r
       });
@@ -9545,8 +9574,44 @@
     }
     mvInUsd = round2(mvInUsd);
     mvOutUsd = round2(mvOutUsd);
-    const mvUsdSum = round2(mvInUsd - mvOutUsd);
+    let mvUsdSum = round2(mvInUsd - mvOutUsd);
     mvLbpSum = Math.round(mvLbpSum);
+    const hasDrill = Boolean(focusDate || focusYm || focusParty);
+    const activeCfChip = STATE.chipFilter || 'all';
+    const isAllTimeWindow = !periodRange(STATE.period);
+    const tbls = cf.tables || {};
+    const tSales = tbls.sales || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tExps = tbls.expenses || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tBor = tbls.borrowing || { rows: [], totals: { rec_usd: 0, rec_lbp: 0, paid_usd: 0, paid_lbp: 0 } };
+    const tSal = tbls.salary || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tExt = tbls.external || { rows: [], totals: { exp_usd: 0, exp_lbp: 0, rev_usd: 0, rev_lbp: 0 } };
+    const tExtd = tbls.extended || { rows: [], totals: { usd: 0, lbp: 0 } };
+    const tConv = tbls.conversion || { rows: [], totals: { from_amt: 0, to_amt: 0 } };
+    if (!hasDrill && !q && !hasActiveColFilters('cf_moves') && STATE.company !== 'lionstransport') {
+      const cdCo = computeCustomCashDeltas(STATE.company, null);
+      const hasCoCustom = Math.abs(cdCo.liveInU) > 0.001 || Math.abs(cdCo.liveOutU) > 0.001 || Math.abs(cdCo.liveInL) > 1 || Math.abs(cdCo.liveOutL) > 1;
+      if (activeCfChip === 'all' && fullFin) {
+        mvInUsd = round2(Number(k.cash_in_usd != null ? k.cash_in_usd : mvInUsd));
+        mvOutUsd = round2(Number(k.cash_out_usd != null ? k.cash_out_usd : mvOutUsd));
+        mvUsdSum = round2(Number(k.net_cash_usd != null ? k.net_cash_usd : (mvInUsd - mvOutUsd)));
+        mvLbpSum = Math.round(Number(k.net_cash_lbp != null ? k.net_cash_lbp : mvLbpSum));
+      } else if (isAllTimeWindow && !hasCoCustom) {
+        if (activeCfChip === 'cf_sales' && tSales.totals) {
+          mvUsdSum = round2(Number(tSales.totals.usd || 0));
+          mvLbpSum = Math.round(Number(tSales.totals.lbp || 0));
+        } else if (activeCfChip === 'cf_exp' && tExps.totals) {
+          mvOutUsd = round2(Number(tExps.totals.usd || 0));
+          mvInUsd = 0;
+          mvUsdSum = round2(-mvOutUsd);
+          mvLbpSum = Math.round(-Number(tExps.totals.lbp || 0));
+        } else if (activeCfChip === 'cf_loan' && tBor.totals) {
+          mvInUsd = round2(Number(tBor.totals.paid_usd || 0));
+          mvOutUsd = round2(Number(tBor.totals.rec_usd || 0));
+          mvUsdSum = round2(mvInUsd - mvOutUsd);
+          mvLbpSum = Math.round(Number(tBor.totals.paid_lbp || 0) - Number(tBor.totals.rec_lbp || 0));
+        }
+      }
+    }
 
     const chipFilteredDaily = allDailyRows.filter(dRow => {
       if (focusYm && dRow.ym !== focusYm) return false;
@@ -9569,15 +9634,6 @@
     const dyNetUsd = round2(dyInUsd - dyOutUsd);
     const latestDayClose = sortedDaily.length ? sortedDaily[0] : { close_usd: liveUsd, close_lbp: liveLbp, close_combined: liveTot };
 
-    const tbls = cf.tables || {};
-    const tSales = tbls.sales || { rows: [], totals: { usd: 0, lbp: 0 } };
-    const tExps = tbls.expenses || { rows: [], totals: { usd: 0, lbp: 0 } };
-    const tBor = tbls.borrowing || { rows: [], totals: { rec_usd: 0, rec_lbp: 0, paid_usd: 0, paid_lbp: 0 } };
-    const tSal = tbls.salary || { rows: [], totals: { usd: 0, lbp: 0 } };
-    const tExt = tbls.external || { rows: [], totals: { exp_usd: 0, exp_lbp: 0, rev_usd: 0, rev_lbp: 0 } };
-    const tExtd = tbls.extended || { rows: [], totals: { usd: 0, lbp: 0 } };
-    const tConv = tbls.conversion || { rows: [], totals: { from_amt: 0, to_amt: 0 } };
-
     const filtName = rows => !q ? rows : rows.filter(r => String(r.name || r.type || '').toLowerCase().includes(q));
     const u2lRow = (tConv.rows || []).find(r => /USD to LBP/i.test(r.type)) || { from_amt: 0, to_amt: 0 };
     const l2uRow = (tConv.rows || []).find(r => /LBP to USD/i.test(r.type)) || { from_amt: 0, to_amt: 0 };
@@ -9599,7 +9655,6 @@
     const extShown = filtName(tExt.rows || []).slice(0, shownCount('cf_ext_t'));
     const extdShown = filtName(tExtd.rows || []);
 
-    const hasDrill = Boolean(focusDate || focusYm || focusParty);
     const fmtYmHuman = ym => {
       const mHit = String(ym || '').match(/^(\d{4})-(\d{2})$/);
       if (!mHit) return ym;
@@ -9755,7 +9810,7 @@
               <span>In: <b class="good">${fmtUSD(mvInUsd, 2)}</b></span>
               <span>Out: <b class="crit">${fmtUSD(mvOutUsd, 2)}</b></span>
               <span>Net: <b style="color:${mvUsdSum < -0.005 ? 'var(--crit)' : (mvUsdSum > 0.005 ? 'var(--good)' : 'var(--ink)')}">${fmtSignedUSD(mvUsdSum, 2)}</b></span>
-              ${Math.abs(mvLbpSum) > 1 ? `<span>LBP: <b>${fmtSignedLBP(mvLbpSum)}</b></span>` : ''}
+              <span>LBP: <b>${Math.abs(mvLbpSum) > 1 ? fmtSignedLBP(mvLbpSum) : '0 LL'}</b></span>
             ` : `
               <span>Click any day row to inspect all cash entries of that day →</span>
             `}

@@ -3501,11 +3501,18 @@ try {
     if (wtcAllChip) wtcAllChip.click();
     await wait(25);
 
-    // 3. Switch to BBConstruction: verify $622.00 & 5,035,000 LL ($678.26 combined) + 336 FX Conversions
+    // 3. Switch to BBConstruction: verify $0.00 & 0 LL ($0.00 combined matching SharePoint Daily CF) + 336 FX Conversions + Sales & Borrowing stream parity
     document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]').click();
     await wait(30);
     const bbcCfHeroText = (document.querySelector('#workspace .cockpit-banner') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const bbcNavPill = (document.getElementById('navCountTill') || {}).textContent?.trim() || '';
+    const bbcLiveStrip = (document.querySelector('#tillRecentPanel .cf-live-strip') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const bbcAllTfoot = (document.querySelector('#tillRecentPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const bbcBorTfoot = (document.querySelector('#cfBorPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
+    const bbcSalesChip = document.querySelector('#tillRecentPanel [data-chip="cf_sales"]');
+    if (bbcSalesChip) bbcSalesChip.click();
+    await wait(25);
+    const bbcSalesMoveTfoot = (document.querySelector('#tillRecentPanel tfoot') || {}).textContent?.replace(/\\s+/g, ' ').trim() || '';
     const bbcFxChip = document.querySelector('#tillRecentPanel [data-chip="cf_fx"]');
     if (bbcFxChip) bbcFxChip.click();
     await wait(25);
@@ -3513,6 +3520,9 @@ try {
     const bbcAllChip = document.querySelector('#tillRecentPanel [data-chip="all"]');
     if (bbcAllChip) bbcAllChip.click();
     await wait(20);
+    const wtcAllKpi = window.MFG_SEED?.models?.wtc?.periods?.all || {};
+    const bbcAllKpi = window.MFG_SEED?.models?.bbconstruction?.periods?.all || {};
+    const spKpiParityOk = wtcAllKpi.qty_sold === 617374.16 && wtcAllKpi.raw_qty === 557963 && wtcAllKpi.ap_on_credit === 7257690.97 && wtcAllKpi.settlements_paid === 7965358.69 && wtcAllKpi.ap_balance === -707667.73 && wtcAllKpi.ar_balance === 20949.85 && wtcAllKpi.salaries_paid === 754416.51 && wtcAllKpi.overtime_bonus === 129492.2 && bbcAllKpi.qty_sold === 179984.99 && bbcAllKpi.raw_qty === 144533.67 && bbcAllKpi.ap_on_credit === 1371884.66 && bbcAllKpi.settlements_paid === 1255386.19 && bbcAllKpi.ap_balance === 116498.48 && bbcAllKpi.ar_balance === 104078.5 && bbcAllKpi.salaries_paid === 413319 && bbcAllKpi.overtime_bonus === 15210.17 && bbcAllKpi.diesel_litres === 714101.94 && bbcAllKpi.diesel_sold === 421932;
 
     // 4. Entry User Access: u4 (scale1.wtc@bhfirms.com, Entry, pbi_access: 'none') & u6 (batch.bbc@bhfirms.com, Entry, BBConstruction)
     await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
@@ -3546,8 +3556,13 @@ try {
       && wtcConvSummaryTxt.includes('-$187,211.84') && wtcConvSummaryTxt.includes('+16,747,731,907 LL')
       && wtcConvSummaryTxt.includes('+$341,980.74') && wtcConvSummaryTxt.includes('-30,608,030,963 LL')
       && bbcFxTfoot.includes('336 ENTRIES') && bbcFxTfoot.includes('-$62,630.07') && bbcFxTfoot.includes('+5,577,835,762 LL');
-    const bbcParityOk = /\\$622\\.00/.test(bbcCfHeroText) && /5,035,000 LL/.test(bbcCfHeroText) && /\\$678\\.26/.test(bbcCfHeroText);
-    const entryUsersOk = u4NavVisible && u4BridgePanel && u4NoVerifyPanel && u4ConfSalHidden && /\\$0\\.00/.test(u4HeroText) && /0 LL/.test(u4HeroText) && /\\$622\\.00/.test(u6HeroText) && /5,035,000 LL/.test(u6HeroText);
+    const bbcParityOk = /\\$0\\.00/.test(bbcCfHeroText) && /0 LL/.test(bbcCfHeroText) && bbcNavPill === '$0 · 0 LL'
+      && bbcLiveStrip.includes('Net: $0.00') && bbcLiveStrip.includes('LBP: 0 LL')
+      && bbcAllTfoot.includes('NET $0.00') && bbcAllTfoot.includes('0 LL')
+      && bbcBorTfoot.includes('697,000,000 LL')
+      && bbcSalesMoveTfoot.includes('+$2,463,238.97') && bbcSalesMoveTfoot.includes('-2,829,334,860 LL')
+      && spKpiParityOk;
+    const entryUsersOk = u4NavVisible && u4BridgePanel && u4NoVerifyPanel && u4ConfSalHidden && /\\$0\\.00/.test(u4HeroText) && /0 LL/.test(u4HeroText) && /\\$0\\.00/.test(u6HeroText) && /0 LL/.test(u6HeroText);
 
     return {
       ok: Boolean(noStale996Or32M && wtcZeroOk && wtcTablesOk && fxConversionsOk && noDrawerVerifyCard && bbcParityOk && entryUsersOk),
@@ -3557,7 +3572,7 @@ try {
     };
   })()`);
   cashFlowTillProbe && cashFlowTillProbe.ok
-    ? pass('cash flow & till parity · WTC $0.00 & 0 LL, BBC $622.00 & 5,035,000 LL, FX Conversion signed USD ↔ LBP drawer deltas (710 WTC + 336 BBC), SharePoint 7-table parity & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill} · FX=${cashFlowTillProbe.wtcFxTfoot}`)
+    ? pass('cash flow & till parity · WTC $0.00 & 0 LL, BBC $0.00 & 0 LL, FX Conversion signed USD ↔ LBP drawer deltas (710 WTC + 336 BBC), SharePoint 7-table parity & Entry-seat access', `WTC=${cashFlowTillProbe.wtcNavPillAll} · BBC=${cashFlowTillProbe.bbcNavPill} · FX=${cashFlowTillProbe.wtcFxTfoot}`)
     : fail('cash flow & till parity + fx conversions + entry-seat access', JSON.stringify(cashFlowTillProbe));
 
   // 7q. Institutional Vector Icon System & #fleet Thermal Ticket Cell Parity (js/icons.js)

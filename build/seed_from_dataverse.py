@@ -2352,7 +2352,7 @@ def _fetch_single_legacy_cf(model_key):
 
     # 3. Borrowing CF
     bor_paid_u = "[Borrow Gave $]" if bb else "[Borrow Gave A $]"
-    bor_paid_l = "[Borrow Gave LL Link]" if bb else "[Borrow Gave LL]"
+    bor_paid_l = "[Borrow Gave LL]"
     bor_raw = _leg_dax(ws, ds, f'EVALUATE FILTER(SUMMARIZECOLUMNS(Borrowing[Borrower], "ru", [Borrow Received $], "rl", [Borrow Received LL], "pu", {bor_paid_u}, "pl", {bor_paid_l}), ABS([ru])>0.005 || ABS([rl])>0.5 || ABS([pu])>0.005 || ABS([pl])>0.5)')
     bor_tot = _leg_dax(ws, ds, f'EVALUATE ROW("ru", [Borrow Received $], "rl", [Borrow Received LL], "pu", {bor_paid_u}, "pl", {bor_paid_l})')[0]
     bor_rows = sorted([
@@ -2423,6 +2423,21 @@ def _fetch_single_legacy_cf(model_key):
         })
     conv_rows.sort(key=lambda x: 0 if "USD to LBP" in x["type"] else 1)
 
+    in_u = round(_num(head.get("[iu]")), 2)
+    out_u = round(_num(head.get("[ou]")), 2)
+    in_l = int(round(_num(head.get("[il]"))))
+    out_l = int(round(_num(head.get("[ol]"))))
+    if bb and (live_usd != 0.0 or live_lbp != 0):
+        # SharePoint Daily CF ([Net Cash Flow C $] & [Net Cash Flow C LL]) balances the active till drawer to $0.00 & 0 LL
+        if daily:
+            daily[-1][2] = round(daily[-1][2] + live_usd, 2)
+            daily[-1][4] = int(round(daily[-1][4] + live_lbp))
+        out_u = in_u
+        out_l = in_l
+        live_usd = 0.0
+        live_lbp = 0
+        live_tot = 0.0
+
     return {
         "rate_lbp": rate_lbp,
         "live_till": {
@@ -2430,10 +2445,10 @@ def _fetch_single_legacy_cf(model_key):
             "lbp": live_lbp,
             "total": live_tot,
             "rate_lbp": rate_lbp,
-            "in_usd": round(_num(head.get("[iu]")), 2),
-            "out_usd": round(_num(head.get("[ou]")), 2),
-            "in_lbp": int(round(_num(head.get("[il]")))),
-            "out_lbp": int(round(_num(head.get("[ol]")))),
+            "in_usd": in_u,
+            "out_usd": out_u,
+            "in_lbp": in_l,
+            "out_lbp": out_l,
         },
         "daily": daily,
         "tables": {
