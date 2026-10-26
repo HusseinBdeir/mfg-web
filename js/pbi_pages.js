@@ -1286,7 +1286,15 @@
   // 8. Horizontal Bar Chart (matches Power BI barChart with data labels at bar ends)
   function buildHorizontalBarChart(rows, labelKey, valKey, fmtFn, opts = {}) {
     const maxItems = opts.maxItems || 10;
-    const top = (rows || []).filter(r => Math.abs(Number(r[valKey] || 0)) > 0.001).slice(0, maxItems);
+    const filtered = (rows || []).filter(r => Math.abs(Number(r[valKey] || 0)) > 0.001);
+    const sorted = opts.sort === false ? filtered : filtered.slice().sort((a, b) => {
+      if (typeof opts.sortFn === 'function') return opts.sortFn(a, b);
+      const va = Number(a[valKey] || 0);
+      const vb = Number(b[valKey] || 0);
+      if (opts.sortAbs) return Math.abs(vb) - Math.abs(va) || (vb - va);
+      return vb - va || Math.abs(vb) - Math.abs(va);
+    });
+    const top = sorted.slice(0, maxItems);
     if (!top.length) return `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">No rows for active filter</div>`;
     const max = Math.max(1, ...top.map(r => Math.abs(Number(r[valKey] || 0))));
     const totAbs = top.reduce((a, r) => a + Math.abs(Number(r[valKey] || 0)), 0) || 1;
@@ -1771,7 +1779,10 @@
         });
       });
       let baseCusts = m.customers || [];
-      let baseSupps = m.suppliers || [];
+      let baseSupps = (m.suppliers || []).map(s => {
+        const legRaw = round2(Number(s.ap_material || s.raw_mat_cost || 0) + Number(s.ap_haulage || s.raw_haulage || 0));
+        return legRaw > 0 && legRaw !== Number(s.raw_cost || 0) ? Object.assign({}, s, { raw_cost: legRaw }) : s;
+      });
       const baseSites = m.sites || [];
       if (activeRange) {
         const pMap = new Map();
@@ -1813,7 +1824,7 @@
             avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
             avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
           });
-        });
+        }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
 
         const cMap = new Map();
         baseSalesRows.forEach(s => {
@@ -1851,12 +1862,12 @@
             receipts: round2(st.receipts),
             last_sale: st.last_sale || c.last_sale
           });
-        });
+        }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.ar_balance || 0) - Number(a.ar_balance || 0));
 
         const sMap = new Map();
         const ensureSup = name => {
           const sk = norm(name);
-          if (!sMap.has(sk)) sMap.set(sk, { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
+          if (!sMap.has(sk)) sMap.set(sk, { name: String(name || '').trim(), raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
           return sMap.get(sk);
         };
         baseRawRows.forEach(r => {
@@ -1885,16 +1896,35 @@
             st.settlements_paid += Number(sp.amount || 0);
           }
         });
+        const seenSupNorm = new Set();
         baseSupps = baseSupps.map(s => {
-          const st = sMap.get(norm(s.Supplier)) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
+          const sk = norm(s.Supplier);
+          if (sk) seenSupNorm.add(sk);
+          const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
           return Object.assign({}, s, {
             raw_loads: st.raw_loads,
             raw_mat_cost: round2(st.raw_mat_cost),
             raw_haulage: round2(st.raw_haulage),
             raw_cost: round2(st.raw_cost),
+            expenses: round2(st.expenses),
             settlements_paid: round2(st.settlements_paid)
           });
         });
+        sMap.forEach((st, sk) => {
+          if (!sk || seenSupNorm.has(sk)) return;
+          baseSupps.push({
+            Supplier: st.name || sk,
+            IVA: suppIvaMap.get(sk) || 'No',
+            raw_loads: st.raw_loads,
+            raw_mat_cost: round2(st.raw_mat_cost),
+            raw_haulage: round2(st.raw_haulage),
+            raw_cost: round2(st.raw_cost),
+            expenses: round2(st.expenses),
+            settlements_paid: round2(st.settlements_paid),
+            ap_balance: 0
+          });
+        });
+        baseSupps.sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0) || Number(b.ap_balance || 0) - Number(a.ap_balance || 0));
       }
 
       const totalProdSales = baseProds.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
@@ -2017,7 +2047,7 @@
           avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
           avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
         });
-      });
+      }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
 
       const cMap = new Map();
       salesRows.forEach(s => {
@@ -2055,12 +2085,12 @@
           receipts: round2(st.receipts),
           last_sale: st.last_sale || c.last_sale
         });
-      });
+      }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.ar_balance || 0) - Number(a.ar_balance || 0));
 
       const sMap = new Map();
       const ensureSup = name => {
         const sk = norm(name);
-        if (!sMap.has(sk)) sMap.set(sk, { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
+        if (!sMap.has(sk)) sMap.set(sk, { name: String(name || '').trim(), raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
         return sMap.get(sk);
       };
       rawRows.forEach(r => {
@@ -2089,16 +2119,35 @@
           st.settlements_paid += Number(sp.amount || 0);
         }
       });
+      const seenSupNorm = new Set();
       baseSupps = (m.suppliers || []).map(s => {
-        const st = sMap.get(norm(s.Supplier)) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
+        const sk = norm(s.Supplier);
+        if (sk) seenSupNorm.add(sk);
+        const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
         return Object.assign({}, s, {
           raw_loads: st.raw_loads,
           raw_mat_cost: round2(st.raw_mat_cost),
           raw_haulage: round2(st.raw_haulage),
           raw_cost: round2(st.raw_cost),
+          expenses: round2(st.expenses),
           settlements_paid: round2(st.settlements_paid)
         });
       });
+      sMap.forEach((st, sk) => {
+        if (!sk || seenSupNorm.has(sk)) return;
+        baseSupps.push({
+          Supplier: st.name || sk,
+          IVA: suppIvaMap.get(sk) || 'No',
+          raw_loads: st.raw_loads,
+          raw_mat_cost: round2(st.raw_mat_cost),
+          raw_haulage: round2(st.raw_haulage),
+          raw_cost: round2(st.raw_cost),
+          expenses: round2(st.expenses),
+          settlements_paid: round2(st.settlements_paid),
+          ap_balance: 0
+        });
+      });
+      baseSupps.sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0) || Number(b.ap_balance || 0) - Number(a.ap_balance || 0));
     }
 
     const prodRows = !hasAnySlicer ? baseProds : baseProds.filter(matchCommon);
@@ -3013,10 +3062,10 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0)), 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#1E293B', maxItems: 10 }), {
+          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart(suppRows, 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#1E293B', maxItems: 10 }), {
             subtitle: 'Net closing AP balance (+ owed by company, − advance to supplier)'
           })}
-          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0)), 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
+          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart(suppRows, 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
             subtitle: 'Total raw material + haulage accrued'
           })}
         </div>
@@ -3027,9 +3076,9 @@
             { label: 'IVA', key: 'IVA' },
             { label: 'Raw Loads', key: 'raw_loads', r: true, fmt: v => fmtNum(v) },
             { label: 'Total Raw Cost ($)', key: 'raw_cost', r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 1 · Material ($)', raw: r => r.ap_material || r.raw_mat_cost || 0, r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 2 · Haulage ($)', raw: r => r.ap_haulage || r.raw_haulage || 0, r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 3 · Expenses ($)', raw: r => r.ap_expense || r.expenses || 0, r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Leg 1 · Material ($)', raw: r => activeRange ? (r.raw_mat_cost || 0) : (r.ap_material || r.raw_mat_cost || 0), r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Leg 2 · Haulage ($)', raw: r => activeRange ? (r.raw_haulage || 0) : (r.ap_haulage || r.raw_haulage || 0), r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Leg 3 · Expenses ($)', raw: r => activeRange ? (r.expenses || 0) : (r.ap_expense || r.expenses || 0), r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Settlements Paid ($)', key: 'settlements_paid', r: true, fmt: v => `<span class="pbi-pos">${fmtUSD(v, 0)}</span>` },
             { label: 'Closing AP Balance ($)', key: 'ap_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], [...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0) || (Number(b.raw_cost || 0) + Number(b.ap_expense || b.expenses || 0)) - (Number(a.raw_cost || 0) + Number(a.ap_expense || a.expenses || 0))), {
@@ -3162,7 +3211,7 @@
     // =========================================================================
     else if (activePageId === 'p10_fleet') {
       const sumEq = key => equipRows.reduce((a, r) => a + Number(r[key] || 0), 0);
-      const activeUnits = equipRows.filter(e => Number(e.total_cost || 0) > 0 || Number(e.trips || 0) > 0 || Number(e.diesel_litres || 0) > 0);
+      const activeUnits = equipRows.filter(e => Number(e.total_cost || 0) > 0 || Number(e.trips || 0) > 0 || Number(e.diesel_litres || 0) > 0).sort((a, b) => Number(b.total_cost || 0) - Number(a.total_cost || 0) || Number(b.trips || 0) - Number(a.trips || 0));
       bodyHtml = `
         <div class="pbi-overview-bands">
           ${kpiBand('1 · Fleet Utilization, Running Costs, Driver Allocation & Cost per Ton', [
@@ -4399,7 +4448,7 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiPanel('External net by counterparty', buildHorizontalBarChart(cpList, 'Counterparty', 'net', v => fmtUSD(v, 0), { color: '#1E293B', maxItems: 8 }), {
+          ${pbiPanel('External net by counterparty', buildHorizontalBarChart(cpList, 'Counterparty', 'net', v => fmtUSD(v, 0), { color: '#1E293B', maxItems: 8, sortAbs: true }), {
             subtitle: 'Net external treasury position by counterparty (+ net inflow, − net outflow)'
           })}
           ${pbiPanel('External revenue vs expense by counterparty', buildClusteredBarChart(cpList, 'Counterparty', [

@@ -174,22 +174,22 @@ try {
   const hubRailProbe = await evaluate(`(() => {
     const grps = Array.from(document.querySelectorAll('#sidebarNav .grp')).map(g => g.textContent.trim());
     const hubs = Array.from(document.querySelectorAll('#sidebarNav button.nav-item[data-hub]')).map(b => b.getAttribute('data-hub'));
-    const showcaseInFooter = Boolean(document.querySelector('.rail-footer #railShowcaseLink')) && !document.querySelector('#sidebarNav #railShowcaseLink');
+    const cleanFooter = !document.querySelector('#sidebar #railShowcaseLink') && !document.querySelector('#sidebar .rail-status-row') && !document.querySelector('#sidebar #sqlStatusText') && !document.querySelector('#sidebar #railRlsScope') && Boolean(document.querySelector('.rail-footer .me'));
     const navEl = document.getElementById('sidebarNav');
     const railVertScrollPx = navEl ? Math.max(0, navEl.scrollHeight - navEl.clientHeight) : 999;
     return {
       ok: grps.join('|') === 'Executive|Plant & Dispatch|Treasury & Governance' &&
           hubs.join(',') === 'overview,sales,raw,fleet,kiosks,cashflow,expenses,payroll,ledger,users' &&
-          showcaseInFooter &&
+          cleanFooter &&
           (window.innerWidth <= 860 || railVertScrollPx <= 1),
       grps,
       hubs,
-      showcaseInFooter,
+      cleanFooter,
       railVertScrollPx
     };
   })()`);
   hubRailProbe.ok
-    ? pass('10-hub left sidebar architecture · 3 business-cycle groups, 10 parent hubs, Public Showcase in footer & 0px vertical rail scroll at 1366×768', `hubs=${hubRailProbe.hubs.length} · railScroll=${hubRailProbe.railVertScrollPx}px`)
+    ? pass('10-hub left sidebar architecture · 3 business-cycle groups, 10 parent hubs, clean user-only footer & 0px vertical rail scroll at 1366×768', `hubs=${hubRailProbe.hubs.length} · railScroll=${hubRailProbe.railVertScrollPx}px`)
     : fail('10-hub left sidebar architecture', JSON.stringify(hubRailProbe));
 
   const views = [
@@ -2631,23 +2631,29 @@ try {
     ? pass('search-box & combobox first-click stability · Product→Customer→Site sequential click stays open past 120ms blur timer + #tableSearchInput DOM node preserved', JSON.stringify(searchFocusStability))
     : fail('search-box & combobox first-click stability', JSON.stringify(searchFocusStability));
 
-  // 7g. Command Center 2-word subtitle & Public Showcase navigation links (#railShowcaseLink in sidebar + #authShowcaseLink in auth gate)
+  // 7g. Command Center 2-word subtitle & Public Showcase navigation links (#railShowcaseLink in System & Access #users + #authShowcaseLink in auth gate)
   const showcaseBrandProbe = await evaluate(`(() => {
+    window.__navToView('users');
     const brandSub = (document.querySelector('.brand-sub') || {}).textContent?.trim() || '';
+    const panel = document.getElementById('systemShowcasePanel');
     const railLink = document.getElementById('railShowcaseLink');
+    const inSystemUsers = Boolean(panel && railLink && panel.contains(railLink) && !document.querySelector('#sidebar #railShowcaseLink'));
+    const hasWording = Boolean(panel && panel.querySelector('.system-showcase-title') && panel.querySelector('.system-showcase-sub'));
     const authLink = document.getElementById('authShowcaseLink');
     const railHref = railLink ? (railLink.getAttribute('href') || '') : '';
     const authHref = authLink ? (authLink.getAttribute('href') || '') : '';
     return {
-      ok: brandSub === 'Command Center' && !!railLink && !!authLink && (railHref === '../' || railHref === '/showcase/') && railHref === authHref && /ISABI Command Center/.test(document.title),
+      ok: brandSub === 'Command Center' && inSystemUsers && hasWording && !!railLink && !!authLink && (railHref === '../' || railHref === '/showcase/') && railHref === authHref && /ISABI Command Center/.test(document.title),
       brandSub,
+      inSystemUsers,
+      hasWording,
       railHref,
       authHref,
       docTitle: document.title
     };
   })()`);
   showcaseBrandProbe && showcaseBrandProbe.ok
-    ? pass('Command Center branding & Public Showcase navigation · .brand-sub="Command Center" + #railShowcaseLink & #authShowcaseLink', `${showcaseBrandProbe.brandSub} · href=${showcaseBrandProbe.railHref}`)
+    ? pass('Command Center branding & Public Showcase in System & Access · .brand-sub="Command Center" + #systemShowcasePanel (#railShowcaseLink) & #authShowcaseLink', `${showcaseBrandProbe.brandSub} · href=${showcaseBrandProbe.railHref}`)
     : fail('Command Center branding & Public Showcase navigation', JSON.stringify(showcaseBrandProbe));
 
   // 7h. Universal Record Void / Delete (inline row ✕ + 360° Record Inspector top Command Bar & footer + 1-click Undo restore + Role Gate: Supervisor / Admin / Custom only, blocked for Entry & Sales)
@@ -3318,6 +3324,66 @@ try {
     ? pass('entity recon card parity · Multi-Group (2 structured cards) & Single-Group (structured .sales-recon-card.single-card with 6 stacked metric columns & inline header Show All Group button)', `multi=${singleGroupReconProbe.multiCount} cards · single=${singleGroupReconProbe.singleMetricCount} metrics · sameHeaderRow=${singleGroupReconProbe.sameHeaderRow}`)
     : fail('entity recon card parity (Multi-Group vs Single-Group)', JSON.stringify(singleGroupReconProbe));
 
+  // 7o-2. Full Company Name Visibility in #companySwitch, Architectural Recon Metric Tiles (.num-cents/.recon-tile-bar/.recon-co-pills), Inline Data Bars (.td-databar) & Live Multi-Row Calculator (#liveSelectionBar)
+  const v164VisualProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('sales');
+    const coTextEl = document.getElementById('companySwitchCoText');
+    const coVisibility = {};
+    for (const coKey of ['bbconstruction', 'lionstransport', 'wtc', 'manufacturing-group']) {
+      const btn = document.querySelector('#companySwitch .entity-btn[data-company="' + coKey + '"]');
+      if (btn) btn.click();
+      await wait(20);
+      coVisibility[coKey] = {
+        text: coTextEl ? coTextEl.textContent.trim() : '',
+        scrollW: coTextEl ? coTextEl.scrollWidth : 0,
+        clientW: coTextEl ? coTextEl.clientWidth : 0,
+        fullVisible: Boolean(coTextEl && coTextEl.scrollWidth <= coTextEl.clientWidth + 1)
+      };
+    }
+    const bbcBtn = document.querySelector('#companySwitch .entity-btn[data-company="bbconstruction"]');
+    if (bbcBtn) bbcBtn.click();
+    await wait(25);
+    const singleCard = document.querySelector('#salesPanel .sales-recon-card.single-card');
+    const hasCentsTypography = Boolean(singleCard && singleCard.querySelectorAll('.sales-recon-metrics b .num-cents').length >= 4);
+    const hasTileBars = Boolean(singleCard && singleCard.querySelectorAll('.sales-recon-metrics u.recon-tile-bar > i').length === 6);
+    const hasTileSubs = Boolean(singleCard && singleCard.querySelectorAll('.sales-recon-metrics em.recon-tile-sub').length === 6);
+    const hasHeadMix = Boolean(singleCard && singleCard.querySelector('.sales-recon-head .recon-head-mix'));
+    const hasInlineCoPills = Boolean(singleCard && singleCard.querySelectorAll('.sales-recon-head .recon-co-pills .recon-co-pill').length >= 2);
+    const dataBarCount = document.querySelectorAll('#salesPanel table.ledger-table tbody td.td-databar').length;
+
+    // Select 2 rows via .row-sel-dot and verify #liveSelectionBar
+    const dots = Array.from(document.querySelectorAll('#salesPanel tbody tr.rrow u.row-sel-dot')).slice(0, 2);
+    dots.forEach(d => d.click());
+    await wait(20);
+    const lsb = document.getElementById('liveSelectionBar');
+    const lsbShown = Boolean(lsb && !lsb.hidden && /2 Rows Selected/.test(lsb.textContent));
+    const clrBtn = document.getElementById('lsbClearSelBtn');
+    if (clrBtn) clrBtn.click();
+    await wait(15);
+    const lsbCleared = Boolean(lsb && lsb.hidden);
+
+    const grpBtn = document.querySelector('#companySwitch .entity-btn[data-company="manufacturing-group"]');
+    if (grpBtn) grpBtn.click();
+    await wait(20);
+    const allCosFull = Object.values(coVisibility).every(v => v.fullVisible);
+    return {
+      ok: Boolean((window.innerWidth <= 860 || allCosFull) && hasCentsTypography && hasTileBars && hasTileSubs && hasHeadMix && hasInlineCoPills && dataBarCount > 0 && lsbShown && lsbCleared),
+      coVisibility,
+      hasCentsTypography,
+      hasTileBars,
+      hasTileSubs,
+      hasHeadMix,
+      hasInlineCoPills,
+      dataBarCount,
+      lsbShown,
+      lsbCleared
+    };
+  })()`);
+  v164VisualProbe && v164VisualProbe.ok
+    ? pass('company switch full-name visibility, architectural recon tiles (.num-cents + share bars + inline entity pills), table data bars & live multi-row calculator', `BBC="${v164VisualProbe.coVisibility.bbconstruction.text}" (${v164VisualProbe.coVisibility.bbconstruction.scrollW}/${v164VisualProbe.coVisibility.bbconstruction.clientW}px) · dataBars=${v164VisualProbe.dataBarCount} · liveCalc=2 rows->clear`)
+    : fail('v16.4 visual & interactive enhancements', JSON.stringify(v164VisualProbe));
+
   // 7p. iOS Standalone & Mobile Bottom Dock Flush Viewport Parity (PWA.md §3.1 — zero dead bottom rectangle)
   const iosStandaloneDockProbe = await evaluate(`(() => {
     const de = document.documentElement;
@@ -3504,7 +3570,9 @@ try {
       const sp = b.querySelector('span');
       return Boolean(ico && sp && sp.textContent.trim().length > 0 && !b.hasAttribute('title') && !sp.hasAttribute('title'));
     });
-    const showcaseHasSvg = Boolean(document.querySelector('#railShowcaseLink i.nav-ico svg.ic'));
+    window.__navToView('users');
+    await wait(30);
+    const showcaseHasSvg = Boolean(document.querySelector('#systemShowcasePanel #railShowcaseLink i.nav-ico svg.ic'));
 
     // Navigate to #fleet and verify sub-tabs SVGs + Ticket column parity + thermal preview click
     window.__navToView('fleet');

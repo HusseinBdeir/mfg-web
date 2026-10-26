@@ -11578,6 +11578,7 @@
     const enrolSavedSamples = userFaceSamples(enrolUser);
     const capCount = FACE_STATE.enrolCaptures.length;
     const poseComplete = capCount >= 3;
+    const showcaseHref = (IS_LOCAL && !location.pathname.includes('/app/')) ? '/showcase/' : '../';
 
     return `
       <div class="cockpit-banner has-insights">
@@ -11837,6 +11838,20 @@
               <span class="badge ${sbConfigured ? 'badge-ok' : ''}">${sbConfigured ? 'KEYS SAVED' : 'NOT CONFIGURED'}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="panel-card system-showcase-card" id="systemShowcasePanel" style="margin-top:14px">
+        <div class="system-showcase-inner">
+          <div class="system-showcase-copy">
+            <div class="system-showcase-title">ISABI Systems Public Showcase &amp; Architecture Blueprints</div>
+            <div class="system-showcase-sub">Open the public ISABI Systems overview to explore the 10-industry ERP &amp; Power BI architecture blueprints, interactive module tours, and zero-seat licensing model.</div>
+          </div>
+          <a href="${esc(showcaseHref)}" class="btn btn-brass system-showcase-btn" id="railShowcaseLink" aria-label="Public Showcase">
+            <i class="nav-ico" aria-hidden="true">${ic('showcase')}</i>
+            <span>Public Showcase</span>
+            <em class="nav-pill brass">Web</em>
+          </a>
         </div>
       </div>
     `;
@@ -21883,6 +21898,291 @@
     wireWorkspace(container, user);
   }
 
+  function updateLiveSelectionBar(container) {
+    let bar = $('liveSelectionBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'liveSelectionBar';
+      bar.className = 'live-selection-bar no-print';
+      bar.hidden = true;
+      document.body.appendChild(bar);
+    }
+    const selRows = container ? Array.from(container.querySelectorAll('tr.rrow.is-row-selected')) : [];
+    if (!selRows.length) {
+      bar.hidden = true;
+      return;
+    }
+    let sumQty = 0, qtyUnit = '', sumBase = 0, sumVat = 0, sumTot = 0;
+    selRows.forEach(tr => {
+      const tbl = tr.closest('table');
+      const ths = tbl ? Array.from(tbl.querySelectorAll('thead tr th')).map(th => (th.textContent || '').trim().toUpperCase()) : [];
+      const tds = Array.from(tr.children);
+      let rowUsdVals = [];
+      tds.forEach((td, i) => {
+        const h = ths[i] || '';
+        const txt = (td.textContent || '').trim();
+        if (/QTY|LITERS|TONS|VOLUME/i.test(h)) {
+          const qm = txt.match(/([+-]?[\d,]+(?:\.\d+)?)\s*([a-zA-Z³²]+)?/);
+          if (qm) {
+            sumQty += parseFloat(qm[1].replace(/,/g, '')) || 0;
+            if (!qtyUnit && qm[2]) qtyUnit = qm[2];
+          }
+        }
+        if (/\$/.test(txt)) {
+          const v = parseFloat(txt.replace(/[^0-9.-]/g, '')) || 0;
+          rowUsdVals.push({ h, v });
+          if (/EX-VAT|BASE|GROSS PAY/i.test(h)) sumBase += v;
+          else if (/\bVAT\b/i.test(h) && !/INCL/i.test(h)) sumVat += v;
+        }
+      });
+      if (rowUsdVals.length) {
+        const totCol = rowUsdVals.find(x => /VAT INCL|TOTAL|NET PAY|AMOUNT|BALANCE/i.test(x.h)) || rowUsdVals[rowUsdVals.length - 1];
+        sumTot += totCol.v;
+      }
+    });
+    const avgRow = selRows.length > 0 ? (sumTot / selRows.length) : 0;
+    const summaryCopyText = `${selRows.length} rows selected` +
+      (sumQty > 0 ? ` · Qty: ${fmtNum(sumQty, 1)}${qtyUnit ? ' ' + qtyUnit : ''}` : '') +
+      (sumBase > 0 ? ` · Ex-VAT: ${fmtUSD(sumBase, 2)}` : '') +
+      (sumVat > 0 ? ` · VAT: ${fmtUSD(sumVat, 2)}` : '') +
+      ` · Total: ${fmtUSD(sumTot, 2)} · Avg: ${fmtUSD(avgRow, 2)}/row`;
+    bar.innerHTML = `
+      <div class="lsb-head">
+        <span class="lsb-badge">${selRows.length} ${selRows.length === 1 ? 'Row' : 'Rows'} Selected</span>
+        <small class="lsb-hint">Shift+Click or ✓ to toggle rows</small>
+      </div>
+      <div class="lsb-metrics">
+        ${sumQty > 0 ? `<div class="lsb-cell"><small>Selected Qty</small><b>${fmtNum(sumQty, 1)}${qtyUnit ? ' ' + esc(qtyUnit) : ''}</b></div>` : ''}
+        ${sumBase > 0 ? `<div class="lsb-cell"><small>Ex-VAT Sum</small><b>${fmtUSD(sumBase, 2)}</b></div>` : ''}
+        ${sumVat > 0 ? `<div class="lsb-cell"><small>VAT Sum</small><b>${fmtUSD(sumVat, 2)}</b></div>` : ''}
+        <div class="lsb-cell lsb-tot"><small>Selected Total</small><b>${fmtUSD(sumTot, 2)}</b></div>
+        <div class="lsb-cell"><small>Avg / Row</small><b>${fmtUSD(avgRow, 2)}</b></div>
+      </div>
+      <div class="lsb-actions">
+        <button type="button" class="lsb-btn" id="lsbSelectTop10Btn" title="Select first 10 visible rows">Top 10</button>
+        <button type="button" class="lsb-btn" id="lsbCopySumBtn" title="Copy live sum summary to clipboard">Copy Sum</button>
+        <button type="button" class="lsb-btn lsb-clear" id="lsbClearSelBtn" title="Clear row selection (Esc)">Clear ✕</button>
+      </div>
+    `;
+    bar.hidden = false;
+    const top10Btn = $('lsbSelectTop10Btn');
+    if (top10Btn) top10Btn.onclick = e => {
+      e.stopPropagation();
+      const firstTbl = selRows[0] ? selRows[0].closest('table') : container.querySelector('table.ledger-table');
+      if (firstTbl) {
+        Array.from(firstTbl.querySelectorAll('tbody tr.rrow')).slice(0, 10).forEach(r => r.classList.add('is-row-selected'));
+        updateLiveSelectionBar(container);
+      }
+    };
+    const copyBtn = $('lsbCopySumBtn');
+    if (copyBtn) copyBtn.onclick = e => {
+      e.stopPropagation();
+      try { navigator.clipboard.writeText(summaryCopyText); } catch (_) {}
+      toast('Copied live selection sum: ' + summaryCopyText);
+    };
+    const clrBtn = $('lsbClearSelBtn');
+    if (clrBtn) clrBtn.onclick = e => {
+      e.stopPropagation();
+      container.querySelectorAll('tr.rrow.is-row-selected').forEach(r => r.classList.remove('is-row-selected'));
+      updateLiveSelectionBar(container);
+    };
+  }
+
+  function enhanceVisualWorkspace(container, activeUserRow, allowedCos, allowedNames) {
+    if (!container) return;
+    // 1. Enhance .sales-entity-recon cards, metric tiles & number typography across all registers
+    container.querySelectorAll('.sales-recon-card').forEach(card => {
+      const panel = card.closest('.panel-card') || container;
+      const chipBtns = Array.from(panel.querySelectorAll('.chip-bar .filter-chip'));
+      const headEl = card.querySelector('.sales-recon-head');
+      const headB = headEl ? headEl.querySelector('b') : null;
+      const headCount = headB ? (parseInt((headB.textContent || '').replace(/[^0-9]/g, ''), 10) || 0) : 0;
+      const spans = Array.from(card.querySelectorAll('.sales-recon-metrics > span'));
+      const tiles = spans.map((sp, idx) => {
+        const sm = sp.querySelector('small');
+        const bEl = sp.querySelector('b');
+        const lbl = sm ? (sm.textContent || '').trim() : '';
+        const rawVal = bEl ? (bEl.textContent || '').trim() : '';
+        const isUsd = /^[+-]?\$/.test(rawVal);
+        const numVal = isUsd
+          ? Math.abs(parseFloat(rawVal.replace(/[^0-9.-]/g, '')) || 0)
+          : Math.abs(parseFloat(rawVal.replace(/[^0-9.-]/g, '')) || 0);
+        return { sp, sm, bEl, lbl, rawVal, isUsd, numVal, idx };
+      });
+      const usdTiles = tiles.filter(t => t.isUsd);
+      const maxUsd = usdTiles.reduce((m, t) => Math.max(m, t.numVal), 0);
+      const baseUsd = (usdTiles[0] && usdTiles[0].numVal > 0) ? usdTiles[0].numVal : maxUsd;
+      const jumpCo = card.getAttribute('data-jump-co') || '';
+
+      tiles.forEach(t => {
+        const { sp, bEl, lbl, rawVal, isUsd, numVal, idx } = t;
+        // Format $2,922,331.99 into crisp display dollars + muted .99 cents while keeping bEl.textContent 100% identical
+        if (bEl && !bEl.querySelector('.num-sym, .num-cents')) {
+          const m = rawVal.match(/^([+-]?\$)([\d,]+)(\.\d{2})(.*)$/);
+          if (m) {
+            bEl.innerHTML = `<i class="num-sym">${m[1]}</i>${m[2]}<i class="num-cents">${m[3]}</i>${m[4] ? `<i class="num-unit">${esc(m[4])}</i>` : ''}`;
+          } else {
+            const m2 = rawVal.match(/^([+-]?\$)([\d,]+)(.*)$/);
+            if (m2) {
+              bEl.innerHTML = `<i class="num-sym">${m2[1]}</i>${m2[2]}${m2[3] ? `<i class="num-unit">${esc(m2[3])}</i>` : ''}`;
+            }
+          }
+        }
+        // Assign semantic tile tone
+        let tone = 'steel';
+        if ((bEl && bEl.classList.contains('brass')) || /vat incl|total ttc|gross billed|closing|net pay|total cost|net cash/i.test(lbl)) {
+          tone = 'brass';
+        } else if (/\bcash\b|\bpaid\b|settled|collected|inflow/i.test(lbl)) {
+          tone = 'emerald';
+        } else if (/credit|unpaid|open|balance|receivable|payable|\bar\b|\bap\b/i.test(lbl)) {
+          tone = 'steel';
+        } else if (/vat|tax|overtime|advance|diesel|fuel/i.test(lbl)) {
+          tone = 'amber';
+        } else if (/discount|deduct|outflow|void/i.test(lbl)) {
+          tone = 'slate';
+        } else if (idx === 0) {
+          tone = 'navy';
+        }
+        sp.setAttribute('data-tile-tone', tone);
+
+        // Auto-wire interactive chip slice if not already wired
+        if (!sp.classList.contains('recon-metric-slice') && chipBtns.length) {
+          let targetChip = 'all';
+          if (/\bcash\b/i.test(lbl) && chipBtns.some(c => c.getAttribute('data-chip') === 'cash')) targetChip = 'cash';
+          else if (/credit/i.test(lbl) && chipBtns.some(c => c.getAttribute('data-chip') === 'credit')) targetChip = 'credit';
+          else if (/\bpaid\b|settled/i.test(lbl) && !/unpaid/i.test(lbl) && chipBtns.some(c => c.getAttribute('data-chip') === 'paid')) targetChip = 'paid';
+          else if (/unpaid|open|balance/i.test(lbl) && chipBtns.some(c => c.getAttribute('data-chip') === 'unpaid')) targetChip = 'unpaid';
+          else if (/vat/i.test(lbl) && !/incl|ex-vat/i.test(lbl) && chipBtns.some(c => c.getAttribute('data-chip') === 'vat')) targetChip = 'vat';
+          sp.classList.add('recon-metric-slice');
+          sp.setAttribute('data-recon-chip', targetChip);
+          if (jumpCo) sp.setAttribute('data-recon-co', jumpCo);
+          if (!jumpCo && targetChip !== 'all' && STATE.chipFilter === targetChip) sp.classList.add('is-active');
+        }
+
+        // Append contextual share/avg sub-label (<em class="recon-tile-sub">) & micro-bar (<u class="recon-tile-bar">)
+        if (!sp.querySelector('.recon-tile-sub')) {
+          let barPct = 0;
+          let subTxt = '';
+          if (isUsd) {
+            if (idx === 0) {
+              barPct = numVal > 0 ? 100 : 0;
+              subTxt = headCount > 0 ? `Avg ${fmtUSD(numVal / headCount, 0)} / rec` : '100% base net';
+            } else if (tone === 'brass') {
+              barPct = numVal > 0 ? 100 : 0;
+              subTxt = headCount > 0 ? `Avg ${fmtUSD(numVal / headCount, 2)} / load` : 'Gross billed total';
+            } else if (/discount/i.test(lbl)) {
+              const pct = baseUsd > 0 ? (numVal / baseUsd) * 100 : 0;
+              barPct = Math.min(100, Math.max(numVal > 0 ? 6 : 0, pct * 8));
+              subTxt = baseUsd > 0 ? `${pct.toFixed(1)}% of Ex-VAT` : 'Price adjustment';
+            } else if (/vat/i.test(lbl)) {
+              const pct = baseUsd > 0 ? (numVal / baseUsd) * 100 : 0;
+              barPct = Math.min(100, Math.max(numVal > 0 ? 8 : 0, pct * 5));
+              subTxt = baseUsd > 0 ? `${pct.toFixed(1)}% eff. tax share` : '11% statutory rate';
+            } else {
+              const ref = baseUsd > 0 ? baseUsd : maxUsd;
+              const pct = ref > 0 ? Math.min(100, (numVal / ref) * 100) : 0;
+              barPct = Math.min(100, Math.max(numVal > 0 ? 6 : 0, pct));
+              subTxt = ref > 0 ? `${pct.toFixed(1)}% of total` : 'Settlement slice';
+            }
+          } else {
+            barPct = numVal > 0 ? 72 : 0;
+            subTxt = (headCount > 0 && numVal > 0) ? `Avg ${fmtNum(numVal / headCount, 1)} / rec` : 'Operational volume';
+          }
+          const em = document.createElement('em');
+          em.className = 'recon-tile-sub';
+          em.textContent = subTxt;
+          const u = document.createElement('u');
+          u.className = 'recon-tile-bar';
+          u.setAttribute('aria-hidden', 'true');
+          u.innerHTML = `<i style="width:${barPct.toFixed(1)}%"></i>`;
+          sp.appendChild(em);
+          sp.appendChild(u);
+        }
+      });
+
+      // Enhance .sales-recon-head with visual Cash/Credit settlement mix bar + 1-click inline Company Switcher pills
+      if (headEl && !headEl.querySelector('.recon-head-mix')) {
+        const cashTile = tiles.find(t => t.isUsd && /\bcash\b|\bpaid\b|settled|collected|inflow/i.test(t.lbl) && !/unpaid/i.test(t.lbl));
+        const credTile = tiles.find(t => t.isUsd && /credit|unpaid|open|balance|outflow/i.test(t.lbl));
+        if (cashTile && credTile && (cashTile.numVal + credTile.numVal) > 0 && headB) {
+          const totMix = cashTile.numVal + credTile.numVal;
+          const cPct = Math.round((cashTile.numVal / totMix) * 1000) / 10;
+          const rPct = Math.max(0, Math.round((100 - cPct) * 10) / 10);
+          const mixWrap = document.createElement('dfn');
+          mixWrap.className = 'recon-head-mix';
+          mixWrap.title = `${cashTile.lbl}: ${cPct}% (${cashTile.rawVal}) vs ${credTile.lbl}: ${rPct}% (${credTile.rawVal})`;
+          mixWrap.innerHTML = `<i class="rhm-seg rhm-emerald" style="width:${cPct}%"></i><i class="rhm-seg rhm-steel" style="width:${rPct}%"></i>`;
+          const mixLbl = document.createElement('ins');
+          mixLbl.className = 'recon-head-mix-lbl';
+          mixLbl.innerHTML = `<em class="rhm-em-cash">${cPct.toFixed(0)}% ${esc(cashTile.lbl.split(' ')[0])}</em> · <em class="rhm-em-cred">${rPct.toFixed(0)}% ${esc(credTile.lbl.split(' ')[0])}</em>`;
+          headB.insertAdjacentElement('afterend', mixLbl);
+          headB.insertAdjacentElement('afterend', mixWrap);
+        }
+      }
+      if (headEl && card.classList.contains('single-card') && allowedNames.length >= 2 && !headEl.querySelector('.recon-co-pills')) {
+        const resetBtn = headEl.querySelector('.sales-recon-reset');
+        const coKeys = ['wtc', 'bbconstruction', 'lionstransport'].filter(k => allowedCos.includes(k));
+        if (resetBtn && coKeys.length >= 2) {
+          const nav = document.createElement('nav');
+          nav.className = 'recon-co-pills';
+          nav.setAttribute('aria-label', 'Quick Company Switch');
+          nav.innerHTML = coKeys.map(k => {
+            const fullLbl = COMPANY_BU_MATCH[k] || k;
+            const activeCls = STATE.company === k ? ' active' : '';
+            return `<button type="button" class="recon-co-pill${activeCls}" data-jump-co="${esc(k)}" title="Switch to ${esc(fullLbl)}">${esc(fullLbl)}</button>`;
+          }).join('');
+          headEl.insertBefore(nav, resetBtn);
+        }
+      }
+    });
+
+    // 2. Proportional Visual Inline Data Bars (.td-databar) on Ledger & Summary Breakdown Tables
+    container.querySelectorAll('table.ledger-table').forEach(tbl => {
+      const ths = Array.from(tbl.querySelectorAll('thead tr th'));
+      if (!ths.length) return;
+      let targetColIdx = -1;
+      ths.forEach((th, idx) => {
+        const txt = (th.textContent || '').trim();
+        if (/VAT INCL|TOTAL|AMOUNT|NET PAY|BALANCE|\(\$\)/i.test(txt)) {
+          targetColIdx = idx;
+        }
+      });
+      if (targetColIdx < 0) return;
+      const rows = Array.from(tbl.querySelectorAll('tbody tr:not(.empty-row)'));
+      const cellPairs = [];
+      let maxVal = 0;
+      rows.forEach(tr => {
+        const td = tr.children[targetColIdx];
+        if (!td) return;
+        const txt = (td.textContent || '').trim();
+        if (!/\$/.test(txt)) return;
+        const v = Math.abs(parseFloat(txt.replace(/[^0-9.-]/g, '')) || 0);
+        if (v > maxVal) maxVal = v;
+        cellPairs.push({ td, v });
+      });
+      if (maxVal > 0) {
+        cellPairs.forEach(({ td, v }) => {
+          const pct = Math.min(100, Math.max(v > 0 ? 3.5 : 0, (v / maxVal) * 100));
+          td.classList.add('td-databar');
+          td.style.setProperty('--bar-pct', pct.toFixed(1) + '%');
+        });
+      }
+    });
+
+    // 3. Multi-row selection dots (.row-sel-dot) for Live Calculator Bar
+    container.querySelectorAll('tr.rrow[data-rid]').forEach(tr => {
+      const firstTd = tr.querySelector('td:first-child');
+      if (firstTd && !firstTd.querySelector('.row-sel-dot')) {
+        const dot = document.createElement('u');
+        dot.className = 'row-sel-dot';
+        dot.setAttribute('data-row-sel', '1');
+        dot.title = 'Select row for Live Calculator sum (or Shift/Ctrl+Click row)';
+        firstTd.appendChild(dot);
+      }
+    });
+    updateLiveSelectionBar(container);
+  }
+
   function wireWorkspace(container, activeUserRow) {
     wireModalSuggestions(container);
     container.querySelectorAll('[data-hub-subtab]').forEach(btn => {
@@ -21910,6 +22210,7 @@
           : `Show All Assigned (${allowedNames.length})`;
       }
     });
+    enhanceVisualWorkspace(container, activeUserRow, allowedCos, allowedNames);
     container.querySelectorAll('.tfoot-sub-split').forEach(el => {
       if (!(allowedNames.includes('WTC') && allowedNames.includes('BBConstruction'))) {
         el.hidden = true;
@@ -22393,7 +22694,17 @@
       showRecordInspector(rk, rv);
     }));
     // Record inspector: click any register row to open its Power Apps 360° Record Form & Related Subgrids
+    // (or click .row-sel-dot / Shift+Click / Ctrl+Click to toggle row in Live Sum Calculator Bar)
     container.querySelectorAll('tr.rrow[data-rid]').forEach(tr => tr.addEventListener('click', e => {
+      const selDot = e.target.closest('[data-row-sel]');
+      if (selDot || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
+        if (!selDot && e.target.closest('[data-rel-key], button, a, input, select')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        tr.classList.toggle('is-row-selected');
+        updateLiveSelectionBar(container);
+        return;
+      }
       if (e.target.closest('[data-rel-key], button, a, input, select')) return;
       const sel = String(window.getSelection && window.getSelection() || '');
       if (sel.length > 1) return; // the user is copying text, not opening the row

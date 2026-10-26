@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '16.2';
+      window.__MFG_SHELL_VER = '16.4';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') { document.documentElement.setAttribute('data-theme', t); var tm = document.querySelector('meta[name="theme-color"]'); if (tm) tm.setAttribute('content', t === 'dark' ? '#081124' : '#F4F2EE'); }
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=16.2">
+  <link rel="stylesheet" href="css/app.css?v=16.4">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -162,15 +162,6 @@
           </div>
           <button type="button" class="rail-switch-btn" id="signOutBtn" title="Lock this session and switch team login">Lock</button>
         </div>
-        <div class="rail-status-row">
-          <span class="engine-dot"><i></i><span id="sqlStatusText">Connecting…</span></span>
-          <span class="rls-tag" id="railRlsScope">WTC · BBC · Lions</span>
-        </div>
-        <a href="../" class="rail-showcase-link" id="railShowcaseLink" aria-label="Public Showcase">
-          <i class="nav-ico" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 18 5 12 11 6"/></svg></i>
-          <span>Public Showcase</span>
-          <em class="nav-pill brass">Web</em>
-        </a>
       </div>
       <div class="rail-resizer" id="railResizer" role="separator" aria-orientation="vertical" aria-valuemin="176" aria-valuemax="420" aria-valuenow="248" tabindex="0" aria-label="Resize left navigation sidebar" title="Drag left or right to make sidebar wider or narrower · Double-click to reset">
         <span class="rail-resizer-grip" aria-hidden="true"></span>
@@ -583,17 +574,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=16.2"></script>
-  <script src="js/face.js?v=16.2"></script>
-  <script src="js/endpoints.js?v=16.2"></script>
-  <script src="js/seed_data.js?v=16.2"></script>
-  <script src="js/icons.js?v=16.2"></script>
-  <script src="js/forms_engine.js?v=16.2"></script>
-  <script src="js/pbi_pages.js?v=16.2"></script>
-  <script src="js/rdl_reports.js?v=16.2"></script>
-  <script src="js/kiosk_print.js?v=16.2"></script>
-  <script src="js/table_columns.js?v=16.2"></script>
-  <script src="js/app.js?v=16.2"></script>
+  <script src="vendor/face-api.js?v=16.4"></script>
+  <script src="js/face.js?v=16.4"></script>
+  <script src="js/endpoints.js?v=16.4"></script>
+  <script src="js/seed_data.js?v=16.4"></script>
+  <script src="js/icons.js?v=16.4"></script>
+  <script src="js/forms_engine.js?v=16.4"></script>
+  <script src="js/pbi_pages.js?v=16.4"></script>
+  <script src="js/rdl_reports.js?v=16.4"></script>
+  <script src="js/kiosk_print.js?v=16.4"></script>
+  <script src="js/table_columns.js?v=16.4"></script>
+  <script src="js/app.js?v=16.4"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;
