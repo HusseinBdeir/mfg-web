@@ -12,7 +12,7 @@
       if (location.hostname === 'husseinbdeir.github.io' && /^\/mfg-web(\/|$)/.test(location.pathname) && !/[?&]noredirect=1\b/.test(location.search)) {
         location.replace('https://husseinbdeir.github.io/isabi/app/' + (location.search || '') + (location.hash || ''));
       }
-      window.__MFG_SHELL_VER = '17.1';
+      window.__MFG_SHELL_VER = '17.2';
       var t = localStorage.getItem('isabi_mfg_theme');
       if (t === 'dark' || t === 'light') { document.documentElement.setAttribute('data-theme', t); var tm = document.querySelector('meta[name="theme-color"]'); if (tm) tm.setAttribute('content', t === 'dark' ? '#081124' : '#F4F2EE'); }
       var rw = parseInt(localStorage.getItem('isabi_mfg_rail_width'), 10);
@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700;125,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="css/app.css?v=17.1">
+  <link rel="stylesheet" href="css/app.css?v=17.2">
 </head>
 <body class="locked">
   <div class="app-shell" id="appShell">
@@ -569,17 +569,17 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" hidden></div>
 
-  <script src="vendor/face-api.js?v=17.1"></script>
-  <script src="js/face.js?v=17.1"></script>
-  <script src="js/endpoints.js?v=17.1"></script>
-  <script src="js/seed_data.js?v=17.1"></script>
-  <script src="js/icons.js?v=17.1"></script>
-  <script src="js/forms_engine.js?v=17.1"></script>
-  <script src="js/pbi_pages.js?v=17.1"></script>
-  <script src="js/rdl_reports.js?v=17.1"></script>
-  <script src="js/kiosk_print.js?v=17.1"></script>
-  <script src="js/table_columns.js?v=17.1"></script>
-  <script src="js/app.js?v=17.1"></script>
+  <script src="vendor/face-api.js?v=17.2"></script>
+  <script src="js/face.js?v=17.2"></script>
+  <script src="js/endpoints.js?v=17.2"></script>
+  <script src="js/seed_data.js?v=17.2"></script>
+  <script src="js/icons.js?v=17.2"></script>
+  <script src="js/forms_engine.js?v=17.2"></script>
+  <script src="js/pbi_pages.js?v=17.2"></script>
+  <script src="js/rdl_reports.js?v=17.2"></script>
+  <script src="js/kiosk_print.js?v=17.2"></script>
+  <script src="js/table_columns.js?v=17.2"></script>
+  <script src="js/app.js?v=17.2"></script>
   <script>
     if ('serviceWorker' in navigator && !/[?&]nosse=1\b/.test(location.search)) {
       const hadController = !!navigator.serviceWorker.controller;

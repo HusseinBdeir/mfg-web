@@ -28,7 +28,7 @@
   // 8 Operational Pages moved out of Analytics & Insights directly into their respective domain hub sub-tabs
   const MOVED_PBI_PAGES = {
     p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',       modSec: 'exceptions', short: 'Action Items',       targetLabel: 'AI Sentinels & Audit' },
-    p18_tickets:    { id: 'p18_tickets',    view: 'sales',           modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'Sales & Deliveries', scrollPanel: 'salesPadPanel' },
+    p18_tickets:    { id: 'p18_tickets',    view: 'sentinels',       modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'AI Sentinels & Audit', scrollPanel: 'salesPadPanel' },
     p17_jv:         { id: 'p17_jv',         view: 'raw_analytics',   modSec: 'jv',         short: 'JV 50/50 Sites',     targetLabel: 'JV & Stock Analytics' },
     p11_drivers:    { id: 'p11_drivers',    view: 'fleet_drivers',   modSec: 'drivers',    short: 'Drivers & Overtime', targetLabel: 'Drivers & Overtime', scrollPanel: 'driversOtPanel' },
     p13_vat:        { id: 'p13_vat',        view: 'customers',       modSec: 'vat',        short: 'VAT & Invoices',     targetLabel: 'Customers & Receivables', scrollPanel: 'vatInvPanel' },
@@ -2841,7 +2841,7 @@
         </div>
 
         <div class="pbi-grid-1">
-          ${movedRegisterBanner('Weighbridge Sales Tickets Register & 25/50-Ticket Book Audit', 'Individual sales tickets and 25/50-ticket weighbridge pad completeness & missing-serial audit now live directly inside Sales & Deliveries.', 'sales', 'Sales & Deliveries', 'tickets')}
+          ${movedRegisterBanner('Weighbridge Sales Tickets Register & Ticket Serial Hygiene', 'Individual sales tickets live in Sales & Deliveries; skipped & duplicate 25-ticket pad serial audit lives in AI Sentinels & Audit.', 'sentinels', 'AI Sentinels & Audit', 'tickets')}
         </div>
       `;
     }
@@ -4832,55 +4832,24 @@
     // PAGE 18: TICKET BOOKS (m116 — 25/50-Ticket Weighbridge Pads & Serial Hygiene)
     // =========================================================================
     else if (activePageId === 'p18_tickets') {
-      // Group ticket numbers into 25-ticket physical books to show completeness per pad
-      const bookMap = new Map();
-      const addTkt = (stream, r) => {
-        if (sl.padType && sl.padType !== stream) return;
-        const num = parseInt(String(r.ticket_no || '').replace(/\D+/g, ''), 10);
-        if (!num || isNaN(num)) return;
-        const bookStart = Math.floor((num - 1) / 25) * 25 + 1;
-        const bookEnd = bookStart + 24;
-        const key = `${r.company || 'WTC'} · ${stream} · #${bookStart}–${bookEnd}`;
-        if (!bookMap.has(key)) {
-          bookMap.set(key, { book: `#${bookStart}–${bookEnd}`, company: r.company || 'WTC', stream, start: bookStart, end: bookEnd, seen: new Set(), dups: 0, firstDate: r.date, lastDate: r.date });
-        }
-        const b = bookMap.get(key);
-        if (b.seen.has(num)) b.dups += 1;
-        b.seen.add(num);
-        if (r.date < b.firstDate) b.firstDate = r.date;
-        if (r.date > b.lastDate) b.lastDate = r.date;
-      };
-      salesRows.forEach(r => addTkt('Sales Pad', r));
-      rawRows.forEach(r => addTkt('Raw Pad', r));
-      fuelRows.forEach(r => addTkt('Fuel Pad', r));
-
-      const bookRows = Array.from(bookMap.values()).map(b => {
-        const entered = b.seen.size;
-        const missing = 25 - entered;
-        const missingList = [];
-        for (let n = b.start; n <= b.end && missingList.length < 6; n++) {
-          if (!b.seen.has(n)) missingList.push('#' + n);
-        }
-        return {
-          ...b, entered, missing, pct: entered / 25,
-          status: missing === 0 ? 'Complete (25/25)' : 'Incomplete',
-          missingPreview: missingList.join(', ') + (missing > 6 ? '…' : '')
-        };
-      }).filter(b => {
-        if (sl.bookStatus === 'Incomplete Books' && b.missing === 0) return false;
-        if (sl.bookStatus === 'Missing Serials' && b.missing === 0) return false;
-        return true;
-      }).sort((a, b) => b.lastDate < a.lastDate ? -1 : (b.lastDate > a.lastDate ? 1 : 0));
+      const audit = typeof ctx.buildTicketSerialAudit === 'function'
+        ? ctx.buildTicketSerialAudit()
+        : { skipped: [], duplicates: [], unnumbered: [], allExceptions: [] };
+      const excRows = (sl.bookStatus === 'Duplicate Serials'
+        ? audit.duplicates
+        : (sl.bookStatus === 'Unnumbered' ? audit.unnumbered : audit.skipped)
+      ).slice().sort((a, b) => (b.date < a.date ? -1 : (b.date > a.date ? 1 : (b.num - a.num))));
+      const totSkippedTickets = audit.skipped.reduce((s, r) => s + Number(r.count || 0), 0);
 
       bodyHtml = `
         <div class="pbi-overview-bands">
-          ${kpiBand('1 · Weighbridge Ticket Pad Hygiene, Missing Serials & Duplicate Guard', [
-            { label: 'Duplicate Ticket Numbers', value: fmtNum(prSn.duplicate_ticket_numbers || 0), sub: 'Across active pads', tone: 'warn' },
-            { label: 'Unnumbered Tickets', value: fmtNum(prSn.unnumbered_tickets || 0), sub: 'Tickets missing serial #' },
-            { label: 'Incomplete Ticket Books', value: fmtNum(prSn.incomplete_ticket_books || 0), sub: '25/50-ticket physical pads' },
-            { label: 'Missing Numbers in Books', value: fmtNum(prSn.missing_tickets_in_books || 0), sub: 'Gaps in pad sequence', tone: 'warn' },
+          ${kpiBand('1 · Weighbridge Ticket Pad Hygiene, Skipped Serials & Duplicate Guard', [
+            { label: 'Skipped Serial Gaps', value: fmtNum(audit.skipped.length), sub: fmtNum(totSkippedTickets) + ' skipped tickets in books', tone: 'warn' },
+            { label: 'Duplicate Ticket Numbers', value: fmtNum(audit.duplicates.length || prSn.duplicate_ticket_numbers || 0), sub: 'Same doc type in one pad run', tone: 'warn' },
+            { label: 'Unnumbered Tickets', value: fmtNum(audit.unnumbered.length || prSn.unnumbered_tickets || 0), sub: 'Tickets missing serial #' },
+            { label: 'Total Serial Exceptions', value: fmtNum(audit.allExceptions.length), sub: 'Skipped + Duplicate + Unnumbered' },
             { label: 'Entry Desk Duplicate Guard', value: 'Enforced', sub: 'Blocks repeated ticket # per BU', tone: 'good' },
-            { label: 'Next Suggested Ticket #', value: (() => { const co = STATE.company === 'bbconstruction' ? 'BBConstruction' : 'WTC'; const n = ctx.nextTicketNo ? ctx.nextTicketNo(co, [rec.sales_tickets]) : ''; return n ? '#' + n + ' · ' + co : 'Auto'; })(), sub: 'Follows latest dated ticket of pad', tone: 'brass' }
+            { label: 'Next Suggested Ticket #', value: (() => { const co = STATE.company === 'bbconstruction' ? 'BBConstruction' : 'WTC'; const n = ctx.nextTicketNo ? ctx.nextTicketNo(co, [rec.sales_tickets, rec.raw_purchases, rec.fuel_intakes]) : ''; return n ? '#' + n + ' · ' + co : 'Auto'; })(), sub: 'Follows latest dated ticket of pad', tone: 'brass' }
           ])}
         </div>
 
@@ -4890,15 +4859,15 @@
             { key: 'raw_loads', label: 'Raw Pad Tickets', color: '#0D9488' }
           ], { isMoney: false }), { legend: [{ label: 'Sales Pad', color: '#1E293B' }, { label: 'Raw Pad', color: '#0D9488' }] })}
 
-          ${pbiTable('25-Ticket Pad Completeness & Missing Serial Audit', [
-            { label: 'Pad Range', key: 'book', mono: true, bold: true },
+          ${pbiTable('Skipped & Duplicate Ticket Serials (m116 — Find Each Skipped Number Between Its Neighbours)', [
+            { label: 'Serial / Gap #', key: 'serialLabel', mono: true, bold: true },
+            { label: 'Audit Type', key: 'kindLabel' },
             { label: 'Co.', key: 'company' },
-            { label: 'Pad Stream', key: 'stream' },
-            { label: 'Entered', key: 'entered', r: true, fmt: v => `${fmtNum(v)} / 25` },
-            { label: 'Missing', key: 'missing', r: true, fmt: v => v ? `<b class="pbi-neg">${fmtNum(v)}</b>` : '0' },
-            { label: 'Completeness', key: 'pct', r: true, bar: true, fmt: v => fmtPct(v) },
-            { label: 'Missing Serials (Sample)', key: 'missingPreview', mono: true }
-          ], bookRows, { subtitle: 'Each physical pad holds 25 sequential carbon-copy tickets · gaps indicate unentered or voided slips', limit: 35, unitLabel: 'ticket books' })}
+            { label: 'Pad Run', key: 'padRun', mono: true },
+            { label: 'Entered Before / 1st Entry', key: 'beforeText' },
+            { label: 'Entered After / 2nd Entry', key: 'afterText' },
+            { label: 'Tickets', key: 'count', r: true, fmt: v => `<b>${fmtNum(v)}</b>` }
+          ], excRows, { subtitle: 'Shared across Sales, Raw & Fuel 25-ticket pads (excludes >6-digit external scale refs)', limit: 35, unitLabel: 'serial exceptions' })}
         </div>
 
         <div class="pbi-grid-1">
@@ -5254,11 +5223,12 @@
       ]
     },
     sentinels: {
-      title: 'Executive Action Items, Change Log & Date-Basis Parity Bridge',
-      subtitle: 'Action Items & Exception Queue, Daily Totals Ledger & Tx vs Reporting Date Parity',
+      title: 'Executive Action Items, Ticket Serial Hygiene, Change Log & Date-Basis Parity Bridge',
+      subtitle: 'Action Items & Exception Queue, Skipped/Duplicate Weighbridge Serials (m116), Daily Totals Ledger & Tx vs Reporting Date Parity',
       defaultSec: 'all',
       sections: [
         { id: 'exceptions', label: 'Action Items & Exception Queue', pageId: 'p03_exceptions', badge: 'Moved Page' },
+        { id: 'tickets', label: 'Weighbridge Ticket Serial Hygiene (m116)', pageId: 'p18_tickets', badge: 'Moved Page' },
         { id: 'changelog', label: 'Change Log, Daily Totals & Date Parity Bridge', pageId: 'p19_changelog', badge: 'Moved Page' }
       ]
     },

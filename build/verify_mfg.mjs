@@ -2090,7 +2090,7 @@ try {
     const pbiPageCount = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
     const movedJumpCount = document.querySelectorAll('.pbi-studio-hdr [data-pbi-jump]').length;
 
-    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales & Deliveries #salesPadPanel)
+    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> AI Sentinels & Audit #salesPadPanel)
     const jumpTickets = document.querySelector('.pbi-studio-hdr [data-pbi-jump="p18_tickets"]');
     if (jumpTickets) jumpTickets.click();
     const afterJumpTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
@@ -2140,7 +2140,7 @@ try {
     return {
       ok: pbiTitle === 'Analytics & Insights' && pbiTopTitle === 'Analytics & Insights' &&
           pbiPageCount === 12 && movedJumpCount === 8 &&
-          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && noStackedOnOps && allModsOk && expandToggleOk,
+          afterJumpTopTitle === 'AI Sentinels & Audit' && salesHubPresent && noStackedOnOps && allModsOk && expandToggleOk,
       pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, noStackedOnOps, expandToggleOk, modResults
     };
   })()`);
@@ -4136,7 +4136,7 @@ try {
     ? pass('Overhead Analytics (#expenses_analytics) bar chart & 3-leg schedule ranking · descending by metric (All-Time & Period-filtered) + period Leg 1+Leg 2 = Total Raw Cost', `AP=[${apRankingProbe.topAp}] · Vol=[${apRankingProbe.topVol}]`)
     : fail('Overhead Analytics bar chart & 3-leg schedule ranking', JSON.stringify(apRankingProbe));
 
-  // 7z. 4-Tab Sales & Customers Consolidation Probe (Sales & Deliveries, Customers & Receivables, Pricing & Commissions, Customers & Products)
+  // 7z. 4-Tab Sales & Customers Consolidation Probe + Option 3A Ticket Serial Audit in AI Sentinels & Audit
   const salesConsolidationProbe = await evaluate(`(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     window.__navToView('sales');
@@ -4144,8 +4144,17 @@ try {
     const salesSubtabs = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab]')).map(b => b.getAttribute('data-hub-subtab'));
     const fourTabsOk = salesSubtabs.length === 4 && salesSubtabs.join(',') === 'sales,customers,pricing,reg_customers';
     const hasSalesCharts = !!document.getElementById('salesChartsRow');
+    const noSalesPadOnSales = !document.getElementById('salesPadPanel');
+
+    // Verify Skipped & Duplicate Ticket Serial Audit (#salesPadPanel) lives inside AI Sentinels & Audit (#sentinels) with 0 >6-digit external serials & 0 Completeness column
+    window.__navToView('sentinels');
+    await wait(60);
     const hasSalesPadPanel = !!document.getElementById('salesPadPanel');
-    const padRowsCount = document.querySelectorAll('#salesPadPanel tbody tr').length;
+    const padRowsCount = document.querySelectorAll('#salesPadPanel tbody tr.rrow').length;
+    const padHeaders = Array.from(document.querySelectorAll('#salesPadPanel thead th')).map(th => th.textContent.trim());
+    const padNoRedundantCompleteness = !padHeaders.some(h => /Completeness/i.test(h)) && padHeaders.some(h => /Entered Before/i.test(h)) && padHeaders.some(h => /Entered After/i.test(h));
+    const padText = (document.getElementById('salesPadPanel') || {}).textContent || '';
+    const padNoExternal7Digit = !/#4051\d{4}|Next.*4,051/i.test(padText);
 
     // Legacy #sales_analytics redirects cleanly to #sales
     window.__navToView('sales_analytics');
@@ -4176,12 +4185,12 @@ try {
     window.__navToView('overview');
     await wait(40);
     return {
-      ok: Boolean(fourTabsOk && hasSalesCharts && hasSalesPadPanel && padRowsCount > 0 && redirectedSalesOk && redirectedCustOk && hasArVatCharts && hasCustPanel && hasVatInvPanel && noStandaloneCreditTermsPanel && custMergedColsOk && topVatBilledOk && hasPricingCharts && hasCorridorCol && hasBelowAgreedPanel),
-      salesSubtabs, padRowsCount, redirectedSalesOk, redirectedCustOk, custMergedColsOk, topVatBilledOk, hasPricingCharts, hasCorridorCol, hasBelowAgreedPanel
+      ok: Boolean(fourTabsOk && hasSalesCharts && noSalesPadOnSales && hasSalesPadPanel && padRowsCount > 0 && padNoRedundantCompleteness && padNoExternal7Digit && redirectedSalesOk && redirectedCustOk && hasArVatCharts && hasCustPanel && hasVatInvPanel && noStandaloneCreditTermsPanel && custMergedColsOk && topVatBilledOk && hasPricingCharts && hasCorridorCol && hasBelowAgreedPanel),
+      salesSubtabs, noSalesPadOnSales, padRowsCount, padNoRedundantCompleteness, padNoExternal7Digit, redirectedSalesOk, redirectedCustOk, custMergedColsOk, topVatBilledOk, hasPricingCharts, hasCorridorCol, hasBelowAgreedPanel
     };
   })()`);
   salesConsolidationProbe && salesConsolidationProbe.ok
-    ? pass('Sales & Customers 4-tab consolidation · merged Sales Analytics, VAT & Credit & Pricing Corridors into Sales, Customers & Pricing (0 standalone $0 credit-limit table; billed VAT invoices sorted first)', `tabs=[${salesConsolidationProbe.salesSubtabs.join(', ')}] · pads=${salesConsolidationProbe.padRowsCount}`)
+    ? pass('Sales & Customers 4-tab consolidation + Option 3A Ticket Serial Audit in AI Sentinels (0 >6-digit external serials, 0 redundant Completeness col, neighbor-linked gaps)', `tabs=[${salesConsolidationProbe.salesSubtabs.join(', ')}] · sentinelGaps=${salesConsolidationProbe.padRowsCount}`)
     : fail('Sales & Customers 4-tab consolidation', JSON.stringify(salesConsolidationProbe));
 
   // 7z-2. 4-Tab Fleet & Diesel Consolidation Probe (Diesel & Lubricants, Fleet & Running Costs, Drivers & Overtime, Equipment & Drivers All BUs)

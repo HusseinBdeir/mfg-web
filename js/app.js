@@ -6148,7 +6148,7 @@
       canEnterForm, canAccessPbiPage, allowedCompanyNames,
       SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog,
       getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml,
-      buildCashTillMoves, buildDailyTillSheetRows, searchBox, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, appCell, coBadge, relLink, ic
+      buildCashTillMoves, buildDailyTillSheetRows, buildTicketSerialAudit, searchBox, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, appCell, coBadge, relLink, ic
     });
   }
 
@@ -6484,6 +6484,8 @@
           `).join('')}
         </div>
       </div>
+
+      ${renderTicketSerialAuditPanel()}
 
       <div class="mini-table-grid">
         ${miniTable('TOP SALES BELOW AGREED PRICE', pricing.top_below_agreed_exceptions || [], [
@@ -6961,114 +6963,6 @@
           </div>
         </div>
       </div>
-
-      ${(() => {
-        const padMap = new Map();
-        let maxSerial = 0;
-        base.forEach(t => {
-          const n = parseInt(String(t.ticket_no || '').replace(/\D+/g, ''), 10);
-          if (!Number.isFinite(n) || n <= 0) return;
-          if (n > maxSerial) maxSerial = n;
-          const bStart = Math.floor((n - 1) / 25) * 25 + 1;
-          const bEnd = bStart + 24;
-          const co = t.company || 'WTC';
-          const bKey = `${co}|${bStart}`;
-          let b = padMap.get(bKey);
-          if (!b) {
-            b = { key: bKey, company: co, start: bStart, end: bEnd, padRange: `#${bStart}–${bEnd}`, stream: 'Sales Pad (25)', minDate: t.date || '', maxDate: t.date || '', nums: new Set() };
-            padMap.set(bKey, b);
-          }
-          b.nums.add(n);
-          const dt = String(t.date || '');
-          if (dt && (!b.minDate || dt < b.minDate)) b.minDate = dt;
-          if (dt && (!b.maxDate || dt > b.maxDate)) b.maxDate = dt;
-        });
-        const padAll = Array.from(padMap.values()).map(b => {
-          const missing = [];
-          for (let i = b.start; i <= b.end; i++) {
-            if (!b.nums.has(i)) missing.push(i);
-          }
-          const enteredCount = b.nums.size;
-          const missingCount = missing.length;
-          const pct = Math.round((enteredCount / 25) * 100);
-          return {
-            ...b,
-            enteredCount,
-            missingCount,
-            pct,
-            dateSpan: `${fmtDateDMY(b.minDate)} → ${fmtDateDMY(b.maxDate)}`,
-            missingPreview: missingCount === 0 ? 'Complete (0 missing)' : (missing.slice(0, 4).map(x => '#' + x).join(', ') + (missingCount > 4 ? ` (+${missingCount - 4} more)` : ''))
-          };
-        }).sort((a, b) => b.start - a.start);
-        const padIncompCount = padAll.filter(b => b.missingCount > 0).length;
-        const padCompCount = padAll.length - padIncompCount;
-        const padFilter = STATE.salesPadFilter || 'all';
-        const padFiltered = sortRows(padAll.filter(b => {
-          if (padFilter === 'incomplete') return b.missingCount > 0;
-          if (padFilter === 'complete') return b.missingCount === 0;
-          if (padFilter === 'wtc') return b.company === 'WTC';
-          if (padFilter === 'bbc') return b.company === 'BBConstruction';
-          return true;
-        }), 'spad', 'start', 'desc');
-        const shownPads = padFiltered.slice(0, shownCount('spad'));
-        const padChip = (kKey, lbl) => `<button type="button" class="filter-chip ${padFilter === kKey ? 'active' : ''}" data-salespad-chip="${esc(kKey)}">${lbl}</button>`;
-        const totEntered = padFiltered.reduce((s, b) => s + b.enteredCount, 0);
-        const totMissing = padFiltered.reduce((s, b) => s + b.missingCount, 0);
-        const totCap = Math.max(1, padFiltered.length * 25);
-        const totPct = Math.round((totEntered / totCap) * 100);
-        return `
-        <div class="panel-card" id="salesPadPanel" style="margin-top:14px">
-          <div class="panel-head">
-            <div class="panel-title"><span>WEIGHBRIDGE 25-TICKET PAD COMPLETENESS &amp; MISSING-SERIAL AUDIT (${fmtNum(padFiltered.length)} PADS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <span class="badge badge-brass" title="Next sequential weighbridge ticket serial">Next Ticket #${fmtNum((maxSerial || 2750) + 1)}</span>
-              ${exportBtn('salesPadPanel', 'Sales_Ticket_Pads')}
-            </span>
-          </div>
-          <div class="table-toolbar" style="padding-top:6px;padding-bottom:6px">
-            <div class="chip-bar">
-              ${padChip('all', `All Pads (${padAll.length})`)}
-              ${padChip('incomplete', `Missing Serials (${padIncompCount})`)}
-              ${padChip('complete', `100% Complete (${padCompCount})`)}
-              ${padChip('wtc', 'WTC')}
-              ${padChip('bbc', 'BBConstruction')}
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="ledger-table">
-              <thead>
-                <tr>
-                  ${th('spad', 'Pad Range', 'start')}${th('spad', 'Co.', 'company')}${th('spad', 'Date Span', 'maxDate')}
-                  ${th('spad', 'Entered', 'enteredCount', 'r')}${th('spad', 'Missing', 'missingCount', 'r')}${th('spad', 'Completeness', 'pct', 'r')}${th('spad', 'Missing Serials Audit', 'missingPreview')}
-                </tr>
-              </thead>
-              <tbody>
-                ${shownPads.map(b => `
-                  <tr>
-                    <td class="mono"><strong>${esc(b.padRange)}</strong></td>
-                    <td>${coBadge(b.company)}</td>
-                    <td class="mono">${esc(b.dateSpan)}</td>
-                    <td class="r"><strong>${fmtNum(b.enteredCount)} / 25</strong></td>
-                    <td class="r">${b.missingCount > 0 ? `<span class="badge badge-warn">${fmtNum(b.missingCount)} gap${b.missingCount === 1 ? '' : 's'}</span>` : '<span class="badge badge-ok">0</span>'}</td>
-                    <td class="r"><strong>${b.pct}%</strong></td>
-                    <td style="font-size:11px;font-family:var(--font-mono);white-space:normal">${b.missingCount === 0 ? '<span class="badge badge-ok">Complete (25/25)</span>' : esc(b.missingPreview)}</td>
-                  </tr>
-                `).join('') || emptyRow(7, 'No weighbridge ticket pads match the active filter')}
-                ${showMoreRow('spad', padFiltered.length, 7)}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="3"><b>TOTAL (${fmtNum(padFiltered.length)} PADS)</b></td>
-                  <td class="r"><b>${fmtNum(totEntered)}</b></td>
-                  <td class="r"><b>${fmtNum(totMissing)}</b></td>
-                  <td class="r"><b>${totPct}%</b></td>
-                  <td style="font-size:11px;font-family:var(--font-mono);white-space:normal"><b>${fmtNum(padCompCount)} complete · ${fmtNum(padIncompCount)} with gaps</b></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>`;
-      })()}
     `;
   }
 
@@ -24751,7 +24645,7 @@
     switch (STATE.view) {
       case 'overview': wsHtml = renderOverview(); break;
       case 'entities': wsHtml = renderEntitiesComparison(); break;
-      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml, buildCashTillMoves, buildDailyTillSheetRows, searchBox, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, appCell, coBadge, relLink, ic }) : renderOverview(); break;
+      case 'pbi': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderPbiStudio({ STATE, SEED, COMPANY_LABELS, STATEMENT_CATALOG, getModel, getKPI, filterRecords, buildSentinelItems, exportBtn, nextTicketNo, canEnterForm, canAccessPbiPage, allowedCompanyNames, SEED_DATE, MIN_DATE, MAX_DATE, periodRange, getDateGrainCatalog, getScopedMonthly, setDateFilter, ticketTons, ticketMeters, productMeters, renderDateSegPillHtml, buildCashTillMoves, buildDailyTillSheetRows, buildTicketSerialAudit, searchBox, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, appCell, coBadge, relLink, ic }) : renderOverview(); break;
       case 'tables': wsHtml = window.MFG_PBI ? window.MFG_PBI.renderTablesHub({ STATE, SEED, filterRecords, sortRows, th, renderColFilterBar, shownCount, showMoreRow, emptyRow, exportBtn, searchBox, appCell, canEnterForm, canAccessTable, allowedCompanyNames, isAppRecord }) : renderOverview(); break;
       case 'sentinels': wsHtml = renderSentinels(); break;
       case 'kiosks': wsHtml = renderKiosks(); break;
