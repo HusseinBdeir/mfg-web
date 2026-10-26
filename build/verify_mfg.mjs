@@ -4031,10 +4031,15 @@ try {
       const panels = Array.from(document.querySelectorAll('#workspace .pbi-panel'));
       const pnl = panels.find(p => (p.querySelector('.pbi-panel-title')?.textContent || '').includes(titleText));
       if (!pnl) return [];
-      return Array.from(pnl.querySelectorAll('.pbi-hbar-row')).map(r => ({
-        label: (r.querySelector('.pbi-hbar-lbl strong')?.textContent || '').trim(),
-        val: parseMoney(r.querySelector('.pbi-hbar-val')?.textContent || '')
-      }));
+      return Array.from(pnl.querySelectorAll('.pbi-bar-item')).map(r => {
+        let label = '';
+        try { label = JSON.parse(r.getAttribute('data-chart-pop') || '{}').title || ''; } catch (_) {}
+        if (!label) label = (r.querySelector('.pbi-bar-lbl')?.textContent || '').replace(/^\d+\.\s*/, '').split('·')[0].trim();
+        return {
+          label: label.trim(),
+          val: parseMoney(r.querySelector('.pbi-bar-val')?.textContent || '')
+        };
+      });
     };
 
     const allTimeApBars = getBarPanelVals('Payables by supplier / hauler');
@@ -4055,23 +4060,31 @@ try {
 
     const periodApBars = getBarPanelVals('Payables by supplier / hauler');
     const periodVolBars = getBarPanelVals('Raw material & haulage volume by supplier');
-    const periodApSorted = periodApBars.length >= 5 && periodApBars[0].label === 'Haj Ibrahim' && periodApBars.every((r, i) => i === 0 || r.val <= periodApBars[i - 1].val + 0.01);
+    const periodApSorted = periodApBars.length >= 5 && periodApBars[0].label === 'Shacman Lebanon s.a.l' && periodApBars.every((r, i) => i === 0 || r.val <= periodApBars[i - 1].val + 0.01);
     const periodVolSorted = periodVolBars.length >= 5 && periodVolBars[0].label === 'ALI KLAIT' && periodVolBars[1].label === 'Haj Ibrahim' && periodVolBars.every((r, i) => i === 0 || r.val <= periodVolBars[i - 1].val + 0.01);
 
-    // Check 3-leg schedule table sorted by Closing AP Balance desc & Leg 1 + Leg 2 == Total Raw Cost
+    // Check 3-leg schedule table sorted by Closing AP Balance desc & Leg 1 + Leg 2 (+ Leg 3) == Total
     const schedPanel = Array.from(document.querySelectorAll('#workspace .pbi-panel')).find(p => (p.querySelector('.pbi-panel-title')?.textContent || '').includes('Supplier 3-leg payables'));
+    const ths = schedPanel ? Array.from(schedPanel.querySelectorAll('thead th')).map(th => th.textContent.trim()) : [];
+    const idxLeg1 = ths.findIndex(t => /Leg 1/i.test(t));
+    const idxLeg2 = ths.findIndex(t => /Leg 2/i.test(t));
+    const idxLeg3 = ths.findIndex(t => /Leg 3/i.test(t));
+    const idxTotCr = ths.findIndex(t => /Total on Credit/i.test(t));
+    const idxRawCost = ths.findIndex(t => /Total Raw Cost/i.test(t));
     const schedRows = schedPanel ? Array.from(schedPanel.querySelectorAll('tbody tr')).slice(0, 10).map(tr => {
       const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
       return {
         supp: tds[0],
-        rawCost: parseMoney(tds[3]),
-        leg1: parseMoney(tds[4]),
-        leg2: parseMoney(tds[5]),
-        closingAp: parseMoney(tds[8])
+        leg1: idxLeg1 >= 0 ? parseMoney(tds[idxLeg1]) : 0,
+        leg2: idxLeg2 >= 0 ? parseMoney(tds[idxLeg2]) : 0,
+        leg3: idxLeg3 >= 0 ? parseMoney(tds[idxLeg3]) : 0,
+        totCr: idxTotCr >= 0 ? parseMoney(tds[idxTotCr]) : 0,
+        rawCost: idxRawCost >= 0 ? parseMoney(tds[idxRawCost]) : 0,
+        closingAp: parseMoney(tds[tds.length - 1])
       };
     }) : [];
-    const schedSortedOk = schedRows.length >= 5 && schedRows[0].supp === 'Haj Ibrahim' && schedRows.every((r, i) => i === 0 || r.closingAp <= schedRows[i - 1].closingAp + 0.01);
-    const schedLegsConsistent = schedRows.length >= 5 && schedRows.every(r => Math.abs((r.leg1 + r.leg2) - r.rawCost) <= 2);
+    const schedSortedOk = schedRows.length >= 5 && schedRows[0].supp === 'Shacman Lebanon s.a.l' && schedRows.every((r, i) => i === 0 || r.closingAp <= schedRows[i - 1].closingAp + 0.01);
+    const schedLegsConsistent = schedRows.length >= 5 && schedRows.every(r => idxTotCr >= 0 ? Math.abs((r.leg1 + r.leg2 + r.leg3) - r.totCr) <= 2 : Math.abs((r.leg1 + r.leg2) - r.rawCost) <= 2);
 
     // Restore All-Time + All Group
     const rst = document.getElementById('dateRangeResetBtn');

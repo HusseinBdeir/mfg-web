@@ -1009,7 +1009,7 @@
   // Note: Cash Flow & Till (cash_inflow, cash_outflow, net_cash_flow, cash_till) are physical Transaction-Date movements and never shift on Rep Date.
   const KPI_ADDITIVE_KEYS = ['sales_ttc', 'gross_sales', 'net_sales', 'trans_rev', 'sales_vat', 'loads', 'delivery_loads', 'pickup_loads', 'unregistered_loads',
     'tons_sold', 'qty_sold', 'cash_sales', 'credit_sales', 'raw_cost', 'raw_mat_cost', 'raw_haulage', 'raw_loads', 'raw_tons', 'raw_qty',
-    'expenses', 'cash_expenses', 'credit_expenses', 'salaries_paid', 'gross_margin', 'operating_profit', 'receipts', 'settlements_paid',
+    'expenses', 'cash_expenses', 'credit_expenses', 'ap_material', 'ap_haulage', 'ap_expense', 'ap_on_credit', 'salaries_paid', 'gross_margin', 'operating_profit', 'receipts', 'settlements_paid',
     'diesel_litres', 'own_fleet_loads'];
 
   function finishKpiRatios(k) {
@@ -1143,6 +1143,10 @@
       expenses: round2(expenses),
       cash_expenses: round2(cash_expenses),
       credit_expenses: round2(credit_expenses),
+      ap_material: range ? round2(raw_mat_cost) : round2(Number(baseKpi.ap_material != null ? baseKpi.ap_material : raw_mat_cost)),
+      ap_haulage: range ? round2(raw_haulage) : round2(Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : raw_haulage)),
+      ap_expense: range ? round2(credit_expenses) : round2(Number(baseKpi.ap_expense != null ? baseKpi.ap_expense : credit_expenses)),
+      ap_on_credit: range ? round2(raw_mat_cost + raw_haulage + credit_expenses) : round2(Number(baseKpi.ap_material != null ? baseKpi.ap_material : raw_mat_cost) + Number(baseKpi.ap_haulage != null ? baseKpi.ap_haulage : raw_haulage) + Number(baseKpi.ap_expense != null ? baseKpi.ap_expense : credit_expenses)),
       salaries_paid: round2(salaries_paid),
       gross_margin,
       operating_profit,
@@ -1184,6 +1188,10 @@
       gross_margin: 'gross_margin', operating_profit: 'operating_profit', receipts: 'receipts', settlements_paid: 'settlements_paid' };
     Object.keys(MAP).forEach(key => { if (mRow[MAP[key]] != null) k[key] = Number(mRow[MAP[key]]); });
     if (k.gross_sales == null && k.net_sales != null) k.gross_sales = round2(Number(k.net_sales || 0) + Number(k.trans_rev || 0));
+    k.ap_material = round2(Number(k.raw_mat_cost || 0));
+    k.ap_haulage = round2(Number(k.raw_haulage || 0));
+    k.ap_expense = round2(Number(k.credit_expenses || 0));
+    k.ap_on_credit = round2(k.ap_material + k.ap_haulage + k.ap_expense);
     return finishKpiRatios(k);
   }
 
@@ -1386,6 +1394,12 @@
       anchor.raw_qty = txRaw.raw_qty;
       anchor.tons_sold = txRaw.tons_sold || anchor.tons_sold;
       anchor.raw_tons = txRaw.raw_tons || anchor.raw_tons;
+      if (range) {
+        anchor.ap_material = round2(Number(anchor.raw_mat_cost != null ? anchor.raw_mat_cost : txRaw.raw_mat_cost || 0));
+        anchor.ap_haulage = round2(Number(anchor.raw_haulage != null ? anchor.raw_haulage : txRaw.raw_haulage || 0));
+        anchor.ap_expense = round2(Number(anchor.credit_expenses != null ? anchor.credit_expenses : txRaw.credit_expenses || 0));
+        anchor.ap_on_credit = round2(anchor.ap_material + anchor.ap_haulage + anchor.ap_expense);
+      }
       finishKpiRatios(anchor);
     }
     const txFinal = anchor
@@ -1399,6 +1413,283 @@
     if (_kpiRangeCacheMap.size > 64) _kpiRangeCacheMap.clear();
     _kpiRangeCacheMap.set(cacheKey, computed);
     return computed;
+  }
+
+  function getScopedModelProducts(mOverride) {
+    const m = mOverride || getModel();
+    const mdlProds = m.products || [];
+    const range = periodRange(STATE.period);
+    if (!range) {
+      return mdlProds.map(p => {
+        const m3 = productMeters(p.Product, p.qty_sold, p.UoM);
+        const rawM3 = productMeters(p.Product, p.raw_qty, p.UoM);
+        return Object.assign({}, p, {
+          native_qty_sold: p.qty_sold,
+          qty_sold: round2(m3),
+          raw_qty: round2(rawM3),
+          avg_price_net: m3 > 0 && p.net_sales != null ? round2(Number(p.net_sales) / m3) : p.avg_price_net,
+          avg_price_ttc: m3 > 0 && p.sales_ttc != null ? round2(Number(p.sales_ttc) / m3) : p.avg_price_ttc,
+          avg_raw_cost: rawM3 > 0 && p.raw_cost != null ? round2(Number(p.raw_cost) / rawM3) : p.avg_raw_cost
+        });
+      });
+    }
+    const salesPool = filterRecords(SEED.records.sales_tickets, { ignoreSearch: true });
+    const rawPool = filterRecords(SEED.records.raw_purchases, { ignoreSearch: true });
+    const pMap = new Map();
+    salesPool.forEach(s => {
+      const pk = norm(s.product);
+      if (!pk) return;
+      const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+      const sgn = ticketSign(s);
+      const q = sgn * ticketMeters(s);
+      const ttc = sgn * Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+      const net = sgn * Number(s.total != null ? s.total : (Number(s.total_ttc || 0) - Number(s.vat || 0)));
+      if (sgn === 1) cur.loads += 1;
+      cur.qty_sold += q;
+      cur.tons_sold += sgn * ticketTons(s);
+      cur.sales_ttc += ttc;
+      cur.net_sales += net;
+      cur.trans_rev += sgn * Number(s.trans_price || 0);
+      pMap.set(pk, cur);
+    });
+    rawPool.forEach(r => {
+      const pk = norm(r.product);
+      if (!pk) return;
+      const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+      cur.raw_qty += ticketMeters(r);
+      cur.raw_cost += Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0)));
+      pMap.set(pk, cur);
+    });
+    return mdlProds.map(p => {
+      const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
+      return Object.assign({}, p, {
+        loads: st.loads,
+        qty_sold: round2(st.qty_sold),
+        tons_sold: round2(st.tons_sold),
+        sales_ttc: round2(st.sales_ttc),
+        net_sales: round2(st.net_sales),
+        trans_rev: round2(st.trans_rev),
+        raw_qty: round2(st.raw_qty),
+        raw_cost: round2(st.raw_cost),
+        avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
+        avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
+        avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
+      });
+    }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0));
+  }
+
+  function getScopedModelCustomers(mOverride) {
+    const m = mOverride || getModel();
+    const mdlCusts = m.customers || [];
+    const range = periodRange(STATE.period);
+    if (!range) return mdlCusts;
+    const salesPool = filterRecords(SEED.records.sales_tickets, { ignoreSearch: true });
+    const recPool = filterRecords(SEED.records.receipts, { ignoreSearch: true });
+    const cMap = new Map();
+    salesPool.forEach(s => {
+      const ck = norm(s.customer);
+      if (!ck) return;
+      const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+      const sgn = ticketSign(s);
+      const ttc = sgn * Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+      const vat = sgn * Number(s.vat || 0);
+      const net = sgn * Number(s.total != null ? s.total : (Number(s.total_ttc || 0) - Number(s.vat || 0)));
+      if (sgn === 1) cur.loads += 1;
+      cur.sales_ttc += ttc;
+      cur.net_sales += net;
+      cur.sales_vat += vat;
+      if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') cur.cash_sales += net;
+      else cur.credit_sales += net;
+      if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
+      cMap.set(ck, cur);
+    });
+    recPool.forEach(r => {
+      const ck = norm(r.customer);
+      if (!ck || receiptKind(r) === 'Excluded' || receiptKind(r) === 'VAT received') return;
+      const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+      cur.receipts += Number(r.amount || 0) + Number(r.discount || 0);
+      cMap.set(ck, cur);
+    });
+    return mdlCusts.map(c => {
+      const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+      return Object.assign({}, c, {
+        loads: st.loads,
+        sales_ttc: round2(st.sales_ttc),
+        net_sales: round2(st.net_sales),
+        sales_vat: round2(st.sales_vat),
+        credit_sales: round2(st.credit_sales),
+        cash_sales: round2(st.cash_sales),
+        receipts: round2(st.receipts),
+        last_sale: st.last_sale || c.last_sale
+      });
+    });
+  }
+
+  function getScopedModelSuppliers(mOverride) {
+    const m = mOverride || getModel();
+    const mdlSups = m.suppliers || [];
+    const range = periodRange(STATE.period);
+    if (!range) {
+      return mdlSups.map(s => {
+        const mat = round2(Number(s.ap_material != null ? s.ap_material : (s.raw_mat_cost || 0)));
+        const haul = round2(Number(s.ap_haulage != null ? s.ap_haulage : 0));
+        const exp = round2(Number(s.ap_expense != null ? s.ap_expense : 0));
+        const onCr = round2(mat + haul + exp);
+        const bal = round2(Number(s.ap_balance || 0));
+        const settled = round2(onCr - bal);
+        const paid = round2(Number(s.settlements_paid != null ? s.settlements_paid : settled));
+        return Object.assign({}, s, {
+          Supplier: s.Supplier || '(Unassigned Supplier)',
+          IVA: s.IVA || 'No',
+          raw_mat_cost: mat,
+          raw_haulage: haul,
+          raw_cost: round2(mat + haul),
+          ap_material: mat,
+          ap_haulage: haul,
+          ap_expense: exp,
+          ap_on_credit: onCr,
+          ap_settled: settled,
+          settlements_paid: paid,
+          opening_ap: 0,
+          ap_balance: bal
+        });
+      });
+    }
+    const rawPool = filterRecords(SEED.records.raw_purchases, { ignoreSearch: true });
+    const expPool = filterRecords(SEED.records.expenses, { ignoreSearch: true });
+    const setPool = filterRecords(SEED.records.settlements, { ignoreSearch: true });
+    const sMap = new Map();
+    const ensureSup = name => {
+      const label = String(name || '').trim() || '(Unassigned Supplier)';
+      const sk = norm(label);
+      if (!sMap.has(sk)) sMap.set(sk, { displayName: label, raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, expenses: 0, ap_expense: 0, settlements_paid: 0, ap_settled: 0 });
+      return sMap.get(sk);
+    };
+    rawPool.forEach(r => {
+      if (r.site_owner || Number(r.cost || 0) !== 0) {
+        const st = ensureSup(r.site_owner || '(Unassigned Supplier)');
+        st.raw_loads += 1;
+        st.raw_mat_cost += Number(r.cost || 0);
+      }
+      if ((r.truck_owner || Number(r.trans_cost || 0) > 0) && r.transport_by !== 'Company fleet') {
+        const tkName = r.truck_owner || '(Unassigned Supplier)';
+        const st = ensureSup(tkName);
+        if (norm(tkName) !== norm(r.site_owner || '')) st.raw_loads += 1;
+        st.raw_haulage += Number(r.trans_cost || 0);
+      }
+    });
+    expPool.forEach(x => {
+      const sgn = expenseSign(x);
+      if (sgn === 0) return;
+      const isCred = isCreditExpense(x);
+      const amt = sgn * Number(x.amount || 0);
+      if (x.supplier || isCred) {
+        const st = ensureSup(x.supplier || '(Unassigned Supplier)');
+        st.expenses += amt;
+        if (isCred) st.ap_expense += amt;
+      }
+    });
+    setPool.forEach(sp => {
+      const kd = settlementKind(sp);
+      if (!sp.supplier || kd === 'Excluded' || kd === 'VAT paid') return;
+      const st = ensureSup(sp.supplier);
+      st.settlements_paid += Number(sp.amount || 0);
+      st.ap_settled += Number(sp.amount || 0) + Number(sp.discount || 0);
+    });
+
+    const postSupMap = new Map();
+    if (range.to && range.to < '2026-10-25') {
+      const recDate = r => String((STATE.basis === 'rep' ? (r.rep_date || r.date) : r.date) || '').slice(0, 10);
+      const allRawCo = filterRecords(SEED.records.raw_purchases, { ignorePeriod: true, ignoreSearch: true });
+      const allExpCo = filterRecords(SEED.records.expenses, { ignorePeriod: true, ignoreSearch: true });
+      const allSetCo = filterRecords(SEED.records.settlements, { ignorePeriod: true, ignoreSearch: true });
+      const ensurePost = name => {
+        const sk = norm(String(name || '').trim() || '(Unassigned Supplier)');
+        if (!postSupMap.has(sk)) postSupMap.set(sk, { cr: 0, set: 0 });
+        return postSupMap.get(sk);
+      };
+      allRawCo.forEach(r => {
+        if (recDate(r) <= range.to) return;
+        if (r.site_owner || Number(r.cost || 0) !== 0) ensurePost(r.site_owner).cr += Number(r.cost || 0);
+        if ((r.truck_owner || Number(r.trans_cost || 0) > 0) && r.transport_by !== 'Company fleet') ensurePost(r.truck_owner).cr += Number(r.trans_cost || 0);
+      });
+      allExpCo.forEach(x => {
+        if (recDate(x) <= range.to) return;
+        const sgn = expenseSign(x);
+        if (sgn !== 0 && isCreditExpense(x)) ensurePost(x.supplier).cr += sgn * Number(x.amount || 0);
+      });
+      allSetCo.forEach(sp => {
+        const kd = settlementKind(sp);
+        if (!sp.supplier || kd === 'Excluded' || kd === 'VAT paid' || recDate(sp) <= range.to) return;
+        ensurePost(sp.supplier).set += Number(sp.amount || 0);
+      });
+    }
+
+    const seenSupNorm = new Set();
+    const out = mdlSups.map(s => {
+      const sName = s.Supplier || '(Unassigned Supplier)';
+      const sk = norm(sName);
+      seenSupNorm.add(sk);
+      const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, expenses: 0, ap_expense: 0, settlements_paid: 0, ap_settled: 0 };
+      const post = postSupMap.get(sk) || { cr: 0, set: 0 };
+      const mat = round2(st.raw_mat_cost);
+      const haul = round2(st.raw_haulage);
+      const exp = round2(st.ap_expense);
+      const onCr = round2(mat + haul + exp);
+      const paid = round2(st.settlements_paid);
+      const settled = round2(st.ap_settled || paid);
+      const bal = round2(Number(s.ap_balance || 0) - post.cr + post.set);
+      const openAp = round2(bal - onCr + paid);
+      return Object.assign({}, s, {
+        Supplier: sName,
+        IVA: s.IVA || 'No',
+        raw_loads: st.raw_loads,
+        raw_mat_cost: mat,
+        raw_haulage: haul,
+        raw_cost: round2(mat + haul),
+        ap_material: mat,
+        ap_haulage: haul,
+        ap_expense: exp,
+        expenses: round2(st.expenses),
+        ap_on_credit: onCr,
+        settlements_paid: paid,
+        ap_settled: settled,
+        opening_ap: openAp,
+        ap_balance: bal
+      });
+    });
+    sMap.forEach((st, sk) => {
+      if (!sk || seenSupNorm.has(sk)) return;
+      const mat = round2(st.raw_mat_cost);
+      const haul = round2(st.raw_haulage);
+      const exp = round2(st.ap_expense);
+      const onCr = round2(mat + haul + exp);
+      const paid = round2(st.settlements_paid);
+      const settled = round2(st.ap_settled || paid);
+      if (st.raw_loads === 0 && onCr === 0 && paid === 0) return;
+      const post = postSupMap.get(sk) || { cr: 0, set: 0 };
+      const bal = round2(0 - post.cr + post.set);
+      const openAp = round2(bal - onCr + paid);
+      const supInfo = supplierInfo(st.displayName) || {};
+      out.push({
+        Supplier: st.displayName || sk,
+        IVA: supInfo.iva ? 'Yes' : 'No',
+        raw_loads: st.raw_loads,
+        raw_mat_cost: mat,
+        raw_haulage: haul,
+        raw_cost: round2(mat + haul),
+        ap_material: mat,
+        ap_haulage: haul,
+        ap_expense: exp,
+        expenses: round2(st.expenses),
+        ap_on_credit: onCr,
+        settlements_paid: paid,
+        ap_settled: settled,
+        opening_ap: openAp,
+        ap_balance: bal
+      });
+    });
+    return out;
   }
 
   function monthLabelToYm(lbl) {
@@ -5537,7 +5828,7 @@
 
           <div class="ph" style="border-top:1px solid var(--line);margin-top:4px">
             <h3>Top Aggregates &amp; Materials by Revenue</h3>
-            <span class="ph-sub">${(m.products || []).length} Active Grades</span>
+            <span class="ph-sub">${getScopedModelProducts(m).length} Active Grades</span>
           </div>
           <div class="table-scroll">
             <table class="m-grid">
@@ -5552,7 +5843,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${(m.products || []).slice(0, 4).map(p => `
+                ${getScopedModelProducts(m).slice(0, 4).map(p => `
                   <tr>
                     <td><b>${esc(p.Product)}</b></td>
                     <td class="mu hide-xs">${esc(p.UoM || 'm³')}</td>
@@ -5565,12 +5856,12 @@
               </tbody>
               <tfoot>
                 <tr class="total">
-                  <td><b>Total (${fmtNum((m.products || []).length)} grades)</b></td>
+                  <td><b>Total (${fmtNum(getScopedModelProducts(m).length)} grades)</b></td>
                   <td class="mu hide-xs">All</td>
-                  <td class="n hide-xs"><b>${fmtNum((m.products || []).reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
-                  <td class="n"><b>${fmtNum((m.products || []).reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
+                  <td class="n hide-xs"><b>${fmtNum(getScopedModelProducts(m).reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td class="n"><b>${fmtNum(getScopedModelProducts(m).reduce((a, p) => a + Number(p.tons_sold || 0), 0), 0)}</b></td>
                   <td class="n"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
-                  <td class="n"><b>${fmtUSD((m.products || []).reduce((a, p) => a + Number(p.sales_ttc || 0), 0) || k.sales_ttc, 0)}</b></td>
+                  <td class="n"><b>${fmtUSD(getScopedModelProducts(m).reduce((a, p) => a + Number(p.sales_ttc || 0), 0) || k.sales_ttc, 0)}</b></td>
                 </tr>
               </tfoot>
             </table>
@@ -7539,7 +7830,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${sortRows((getModel().products || []), 'pbench', 'sales_ttc', 'desc').map(p => `
+                ${sortRows(getScopedModelProducts(), 'pbench', 'sales_ttc', 'desc').map(p => `
                   <tr class="rrow" data-rkey="products" data-rid="${esc((productByName(p.Product) || {}).id || p.Product)}">
                     <td>${relLink('products', p.Product, p.Product, true)}${appCell(productByName(p.Product) || { id: p.Product, name: p.Product }, 'products')}</td>
                     <td class="mono">${esc(p.UoM || 'm³')}</td>
@@ -7553,12 +7844,12 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="2"><b>TOTAL (${fmtNum((getModel().products || []).length)} GRADES)</b></td>
-                  <td class="r"><b>${fmtNum((getModel().products || []).reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td colspan="2"><b>TOTAL (${fmtNum(getScopedModelProducts().length)} GRADES)</b></td>
+                  <td class="r"><b>${fmtNum(getScopedModelProducts().reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
                   <td class="r">—</td>
                   <td class="r"><b>${fmtUSD(k.avg_price_net, 2)}</b></td>
                   <td class="r"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
-                  <td class="r"><b>${fmtUSD((getModel().products || []).reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(getScopedModelProducts().reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
                 </tr>
               </tfoot>
             </table>
@@ -7575,7 +7866,7 @@
     const k = getKPI();
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
-    const custAll = m.customers || [];
+    const custAll = getScopedModelCustomers(m);
     const custs = sortRows(custAll.filter(c => {
       if (q && !String(c.Customer || '').toLowerCase().includes(q)) return false;
       if (STATE.chipFilter === 'open_ar') return Number(c.ar_balance || 0) > 0;
@@ -7824,7 +8115,8 @@
     const k = getKPI();
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
-    const supAll = m.suppliers || [];
+    const hasApRange = Boolean(periodRange(STATE.period));
+    const supAll = getScopedModelSuppliers(m).filter(s => !hasApRange || s.raw_loads > 0 || Math.abs(Number(s.ap_on_credit || 0)) > 0.005 || Math.abs(Number(s.settlements_paid || 0)) > 0.005 || Math.abs(Number(s.ap_balance || 0)) > 0.005 || Math.abs(Number(s.opening_ap || 0)) > 0.005);
     const sups = sortRows(supAll.filter(s => {
       if (q && !String(s.Supplier || '').toLowerCase().includes(q)) return false;
       if (STATE.chipFilter === 'open_ap') return Number(s.ap_balance || 0) > 0;
@@ -8041,8 +8333,8 @@
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('sups', 'Supplier / Hauler', 'Supplier')}${th('sups', 'IVA', 'IVA')}${th('sups', 'Raw Loads', 'raw_loads', 'r')}${th('sups', 'Mat. Leg', 'ap_material', 'r')}${th('sups', 'Haul Leg', 'ap_haulage', 'r')}
-                  ${th('sups', 'Exp. Leg', 'ap_expense', 'r')}${th('sups', 'Paid ($)', 'settlements_paid', 'r')}${th('sups', 'Net AP ($)', 'ap_balance', 'r')}
+                  ${th('sups', 'Supplier / Hauler', 'Supplier')}${th('sups', 'IVA', 'IVA')}${th('sups', 'Raw Loads', 'raw_loads', 'r')}${hasApRange ? th('sups', 'Opening AP', 'opening_ap', 'r') : ''}${th('sups', 'Mat. Leg', 'ap_material', 'r')}${th('sups', 'Haul Leg', 'ap_haulage', 'r')}
+                  ${th('sups', 'Exp. Leg', 'ap_expense', 'r')}${th('sups', 'Total on Credit', 'ap_on_credit', 'r')}${th('sups', 'Paid ($)', 'settlements_paid', 'r')}${th('sups', 'Net AP ($)', 'ap_balance', 'r')}
                 </tr>
               </thead>
               <tbody>
@@ -8051,23 +8343,27 @@
                     <td>${relLink('suppliers', s.Supplier, s.Supplier, true)}${appCell(supplierInfo(s.Supplier) || { id: s.Supplier, name: s.Supplier }, 'suppliers')}</td>
                     <td>${s.IVA === 'Yes' ? '<span class="badge badge-info">IVA</span>' : '—'}</td>
                     <td class="r">${fmtNum(s.raw_loads)}</td>
+                    ${hasApRange ? `<td class="r">${fmtUSD(s.opening_ap, 0)}</td>` : ''}
                     <td class="r">${fmtUSD(s.ap_material, 0)}</td>
                     <td class="r">${fmtUSD(s.ap_haulage, 0)}</td>
                     <td class="r">${fmtUSD(s.ap_expense, 0)}</td>
-                    <td class="r">${fmtUSD(s.settlements_paid, 0)}</td>
+                    <td class="r"><strong>${fmtUSD(s.ap_on_credit, 0)}</strong></td>
+                    <td class="r">${fmtUSD(hasApRange ? s.settlements_paid : (s.ap_settled != null ? s.ap_settled : s.settlements_paid), 0)}</td>
                     <td class="r"><strong>${fmtUSD(s.ap_balance, 2)}</strong></td>
                   </tr>
-                `).join('') || emptyRow(8, q ? `No suppliers match "${STATE.search}".` : 'No supplier balances for this entity')}
-                ${showMoreRow('sups', sups.length, 8)}
+                `).join('') || emptyRow(hasApRange ? 10 : 9, q ? `No suppliers match "${STATE.search}".` : 'No supplier balances for this entity')}
+                ${showMoreRow('sups', sups.length, hasApRange ? 10 : 9)}
               </tbody>
               <tfoot>
                 <tr>
                   <td colspan="2"><b>TOTAL (${fmtNum(sups.length)} SUPPLIERS)</b></td>
                   <td class="r"><b>${fmtNum(sups.reduce((a, s) => a + Number(s.raw_loads || 0), 0))}</b></td>
+                  ${hasApRange ? `<td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.opening_ap || 0), 0), 0)}</b></td>` : ''}
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_material || 0), 0), 0)}</b></td>
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_haulage || 0), 0), 0)}</b></td>
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_expense || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.settlements_paid || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_on_credit || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(hasApRange ? (s.settlements_paid || 0) : (s.ap_settled != null ? s.ap_settled : (s.settlements_paid || 0))), 0), 0)}</b></td>
                   <td class="r"><b>${fmtUSD(sups.reduce((a, s) => a + Number(s.ap_balance || 0), 0), 2)}</b></td>
                 </tr>
               </tfoot>

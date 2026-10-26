@@ -1778,15 +1778,10 @@
           avg_raw_cost: rawM3 > 0 && p.raw_cost != null ? round2(Number(p.raw_cost) / rawM3) : p.avg_raw_cost
         });
       });
-      let baseCusts = m.customers || [];
-      let baseSupps = (m.suppliers || []).map(s => {
-        const legRaw = round2(Number(s.ap_material || s.raw_mat_cost || 0) + Number(s.ap_haulage || s.raw_haulage || 0));
-        return legRaw > 0 && legRaw !== Number(s.raw_cost || 0) ? Object.assign({}, s, { raw_cost: legRaw }) : s;
-      });
-      const baseSites = m.sites || [];
-      if (activeRange) {
+
+      const buildScopedProds = (salesPool, rawPool) => {
         const pMap = new Map();
-        baseSalesRows.forEach(s => {
+        salesPool.forEach(s => {
           const pk = norm(s.product);
           if (!pk) return;
           const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
@@ -1801,7 +1796,7 @@
           cur.trans_rev += Number(s.trans_price || 0);
           pMap.set(pk, cur);
         });
-        baseRawRows.forEach(r => {
+        rawPool.forEach(r => {
           const pk = norm(r.product);
           if (!pk) return;
           const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
@@ -1809,7 +1804,7 @@
           cur.raw_cost += Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0)));
           pMap.set(pk, cur);
         });
-        baseProds = baseProds.map(p => {
+        return (m.products || []).map(p => {
           const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
           return Object.assign({}, p, {
             loads: st.loads,
@@ -1825,12 +1820,48 @@
             avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
           });
         }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
+      };
 
+      const recDateForBasis = r => String((STATE.basis === 'rep' ? (r.rep_date || r.date) : r.date) || '').slice(0, 10);
+      const isValidRecpt = r => {
+        const mth = String((r && r.method) || '').trim();
+        return !(mth === 'JV Adjusted' || mth === 'Remove' || mth === 'Adjusted' || mth === 'Free' || mth === 'Config' || mth === 'VAT' || mth === 'VATConfig' || mth === 'VAT Dis' || mth === 'Cash VAT Dis');
+      };
+      const isValidSettle = sp => {
+        const mth = String((sp && sp.method) || '').trim();
+        return !(mth === 'JV Adjusted' || mth === 'Remove' || mth === 'Adjusted' || mth === 'Free' || mth === 'Config' || mth === 'VAT' || mth === 'VATConfig' || mth === 'VAT Dis' || mth === 'Cash VAT Dis');
+      };
+      const expSignedCredit = x => {
+        const mth = String((x && x.method) || '').trim();
+        const sgn = (mth === 'C Return' || mth === 'CR Return') ? -1 : ((mth === 'Config' || mth === 'VATConfig' || mth === 'Free' || mth === 'Remove' || mth === 'Adjusted' || mth === 'JV Adjusted') ? 0 : 1);
+        const isCred = (mth === 'Credit' || mth === 'CR Return' || mth === 'IVA' || mth === 'VAT' || mth === 'VAT Dis');
+        return { sgn, isCred, amt: sgn * Number(x.amount || 0) };
+      };
+
+      const buildScopedCusts = (salesPool, recPool, forceScope = false) => {
+        if (!activeRange && !forceScope) {
+          return (m.customers || []).map(c => {
+            const crNet = Number(c.credit_sales || 0);
+            const crTtc = round2(c['VAT Registered'] === 'Yes' ? crNet * 1.11 : crNet);
+            const bal = round2(Number(c.ar_balance || 0));
+            const rcpt = round2(Number(c.receipts || 0));
+            return Object.assign({}, c, {
+              credit_sales_ttc: crTtc,
+              opening_ar: 0,
+              ar_balance: bal,
+              receipts: rcpt
+            });
+          });
+        }
         const cMap = new Map();
-        baseSalesRows.forEach(s => {
-          const ck = norm(s.customer);
-          if (!ck) return;
-          const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const ensureCust = name => {
+          const ck = norm(name);
+          if (!cMap.has(ck)) cMap.set(ck, { displayName: name, loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, credit_sales_ttc: 0, cash_sales: 0, receipts: 0, last_sale: '' });
+          return cMap.get(ck);
+        };
+        salesPool.forEach(s => {
+          if (!s.customer) return;
+          const cur = ensureCust(s.customer);
           const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
           const vat = Number(s.vat || 0);
           const net = Number(s.total != null ? s.total : (ttc - vat));
@@ -1838,101 +1869,343 @@
           cur.sales_ttc += ttc;
           cur.net_sales += net;
           cur.sales_vat += vat;
-          if (s.method === 'Cash') cur.cash_sales += net;
-          else cur.credit_sales += net;
+          if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') cur.cash_sales += net;
+          else {
+            cur.credit_sales += net;
+            cur.credit_sales_ttc += ttc;
+          }
           if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
-          cMap.set(ck, cur);
         });
-        baseRecRows.forEach(r => {
-          const ck = norm(r.customer);
-          if (!ck) return;
-          const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
-          cur.receipts += Number(r.amount || 0);
-          cMap.set(ck, cur);
+        recPool.forEach(r => {
+          if (!r.customer || !isValidRecpt(r)) return;
+          const cur = ensureCust(r.customer);
+          cur.receipts += Number(r.amount || 0) + Number(r.discount || 0);
         });
-        baseCusts = baseCusts.map(c => {
-          const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+        const postCustMap = new Map();
+        if (activeRange && activeRange.to && activeRange.to < '2026-10-25') {
+          const allSalesCo = filterRecords(rec.sales_tickets, { ignorePeriod: true, ignoreSearch: true });
+          const allRecCo = filterRecords(rec.receipts, { ignorePeriod: true, ignoreSearch: true });
+          allSalesCo.forEach(s => {
+            if (!s.customer || recDateForBasis(s) <= activeRange.to) return;
+            if (s.method === 'Cash' || s.method === 'C Return' || s.method === 'Cash Return') return;
+            const ck = norm(s.customer);
+            const p = postCustMap.get(ck) || { crTtc: 0, rcpt: 0 };
+            p.crTtc += Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+            postCustMap.set(ck, p);
+          });
+          allRecCo.forEach(r => {
+            if (!r.customer || !isValidRecpt(r) || recDateForBasis(r) <= activeRange.to) return;
+            const ck = norm(r.customer);
+            const p = postCustMap.get(ck) || { crTtc: 0, rcpt: 0 };
+            p.rcpt += Number(r.amount || 0) + Number(r.discount || 0);
+            postCustMap.set(ck, p);
+          });
+        }
+        return (m.customers || []).map(c => {
+          const ck = norm(c.Customer);
+          const st = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, credit_sales_ttc: 0, cash_sales: 0, receipts: 0, last_sale: '' };
+          const post = postCustMap.get(ck) || { crTtc: 0, rcpt: 0 };
+          const crTtc = round2(st.credit_sales_ttc);
+          const rcpt = round2(st.receipts);
+          const bal = round2(Number(c.ar_balance || 0) - post.crTtc + post.rcpt);
+          const openAr = round2(bal - crTtc + rcpt);
           return Object.assign({}, c, {
             loads: st.loads,
             sales_ttc: round2(st.sales_ttc),
             net_sales: round2(st.net_sales),
             sales_vat: round2(st.sales_vat),
             credit_sales: round2(st.credit_sales),
+            credit_sales_ttc: crTtc,
             cash_sales: round2(st.cash_sales),
-            receipts: round2(st.receipts),
+            receipts: rcpt,
+            opening_ar: openAr,
+            ar_balance: bal,
             last_sale: st.last_sale || c.last_sale
           });
         }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.ar_balance || 0) - Number(a.ar_balance || 0));
+      };
 
+      const buildScopedSupps = (rawPool, expPool, setPool, forceScope = false) => {
+        if (!activeRange && !forceScope) {
+          return (m.suppliers || []).map(s => {
+            const mat = round2(Number(s.ap_material != null ? s.ap_material : (s.raw_mat_cost || 0)));
+            const haul = round2(Number(s.ap_haulage != null ? s.ap_haulage : 0));
+            const exp = round2(Number(s.ap_expense != null ? s.ap_expense : 0));
+            const onCr = round2(mat + haul + exp);
+            const bal = round2(Number(s.ap_balance || 0));
+            const settled = round2(onCr - bal);
+            const paid = round2(Number(s.settlements_paid != null ? s.settlements_paid : settled));
+            return Object.assign({}, s, {
+              Supplier: s.Supplier || '(Unassigned Supplier)',
+              IVA: s.IVA || 'No',
+              raw_mat_cost: mat,
+              raw_haulage: haul,
+              raw_cost: round2(mat + haul),
+              ap_material: mat,
+              ap_haulage: haul,
+              ap_expense: exp,
+              ap_on_credit: onCr,
+              ap_settled: settled,
+              settlements_paid: paid,
+              opening_ap: 0,
+              ap_balance: bal
+            });
+          });
+        }
         const sMap = new Map();
         const ensureSup = name => {
-          const sk = norm(name);
-          if (!sMap.has(sk)) sMap.set(sk, { name: String(name || '').trim(), raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
+          const label = String(name || '').trim() || '(Unassigned Supplier)';
+          const sk = norm(label);
+          if (!sMap.has(sk)) sMap.set(sk, { displayName: label, raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, expenses: 0, ap_expense: 0, settlements_paid: 0, ap_settled: 0 });
           return sMap.get(sk);
         };
-        baseRawRows.forEach(r => {
-          if (r.site_owner) {
-            const st = ensureSup(r.site_owner);
+        rawPool.forEach(r => {
+          if (r.site_owner || Number(r.cost || 0) !== 0) {
+            const st = ensureSup(r.site_owner || '(Unassigned Supplier)');
             st.raw_loads += 1;
             st.raw_mat_cost += Number(r.cost || 0);
-            st.raw_cost += Number(r.cost || 0);
           }
-          if (r.truck_owner && Number(r.trans_cost || 0) > 0) {
-            const st = ensureSup(r.truck_owner);
-            if (norm(r.truck_owner) !== norm(r.site_owner)) st.raw_loads += 1;
+          if ((r.truck_owner || Number(r.trans_cost || 0) > 0) && r.transport_by !== 'Company fleet') {
+            const tkName = r.truck_owner || '(Unassigned Supplier)';
+            const st = ensureSup(tkName);
+            if (norm(tkName) !== norm(r.site_owner || '')) st.raw_loads += 1;
             st.raw_haulage += Number(r.trans_cost || 0);
-            st.raw_cost += Number(r.trans_cost || 0);
           }
         });
-        baseExpRows.forEach(x => {
-          if (x.supplier) {
-            const st = ensureSup(x.supplier);
-            st.expenses += Number(x.amount || 0);
+        expPool.forEach(x => {
+          const { sgn, isCred, amt } = expSignedCredit(x);
+          if (sgn === 0) return;
+          if (x.supplier || isCred) {
+            const st = ensureSup(x.supplier || '(Unassigned Supplier)');
+            st.expenses += amt;
+            if (isCred) st.ap_expense += amt;
           }
         });
-        baseSetRows.forEach(sp => {
-          if (sp.supplier) {
-            const st = ensureSup(sp.supplier);
-            st.settlements_paid += Number(sp.amount || 0);
-          }
+        setPool.forEach(sp => {
+          if (!sp.supplier || !isValidSettle(sp)) return;
+          const st = ensureSup(sp.supplier);
+          st.settlements_paid += Number(sp.amount || 0);
+          st.ap_settled += Number(sp.amount || 0) + Number(sp.discount || 0);
         });
+
+        const postSupMap = new Map();
+        if (activeRange && activeRange.to && activeRange.to < '2026-10-25') {
+          const allRawCo = filterRecords(rec.raw_purchases, { ignorePeriod: true, ignoreSearch: true });
+          const allExpCo = filterRecords(rec.expenses, { ignorePeriod: true, ignoreSearch: true });
+          const allSetCo = filterRecords(rec.settlements, { ignorePeriod: true, ignoreSearch: true });
+          const ensurePost = name => {
+            const sk = norm(String(name || '').trim() || '(Unassigned Supplier)');
+            if (!postSupMap.has(sk)) postSupMap.set(sk, { cr: 0, set: 0 });
+            return postSupMap.get(sk);
+          };
+          allRawCo.forEach(r => {
+            if (recDateForBasis(r) <= activeRange.to) return;
+            if (r.site_owner || Number(r.cost || 0) !== 0) ensurePost(r.site_owner).cr += Number(r.cost || 0);
+            if ((r.truck_owner || Number(r.trans_cost || 0) > 0) && r.transport_by !== 'Company fleet') ensurePost(r.truck_owner).cr += Number(r.trans_cost || 0);
+          });
+          allExpCo.forEach(x => {
+            if (recDateForBasis(x) <= activeRange.to) return;
+            const { sgn, isCred, amt } = expSignedCredit(x);
+            if (sgn !== 0 && isCred) ensurePost(x.supplier).cr += amt;
+          });
+          allSetCo.forEach(sp => {
+            if (!sp.supplier || !isValidSettle(sp) || recDateForBasis(sp) <= activeRange.to) return;
+            ensurePost(sp.supplier).set += Number(sp.amount || 0);
+          });
+        }
+
         const seenSupNorm = new Set();
-        baseSupps = baseSupps.map(s => {
-          const sk = norm(s.Supplier);
-          if (sk) seenSupNorm.add(sk);
-          const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
+        const result = (m.suppliers || []).map(s => {
+          const sName = s.Supplier || '(Unassigned Supplier)';
+          const sk = norm(sName);
+          seenSupNorm.add(sk);
+          const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, expenses: 0, ap_expense: 0, settlements_paid: 0, ap_settled: 0 };
+          const post = postSupMap.get(sk) || { cr: 0, set: 0 };
+          const mat = round2(st.raw_mat_cost);
+          const haul = round2(st.raw_haulage);
+          const exp = round2(st.ap_expense);
+          const onCr = round2(mat + haul + exp);
+          const paid = round2(st.settlements_paid);
+          const settled = round2(st.ap_settled || paid);
+          const bal = round2(Number(s.ap_balance || 0) - post.cr + post.set);
+          const openAp = round2(bal - onCr + paid);
           return Object.assign({}, s, {
+            Supplier: sName,
+            IVA: s.IVA || suppIvaMap.get(sk) || 'No',
             raw_loads: st.raw_loads,
-            raw_mat_cost: round2(st.raw_mat_cost),
-            raw_haulage: round2(st.raw_haulage),
-            raw_cost: round2(st.raw_cost),
+            raw_mat_cost: mat,
+            raw_haulage: haul,
+            raw_cost: round2(mat + haul),
+            ap_material: mat,
+            ap_haulage: haul,
+            ap_expense: exp,
             expenses: round2(st.expenses),
-            settlements_paid: round2(st.settlements_paid)
+            ap_on_credit: onCr,
+            settlements_paid: paid,
+            ap_settled: settled,
+            opening_ap: openAp,
+            ap_balance: bal
           });
         });
         sMap.forEach((st, sk) => {
           if (!sk || seenSupNorm.has(sk)) return;
-          baseSupps.push({
-            Supplier: st.name || sk,
+          const mat = round2(st.raw_mat_cost);
+          const haul = round2(st.raw_haulage);
+          const exp = round2(st.ap_expense);
+          const onCr = round2(mat + haul + exp);
+          const paid = round2(st.settlements_paid);
+          const settled = round2(st.ap_settled || paid);
+          if (st.raw_loads === 0 && onCr === 0 && paid === 0) return;
+          const post = postSupMap.get(sk) || { cr: 0, set: 0 };
+          const bal = round2(0 - post.cr + post.set);
+          const openAp = round2(bal - onCr + paid);
+          result.push({
+            Supplier: st.displayName || sk,
             IVA: suppIvaMap.get(sk) || 'No',
             raw_loads: st.raw_loads,
-            raw_mat_cost: round2(st.raw_mat_cost),
-            raw_haulage: round2(st.raw_haulage),
-            raw_cost: round2(st.raw_cost),
+            raw_mat_cost: mat,
+            raw_haulage: haul,
+            raw_cost: round2(mat + haul),
+            ap_material: mat,
+            ap_haulage: haul,
+            ap_expense: exp,
             expenses: round2(st.expenses),
-            settlements_paid: round2(st.settlements_paid),
-            ap_balance: 0
+            ap_on_credit: onCr,
+            settlements_paid: paid,
+            ap_settled: settled,
+            opening_ap: openAp,
+            ap_balance: bal
           });
         });
-        baseSupps.sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0) || Number(b.ap_balance || 0) - Number(a.ap_balance || 0));
+        result.sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0) || Number(b.ap_balance || 0) - Number(a.ap_balance || 0));
+        return result;
+      };
+
+      const buildScopedSites = (salesPool, rawPool, forceScope = false) => {
+        if (!activeRange && !forceScope) return m.sites || [];
+        const stMap = new Map();
+        const ensureSite = name => {
+          const label = name || '(Unassigned Site)';
+          const sk = norm(label);
+          if (!stMap.has(sk)) stMap.set(sk, { displayName: label, loads: 0, tons_sold: 0, trans_rev: 0, sales_ttc: 0, net_sales: 0, raw_loads: 0, raw_tons: 0, raw_qty: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0 });
+          return stMap.get(sk);
+        };
+        salesPool.forEach(s => {
+          if (!s.site && Number(s.total_ttc || s.total || 0) === 0) return;
+          const cur = ensureSite(s.site || '(Unassigned Site)');
+          const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
+          const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
+          cur.loads += 1;
+          cur.tons_sold += ticketTons ? ticketTons(s) : Number(s.qty || 0);
+          cur.trans_rev += Number(s.trans_price || 0);
+          cur.sales_ttc += ttc;
+          cur.net_sales += net;
+        });
+        rawPool.forEach(r => {
+          if (!r.site && Number(r.total || r.cost || 0) === 0) return;
+          const cur = ensureSite(r.site || '(Unassigned Site)');
+          const mat = Number(r.cost || 0);
+          const haul = Number(r.trans_cost || 0);
+          cur.raw_loads += 1;
+          cur.raw_tons += ticketTons ? ticketTons(r) : Number(r.qty || 0);
+          cur.raw_qty += ticketMeters ? ticketMeters(r) : Number(r.qty || 0);
+          cur.raw_mat_cost += mat;
+          cur.raw_haulage += haul;
+          cur.raw_cost += Number(r.total != null ? r.total : (mat + haul));
+        });
+        return (m.sites || []).map(st => {
+          const cur = stMap.get(norm(st.Site || '(Unassigned Site)')) || { loads: 0, tons_sold: 0, trans_rev: 0, sales_ttc: 0, net_sales: 0, raw_loads: 0, raw_tons: 0, raw_qty: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0 };
+          return Object.assign({}, st, {
+            loads: cur.loads,
+            tons_sold: round2(cur.tons_sold),
+            trans_rev: round2(cur.trans_rev),
+            sales_ttc: round2(cur.sales_ttc),
+            net_sales: round2(cur.net_sales),
+            raw_loads: cur.raw_loads,
+            raw_tons: round2(cur.raw_tons),
+            raw_qty: round2(cur.raw_qty),
+            raw_mat_cost: round2(cur.raw_mat_cost),
+            raw_haulage: round2(cur.raw_haulage),
+            raw_cost: round2(cur.raw_cost)
+          });
+        }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
+      };
+
+      const buildScopedEquip = (salesPool, rawPool, expPool, fuelPool, forceScope = false) => {
+        if (!activeRange && !forceScope) return m.equipment || [];
+        const eqMap = new Map();
+        const ensureEq = name => {
+          const ek = norm(name);
+          if (!eqMap.has(ek)) eqMap.set(ek, { loads: 0, raw_loads: 0, tons: 0, diesel_litres: 0, direct_exp: 0 });
+          return eqMap.get(ek);
+        };
+        salesPool.forEach(s => {
+          if (!s.truck) return;
+          const cur = ensureEq(s.truck);
+          cur.loads += 1;
+          cur.tons += ticketTons ? ticketTons(s) : Number(s.qty || 0);
+        });
+        rawPool.forEach(r => {
+          if (!r.truck) return;
+          const cur = ensureEq(r.truck);
+          cur.raw_loads += 1;
+          cur.tons += ticketTons ? ticketTons(r) : Number(r.qty || 0);
+        });
+        fuelPool.forEach(f => {
+          if (!f.equipment) return;
+          if (/diesel|mazout/i.test(String(f.item || f.fuel_type || 'Diesel'))) {
+            ensureEq(f.equipment).diesel_litres += Number(f.litres || 0);
+          }
+        });
+        expPool.forEach(x => {
+          if (!x.equipment) return;
+          const { sgn, amt } = expSignedCredit(x);
+          if (sgn === 0) return;
+          if (/diesel|mazout/i.test(String(x.subcategory || x.category || ''))) return;
+          ensureEq(x.equipment).direct_exp += amt;
+        });
+        return (m.equipment || []).map(e => {
+          const cur = eqMap.get(norm(e.Equipment)) || { loads: 0, raw_loads: 0, tons: 0, diesel_litres: 0, direct_exp: 0 };
+          const trips = cur.loads + cur.raw_loads;
+          const dieselL = round2(cur.diesel_litres);
+          const allDiesel = Number(e.diesel_litres || 0);
+          const allTrips = Number(e.trips || 0);
+          const dRatio = allDiesel > 0 ? Math.min(1, dieselL / allDiesel) : (allTrips > 0 ? Math.min(1, trips / allTrips) : 0);
+          const tRatio = allTrips > 0 ? Math.min(1, trips / allTrips) : dRatio;
+          const kmRun = e.km_run != null && allDiesel > 0 ? Math.round(Number(e.km_run) * dRatio) : null;
+          const runCost = round2(cur.direct_exp + (norm(e.Equipment) === 'maghsal' ? 0 : dieselL * 0.78));
+          const drvCost = e.driver_cost != null ? round2(Number(e.driver_cost) * tRatio) : null;
+          const totCost = round2(runCost + Number(drvCost || 0));
+          return Object.assign({}, e, {
+            loads: cur.loads,
+            raw_loads: cur.raw_loads,
+            trips,
+            diesel_litres: dieselL,
+            km_run: kmRun,
+            l_per_100km: kmRun && kmRun > 0 ? round2((dieselL * 100) / kmRun) : e.l_per_100km,
+            running_cost: runCost,
+            driver_cost: drvCost,
+            total_cost: totCost,
+            cost_per_ton: cur.tons > 0 && totCost > 0 ? round2(totCost / cur.tons) : null
+          });
+        });
+      };
+
+      if (activeRange) {
+        baseProds = buildScopedProds(baseSalesRows, baseRawRows);
       }
+      let baseCusts = buildScopedCusts(baseSalesRows, baseRecRows);
+      let baseSupps = buildScopedSupps(baseRawRows, baseExpRows, baseSetRows);
+      let baseSites = buildScopedSites(baseSalesRows, baseRawRows);
+      let baseEquip = buildScopedEquip(baseSalesRows, baseRawRows, baseExpRows, baseFuelRows);
 
       const totalProdSales = baseProds.reduce((a, r) => a + Number(r.sales_ttc || 0), 0) || 1;
       _pbiBaseCacheKey = baseCacheKey;
       _pbiBaseCacheVal = {
         custIvaMap, suppIvaMap, catClassMap, equipMetaMap, coDriverSet,
         baseSalesRows, baseRawRows, baseExpRows, baseRecRows, baseSetRows, baseFuelRows,
-        baseProds, baseCusts, baseSupps, baseSites, sampleAllTtc, totalProdSales
+        baseProds, baseCusts, baseSupps, baseSites, baseEquip, sampleAllTtc, totalProdSales,
+        buildScopedProds, buildScopedCusts, buildScopedSupps, buildScopedSites, buildScopedEquip
       };
     }
 
@@ -1940,7 +2213,8 @@
       custIvaMap, suppIvaMap, catClassMap, equipMetaMap, coDriverSet,
       baseSalesRows, baseRawRows, baseExpRows, baseRecRows, baseSetRows, baseFuelRows,
       baseProds: cachedBaseProds, baseCusts: cachedBaseCusts, baseSupps: cachedBaseSupps,
-      baseSites: cachedBaseSites, sampleAllTtc, totalProdSales
+      baseSites: cachedBaseSites, baseEquip: cachedBaseEquip, sampleAllTtc, totalProdSales,
+      buildScopedProds, buildScopedCusts, buildScopedSupps, buildScopedSites, buildScopedEquip
     } = _pbiBaseCacheVal;
 
     const matchSearch = r => !sl.search || Object.values(r || {}).join(' ').toLowerCase().includes(norm(sl.search));
@@ -2002,152 +2276,18 @@
       return true;
     });
 
-    // When a specific date window + slicer is active, overlay period-scoped flow metrics on products, customers, suppliers & sites
+    // When a specific date window + slicer is active, overlay period-scoped flow metrics on products, customers, suppliers, sites & equipment
     let baseProds = cachedBaseProds;
     let baseCusts = cachedBaseCusts;
     let baseSupps = cachedBaseSupps;
-    const baseSites = cachedBaseSites;
-    if (activeRange && hasAnySlicer) {
-      const pMap = new Map();
-      salesRows.forEach(s => {
-        const pk = norm(s.product);
-        if (!pk) return;
-        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
-        const q = ticketMeters ? ticketMeters(s) : Number(s.qty || 0);
-        const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
-        const net = Number(s.total != null ? s.total : (ttc - Number(s.vat || 0)));
-        cur.loads += 1;
-        cur.qty_sold += q;
-        cur.tons_sold += ticketTons ? ticketTons(s) : (s.uom === 'm³' ? q * 1.5 : q);
-        cur.sales_ttc += ttc;
-        cur.net_sales += net;
-        cur.trans_rev += Number(s.trans_price || 0);
-        pMap.set(pk, cur);
-      });
-      rawRows.forEach(r => {
-        const pk = norm(r.product);
-        if (!pk) return;
-        const cur = pMap.get(pk) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
-        cur.raw_qty += ticketMeters ? ticketMeters(r) : Number(r.qty || 0);
-        cur.raw_cost += Number(r.total != null ? r.total : (Number(r.cost || 0) + Number(r.trans_cost || 0)));
-        pMap.set(pk, cur);
-      });
-      baseProds = (m.products || []).map(p => {
-        const st = pMap.get(norm(p.Product)) || { loads: 0, qty_sold: 0, tons_sold: 0, sales_ttc: 0, net_sales: 0, trans_rev: 0, raw_qty: 0, raw_cost: 0 };
-        return Object.assign({}, p, {
-          loads: st.loads,
-          qty_sold: round2(st.qty_sold),
-          tons_sold: round2(st.tons_sold),
-          sales_ttc: round2(st.sales_ttc),
-          net_sales: round2(st.net_sales),
-          trans_rev: round2(st.trans_rev),
-          raw_qty: round2(st.raw_qty),
-          raw_cost: round2(st.raw_cost),
-          avg_price_ttc: st.qty_sold > 0 ? round2(st.sales_ttc / st.qty_sold) : p.avg_price_ttc,
-          avg_price_net: st.qty_sold > 0 ? round2(st.net_sales / st.qty_sold) : p.avg_price_net,
-          avg_raw_cost: st.raw_qty > 0 ? round2(st.raw_cost / st.raw_qty) : null
-        });
-      }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.raw_cost || 0) - Number(a.raw_cost || 0));
-
-      const cMap = new Map();
-      salesRows.forEach(s => {
-        const ck = norm(s.customer);
-        if (!ck) return;
-        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
-        const ttc = Number(s.total_ttc != null ? s.total_ttc : s.total || 0);
-        const vat = Number(s.vat || 0);
-        const net = Number(s.total != null ? s.total : (ttc - vat));
-        cur.loads += 1;
-        cur.sales_ttc += ttc;
-        cur.net_sales += net;
-        cur.sales_vat += vat;
-        if (s.method === 'Cash') cur.cash_sales += net;
-        else cur.credit_sales += net;
-        if (s.date && String(s.date) > cur.last_sale) cur.last_sale = String(s.date).slice(0, 10);
-        cMap.set(ck, cur);
-      });
-      recRows.forEach(r => {
-        const ck = norm(r.customer);
-        if (!ck) return;
-        const cur = cMap.get(ck) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
-        cur.receipts += Number(r.amount || 0);
-        cMap.set(ck, cur);
-      });
-      baseCusts = (m.customers || []).map(c => {
-        const st = cMap.get(norm(c.Customer)) || { loads: 0, sales_ttc: 0, net_sales: 0, sales_vat: 0, credit_sales: 0, cash_sales: 0, receipts: 0, last_sale: '' };
-        return Object.assign({}, c, {
-          loads: st.loads,
-          sales_ttc: round2(st.sales_ttc),
-          net_sales: round2(st.net_sales),
-          sales_vat: round2(st.sales_vat),
-          credit_sales: round2(st.credit_sales),
-          cash_sales: round2(st.cash_sales),
-          receipts: round2(st.receipts),
-          last_sale: st.last_sale || c.last_sale
-        });
-      }).sort((a, b) => Number(b.sales_ttc || 0) - Number(a.sales_ttc || 0) || Number(b.ar_balance || 0) - Number(a.ar_balance || 0));
-
-      const sMap = new Map();
-      const ensureSup = name => {
-        const sk = norm(name);
-        if (!sMap.has(sk)) sMap.set(sk, { name: String(name || '').trim(), raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 });
-        return sMap.get(sk);
-      };
-      rawRows.forEach(r => {
-        if (r.site_owner) {
-          const st = ensureSup(r.site_owner);
-          st.raw_loads += 1;
-          st.raw_mat_cost += Number(r.cost || 0);
-          st.raw_cost += Number(r.cost || 0);
-        }
-        if (r.truck_owner && Number(r.trans_cost || 0) > 0) {
-          const st = ensureSup(r.truck_owner);
-          if (norm(r.truck_owner) !== norm(r.site_owner)) st.raw_loads += 1;
-          st.raw_haulage += Number(r.trans_cost || 0);
-          st.raw_cost += Number(r.trans_cost || 0);
-        }
-      });
-      expRows.forEach(x => {
-        if (x.supplier) {
-          const st = ensureSup(x.supplier);
-          st.expenses += Number(x.amount || 0);
-        }
-      });
-      setRows.forEach(sp => {
-        if (sp.supplier) {
-          const st = ensureSup(sp.supplier);
-          st.settlements_paid += Number(sp.amount || 0);
-        }
-      });
-      const seenSupNorm = new Set();
-      baseSupps = (m.suppliers || []).map(s => {
-        const sk = norm(s.Supplier);
-        if (sk) seenSupNorm.add(sk);
-        const st = sMap.get(sk) || { raw_loads: 0, raw_mat_cost: 0, raw_haulage: 0, raw_cost: 0, expenses: 0, settlements_paid: 0 };
-        return Object.assign({}, s, {
-          raw_loads: st.raw_loads,
-          raw_mat_cost: round2(st.raw_mat_cost),
-          raw_haulage: round2(st.raw_haulage),
-          raw_cost: round2(st.raw_cost),
-          expenses: round2(st.expenses),
-          settlements_paid: round2(st.settlements_paid)
-        });
-      });
-      sMap.forEach((st, sk) => {
-        if (!sk || seenSupNorm.has(sk)) return;
-        baseSupps.push({
-          Supplier: st.name || sk,
-          IVA: suppIvaMap.get(sk) || 'No',
-          raw_loads: st.raw_loads,
-          raw_mat_cost: round2(st.raw_mat_cost),
-          raw_haulage: round2(st.raw_haulage),
-          raw_cost: round2(st.raw_cost),
-          expenses: round2(st.expenses),
-          settlements_paid: round2(st.settlements_paid),
-          ap_balance: 0
-        });
-      });
-      baseSupps.sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0) || Number(b.ap_balance || 0) - Number(a.ap_balance || 0));
+    let baseSites = cachedBaseSites;
+    let baseEquip = cachedBaseEquip;
+    if (hasAnySlicer) {
+      baseProds = buildScopedProds(salesRows, rawRows);
+      baseCusts = buildScopedCusts(salesRows, recRows, true);
+      baseSupps = buildScopedSupps(rawRows, expRows, setRows, true);
+      baseSites = buildScopedSites(salesRows, rawRows, true);
+      baseEquip = buildScopedEquip(salesRows, rawRows, expRows, fuelRows, true);
     }
 
     const prodRows = !hasAnySlicer ? baseProds : baseProds.filter(matchCommon);
@@ -2167,15 +2307,15 @@
       }
       return true;
     });
-    const suppRows = !hasAnySlicer ? baseSupps : baseSupps.filter(s => {
+    const suppRows = (!hasAnySlicer ? baseSupps : baseSupps.filter(s => {
       if (!matchCommon(s)) return false;
       if (sl.payableLeg === 'Material' && Number(s.ap_material || s.raw_mat_cost || 0) <= 0) return false;
       if (sl.payableLeg === 'Haulage' && Number(s.ap_haulage || s.raw_haulage || 0) <= 0) return false;
       if (sl.payableLeg === 'Supplies & services' && Number(s.ap_expense || s.expenses || 0) <= 0) return false;
       return true;
-    });
+    })).filter(s => !activeRange || s.raw_loads > 0 || Math.abs(Number(s.ap_on_credit || 0)) > 0.005 || Math.abs(Number(s.settlements_paid || 0)) > 0.005 || Math.abs(Number(s.ap_balance || 0)) > 0.005 || Math.abs(Number(s.opening_ap || 0)) > 0.005);
     const siteRows = !hasAnySlicer ? baseSites : baseSites.filter(matchCommon);
-    const equipRows = !hasAnySlicer ? (m.equipment || []) : (m.equipment || []).filter(e => {
+    const equipRows = !hasAnySlicer ? baseEquip : baseEquip.filter(e => {
       if (!matchCommon(e)) return false;
       if (sl.equipType && norm(e.Type) !== norm(sl.equipType)) return false;
       if (sl.ownership && norm(e.Ownership) !== norm(sl.ownership)) return false;
@@ -3027,15 +3167,21 @@
         byCat.set(c, cur);
       });
       const catList = Array.from(byCat.values()).sort((a, b) => b.amount - a.amount);
+      const isScopedAp = Boolean(activeRange || hasAnySlicer);
+      const apBalVal = isScopedAp ? suppRows.reduce((a, r) => a + Number(r.ap_balance || 0), 0) : k.ap_balance;
+      const apMatVal = isScopedAp ? suppRows.reduce((a, r) => a + Number(r.ap_material || 0), 0) : k.ap_material;
+      const apHaulVal = isScopedAp ? suppRows.reduce((a, r) => a + Number(r.ap_haulage || 0), 0) : k.ap_haulage;
+      const apExpVal = isScopedAp ? suppRows.reduce((a, r) => a + Number(r.ap_expense || 0), 0) : k.ap_expense;
+      const apSetVal = isScopedAp ? suppRows.reduce((a, r) => a + Number(r.settlements_paid || 0), 0) : k.settlements_paid;
 
       bodyHtml = `
         <div class="pbi-overview-bands">
           ${kpiBand('1 · 3-Leg Accounts Payable Engine (Material · Haulage · Supplies & Services — m192)', [
-            { label: 'Net Open AP Balance', value: fmtUSD(k.ap_balance, 0), sub: 'Class 4011 Supplier Liability', tone: 'brass' },
-            { label: 'Leg 1 · Raw Material', value: fmtUSD(k.ap_material, 0), sub: 'Owed to site owners' },
-            { label: 'Leg 2 · 3rd-Party Haulage', value: fmtUSD(k.ap_haulage, 0), sub: '$0 on company-fleet loads' },
-            { label: 'Leg 3 · Credit Expenses', value: fmtUSD(k.ap_expense, 0), sub: 'Supplies, repairs & services' },
-            { label: 'Supplier Settlements Paid', value: fmtUSD(k.settlements_paid, 0), sub: 'Cash, check & bank wires', tone: 'good' },
+            { label: 'Net Open AP Balance', value: fmtUSD(apBalVal, 0), sub: 'Class 4011 Supplier Liability', tone: 'brass' },
+            { label: 'Leg 1 · Raw Material', value: fmtUSD(apMatVal, 0), sub: 'Owed to site owners' },
+            { label: 'Leg 2 · 3rd-Party Haulage', value: fmtUSD(apHaulVal, 0), sub: '$0 on company-fleet loads' },
+            { label: 'Leg 3 · Credit Expenses', value: fmtUSD(apExpVal, 0), sub: 'Supplies, repairs & services' },
+            { label: 'Supplier Settlements Paid', value: fmtUSD(apSetVal, 0), sub: 'Cash, check & bank wires', tone: 'good' },
             { label: 'Active Suppliers & Haulers', value: fmtNum(suppRows.length), sub: 'With ledger activity' }
           ])}
           ${kpiBand('2 · Operating Expenses & Cost Class Breakdown', [
@@ -3062,10 +3208,10 @@
         </div>
 
         <div class="pbi-grid-2">
-          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart(suppRows, 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#1E293B', maxItems: 10 }), {
+          ${pbiPanel('Payables by supplier / hauler', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0)), 'Supplier', 'ap_balance', v => fmtUSD(v, 0), { subKey: 'IVA', color: '#1E293B', maxItems: 10 }), {
             subtitle: 'Net closing AP balance (+ owed by company, − advance to supplier)'
           })}
-          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart(suppRows, 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
+          ${pbiPanel('Raw material & haulage volume by supplier', buildHorizontalBarChart([...suppRows].sort((a, b) => Number(b.raw_cost || 0) - Number(a.raw_cost || 0)), 'Supplier', 'raw_cost', v => fmtUSD(v, 0), { color: '#8A94A6', maxItems: 10 }), {
             subtitle: 'Total raw material + haulage accrued'
           })}
         </div>
@@ -3075,14 +3221,15 @@
             { label: 'Supplier / Hauler', key: 'Supplier', bold: true },
             { label: 'IVA', key: 'IVA' },
             { label: 'Raw Loads', key: 'raw_loads', r: true, fmt: v => fmtNum(v) },
-            { label: 'Total Raw Cost ($)', key: 'raw_cost', r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 1 · Material ($)', raw: r => activeRange ? (r.raw_mat_cost || 0) : (r.ap_material || r.raw_mat_cost || 0), r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 2 · Haulage ($)', raw: r => activeRange ? (r.raw_haulage || 0) : (r.ap_haulage || r.raw_haulage || 0), r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Leg 3 · Expenses ($)', raw: r => activeRange ? (r.expenses || 0) : (r.ap_expense || r.expenses || 0), r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Settlements Paid ($)', key: 'settlements_paid', r: true, fmt: v => `<span class="pbi-pos">${fmtUSD(v, 0)}</span>` },
+            ...(activeRange ? [{ label: 'Opening AP ($)', key: 'opening_ap', r: true, negRed: true, fmt: v => fmtUSD(v, 0) }] : []),
+            { label: 'Leg 1 · Material ($)', key: 'ap_material', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Leg 2 · Haulage ($)', key: 'ap_haulage', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Leg 3 · Expenses ($)', key: 'ap_expense', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Total on Credit ($)', key: 'ap_on_credit', r: true, fmt: v => `<b>${fmtUSD(v, 0)}</b>` },
+            { label: 'Settlements Paid ($)', raw: r => activeRange ? (r.settlements_paid || 0) : (r.ap_settled != null ? r.ap_settled : (r.settlements_paid || 0)), r: true, fmt: v => `<span class="pbi-pos">${fmtUSD(v, 0)}</span>` },
             { label: 'Closing AP Balance ($)', key: 'ap_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], [...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0) || (Number(b.raw_cost || 0) + Number(b.ap_expense || b.expenses || 0)) - (Number(a.raw_cost || 0) + Number(a.ap_expense || a.expenses || 0))), {
-            subtitle: 'Every raw load splits into Material owed to Site Owner + Haulage owed to Truck Owner · Red negative = net advance/prepayment to supplier',
+          ], [...suppRows].sort((a, b) => Number(b.ap_balance || 0) - Number(a.ap_balance || 0) || Number(b.ap_on_credit || 0) - Number(a.ap_on_credit || 0)), {
+            subtitle: 'Leg 1 (Material owed to Site Owner) + Leg 2 (Haulage owed to Truck Owner) + Leg 3 (Credit Expenses) = Total on Credit · ' + (activeRange ? 'Opening AP + Total on Credit − Settlements Paid = Closing AP Balance' : 'Total on Credit − Settlements Paid = Closing AP Balance'),
             unitLabel: 'suppliers'
           })}
         </div>
@@ -4912,7 +5059,8 @@
           ${pbiTable('Top Customer Sub-Account Reconciliation (Tickets vs Receipts vs Closing AR)', [
             { label: 'Customer', key: 'Customer', bold: true },
             { label: 'Loads', key: 'loads', r: true, fmt: v => fmtNum(v) },
-            { label: 'Credit Sales ($)', key: 'credit_sales', r: true, fmt: v => fmtUSD(v, 0) },
+            ...(activeRange ? [{ label: 'Opening AR ($)', key: 'opening_ar', r: true, negRed: true, fmt: v => fmtUSD(v, 0) }] : []),
+            { label: 'Credit Sales TTC ($)', raw: r => r.credit_sales_ttc != null ? r.credit_sales_ttc : (r.credit_sales || 0), r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Receipts ($)', key: 'receipts', r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AR ($)', key: 'ar_balance', r: true, bar: true, negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], [...custRows].sort((a, b) => Math.abs(Number(b.ar_balance || 0)) - Math.abs(Number(a.ar_balance || 0)) || Number(b.credit_sales || 0) - Number(a.credit_sales || 0)), { unitLabel: 'customers' })}
@@ -4920,10 +5068,11 @@
           ${pbiTable('Top Supplier Sub-Account Reconciliation (3-Leg Accruals vs Settlements vs Closing AP)', [
             { label: 'Supplier / Hauler', key: 'Supplier', bold: true },
             { label: 'Raw Loads', key: 'raw_loads', r: true, fmt: v => fmtNum(v) },
-            { label: 'Total Accrued ($)', raw: r => Number(r.raw_cost || 0) + Number(r.ap_expense || 0), r: true, fmt: v => fmtUSD(v, 0) },
-            { label: 'Settled ($)', key: 'settlements_paid', r: true, fmt: v => fmtUSD(v, 0) },
+            ...(activeRange ? [{ label: 'Opening AP ($)', key: 'opening_ap', r: true, negRed: true, fmt: v => fmtUSD(v, 0) }] : []),
+            { label: 'Total on Credit ($)', key: 'ap_on_credit', r: true, fmt: v => fmtUSD(v, 0) },
+            { label: 'Settled ($)', raw: r => activeRange ? (r.settlements_paid || 0) : (r.ap_settled != null ? r.ap_settled : (r.settlements_paid || 0)), r: true, fmt: v => fmtUSD(v, 0) },
             { label: 'Closing AP ($)', key: 'ap_balance', r: true, bar: 'brass', negRed: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
-          ], [...suppRows].sort((a, b) => Math.abs(Number(b.ap_balance || 0)) - Math.abs(Number(a.ap_balance || 0)) || (Number(b.raw_cost || 0) + Number(b.ap_expense || 0)) - (Number(a.raw_cost || 0) + Number(a.ap_expense || 0))), { unitLabel: 'suppliers' })}
+          ], [...suppRows].sort((a, b) => Math.abs(Number(b.ap_balance || 0)) - Math.abs(Number(a.ap_balance || 0)) || Number(b.ap_on_credit || 0) - Number(a.ap_on_credit || 0)), { unitLabel: 'suppliers' })}
         </div>
       `;
     }
