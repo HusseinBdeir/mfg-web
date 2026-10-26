@@ -6152,6 +6152,254 @@
     });
   }
 
+  let _ticketAuditCache = null;
+  function buildTicketSerialAudit() {
+    const rev = STATE._customRev || 0;
+    if (!_ticketAuditCache || _ticketAuditCache.rev !== rev) {
+      const all = [];
+      const pushRec = (docType, rkey, list) => (list || []).forEach(r => {
+        if (!r || r.voided) return;
+        const rawNo = String(r.ticket_no == null ? '' : r.ticket_no).trim();
+        const m = rawNo.match(/^(.*?)(\d+)$/);
+        const prefix = m ? m[1].trim() : '';
+        const digits = m ? m[2] : '';
+        const num = digits ? parseInt(digits, 10) : null;
+        all.push({
+          id: r.id, rkey, docType, company: r.company || 'WTC',
+          ticket_no: rawNo, prefix, digits, num,
+          date: String(r.date || '').slice(0, 10),
+          rep_date: String(r.rep_date || r.date || '').slice(0, 10),
+          party: r.customer || r.site_owner || r.site || r.equipment || r.truck || '—',
+          product: r.product || r.item || (r.litres ? r.litres + ' L' : '—')
+        });
+      });
+      pushRec('Sales', 'sales_tickets', SEED.records.sales_tickets);
+      pushRec('Raw', 'raw_purchases', SEED.records.raw_purchases);
+      pushRec('Fuel', 'fuel_intakes', SEED.records.fuel_intakes);
+
+      const dayDiff = (d1, d2) => (!d1 || !d2) ? 0 : Math.round((new Date(d2 + 'T00:00:00Z') - new Date(d1 + 'T00:00:00Z')) / 86400000);
+      const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const fmtMY = iso => (!iso || iso.length < 7) ? '' : (mNames[parseInt(iso.slice(5, 7), 10) - 1] || '') + ' ' + iso.slice(0, 4);
+
+      const byGrp = new Map();
+      const unnumRows = [];
+      for (let i = 0; i < all.length; i++) {
+        const r = all[i];
+        if (r.num === null || !r.ticket_no) {
+          unnumRows.push({
+            id: r.id, rkey: r.rkey,
+            kind: 'unnumbered',
+            kindLabel: `Unnumbered · ${r.docType}`,
+            serialLabel: '(No ticket #)',
+            num: 0,
+            company: r.company,
+            padRun: `${r.docType} Ticket`,
+            date: r.date,
+            rep_date: r.rep_date,
+            beforeText: `${r.docType} · ${r.party}`,
+            afterText: `${r.product}`,
+            prevId: r.id, prevRkey: r.rkey,
+            nextId: '', nextRkey: '',
+            count: 1
+          });
+          continue;
+        }
+        // Per pbi_ticketbooks.py (m116): >6 digits (>=1,000,000) are External supplier/weighbridge refs, not 25-ticket pads
+        if (r.digits.length > 6 || r.num <= 0 || r.num >= 1000000) continue;
+        const gk = r.company + '|' + r.prefix;
+        if (!byGrp.has(gk)) byGrp.set(gk, []);
+        byGrp.get(gk).push(r);
+      }
+
+      const skippedRows = [];
+      const dupRows = [];
+
+      for (const [, grp] of byGrp.entries()) {
+        const byBs = new Map();
+        for (let i = 0; i < grp.length; i++) {
+          const r = grp[i];
+          const bs = Math.floor((r.num - 1) / 25) * 25 + 1;
+          if (!byBs.has(bs)) byBs.set(bs, []);
+          byBs.get(bs).push(r);
+        }
+        for (const [bs, bRows] of byBs.entries()) {
+          bRows.sort((a, b) => (a.date < b.date ? -1 : (a.date > b.date ? 1 : (a.num - b.num))));
+          let run = 0, prevD = null;
+          const runs = new Map();
+          for (let i = 0; i < bRows.length; i++) {
+            const r = bRows[i];
+            if (prevD && r.date && dayDiff(prevD, r.date) > 60) run++;
+            if (r.date) prevD = r.date;
+            if (!runs.has(run)) runs.set(run, []);
+            runs.get(run).push(r);
+          }
+          for (const [, t] of runs.entries()) {
+            const be = bs + 24;
+            const firstDate = t[0].date || '';
+            const co = t[0].company;
+            const prefix = t[0].prefix;
+            const bookLbl = (prefix ? prefix + ' ' : '#') + bs + '–' + be + (firstDate ? ' · ' + fmtMY(firstDate) : '');
+            const byNum = new Map();
+            const byNumType = new Map();
+            for (let i = 0; i < t.length; i++) {
+              const r = t[i];
+              if (!byNum.has(r.num) || (r.date && r.date < byNum.get(r.num).date)) byNum.set(r.num, r);
+              const ntKey = r.num + '|' + r.docType;
+              if (!byNumType.has(ntKey)) byNumType.set(ntKey, []);
+              byNumType.get(ntKey).push(r);
+            }
+            for (const [, list] of byNumType.entries()) {
+              if (list.length > 1) {
+                const first = list[0], last = list[list.length - 1];
+                dupRows.push({
+                  id: last.id, rkey: last.rkey,
+                  kind: 'duplicate',
+                  kindLabel: `Duplicate (${list.length}× ${first.docType})`,
+                  serialLabel: '#' + first.ticket_no,
+                  num: first.num,
+                  company: co,
+                  padRun: bookLbl,
+                  date: last.date,
+                  rep_date: last.rep_date,
+                  beforeText: `1st (${fmtDateDMY(first.date)}): ${first.party} · ${first.product}`,
+                  afterText: `2nd+ (${fmtDateDMY(last.date)}): ${Array.from(new Set(list.slice(1).map(x => x.party))).join(' · ')}`,
+                  prevId: first.id, prevRkey: first.rkey,
+                  nextId: last.id, nextRkey: last.rkey,
+                  count: list.length
+                });
+              }
+            }
+            const nums = Array.from(byNum.keys()).sort((a, b) => a - b);
+            if (nums.length < 3) continue;
+            for (let i = 0; i < nums.length - 1; i++) {
+              const a = nums[i], b = nums[i + 1];
+              if (b - a > 1) {
+                const gapStart = a + 1, gapEnd = b - 1, gapCnt = gapEnd - gapStart + 1;
+                const prevRec = byNum.get(a), nextRec = byNum.get(b);
+                const pfx = prefix ? prefix : '';
+                skippedRows.push({
+                  id: prevRec.id, rkey: prevRec.rkey,
+                  kind: 'skipped',
+                  kindLabel: `Skipped (${gapCnt})`,
+                  serialLabel: gapCnt === 1 ? `#${pfx}${gapStart}` : `#${pfx}${gapStart}–${pfx}${gapEnd}`,
+                  num: gapStart,
+                  company: co,
+                  padRun: bookLbl,
+                  date: prevRec.date,
+                  rep_date: prevRec.rep_date,
+                  beforeText: `#${prevRec.ticket_no} · ${prevRec.docType} · ${prevRec.party} (${fmtDateDMY(prevRec.date)})`,
+                  afterText: `#${nextRec.ticket_no} · ${nextRec.docType} · ${nextRec.party} (${fmtDateDMY(nextRec.date)})`,
+                  prevId: prevRec.id, prevRkey: prevRec.rkey,
+                  nextId: nextRec.id, nextRkey: nextRec.rkey,
+                  count: gapCnt
+                });
+              }
+            }
+          }
+        }
+      }
+      _ticketAuditCache = { rev, skippedRows, dupRows, unnumRows };
+    }
+
+    const allowed = new Set(allowedCompanyNames());
+    const targetCo = STATE.company === 'manufacturing-group' ? null : COMPANY_BU_MATCH[STATE.company];
+    const pr = periodRange(STATE.period);
+    const q = (STATE.search || '').trim().toLowerCase();
+    const scopeRow = r => {
+      if (r.company && !allowed.has(r.company)) return false;
+      if (targetCo && r.company !== targetCo) return false;
+      const d = STATE.basis === 'rep' ? (r.rep_date || r.date) : r.date;
+      if (pr && d && (d < pr.from || d > pr.to)) return false;
+      if (q && !`${r.serialLabel} ${r.kindLabel} ${r.company} ${r.padRun} ${r.date} ${fmtDateDMY(r.date)} ${r.beforeText} ${r.afterText}`.toLowerCase().includes(q)) return false;
+      return true;
+    };
+
+    const skipped = _ticketAuditCache.skippedRows.filter(scopeRow);
+    const duplicates = _ticketAuditCache.dupRows.filter(scopeRow);
+    const unnumbered = _ticketAuditCache.unnumRows.filter(scopeRow);
+    const allExceptions = skipped.concat(duplicates, unnumbered);
+    return { skipped, duplicates, unnumbered, allExceptions };
+  }
+
+  function renderTicketSerialAuditPanel() {
+    const audit = buildTicketSerialAudit();
+    const rawFilter = STATE.salesPadFilter || 'all';
+    // Default to 'skipped' (Skipped in Pads) when 'all' or 'skipped' so the user immediately sees the skipped ticket serials and neighbors
+    const activeFilter = rawFilter === 'all' ? 'skipped' : rawFilter;
+    let pool = audit.skipped;
+    if (activeFilter === 'duplicates') pool = audit.duplicates;
+    else if (activeFilter === 'unnumbered') pool = audit.unnumbered;
+    else if (activeFilter === 'all_exc') pool = audit.allExceptions;
+    else if (activeFilter === 'wtc') pool = audit.allExceptions.filter(r => r.company === 'WTC');
+    else if (activeFilter === 'bbc') pool = audit.allExceptions.filter(r => r.company === 'BBConstruction');
+
+    const sorted = sortRows(pool, 'spad', 'date', 'desc');
+    const shown = sorted.slice(0, shownCount('spad'));
+    const totTickets = sorted.reduce((s, r) => s + Number(r.count || 0), 0);
+    const totSkippedTickets = audit.skipped.reduce((s, r) => s + Number(r.count || 0), 0);
+    const padChip = (kKey, lbl) => `<button type="button" class="filter-chip ${activeFilter === kKey ? 'active' : ''}" data-salespad-chip="${esc(kKey)}">${lbl}</button>`;
+    const nextWtc = nextTicketNo('WTC', [SEED.records.sales_tickets, SEED.records.raw_purchases, SEED.records.fuel_intakes]);
+    const nextBbc = nextTicketNo('BBConstruction', [SEED.records.sales_tickets, SEED.records.raw_purchases, SEED.records.fuel_intakes]);
+    const nextBadge = STATE.company === 'bbconstruction'
+      ? `Next BBC Ticket #${esc(nextBbc || 'Auto')}`
+      : `Next WTC Ticket #${esc(nextWtc || 'Auto')}${STATE.company === 'manufacturing-group' && nextBbc ? ` · BBC #${esc(nextBbc)}` : ''}`;
+
+    return `
+      <div class="panel-card" id="salesPadPanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>WEIGHBRIDGE TICKET SERIAL AUDIT — SKIPPED, DUPLICATE &amp; UNNUMBERED TICKETS (${fmtNum(sorted.length)} ITEMS)</span></div>
+          <span class="panel-meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span class="badge badge-brass" title="Next sequential 25-ticket pad serial (excludes >6-digit external scale numbers)">${nextBadge}</span>
+            ${exportBtn('salesPadPanel', 'Ticket_Serial_Audit')}
+          </span>
+        </div>
+        <div class="table-toolbar" style="padding-top:6px;padding-bottom:6px">
+          <div class="chip-bar">
+            ${padChip('skipped', `Skipped in Pads (${fmtNum(audit.skipped.length)} gaps · ${fmtNum(totSkippedTickets)} tickets)`)}
+            ${padChip('duplicates', `Duplicate Serials (${fmtNum(audit.duplicates.length)})`)}
+            ${padChip('unnumbered', `Unnumbered (${fmtNum(audit.unnumbered.length)})`)}
+            ${padChip('all_exc', `All Exceptions (${fmtNum(audit.allExceptions.length)})`)}
+            ${padChip('wtc', 'WTC')}
+            ${padChip('bbc', 'BBConstruction')}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('spad', 'Serial / Gap #', 'num')}${th('spad', 'Audit Type', 'kindLabel')}${th('spad', 'Co.', 'company')}${th('spad', 'Pad Run (25-Ticket Book)', 'padRun')}
+                ${th('spad', 'Date', 'date')}${th('spad', 'Entered Before / 1st Entry', 'beforeText')}${th('spad', 'Entered After / 2nd Entry', 'afterText')}${th('spad', 'Tickets', 'count', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shown.map(r => {
+                const badgeCls = r.kind === 'duplicate' ? 'badge-err' : (r.kind === 'unnumbered' ? 'badge-info' : 'badge-warn');
+                return `
+                  <tr class="rrow" data-rkey="${esc(r.prevRkey || 'sales_tickets')}" data-rid="${esc(r.prevId || r.id)}">
+                    <td class="mono"><strong>${esc(r.serialLabel)}</strong></td>
+                    <td><span class="badge ${badgeCls}">${esc(r.kindLabel)}</span></td>
+                    <td>${coBadge(r.company)}</td>
+                    <td class="mono">${esc(r.padRun)}</td>
+                    <td class="mono">${esc(fmtDateDMY(r.date))}</td>
+                    <td style="font-size:11.5px;white-space:normal">${esc(r.beforeText)}</td>
+                    <td style="font-size:11.5px;white-space:normal">${esc(r.afterText)}</td>
+                    <td class="r"><strong>${fmtNum(r.count)}</strong></td>
+                  </tr>
+                `;
+              }).join('') || emptyRow(8, 'No skipped, duplicate or unnumbered weighbridge ticket serials in this scope')}
+              ${showMoreRow('spad', sorted.length, 8)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="7"><b>TOTAL (${fmtNum(sorted.length)} AUDIT ITEMS · ${fmtNum(audit.skipped.length)} SKIPPED GAPS · ${fmtNum(audit.duplicates.length)} DUPLICATES · ${fmtNum(audit.unnumbered.length)} UNNUMBERED)</b></td>
+                <td class="r"><b>${fmtNum(totTickets)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>`;
+  }
+
   function renderSentinels() {
     const items = buildSentinelItems();
     const { fleet, pricing, parity, generated } = sentinelSlice();
