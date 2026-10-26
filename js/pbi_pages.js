@@ -3843,7 +3843,7 @@
 
           const popSpec = {
             title: d.rawLbl || shortLbl,
-            badge: `Till Δ ${fmtSignedUSD(d.netCash, 0)}`,
+            badge: `Net Till ${fmtSignedUSD(d.netCash, 0)}`,
             badgeTone: Math.abs(d.netCash) < 0.5 ? 'good' : (d.netCash > 0 ? 'good' : 'crit'),
             rows: [
               { label: 'Operating In (Sales + AR)', value: fmtUSD(d.opIn, 0), color: '#1C8C46' },
@@ -5666,7 +5666,7 @@
 
         const popSpec = {
           title: d.rawLbl || shortLbl,
-          badge: `Till Δ ${fmtSignedUSD(d.netCash, 0)}`,
+          badge: `Net Till ${fmtSignedUSD(d.netCash, 0)}`,
           badgeTone: Math.abs(d.netCash) < 0.5 ? 'good' : (d.netCash > 0 ? 'good' : 'crit'),
           rows: [
             { label: 'Operating In (Sales + AR)', value: fmtUSD(d.opIn, 0), color: '#1C8C46' },
