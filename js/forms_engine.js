@@ -736,8 +736,11 @@
           ${companyField}
           ${fld('Attendance Date *', inp('f_date', 'date', today))}
           ${fld('Staff Member *', inp('f_staff', 'text', '', 'list="dl_staff" placeholder="Select or type staff member..."') + dl('dl_staff', staffNames))}
-          ${fld('Status *', sel('f_status', [['Present', 'Present (Full Day)'], ['Half Day', 'Half Day'], ['Absent', 'Absent'], ['Paid Leave', 'Paid Leave'], ['Holiday', 'Public Holiday']], 'Present'))}
-          ${fld('Site Assignment', inp('f_site', 'text', '', 'list="dl_sites" placeholder="Select or type site..."') + dl('dl_sites', siteNames))}
+          ${fld('Status *', sel('f_status', [['Present', 'Present (Full Day)'], ['Overtime', 'Overtime'], ['Lateness', 'Lateness'], ['Half Day', 'Half Day'], ['Absent', 'Absent'], ['Sick Leave', 'Sick Leave'], ['Paid Leave', 'Paid Leave'], ['Holiday', 'Public Holiday']], 'Present'))}
+          ${fld('Time In', inp('f_in', 'time', '08:00'))}
+          ${fld('Time Out', inp('f_out', 'time', '16:00'))}
+          ${fld('Scheduled Shift (Hrs)', inp('f_sched_hours', 'number', '8', 'step="0.5" min="0"'))}
+          ${fld('Actual Work Hours', inp('f_worked_hours', 'number', '8', 'step="0.5" min="0" readonly class="pa-locked-input"'), { id: 'wrap_f_worked_hours', lockField: 'f_worked_hours', lockReason: 'Calculated from Time In → Time Out' })}
           ${fld('Overtime Hours', inp('f_hours', 'number', '0', 'step="0.5" min="0"'))}
           ${fld('Notes', inp('f_notes', 'text', ''), { span: true })}
         </div>

@@ -78,8 +78,14 @@
       { id: 'usd', label: 'USD Salaries', fn: r => String(r.currency || 'USD').toUpperCase() !== 'LBP' && !r.lbp_amount },
       { id: 'lbp', label: 'LBP Salaries (LL)', fn: r => String(r.currency || '').toUpperCase() === 'LBP' || Number(r.lbp_amount || 0) > 0 }
     ] },
-    { key: 'employments', group: '4 · Workforce, Fleet & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => /active/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
-    { key: 'attendance', group: '4 · Workforce, Fleet & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'company', 'staff', 'status', 'regular_hours', 'overtime_hours', 'late_hours', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Attendance Rows' }, { id: 'ot', label: 'With Overtime Hours', fn: r => Number(r.overtime_hours || 0) > 0 }] },
+    { key: 'employments', group: '4 · Workforce, Fleet & Payroll', label: 'Employment & Freelance Contracts', dvn: 'bhf_mfgemployment', form: 'employment', cols: ['name', 'company', 'staff', 'role', 'type', 'status', 'salary_usd', 'daily_rate', 'working_days', 'working_hours', 'overtime_multiplier', 'reimbursement', 'deduction', 'payments_count', 'total_paid', 'start_date', 'end_date'], relTables: ['salaries', 'attendance', 'logistics_allowances', 'freelance_entries', 'company_drivers'], views: [{ id: 'all', label: 'All Contracts' }, { id: 'active', label: 'Active Staff', fn: r => !/ended|inactive|terminated/i.test(r.status || '') && !r.end_date }, { id: 'freelance', label: 'Freelance / Daily', fn: r => /free|daily/i.test(r.type || '') }] },
+    { key: 'attendance', group: '4 · Workforce, Fleet & Payroll', label: 'Attendance & Overtime Log', dvn: 'bhf_mfgattendance', form: 'attendance', cols: ['date', 'month', 'company', 'staff', 'type', 'tally', 'in_time', 'out_time', 'worked_hours', 'overtime_hours', 'late_hours', 'leave_days', 'extra_usd', 'notes'], relTables: ['employments', 'salaries'], views: [
+      { id: 'all', label: 'All Attendance Rows' },
+      { id: 'ot', label: 'Overtime', fn: r => Number(r.overtime_hours || 0) > 0 || /^overtime$/i.test(r.type || r.status || '') },
+      { id: 'late', label: 'Lateness', fn: r => Number(r.late_hours || 0) > 0 || /^lateness$/i.test(r.type || r.status || '') },
+      { id: 'leave', label: 'Absence & Leave', fn: r => Number(r.leave_days || 0) !== 0 || /Absence|VacAbsence|Sick|Leave|Unpaid/i.test(r.type || r.status || '') },
+      { id: 'extra', label: 'Extra & Config', fn: r => /^(?:extra|config)/i.test(r.type || r.status || '') }
+    ] },
     { key: 'freelance_entries', group: '4 · Workforce, Fleet & Payroll', label: 'Freelance Work Entries', dvn: 'bhf_mfgfreelance', form: 'freelance', cols: ['date', 'company', 'staff', 'hours', 'extra_hours', 'rate_usd', 'total', 'notes'], relTables: ['employments', 'salaries'], views: [{ id: 'all', label: 'All Freelance Entries' }] },
     { key: 'logistics_allowances', group: '4 · Workforce, Fleet & Payroll', label: 'Site Allowances (Mon–Sun)', dvn: 'bhf_mfglogistics', form: 'logistics', cols: ['name', 'company', 'staff', 'site', 'equipment', 'daily_usd', 'lbp_amount', 'working_days', 'start_date', 'end_date'], relTables: ['employments', 'sites', 'equipment', 'salaries'], views: [{ id: 'all', label: 'All Site Allowances' }] },
     { key: 'overtime_rates', group: '4 · Workforce, Fleet & Payroll', label: 'Driver Trip & Overtime Rates', dvn: 'bhf_mfgovertimerate', form: 'triprate', cols: ['name', 'company', 'region', 'amount', 'start_date', 'end_date', 'notes'], relTables: ['regions', 'drivers', 'sales_tickets'], views: [{ id: 'all', label: 'All Trip & Overtime Rates' }] },
@@ -206,7 +212,7 @@
     return `<span class="badge ${cls}">${esc(s)}</span>`;
   }
 
-  const NON_NUMERIC_HUB_COLS = /^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i;
+  const NON_NUMERIC_HUB_COLS = /^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg|in_time|out_time|check_in|check_out|shift_str)$/i;
 
   function getHubTableDefaultSort(meta, activeViewId) {
     const k = (meta && meta.key) || '';
@@ -3520,22 +3526,43 @@
       empRows.forEach(e => {
         const s = getSt(e.staff, e.company);
         s.hasContract = true;
-        s.type = e.type || 'Regular';
+        s.type = e.type || 'Staff';
         const ended = e.status === 'Ended' || (e.end_date && String(e.end_date) < today);
-        if (ended && s.status !== 'Current') s.status = 'Ended';
-        s.base += Number(e.salary_usd || 0) || (Number(e.daily_rate || 0) * 26);
+        if (!ended) s.status = 'Current';
+        else if (s.status !== 'Current') s.status = 'Ended';
+        const mSal = Number(e.salary_usd || 0) || (Number(e.daily_rate || 0) * 26);
+        if (mSal > s.month_sal || !s.month_sal) {
+          s.month_sal = mSal;
+          s.w_days = Number(e.working_days || 30) || 30;
+          s.w_hrs = Number(e.working_hours || 8) || 8;
+          s.ot_mult = Number(e.overtime_multiplier != null ? e.overtime_multiplier : 1) || 1;
+          s.lt_mult = Number(e.lateness_multiplier != null ? e.lateness_multiplier : 1) || 1;
+        }
+        s.base += mSal;
+        s.reimb = round2((s.reimb || 0) + Number(e.reimbursement || 0));
+        s.ded = round2((s.ded || 0) + Number(e.deduction || 0));
       });
       attRows.forEach(a => {
         const s = getSt(a.staff, a.company);
-        const otH = Number(a.overtime_hours || 0);
-        const ltH = Number(a.late_hours || 0);
-        s.ot_hrs += otH;
-        s.late_hrs += ltH;
-        if (/Absent|Unpaid/i.test(String(a.status || ''))) s.absent_days += 1;
-        const hrRate = s.base > 0 ? (s.base / (26 * 9)) : 4.5;
-        s.ot_pay += round2(otH * hrRate * 1.5);
-        s.late_ded += round2(ltH * hrRate);
-        if (/Absent/i.test(String(a.status || ''))) s.abs_ded += round2(s.base > 0 ? (s.base / 26) : 25);
+        const tp = String(a.type || a.status || '').trim();
+        const tal = Number(a.tally || 0);
+        const otH = tp === 'Overtime' ? tal : Number(a.overtime_hours || 0);
+        const ltH = tp === 'Lateness' ? tal : Number(a.late_hours || 0);
+        const absD = tp === 'Absence' ? (tal || 1) : (/^Absent|Unpaid/i.test(tp) ? 1 : 0);
+        s.ot_hrs = round2(s.ot_hrs + otH);
+        s.late_hrs = round2(s.late_hrs + ltH);
+        if (absD > 0) s.absent_days = round2(s.absent_days + absD);
+        if (tp === 'Extra USD') s.extras = round2(s.extras + tal);
+        else if (tp === 'Extra LBP') s.extras = round2(s.extras + (tal / 89500));
+        else if (tp === 'Config USD') s.paid = round2(s.paid + tal);
+        else if (tp === 'Config LBP') s.paid = round2(s.paid + (tal / 89500));
+        const mSal = s.month_sal || s.base || 600;
+        const wDays = s.w_days || 30;
+        const wHrs = s.w_hrs || 8;
+        const hrRate = (wDays * wHrs) > 0 ? (mSal / (wDays * wHrs)) : 2.5;
+        s.ot_pay = round2(s.ot_pay + otH * hrRate * (s.ot_mult || 1));
+        s.late_ded = round2(s.late_ded + ltH * hrRate * (s.lt_mult || 1));
+        if (absD > 0) s.abs_ded = round2(s.abs_ded + absD * (mSal / wDays));
       });
       logRows.forEach(l => {
         const s = getSt(l.staff, l.company);
@@ -4610,10 +4637,11 @@
           ${pbiTable('Loans — principal, repayments, outstanding (+ = the company owes, − = owed to the company)', [
             { label: 'Loan Document', key: 'name', mono: true, bold: true },
             { label: 'Co.', key: 'company' },
-            { label: 'Counterparty', raw: r => cellValue(r, 'counterparty') || '—', bold: true },
+            { label: 'Counterparty', raw: r => cellValue(r, 'counterparty') || cellValue(r, 'lender') || '—', bold: true },
             { label: 'Direction', raw: r => cellValue(r, 'direction') },
             { label: 'Start Date', raw: r => cellValue(r, 'start_date'), mono: true },
             { label: 'Principal ($)', key: 'principal', r: true, bar: true, fmt: v => `<b>${fmtUSD(v, 2)}</b>` },
+            { label: 'Settled ($)', key: 'settled_amount', r: true, fmt: v => fmtUSD(v || 0, 2) },
             { label: 'Interest Rate %', key: 'interest_rate', r: true, fmt: v => fmtNum(v, 2) + '%' },
             { label: 'Notes', key: 'notes' }
           ], loanRows, { rkey: 'loans', limit: 45, unitLabel: 'loans' })}
@@ -4623,10 +4651,10 @@
           ${pbiTable('Loan transactions (latest first; + in / − out)', [
             { label: 'Date', key: 'date', mono: true },
             { label: 'Co.', key: 'company' },
-            { label: 'Borrower / Lender', raw: r => cellValue(r, 'loan') || r.name, bold: true },
+            { label: 'Borrower / Lender', raw: r => cellValue(r, 'loan') || cellValue(r, 'counterparty') || r.name, bold: true },
             { label: 'Type', key: 'type' },
             { label: 'Flow', key: 'method' },
-            { label: 'Amount ($)', raw: r => r.usd_amount != null ? r.usd_amount : r.amount, r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
+            { label: 'Amount ($)', raw: r => Number(r.amount != null ? r.amount : r.usd_amount || 0), r: true, bar: 'brass', fmt: v => `<b>${fmtUSD(v, 2)}</b>` }
           ], loanSetRows, { rkey: 'loan_settlements', limit: 40, unitLabel: 'transactions' })}
 
           ${pbiTable('External movements (latest first; + in / − out)', [
@@ -6201,6 +6229,72 @@
     `;
   }
 
+  function renderPayrollVisualsSection(ctx) {
+    const payMonths = (ctx && ctx.payMonths) || [];
+    const staffRows = (ctx && ctx.staffRows) || [];
+    return `
+      <div class="pbi-grid-2" id="payrollChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Accrued Staff Earnings vs. Salary Disbursements ($)', buildClusteredColumnSvg(payMonths, [
+          { key: 'earnings_m', label: 'Accrued Earnings', color: '#8A94A6' },
+          { key: 'paid_m', label: 'Salary Paid', color: '#1E293B' }
+        ]), {
+          subtitle: 'Monthly accrued staff earnings (base + overtime + site allowance + extras) vs salary cash disbursements',
+          legend: [
+            { label: 'Accrued Earnings', color: '#8A94A6' },
+            { label: 'Salary Paid', color: '#1E293B' }
+          ]
+        })}
+        ${pbiPanel('Top Staff Members by Accrued Earnings & Paid ($)', buildHorizontalBarChart(staffRows, 'staff', 'earnings', v => fmtUSD(v, 0), { subKey: 'company', color: '#1E293B', maxItems: 10 }), {
+          subtitle: 'Top staff members ranked by total earnings in the active period'
+        })}
+      </div>
+    `;
+  }
+
+  function renderAttendanceVisualsSection(ctx) {
+    const payMonths = (ctx && ctx.payMonths) || [];
+    const attStaffRows = (ctx && ctx.attStaffRows) || [];
+    return `
+      <div class="pbi-grid-2" id="attChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Overtime vs. Lateness Hours', buildClusteredColumnSvg(payMonths, [
+          { key: 'ot_hrs_m', label: 'Overtime Hrs', color: '#0D9488' },
+          { key: 'late_hrs_m', label: 'Lateness Hrs', color: '#C8333B' }
+        ], { isMoney: false }), {
+          subtitle: 'Monthly logged overtime hours vs lateness / tardy hours on attendance sheets',
+          legend: [
+            { label: 'Overtime Hrs', color: '#0D9488' },
+            { label: 'Lateness Hrs', color: '#C8333B' }
+          ]
+        })}
+        ${pbiPanel('Top Staff Members by Logged Overtime Hours', buildHorizontalBarChart(attStaffRows, 'staff', 'ot_hrs', v => fmtNum(v, 1) + ' hrs', { subKey: 'company', color: '#0D9488', maxItems: 10 }), {
+          subtitle: 'Employees ranked by total logged overtime hours in the active period'
+        })}
+      </div>
+    `;
+  }
+
+  function renderAllowancesVisualsSection(ctx) {
+    const payMonths = (ctx && ctx.payMonths) || [];
+    const siteStaffRows = (ctx && ctx.siteStaffRows) || [];
+    return `
+      <div class="pbi-grid-2" id="allowancesChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Site Allowance Accrued vs. Paid ($)', buildClusteredColumnSvg(payMonths, [
+          { key: 'sa_accrued', label: 'Accrued', color: '#8A94A6' },
+          { key: 'sa_paid', label: 'Paid (FIFO)', color: '#1E293B' }
+        ]), {
+          subtitle: 'Monthly site allowance accrued on posted working days vs FIFO paid inside salary disbursements',
+          legend: [
+            { label: 'Accrued', color: '#8A94A6' },
+            { label: 'Paid (FIFO)', color: '#1E293B' }
+          ]
+        })}
+        ${pbiPanel('Site Allowance Accrued by Staff Member ($)', buildHorizontalBarChart(siteStaffRows, 'staff', 'site_allow', v => fmtUSD(v, 0), { subKey: 'sitesStr', color: '#0F766E', maxItems: 10 }), {
+          subtitle: 'Posted staff members ranked by accrued daily site allowance ($)'
+        })}
+      </div>
+    `;
+  }
+
   window.MFG_PBI = {
     PBI_PAGES,
     MOVED_PBI_PAGES,
@@ -6221,6 +6315,9 @@
     renderPricingVisualsSection,
     renderFuelVisualsSection,
     renderFleetEconVisualsSection,
-    renderDriversVisualsSection
+    renderDriversVisualsSection,
+    renderPayrollVisualsSection,
+    renderAttendanceVisualsSection,
+    renderAllowancesVisualsSection
   };
 })();

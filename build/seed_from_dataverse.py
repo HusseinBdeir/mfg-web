@@ -195,25 +195,280 @@ def _build_salary_row(r):
     }
 
 
+def _parse_att_clock(raw):
+    s = str(raw or "").strip()
+    if not s:
+        return "", None
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            hh = int(parts[0])
+            mm = int(parts[1][:2]) if len(parts) > 1 else 0
+            return f"{hh % 24:02d}:{mm:02d}", round(hh + (mm / 60.0), 2)
+        except Exception:
+            return s, None
+    try:
+        v = float(s)
+    except Exception:
+        return s, None
+    if v == 91.0:
+        v = 19.0  # workbook typo on Index 6944 (91 -> 19)
+    if v < 0 or v > 36:
+        return s, None
+    hh = int(v)
+    rem = round(v - hh, 2)
+    if abs(rem - 0.3) < 0.06 or abs(rem - 0.5) < 0.06:
+        mm = 30
+        dec = hh + 0.5
+    else:
+        mm = int(round(rem * 60))
+        if mm >= 60:
+            hh += 1
+            mm -= 60
+        dec = round(hh + (mm / 60.0), 2)
+    return f"{hh % 24:02d}:{mm:02d}", dec
+
+
 def _build_attendance_row(a):
     bu = ID_TO_BU.get((a.get("_owningbusinessunit_value") or "").lower(), "WTC")
     st_name = fmt_val(a, "_bhf_staff_value", "")
     att_type = fmt_val(a, "bhf_type", "")
     tally = round(float(a.get("bhf_tally") or 0), 2)
+    dt_str = str(a.get("bhf_date") or a.get("bhf_transactiondate") or a.get("createdon") or "")[:10]
+    m_str = str(a.get("bhf_month") or dt_str)[:7]
+    in_fmt, in_h = _parse_att_clock(a.get("bhf_in"))
+    out_fmt, out_h = _parse_att_clock(a.get("bhf_out"))
+    if in_h is not None and out_h is not None and in_h != out_h:
+        worked_hrs = round((out_h - in_h) if out_h > in_h else ((24.0 - in_h) + out_h), 2)
+    else:
+        worked_hrs = 0.0
+    ot_hrs = tally if att_type == "Overtime" else float(a.get("bhf_overtimehours") or a.get("bhf_overtime") or 0)
+    lt_hrs = tally if att_type == "Lateness" else float(a.get("bhf_latehours") or 0)
+    leave_days = round(tally if tally != 0 else 1.0, 2) if att_type in ("Absence", "VacAbsence", "Sick Leave", "Config VacAbsence") else 0.0
+    extra_usd = (
+        round(tally, 2)
+        if att_type in ("Extra USD", "Config USD")
+        else (round(tally / 89500.0, 2) if att_type in ("Extra LBP", "Config LBP") else 0.0)
+    )
+    extra_lbp = int(round(tally)) if att_type in ("Extra LBP", "Config LBP") else 0
+    reg_hrs = (
+        round(max(0.0, worked_hrs - ot_hrs), 2)
+        if worked_hrs > 0
+        else round(float(a.get("bhf_regularhours") or a.get("bhf_hours") or 0), 2)
+    )
     return {
         "id": a["bhf_attendanceid"],
         "name": a.get("bhf_name") or "",
         "company": bu,
-        "date": str(a.get("bhf_date") or a.get("bhf_transactiondate") or a.get("createdon") or "")[:10],
+        "date": dt_str,
+        "month": m_str,
         "staff": st_name,
         "type": att_type,
         "tally": tally,
+        "in_time": in_fmt,
+        "out_time": out_fmt,
+        "worked_hours": worked_hrs,
         "status": fmt_val(a, "bhf_status", "") or att_type or "Present",
-        "regular_hours": float(a.get("bhf_regularhours") or a.get("bhf_hours") or 0),
-        "overtime_hours": float(a.get("bhf_overtimehours") or a.get("bhf_overtime") or 0),
-        "late_hours": float(a.get("bhf_latehours") or 0),
+        "regular_hours": reg_hrs,
+        "overtime_hours": ot_hrs,
+        "late_hours": lt_hrs,
+        "leave_days": leave_days,
+        "extra_usd": extra_usd,
+        "extra_lbp": extra_lbp,
         "notes": a.get("bhf_notes") or "",
     }
+
+
+def _build_freelance_work_row(f):
+    bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
+    st_name = fmt_val(f, "_bhf_staff_value", "")
+    hrs = float(f.get("bhf_hours") or f.get("bhf_days") or f.get("bhf_quantity") or 0)
+    ext_hrs = float(f.get("bhf_extra") or 0)
+    rate_u = float(f.get("bhf_rate") or f.get("bhf_unitprice") or 0)
+    tot_u = round(float(f.get("bhf_total") or f.get("bhf_usdvalue") or 0), 2)
+    return {
+        "id": f["bhf_freelanceworkid"],
+        "name": f.get("bhf_name") or "",
+        "company": bu,
+        "date": str(f.get("bhf_transactiondate") or "")[:10],
+        "staff": st_name,
+        "shift": fmt_val(f, "bhf_shift", ""),
+        "hours": round(hrs, 2),
+        "extra_hours": round(ext_hrs, 2),
+        "days": round(hrs if hrs > 0 else 1.0, 2),
+        "rate": round(rate_u, 2),
+        "rate_usd": round(rate_u, 2),
+        "total": tot_u,
+        "amount": tot_u,
+        "notes": f.get("bhf_notes") or "",
+    }
+
+
+def _build_freelance_pay_row(f):
+    bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
+    st_name = fmt_val(f, "_bhf_staff_value", "")
+    amt = round(float(f.get("bhf_amount") or f.get("bhf_usdvalue") or f.get("bhf_usdamount") or 0), 2)
+    return {
+        "id": f["bhf_freelancepaymentid"],
+        "name": f.get("bhf_name") or "",
+        "company": bu,
+        "date": str(f.get("bhf_transactiondate") or "")[:10],
+        "staff": st_name,
+        "method": fmt_val(f, "_bhf_method_value", "Cash"),
+        "usd_amount": f.get("bhf_usdamount") if f.get("bhf_usdamount") is not None else amt,
+        "lbp_amount": f.get("bhf_lbpamount"),
+        "amount": amt,
+        "reference": f.get("bhf_reference") or "",
+        "notes": f.get("bhf_notes") or "",
+    }
+
+
+def _build_loans_and_settlements(ln_raw, lns_raw):
+    loan_dir_by_id = {}
+    loan_cp_by_id = {}
+    for ln in ln_raw:
+        lid = (ln.get("bhf_borrowingagreementid") or "").lower()
+        cp = (
+            fmt_val(ln, "_bhf_staff_value", "")
+            or fmt_val(ln, "_bhf_company_value", "")
+            or fmt_val(ln, "_bhf_partner_value", "")
+            or fmt_val(ln, "_bhf_supplier_value", "")
+            or ln.get("bhf_lender")
+            or ""
+        )
+        loan_dir_by_id[lid] = fmt_val(ln, "bhf_direction", "")
+        loan_cp_by_id[lid] = cp
+
+    settled_by_id = Counter()
+    settled_by_name = Counter()
+    loan_settlements = []
+    for ls in lns_raw:
+        bu = ID_TO_BU.get((ls.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        lid = (
+            ls.get("_bhf_loan_value")
+            or ls.get("_bhf_agreement_value")
+            or ls.get("_bhf_borrowingagreement_value")
+            or ""
+        ).lower()
+        loan_name = (
+            fmt_val(ls, "_bhf_loan_value", "")
+            or fmt_val(ls, "_bhf_agreement_value", "")
+            or fmt_val(ls, "_bhf_borrowingagreement_value", "")
+        )
+        ls_method = fmt_val(ls, "_bhf_method_value", "") or fmt_val(ls, "bhf_type", "Outflow")
+        tx_type = fmt_val(ls, "bhf_transactiontype", "")
+        if tx_type:
+            ls_type = tx_type
+        elif ls_method == "Config":
+            ls_type = "Config"
+        else:
+            ldir = loan_dir_by_id.get(lid, "")
+            if "lends" in ldir.lower():
+                ls_type = "Repayment" if ls_method == "Inflow" else "Drawdown"
+            else:
+                ls_type = "Drawdown" if ls_method == "Inflow" else "Repayment"
+        borrower = (
+            fmt_val(ls, "_bhf_staff_value", "")
+            or fmt_val(ls, "_bhf_purpose_value", "")
+            or loan_cp_by_id.get(lid, "")
+        )
+        amt = round(float(ls.get("bhf_usdvalue") if ls.get("bhf_usdvalue") is not None else (ls.get("bhf_usdamount") or 0)), 2)
+        u_amt = ls.get("bhf_usdamount") if ls.get("bhf_usdamount") is not None else (amt if not ls.get("bhf_lbpamount") else 0.0)
+        if ls_type in ("Repayment", "Movement", "Settlement") or amt > 0:
+            if lid:
+                settled_by_id[lid] += amt
+            if loan_name:
+                settled_by_name[loan_name.strip().lower()] += amt
+        dt_s = str(ls.get("bhf_transactiondate") or "")[:10]
+        loan_settlements.append({
+            "id": ls["bhf_borrowingid"],
+            "name": ls.get("bhf_name") or "",
+            "company": bu,
+            "date": dt_s,
+            "rep_date": str(ls.get("bhf_reportingdate") or dt_s)[:10],
+            "loan": loan_name,
+            "borrower": borrower,
+            "counterparty": borrower or loan_name,
+            "type": ls_type,
+            "method": ls_method or "Cash",
+            "usd_amount": u_amt,
+            "lbp_amount": ls.get("bhf_lbpamount"),
+            "amount": amt,
+            "reference": ls.get("bhf_reference") or "",
+            "notes": ls.get("bhf_notes") or "",
+        })
+
+    loans = []
+    for ln in ln_raw:
+        bu = ID_TO_BU.get((ln.get("_owningbusinessunit_value") or "").lower(), "WTC")
+        lid = (ln.get("bhf_borrowingagreementid") or "").lower()
+        lname = ln.get("bhf_name") or ""
+        cp = loan_cp_by_id.get(lid, "")
+        settled = round(float(settled_by_id.get(lid, 0.0) or settled_by_name.get(lname.strip().lower(), 0.0)), 2)
+        principal = round(float(ln.get("bhf_principal") or ln.get("bhf_usdvalue") or ln.get("bhf_amount") or 0), 2)
+        loans.append({
+            "id": ln["bhf_borrowingagreementid"],
+            "name": lname,
+            "company": bu,
+            "lender": cp,
+            "counterparty": cp,
+            "direction": fmt_val(ln, "bhf_direction", ""),
+            "opening_balance": bool(ln.get("bhf_openingbalance")),
+            "usd_amount": ln.get("bhf_usdamount"),
+            "lbp_amount": ln.get("bhf_lbpamount"),
+            "principal": principal,
+            "settled_amount": settled,
+            "interest_rate": float(ln.get("bhf_interestrate") or 0),
+            "start_date": str(ln.get("bhf_startdate") or "")[:10],
+            "end_date": str(ln.get("bhf_enddate") or "")[:10],
+            "notes": ln.get("bhf_notes") or "",
+        })
+    return loans, loan_settlements
+
+
+def _rollup_vat_invoices(vat_invoices, sales_tickets):
+    by_inv_name = {}
+    by_cust = {}
+    for s in sales_tickets:
+        vinv = (s.get("vat_invoice") or "").strip().lower()
+        if vinv:
+            by_inv_name.setdefault(vinv, []).append(s)
+        cname = (s.get("customer") or "").strip().lower()
+        if cname:
+            by_cust.setdefault(cname, []).append(s)
+
+    for vi in vat_invoices:
+        keys = {
+            (vi.get("name") or "").strip().lower(),
+            (vi.get("invoice_no") or "").strip().lower(),
+        } - {""}
+        matched = []
+        seen_ids = set()
+        for k in keys:
+            for s in by_inv_name.get(k, []):
+                sid = s.get("id") or id(s)
+                if sid not in seen_ids:
+                    seen_ids.add(sid)
+                    matched.append(s)
+        if not matched and float(vi.get("total_ttc") or 0) == 0:
+            cname = (vi.get("customer") or "").strip().lower()
+            s_dt = vi.get("start_date") or ""
+            e_dt = vi.get("end_date") or vi.get("date") or ""
+            if cname and s_dt and e_dt:
+                for s in by_cust.get(cname, []):
+                    dt_s = s.get("date") or ""
+                    if s_dt <= dt_s <= e_dt and not s.get("vat_invoice"):
+                        matched.append(s)
+        vi["tickets_count"] = len(matched)
+        if matched and float(vi.get("total_ttc") or 0) == 0:
+            net_sum = round(sum(float(s.get("total") or 0) for s in matched), 2)
+            vat_sum = round(sum(float(s.get("vat") if s.get("vat") is not None else (float(s.get("total") or 0) * 0.11)) for s in matched), 2)
+            if vat_sum == 0 and net_sum > 0:
+                vat_sum = round(net_sum * 0.11, 2)
+            vi["net_amount"] = net_sum
+            vi["vat_amount"] = vat_sum
+            vi["total_ttc"] = round(net_sum + vat_sum, 2)
+    return vat_invoices
 
 
 def _build_external_row(ex):
@@ -1250,7 +1505,7 @@ def fetch_dataverse_records():
         "sup_raw": ("bhf_supplier", "$filter=statecode eq 0", False),
         "r_sal": ("bhf_salarypayment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
         "emp_raw": ("bhf_employment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", False),
-        "att_raw": ("bhf_attendance", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=createdon desc", False),
+        "att_raw": ("bhf_attendance", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
         "flw_raw": ("bhf_freelancework", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
         "flp_raw": ("bhf_freelancepayment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", False),
         "log_raw": ("bhf_logistics", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", False),
@@ -1343,6 +1598,7 @@ def fetch_dataverse_records():
             "time": r.get("bhf_time") or "12:00",
             "overtime": bool(r.get("bhf_overtime")),
         })
+    _rollup_vat_invoices(vat_invoices, sales_tickets)
     print(f"  All Sales Tickets: {len(sales_tickets)}", flush=True)
 
     r_raw = fetched["r_raw"]
@@ -1597,23 +1853,46 @@ def fetch_dataverse_records():
     emp_raw = fetched["emp_raw"]
     employments = []
     mfg_staff_names = set()
+    today_iso = dt.date.today().isoformat()
     for e in emp_raw:
         bu = ID_TO_BU.get((e.get("_owningbusinessunit_value") or "").lower(), "WTC")
         st_name = fmt_val(e, "_bhf_staff_value", "")
         if st_name:
             mfg_staff_names.add(st_name)
+        emp_type_lbl = "Freelance" if e.get("bhf_type") == 684000001 else (fmt_val(e, "bhf_type", "") or fmt_val(e, "bhf_employmenttype", "Staff") or "Staff")
+        sal_usd = float(e.get("bhf_salaryusd") if (e.get("bhf_salaryusd") is not None and float(e.get("bhf_salaryusd") or 0) > 0) else (e.get("bhf_salary") or e.get("bhf_basesalary") or e.get("bhf_usdamount") or 0))
+        w_days = float(e.get("bhf_workingdays") or 30)
+        w_hrs = float(e.get("bhf_workinghours") or 8)
+        ot_mult = float(e.get("bhf_overtimemultiplier") if e.get("bhf_overtimemultiplier") is not None else 1.0)
+        lt_mult = float(e.get("bhf_latenessmultiplier") if e.get("bhf_latenessmultiplier") is not None else 1.0)
+        reimb = float(e.get("bhf_reimbursement") or 0)
+        ded = float(e.get("bhf_deduction") or 0)
+        vac = float(e.get("bhf_vacation") or 0)
+        sh_wage = float(e.get("bhf_wage") or e.get("bhf_dailyrate") or e.get("bhf_rate") or 0)
+        sh_hrs = float(e.get("bhf_duration") or 0)
+        end_dt = str(e.get("bhf_enddate") or "")[:10]
+        status_lbl = "Ended" if (end_dt and end_dt < today_iso) else "Current"
         employments.append({
             "id": e["bhf_employmentid"],
             "name": e.get("bhf_name") or "",
             "company": bu,
             "staff": st_name,
             "role": fmt_val(e, "_bhf_role_value", "") or e.get("bhf_jobtitle") or "",
-            "type": fmt_val(e, "bhf_employmenttype", "Regular"),
-            "salary_usd": float(e.get("bhf_basesalary") or e.get("bhf_usdamount") or 0),
-            "daily_rate": float(e.get("bhf_dailyrate") or e.get("bhf_rate") or 0),
+            "type": emp_type_lbl,
+            "salary_usd": round(sal_usd, 2),
+            "daily_rate": round(sh_wage if sh_wage > 0 else (sal_usd / w_days if w_days > 0 else 0), 2),
+            "working_days": w_days,
+            "working_hours": w_hrs,
+            "overtime_multiplier": ot_mult,
+            "lateness_multiplier": lt_mult,
+            "reimbursement": round(reimb, 2),
+            "deduction": round(ded, 2),
+            "vacation_days": vac,
+            "shift_wage": round(sh_wage, 2),
+            "shift_hours": sh_hrs,
             "start_date": str(e.get("bhf_startdate") or "")[:10],
-            "end_date": str(e.get("bhf_enddate") or "")[:10],
-            "status": fmt_val(e, "bhf_status", "Active"),
+            "end_date": end_dt,
+            "status": status_lbl,
             "notes": e.get("bhf_notes") or "",
         })
 
@@ -1628,42 +1907,18 @@ def fetch_dataverse_records():
     flw_raw = fetched["flw_raw"]
     freelance_entries = []
     for f in flw_raw:
-        bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        st_name = fmt_val(f, "_bhf_staff_value", "")
-        if st_name:
-            mfg_staff_names.add(st_name)
-        freelance_entries.append({
-            "id": f["bhf_freelanceworkid"],
-            "name": f.get("bhf_name") or "",
-            "company": bu,
-            "date": str(f.get("bhf_transactiondate") or "")[:10],
-            "staff": st_name,
-            "days": float(f.get("bhf_days") or f.get("bhf_quantity") or 1),
-            "rate": float(f.get("bhf_rate") or f.get("bhf_unitprice") or 0),
-            "amount": float(f.get("bhf_usdvalue") or f.get("bhf_total") or 0),
-            "notes": f.get("bhf_notes") or "",
-        })
+        row_fw = _build_freelance_work_row(f)
+        if row_fw["staff"]:
+            mfg_staff_names.add(row_fw["staff"])
+        freelance_entries.append(row_fw)
 
     flp_raw = fetched["flp_raw"]
     freelance_payments = []
     for f in flp_raw:
-        bu = ID_TO_BU.get((f.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        st_name = fmt_val(f, "_bhf_staff_value", "")
-        if st_name:
-            mfg_staff_names.add(st_name)
-        freelance_payments.append({
-            "id": f["bhf_freelancepaymentid"],
-            "name": f.get("bhf_name") or "",
-            "company": bu,
-            "date": str(f.get("bhf_transactiondate") or "")[:10],
-            "staff": st_name,
-            "method": fmt_val(f, "_bhf_method_value", "Cash"),
-            "usd_amount": f.get("bhf_usdamount"),
-            "lbp_amount": f.get("bhf_lbpamount"),
-            "amount": float(f.get("bhf_usdvalue") or 0),
-            "reference": f.get("bhf_reference") or "",
-            "notes": f.get("bhf_notes") or "",
-        })
+        row_fp = _build_freelance_pay_row(f)
+        if row_fp["staff"]:
+            mfg_staff_names.add(row_fp["staff"])
+        freelance_payments.append(row_fp)
 
     log_raw = fetched["log_raw"]
     logistics_allowances = []
@@ -1717,46 +1972,8 @@ def fetch_dataverse_records():
     external_movements = [_build_external_row(ex) for ex in ext_raw]
 
     ln_raw = fetched["ln_raw"]
-    loans = []
-    for ln in ln_raw:
-        bu = ID_TO_BU.get((ln.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        loans.append({
-            "id": ln["bhf_borrowingagreementid"],
-            "name": ln.get("bhf_name") or "",
-            "company": bu,
-            "lender": fmt_val(ln, "_bhf_staff_value", "") or fmt_val(ln, "_bhf_company_value", "") or fmt_val(ln, "_bhf_partner_value", "") or fmt_val(ln, "_bhf_supplier_value", "") or ln.get("bhf_lender") or "",
-            "direction": fmt_val(ln, "bhf_direction", ""),
-            "opening_balance": bool(ln.get("bhf_openingbalance")),
-            "usd_amount": ln.get("bhf_usdamount"),
-            "lbp_amount": ln.get("bhf_lbpamount"),
-            "principal": float(ln.get("bhf_principal") or ln.get("bhf_usdvalue") or ln.get("bhf_amount") or 0),
-            "interest_rate": float(ln.get("bhf_interestrate") or 0),
-            "start_date": str(ln.get("bhf_startdate") or "")[:10],
-            "end_date": str(ln.get("bhf_enddate") or "")[:10],
-            "notes": ln.get("bhf_notes") or "",
-        })
-
     lns_raw = fetched["lns_raw"]
-    loan_settlements = []
-    for ls in lns_raw:
-        bu = ID_TO_BU.get((ls.get("_owningbusinessunit_value") or "").lower(), "WTC")
-        ls_method = fmt_val(ls, "_bhf_method_value", "") or fmt_val(ls, "bhf_type", "Outflow")
-        ls_type = "Drawdown" if ls_method == "Inflow" else ("Config" if ls_method == "Config" else "Repayment")
-        loan_settlements.append({
-            "id": ls["bhf_borrowingid"],
-            "name": ls.get("bhf_name") or "",
-            "company": bu,
-            "date": str(ls.get("bhf_transactiondate") or "")[:10],
-            "loan": fmt_val(ls, "_bhf_agreement_value", "") or fmt_val(ls, "_bhf_borrowingagreement_value", ""),
-            "borrower": fmt_val(ls, "_bhf_staff_value", "") or fmt_val(ls, "_bhf_purpose_value", ""),
-            "type": ls_type,
-            "method": ls_method or "Cash",
-            "usd_amount": ls.get("bhf_usdamount"),
-            "lbp_amount": ls.get("bhf_lbpamount"),
-            "amount": float(ls.get("bhf_usdvalue") or 0),
-            "reference": ls.get("bhf_reference") or "",
-            "notes": ls.get("bhf_notes") or "",
-        })
+    loans, loan_settlements = _build_loans_and_settlements(ln_raw, lns_raw)
 
     cv_raw = fetched["cv_raw"]
     conversions = [_build_conversion_row(cv) for cv in cv_raw]
@@ -2711,9 +2928,10 @@ def main():
     cf_only = "--cf-only" in sys.argv
     conv_only = "--conversions-only" in sys.argv
     cf_streams_only = "--cf-streams-only" in sys.argv
+    payroll_only = "--payroll-only" in sys.argv
     skip_dax = "--skip-dax" in sys.argv or cf_only
     snap_path = DATA_DIR / "mfg_snapshot.json"
-    if (cf_only or conv_only or cf_streams_only) and snap_path.exists():
+    if (cf_only or conv_only or cf_streams_only or payroll_only) and snap_path.exists():
         packed_payload = json.loads(snap_path.read_text(encoding="utf-8"))
         if cf_only:
             print("== Fast Cash Flow & Till Parity Patch (--cf-only) ==", flush=True)
@@ -2728,7 +2946,7 @@ def main():
             for r in raw_rows:
                 out = {}
                 for ck, v in r.items():
-                    if ck == "id" or (omit_name and ck == "name"):
+                    if (pf and ck == "id") or (omit_name and ck == "name"):
                         continue
                     if ck == "notes" and isinstance(v, str):
                         v = _MIG_TAG_RE.sub("", _WB_TAG_RE.sub("", v)).strip()
@@ -2774,7 +2992,9 @@ def main():
                     arr.pop()
                 out_rows.append(arr)
             packed_payload["_s"] = pool
-            entry = {"c": col_set, "sc": sc, "r": out_rows, "p": pf}
+            entry = {"c": col_set, "sc": sc, "r": out_rows}
+            if pf:
+                entry["p"] = pf
             if has_rep:
                 entry["hr"] = 1
             packed_payload.setdefault("records", {})[tkey] = entry
@@ -2793,6 +3013,106 @@ def main():
             _pack_single_table("salaries", "sa", [_build_salary_row(r) for r in r_sal])
             _pack_single_table("attendance", "at", [_build_attendance_row(a) for a in att_raw], omit_name=True)
             _pack_single_table("external_movements", "em", [_build_external_row(ex) for ex in ext_raw])
+        if payroll_only:
+            print("== Fast Payroll, Attendance, Loans & VAT Patch (--payroll-only) ==", flush=True)
+            emp_raw = safe_get_fmt("bhf_employment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_startdate desc", True, False)
+            att_raw = safe_get_fmt("bhf_attendance", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", True, False)
+            flw_raw = safe_get_fmt("bhf_freelancework", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", True, False)
+            flp_raw = safe_get_fmt("bhf_freelancepayment", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", True, False)
+            ln_raw = safe_get_fmt("bhf_borrowingagreement", f"$filter=statecode eq 0 and ({bu_filter})", True, False)
+            lns_raw = safe_get_fmt("bhf_borrowing", f"$filter=statecode eq 0 and ({bu_filter})&$orderby=bhf_transactiondate desc", True, False)
+            vi_raw = safe_get_fmt(
+                "bhf_vatinvoice",
+                f"$filter=statecode eq 0 and ({bu_filter})"
+                "&$select=bhf_vatinvoiceid,bhf_name,bhf_invoiceno,_bhf_customer_value,bhf_invoicedate,bhf_startdate,bhf_enddate,bhf_netamount,bhf_vatamount,bhf_notes,_owningbusinessunit_value",
+                True,
+                False,
+            )
+            today_iso = dt.date.today().isoformat()
+            emp_rows = []
+            for e in emp_raw:
+                bu = ID_TO_BU.get((e.get("_owningbusinessunit_value") or "").lower(), "WTC")
+                st_name = fmt_val(e, "_bhf_staff_value", "")
+                emp_type_lbl = "Freelance" if e.get("bhf_type") == 684000001 else (fmt_val(e, "bhf_type", "") or fmt_val(e, "bhf_employmenttype", "Staff") or "Staff")
+                sal_usd = float(e.get("bhf_salaryusd") if (e.get("bhf_salaryusd") is not None and float(e.get("bhf_salaryusd") or 0) > 0) else (e.get("bhf_salary") or e.get("bhf_basesalary") or e.get("bhf_usdamount") or 0))
+                w_days = float(e.get("bhf_workingdays") or 30)
+                w_hrs = float(e.get("bhf_workinghours") or 8)
+                ot_mult = float(e.get("bhf_overtimemultiplier") if e.get("bhf_overtimemultiplier") is not None else 1.0)
+                lt_mult = float(e.get("bhf_latenessmultiplier") if e.get("bhf_latenessmultiplier") is not None else 1.0)
+                reimb = float(e.get("bhf_reimbursementusd") or e.get("bhf_reimbursement") or 0)
+                ded = float(e.get("bhf_deduction") or 0)
+                vac = float(e.get("bhf_vacation") or 0)
+                sh_wage = float(e.get("bhf_wage") or e.get("bhf_dailyrate") or e.get("bhf_rate") or 0)
+                sh_hrs = float(e.get("bhf_duration") or 0)
+                end_dt = str(e.get("bhf_enddate") or "")[:10]
+                status_lbl = "Ended" if (end_dt and end_dt < today_iso) else "Current"
+                emp_rows.append({
+                    "id": e["bhf_employmentid"],
+                    "name": e.get("bhf_name") or "",
+                    "company": bu,
+                    "staff": st_name,
+                    "role": fmt_val(e, "_bhf_role_value", "") or e.get("bhf_jobtitle") or "",
+                    "type": emp_type_lbl,
+                    "salary_usd": round(sal_usd, 2),
+                    "daily_rate": round(sh_wage if sh_wage > 0 else (sal_usd / w_days if w_days > 0 else 0), 2),
+                    "working_days": w_days,
+                    "working_hours": w_hrs,
+                    "overtime_multiplier": ot_mult,
+                    "lateness_multiplier": lt_mult,
+                    "reimbursement": round(reimb, 2),
+                    "deduction": round(ded, 2),
+                    "vacation_days": vac,
+                    "shift_wage": round(sh_wage, 2),
+                    "shift_hours": sh_hrs,
+                    "start_date": str(e.get("bhf_startdate") or "")[:10],
+                    "end_date": end_dt,
+                    "status": status_lbl,
+                    "notes": e.get("bhf_notes") or "",
+                })
+            loans_rows, lset_rows = _build_loans_and_settlements(ln_raw, lns_raw)
+            vi_rows = []
+            for vi in vi_raw:
+                bu = ID_TO_BU.get((vi.get("_owningbusinessunit_value") or "").lower(), "WTC")
+                net = float(vi.get("bhf_netamount") or 0)
+                vat = float(vi.get("bhf_vatamount") or 0)
+                inv_date = str(vi.get("bhf_invoicedate") or vi.get("bhf_enddate") or vi.get("bhf_startdate") or "")[:10]
+                vi_rows.append({
+                    "id": vi["bhf_vatinvoiceid"],
+                    "name": vi.get("bhf_name") or "",
+                    "company": bu,
+                    "invoice_no": vi.get("bhf_invoiceno") or vi.get("bhf_name") or "",
+                    "customer": fmt_val(vi, "_bhf_customer_value", ""),
+                    "date": inv_date,
+                    "start_date": str(vi.get("bhf_startdate") or "")[:10],
+                    "end_date": str(vi.get("bhf_enddate") or "")[:10],
+                    "net_amount": round(net, 2),
+                    "vat_amount": round(vat, 2),
+                    "total_ttc": round(net + vat, 2),
+                    "notes": vi.get("bhf_notes") or "",
+                })
+            st_packed = (packed_payload.get("records") or {}).get("sales_tickets") or {}
+            st_unpacked = []
+            if isinstance(st_packed, dict) and "c" in st_packed:
+                pool_s = packed_payload.get("_s") or []
+                cols_s = st_packed["c"]
+                sc_s = st_packed["sc"]
+                for idx_s, row_s in enumerate(st_packed.get("r") or []):
+                    obj_s = {"id": f"st{idx_s}"}
+                    for ci_s, val_s in enumerate(row_s):
+                        if val_s is None:
+                            continue
+                        if sc_s[ci_s] and isinstance(val_s, int):
+                            val_s = pool_s[val_s]
+                        obj_s[cols_s[ci_s]] = val_s
+                    st_unpacked.append(obj_s)
+            _rollup_vat_invoices(vi_rows, st_unpacked)
+            _pack_single_table("employments", None, emp_rows)
+            _pack_single_table("attendance", "at", [_build_attendance_row(a) for a in att_raw], omit_name=True)
+            _pack_single_table("freelance_entries", None, [_build_freelance_work_row(f) for f in flw_raw])
+            _pack_single_table("freelance_payments", None, [_build_freelance_pay_row(f) for f in flp_raw])
+            _pack_single_table("loans", None, loans_rows)
+            _pack_single_table("loan_settlements", "ls", lset_rows)
+            _pack_single_table("vat_invoices", None, vi_rows)
         packed_payload["generated_at"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         snap_path.write_text(json.dumps(packed_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         print(f"  Snapshot saved -> {snap_path} ({snap_path.stat().st_size // 1024} KB)", flush=True)
