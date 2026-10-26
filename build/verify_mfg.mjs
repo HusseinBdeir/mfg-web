@@ -194,13 +194,13 @@ try {
 
   const views = [
     'overview', 'entities', 'pbi', 'tables', 'sentinels', 'kiosks',
-    'sales', 'customers', 'pricing', 'sales_vat', 'sales_analytics',
+    'sales', 'customers', 'pricing',
     'raw', 'suppliers', 'raw_analytics',
     'fleet', 'fleet_analytics',
-    'cashflow',
+    'cashflow', 'external', 'ledger_treasury', 'conversions',
     'expenses', 'expenses_analytics',
     'payroll', 'payroll_attendance', 'payroll_contracts', 'payroll_analytics',
-    'ledger', 'ledger_treasury', 'statements', 'users'
+    'ledger', 'statements', 'users'
   ];
   const titleMismatches = [];
   for (const v of views) {
@@ -225,7 +225,7 @@ try {
       const docTitlePrefix = (document.title || '').split(' · ')[0].trim();
       const subtabBar = document.getElementById('hubSubtabBar');
       const activeSubtabLbl = subtabBar ? (subtabBar.querySelector('.hub-subtab.active .hub-subtab-lbl')?.textContent?.trim() || '') : topbarTitle;
-      const subtabCountOk = ('${v}' === 'kiosks' || '${v}' === 'cashflow') ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
+      const subtabCountOk = ('${v}' === 'kiosks') ? !subtabBar : Boolean(subtabBar && activeSubtabLbl === topbarTitle);
       const allMatch = Boolean(
         railLabel &&
         railLabel === expectedHubTitle &&
@@ -317,11 +317,12 @@ try {
     { view: 'raw', panel: '#rawPanel', modal: 'raw', secondPanel: '#rawSupPanel' },
     { view: 'fleet', panel: '#fuelPanel', modal: 'fuel', secondPanel: '#equipPanel' },
     { view: 'pricing', panel: '#pricingPanel', modal: 'pricerule', secondPanel: '#listPricePanel' },
-    { view: 'sales_vat', panel: '#vatInvPanel', modal: 'vatinvoice', secondPanel: '#creditTermsPanel' },
     { view: 'customers', panel: '#rcptPanel', modal: 'receipt', secondPanel: '#custPanel' },
     { view: 'suppliers', panel: '#settlePanel', modal: 'settlement', secondPanel: '#supPanel' },
     { view: 'expenses', panel: '#expPanel', modal: 'expense', secondPanel: '#expCatPanel' },
     { view: 'payroll', panel: '#paySalPanel', modal: 'salary', secondPanel: '#payStaffRegPanel' },
+    { view: 'external', panel: '#extEntriesPanel', modal: 'external', secondPanel: '#extStakeholdersPanel' },
+    { view: 'conversions', panel: '#fxConversionsPanel', modal: 'conversion', secondPanel: '#fxSummaryPanel' },
     { view: 'ledger', panel: '#soaPanel', modal: 'treasury', secondPanel: '#glPanel' },
     { view: 'ledger_treasury', panel: '#treasuryLoansPanel', modal: 'treasury', secondPanel: '#treasuryExtPanel' }
   ];
@@ -2085,11 +2086,11 @@ try {
     const pbiPageCount = document.querySelectorAll('.pbi-page-tab[data-pbi-page]').length;
     const movedJumpCount = document.querySelectorAll('.pbi-studio-hdr [data-pbi-jump]').length;
 
-    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales Analytics sub-tab)
+    // Test jumping from Analytics & Insights to a moved page (p18_tickets -> Sales & Deliveries #salesPadPanel)
     const jumpTickets = document.querySelector('.pbi-studio-hdr [data-pbi-jump="p18_tickets"]');
     if (jumpTickets) jumpTickets.click();
     const afterJumpTopTitle = (document.getElementById('topbarTitle') || {}).textContent || '';
-    const salesHubPresent = !!document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
+    const salesHubPresent = !!document.getElementById('salesPadPanel');
 
     // Verify operational register tabs have ZERO stacked .mod-analytics-hub at the bottom
     const opsViews = ['sales', 'raw', 'fleet', 'pricing', 'customers', 'suppliers', 'expenses', 'payroll', 'ledger'];
@@ -2098,8 +2099,8 @@ try {
       return !document.querySelector('#workspace .mod-analytics-hub');
     });
 
-    // Verify all 9 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
-    const modViews = ['sales_analytics', 'sales_vat', 'raw_analytics', 'fleet_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
+    // Verify all 7 dedicated analytics/audit/recon sub-views render their .mod-analytics-hub with KPIs, charts/tables & 0px overflow
+    const modViews = ['raw_analytics', 'fleet_analytics', 'expenses_analytics', 'payroll_analytics', 'ledger_treasury', 'sentinels', 'statements'];
     const modResults = [];
     for (const v of modViews) {
       window.__navToView(v);
@@ -2111,36 +2112,36 @@ try {
     }
     const allModsOk = modResults.every(r => r.hasHub && r.kpis >= 4 && r.panels >= 1 && r.overflow === 0);
 
-    // Verify Collapse -> Expand Insights toggle round-trip & last-section restoration on #sales_analytics
-    window.__navToView('sales_analytics');
-    const secAnalyticsBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"] [data-mod-sec="analytics"]');
+    // Verify Collapse -> Expand Insights toggle round-trip & last-section restoration on #raw_analytics
+    window.__navToView('raw_analytics');
+    const secAnalyticsBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="raw_analytics"] [data-mod-sec="stock"]');
     if (secAnalyticsBtn) secAnalyticsBtn.click();
-    const collapseBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"] [data-mod-toggle="collapse"]');
+    const collapseBtn = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="raw_analytics"] [data-mod-toggle="collapse"]');
     if (collapseBtn) collapseBtn.click();
-    const collapsedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
+    const collapsedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="raw_analytics"]');
     const collapsedBodyAbsent = !!(collapsedHub && !collapsedHub.querySelector('.mod-analytics-body'));
     const expandBtn = collapsedHub ? collapsedHub.querySelector('[data-mod-toggle="expand"]') : null;
     const expandBtnText = expandBtn ? expandBtn.textContent.trim() : '';
     if (expandBtn) expandBtn.click();
-    const expandedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="sales_analytics"]');
+    const expandedHub = document.querySelector('#workspace .mod-analytics-hub[data-mod-hub="raw_analytics"]');
     const expandedBodyPresent = !!(expandedHub && expandedHub.querySelector('.mod-analytics-body'));
-    const restoredAnalyticsPane = !!(expandedHub && expandedHub.querySelector('[data-mod-sec-pane="analytics"]'));
+    const restoredAnalyticsPane = !!(expandedHub && expandedHub.querySelector('[data-mod-sec-pane="stock"]'));
     const expandedKpis = expandedHub ? expandedHub.querySelectorAll('.pbi-kpi-card').length : 0;
     const collapseRestored = !!(expandedHub && expandedHub.querySelector('[data-mod-toggle="collapse"]'));
-    // Restore default tickets section cleanly
-    const secTicketsBtn = expandedHub ? expandedHub.querySelector('[data-mod-sec="tickets"]') : null;
-    if (secTicketsBtn) secTicketsBtn.click();
+    // Restore default jv section cleanly
+    const secJvBtn = expandedHub ? expandedHub.querySelector('[data-mod-sec="jv"]') : null;
+    if (secJvBtn) secJvBtn.click();
     const expandToggleOk = collapsedBodyAbsent && expandBtnText.includes('Expand Insights') && expandedBodyPresent && restoredAnalyticsPane && expandedKpis >= 4 && collapseRestored;
 
     return {
       ok: pbiTitle === 'Analytics & Insights' && pbiTopTitle === 'Analytics & Insights' &&
           pbiPageCount === 12 && movedJumpCount === 8 &&
-          afterJumpTopTitle === 'Sales Analytics' && salesHubPresent && noStackedOnOps && allModsOk && expandToggleOk,
+          afterJumpTopTitle === 'Sales & Deliveries' && salesHubPresent && noStackedOnOps && allModsOk && expandToggleOk,
       pbiTitle, pbiPageCount, movedJumpCount, afterJumpTopTitle, salesHubPresent, noStackedOnOps, expandToggleOk, modResults
     };
   })()`);
   modAnalyticsProbe && modAnalyticsProbe.ok
-    ? pass('Analytics & Insights · 12 core pages + 8 moved pages routed to dedicated Analytics sub-tabs (0 stacked analytics on operational registers)', `studio=${modAnalyticsProbe.pbiPageCount} pages · moved=${modAnalyticsProbe.movedJumpCount} · hubs=${modAnalyticsProbe.modResults.length}/10`)
+    ? pass('Analytics & Insights · 12 core pages + 8 moved pages routed to dedicated sub-tabs (0 stacked analytics on operational registers)', `studio=${modAnalyticsProbe.pbiPageCount} pages · moved=${modAnalyticsProbe.movedJumpCount} · hubs=${modAnalyticsProbe.modResults.length}/7`)
     : fail('Analytics & Insights + dedicated analytics sub-tabs', JSON.stringify(modAnalyticsProbe));
 
   if (!MOBILE) {
@@ -3808,8 +3809,12 @@ try {
     await wait(30);
     const resetToIndivOk = Boolean(document.querySelector('#tillRecentPanel [data-cf-mode="entries"].active') && !document.querySelector('#tillRecentPanel [data-cf-mode="daily"].active'));
 
-    // B. Unified single-page #cashflow: zero sub-tab bar (#hubSubtabBar absent), embedded visual charts (clean round $0 ticks, Operating vs Treasury split, Daily 30d toggle) & #tillBridgePanel By Stream <-> Monthly Progression toggle
-    const noSubtabBarOnCf = !document.getElementById('hubSubtabBar');
+    // B. 4-subtab #cashflow hub (Cash Flow & Till · External Entries · Loans & Settlements · FX Conversions) + unclipped .chip-bar + embedded visual charts
+    const subtabBarEl = document.getElementById('hubSubtabBar');
+    const cfSubtabViews = subtabBarEl ? Array.from(subtabBarEl.querySelectorAll('.hub-subtab')).map(b => b.getAttribute('data-hub-subtab')).join(',') : '';
+    const cfSubtabsOk = cfSubtabViews === 'cashflow,external,ledger_treasury,conversions';
+    const cfChipBar = document.querySelector('#tillRecentPanel .chip-bar');
+    const cfChipsUnclipped = Boolean(cfChipBar && (window.innerWidth <= 860 || cfChipBar.scrollWidth <= cfChipBar.clientWidth + 2));
     const hasExplainer = Boolean(document.querySelector('#workspace .cf-explainer-bar'));
     const svgTexts = Array.from(document.querySelectorAll('#workspace svg text')).map(t => t.textContent.trim());
     const cleanTicksOk = svgTexts.includes('$0') && !svgTexts.includes('$32') && !svgTexts.includes('-$504') && !svgTexts.includes('$568') && !svgTexts.includes('$2.13M');
@@ -3844,11 +3849,12 @@ try {
 
     const overflowPx = Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-    // Entry seat u4 confidentiality check on #cashflow (#tillRecentPanel 1st, 0 confidential salary/external/extended/borrowing chips or rows)
+    // Entry seat u4 confidentiality check on #cashflow (#tillRecentPanel 1st, 0 subtab bar for u4, 0 confidential salary/external/extended/borrowing chips or rows)
     await T.performLogin('scale1.wtc@bhfirms.com', '4444', { bypass2FA: true });
     window.__navToView('cashflow');
     await wait(35);
     const u4FirstPanel = (document.querySelector('#workspace .panel-card[id]') || {}).id || '';
+    const u4NoSubtabBar = !document.getElementById('hubSubtabBar');
     const u4NoConfChips = !document.querySelector('#tillRecentPanel [data-chip="cf_sal"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_ext"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_extd"]') && !document.querySelector('#tillRecentPanel [data-chip="cf_loan"]');
     const u4BodyTxt = (document.querySelector('#tillRecentPanel tbody')?.textContent || '');
     const u4NoConfRows = !u4BodyTxt.includes('Salary Paid') && !u4BodyTxt.includes('External Out') && !u4BodyTxt.includes('Extended Out');
@@ -3860,8 +3866,8 @@ try {
     await wait(30);
 
     return {
-      ok: Boolean(recentFirstOk && defaultIndivOk && resetToIndivOk && noSubtabBarOnCf && defaultStreamModeOk && no5300CfOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && hasExplainer && cleanTicksOk && horizReconOk && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoConfChips && u4NoConfRows),
-      recentFirstOk, defaultIndivOk, resetToIndivOk, noSubtabBarOnCf, defaultStreamModeOk, no5300CfOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, hasExplainer, cleanTicksOk, horizReconOk, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoConfChips, u4NoConfRows,
+      ok: Boolean(recentFirstOk && defaultIndivOk && resetToIndivOk && cfSubtabsOk && cfChipsUnclipped && defaultStreamModeOk && no5300CfOk && hasNineStreamTotal && dailyOk && drillDayOk && clearedOk && hasExplainer && cleanTicksOk && horizReconOk && octDrillOk && dailyChartOk && overflowPx === 0 && u4FirstPanel === 'tillRecentPanel' && u4NoSubtabBar && u4NoConfChips && u4NoConfRows),
+      recentFirstOk, defaultIndivOk, resetToIndivOk, cfSubtabsOk, cfSubtabViews, cfChipsUnclipped, defaultStreamModeOk, no5300CfOk, extChipOk, extdChipOk, salChipOk, loanChipOk, hasNineStreamTotal, dailyOk, drillDayOk, clearedOk, hasExplainer, cleanTicksOk, horizReconOk, octDrillOk, dailyChartOk, overflowPx, u4FirstPanel, u4NoSubtabBar, u4NoConfChips, u4NoConfRows,
       allEntriesTfoot, extTfoot, extdTfoot, salTfoot, loanTfoot, drillDayTfoot
     };
   })()`);
@@ -4124,6 +4130,54 @@ try {
   apRankingProbe && apRankingProbe.ok
     ? pass('Overhead Analytics (#expenses_analytics) bar chart & 3-leg schedule ranking · descending by metric (All-Time & Period-filtered) + period Leg 1+Leg 2 = Total Raw Cost', `AP=[${apRankingProbe.topAp}] · Vol=[${apRankingProbe.topVol}]`)
     : fail('Overhead Analytics bar chart & 3-leg schedule ranking', JSON.stringify(apRankingProbe));
+
+  // 7z. 4-Tab Sales & Customers Consolidation Probe (Sales & Deliveries, Customers & Receivables, Pricing & Commissions, Customers & Products)
+  const salesConsolidationProbe = await evaluate(`(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.__navToView('sales');
+    await wait(60);
+    const salesSubtabs = Array.from(document.querySelectorAll('#hubSubtabBar [data-hub-subtab]')).map(b => b.getAttribute('data-hub-subtab'));
+    const fourTabsOk = salesSubtabs.length === 4 && salesSubtabs.join(',') === 'sales,customers,pricing,reg_customers';
+    const hasSalesCharts = !!document.getElementById('salesChartsRow');
+    const hasSalesPadPanel = !!document.getElementById('salesPadPanel');
+    const padRowsCount = document.querySelectorAll('#salesPadPanel tbody tr').length;
+
+    // Legacy #sales_analytics redirects cleanly to #sales
+    window.__navToView('sales_analytics');
+    await wait(40);
+    const redirectedSalesOk = (document.getElementById('topbarTitle') || {}).textContent === 'Sales & Deliveries';
+
+    // Legacy #sales_vat redirects cleanly to #customers (Customers & Receivables)
+    window.__navToView('sales_vat');
+    await wait(60);
+    const redirectedCustOk = (document.getElementById('topbarTitle') || {}).textContent === 'Customers & Receivables';
+    const hasArVatCharts = !!document.getElementById('arVatChartsRow');
+    const hasCustPanel = !!document.getElementById('custPanel');
+    const hasVatInvPanel = !!document.getElementById('vatInvPanel');
+    const noStandaloneCreditTermsPanel = !document.getElementById('creditTermsPanel');
+    const custHeaders = Array.from(document.querySelectorAll('#custPanel thead th')).map(th => th.textContent.trim());
+    const custMergedColsOk = custHeaders.some(h => /IVA & Term/i.test(h)) && custHeaders.some(h => /Output VAT/i.test(h)) && custHeaders.some(h => /VAT Due/i.test(h));
+    // Verify top row of #vatInvPanel is a Billed invoice (> $0), not a $0.00 blank serial
+    const firstVatRowTds = Array.from(document.querySelectorAll('#vatInvPanel tbody tr.rrow:first-child td')).map(td => td.textContent.trim());
+    const topVatBilledOk = firstVatRowTds.some(t => t === 'Billed') && !firstVatRowTds.slice(-3).every(t => t === '$0.00');
+
+    // Pricing & Commissions (#pricing) has embedded charts, Grade Price Corridor (#listPricePanel), and Below-Agreed Shortfalls (#belowAgreedPanel)
+    window.__navToView('pricing');
+    await wait(60);
+    const hasPricingCharts = !!document.getElementById('pricingChartsRow');
+    const hasCorridorCol = Array.from(document.querySelectorAll('#listPricePanel thead th')).some(th => /Agreed Corridor/i.test(th.textContent));
+    const hasBelowAgreedPanel = !!document.getElementById('belowAgreedPanel');
+
+    window.__navToView('overview');
+    await wait(40);
+    return {
+      ok: Boolean(fourTabsOk && hasSalesCharts && hasSalesPadPanel && padRowsCount > 0 && redirectedSalesOk && redirectedCustOk && hasArVatCharts && hasCustPanel && hasVatInvPanel && noStandaloneCreditTermsPanel && custMergedColsOk && topVatBilledOk && hasPricingCharts && hasCorridorCol && hasBelowAgreedPanel),
+      salesSubtabs, padRowsCount, redirectedSalesOk, redirectedCustOk, custMergedColsOk, topVatBilledOk, hasPricingCharts, hasCorridorCol, hasBelowAgreedPanel
+    };
+  })()`);
+  salesConsolidationProbe && salesConsolidationProbe.ok
+    ? pass('Sales & Customers 4-tab consolidation · merged Sales Analytics, VAT & Credit & Pricing Corridors into Sales, Customers & Pricing (0 standalone $0 credit-limit table; billed VAT invoices sorted first)', `tabs=[${salesConsolidationProbe.salesSubtabs.join(', ')}] · pads=${salesConsolidationProbe.padRowsCount}`)
+    : fail('Sales & Customers 4-tab consolidation', JSON.stringify(salesConsolidationProbe));
 
 
   // 8. Runtime errors

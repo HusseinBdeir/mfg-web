@@ -123,6 +123,8 @@
     cfChartGrain: 'monthly',
     rawSupFilter: 'all',
     salesHaulFilter: 'all',
+    salesPadFilter: 'all',
+    vatInvFilter: 'all',
     rawSiteFilter: 'expense',
     activeStatement: '01',
     stmtCatFilter: 'all',
@@ -2422,6 +2424,10 @@
     credterm: 'credit_terms',
     vatinv: 'vat_invoices',
     tr_loans: 'loans',
+    ext_entries: 'external_movements',
+    external: 'external_movements',
+    fx_conv: 'conversions',
+    conversions: 'conversions',
     st17: 'price_rules'
   };
 
@@ -2711,6 +2717,21 @@
       { key: 'close_usd', label: 'Closing USD ($)', kind: 'numeric' },
       { key: 'close_lbp', label: 'Closing LBP (LL)', kind: 'numeric' },
       { key: 'close_combined', label: 'Closing Till ($)', kind: 'numeric' }
+    ],
+    ext_entries: [
+      { key: 'company', label: 'Company' },
+      { key: 'kind', label: 'Kind' },
+      { key: 'counterparty', label: 'Counterparty / Stakeholder' },
+      { key: 'direction', label: 'Direction' },
+      { key: 'usd_amount', label: 'USD Amount ($)', kind: 'numeric' },
+      { key: 'lbp_amount', label: 'LBP Amount (LL)', kind: 'numeric' }
+    ],
+    fx_conv: [
+      { key: 'company', label: 'Company' },
+      { key: 'type', label: 'Direction' },
+      { key: 'usd_delta', label: 'USD Change ($)', kind: 'numeric' },
+      { key: 'lbp_delta', label: 'LBP Change (LL)', kind: 'numeric' },
+      { key: 'exchange_rate', label: 'Exchange Rate', kind: 'numeric' }
     ]
   };
 
@@ -2767,7 +2788,7 @@
     const k = String(colKey || '');
     if (/^(cost_class|cost_bucket|working_days|assigned_trucks|companies_list|trucks_list|drivers_list|gps_status|supplier_role|payable_leg)$/i.test(k)) return false;
     if (isBooleanColKey(k)) return false;
-    return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|remaining|haul|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|in_usd|out_usd|net_usd|open_usd|close_usd|in_lbp|out_lbp|net_lbp|close_lbp|close_combined|^lbp$|entries_cnt|overtime_rate|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
+    return /price|cost|amount|total|vat_amount|^vat$|limit|salary|balance|remaining|haul|adj|indiff|rate_usd|daily_usd|principal|^value$|previous_value|^change$|cash_in|cash_out|closing_till|in_usd|out_usd|net_usd|open_usd|close_usd|in_lbp|out_lbp|net_lbp|close_lbp|close_combined|usd_delta|lbp_delta|^lbp$|entries_cnt|overtime_rate|qty|litres|capacity|factor|pct|percentage|days|hours|_count$|odometer|interest_rate|exchange_rate|^lat|^long|loads|fills|rules|tickets|trips|km_run|debit|credit|earnings|paid|base|ot_hrs|ot_pay|late_hrs|late_ded|absent_days|abs_ded|site_allow|ar_current|ar_60_plus|ap_material|ap_haulage|ap_expense|settlements_paid|sales_ttc|net_sum|tons_sold|qty_sold|trans_rev/i.test(k);
   }
 
   function isDefaultDescSortKey(colKey) {
@@ -4041,7 +4062,7 @@
       if (['sales', 'raw', 'fuel'].includes(form)) return !!p.rights.enter_dispatch;
       if (['receipt', 'expense', 'settlement'].includes(form)) return !!p.rights.enter_accounting;
       if (['pricerule', 'vatinvoice', 'creditterm', 'customer', 'supplier', 'product', 'site', 'equipment', 'companyequipment', 'driver', 'attendance'].includes(form)) return !!p.rights.enter_master;
-      if (['salary', 'employment', 'allowance', 'logistics', 'overtimerate', 'triprate', 'treasury', 'extmovement', 'loan', 'loansettlement', 'conversion', 'jv', 'jvpartnership', 'jvdistribution'].includes(form)) return !!p.rights.enter_payroll_jv;
+      if (['salary', 'employment', 'allowance', 'logistics', 'overtimerate', 'triprate', 'treasury', 'external', 'extmovement', 'loan', 'loansettlement', 'conversion', 'jv', 'jvpartnership', 'jvdistribution'].includes(form)) return !!p.rights.enter_payroll_jv;
       return !!(p.rights.enter_dispatch || p.rights.enter_accounting || p.rights.enter_master);
     }
     if (/Owner|Full Access/i.test(role)) return true;
@@ -4134,12 +4155,10 @@
       title: HUB_TITLES.sales,
       group: 'dispatch',
       tabs: [
-        { view: 'sales', label: 'Sales & Deliveries', icon: 'sales', pillFn: (_u, k) => (k && k.loads != null ? fmtNum(k.loads) : '') },
-        { view: 'customers', match: ['customers', 'ar'], label: 'Customers & Receivables', icon: 'customers', pillFn: (_u, k) => (k && k.ar_balance != null ? fmtUSDk(k.ar_balance) : '') },
+        { view: 'sales', match: ['sales', 'sales_analytics'], label: 'Sales & Deliveries', icon: 'sales', pillFn: (_u, k) => (k && k.loads != null ? fmtNum(k.loads) : '') },
+        { view: 'customers', match: ['customers', 'ar', 'sales_vat'], label: 'Customers & Receivables', icon: 'customers', pillFn: (_u, k) => (k && k.ar_balance != null ? fmtUSDk(k.ar_balance) : '') },
         { view: 'pricing', label: 'Pricing & Commissions', icon: 'pricing', pillFn: (_u, k) => (k && k.active_agreements != null ? fmtNum(k.active_agreements) : '') },
-        { view: 'sales_vat', label: 'VAT & Credit', icon: 'sales_vat', pillFn: () => '11% VAT' },
-        { view: 'reg_customers', match: ['reg_customers', 'reg_products'], label: 'Customers & Products', icon: 'reg_customers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' },
-        { view: 'sales_analytics', label: 'Sales Analytics', icon: 'sales_analytics', pillCls: 'brass', pillFn: () => 'Analytics' }
+        { view: 'reg_customers', match: ['reg_customers', 'reg_products'], label: 'Customers & Products', icon: 'reg_customers', universal: true, pillCls: 'univ', pillFn: () => 'All BUs' }
       ]
     },
     {
@@ -4178,7 +4197,10 @@
       title: HUB_TITLES.cashflow,
       group: 'books',
       tabs: [
-        { view: 'cashflow', match: ['cashflow', 'cashflow_analytics'], label: 'Cash Flow & Till', icon: 'cashflow', pillFn: (_u, k) => (k ? fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) : '') }
+        { view: 'cashflow', match: ['cashflow', 'cashflow_analytics'], label: 'Cash Flow & Till', icon: 'cashflow', pillFn: (_u, k) => (k ? fmtTillPair(k.cash_till_usd, k.cash_till_lbp, true) : '') },
+        { view: 'external', label: 'External Entries', icon: 'external', pillFn: () => fmtNum(filterRecords(SEED.records.external_movements || []).length) },
+        { view: 'ledger_treasury', label: 'Loans & Settlements', icon: 'ledger_treasury', pillFn: () => fmtNum(filterRecords(SEED.records.loans || [], { ignorePeriod: true }).length) },
+        { view: 'conversions', label: 'FX Conversions', icon: 'conversions', pillFn: () => fmtNum(filterRecords(SEED.records.conversions || []).length) }
       ]
     },
     {
@@ -4208,7 +4230,6 @@
       group: 'books',
       tabs: [
         { view: 'ledger', match: ['ledger', 'gl'], label: 'General Ledger & SOA', icon: 'ledger', pillFn: (_u, k) => (k && k.tb_check != null && Math.abs(Number(k.tb_check)) < 0.005 ? 'TB $0' : '') },
-        { view: 'ledger_treasury', label: 'Loans & FX Treasury', icon: 'ledger_treasury', pillFn: () => fmtNum(filterRecords(SEED.records.loans, { ignorePeriod: true }).length) },
         { view: 'statements', label: 'Statements & Reports', icon: 'statements', pillCls: 'brass', pillFn: u => `${(window.MFG_RDL && Array.isArray(window.MFG_RDL.RDL_CATALOG)) ? window.MFG_RDL.RDL_CATALOG.filter(r => canAccessRdlReport(r, u)).length : 22} A4` }
       ]
     },
@@ -4242,7 +4263,9 @@
     if (view === 'expenses_analytics') return canViewView('expenses', u) && canAccessPbiPage('p07_ap', u);
     if (view === 'payroll_attendance' || view === 'payroll_contracts') return canViewView('payroll', u);
     if (view === 'payroll_analytics') return canViewView('payroll', u) && (canAccessPbiPage('p12_payroll', u) || canAccessPbiPage('p11_drivers', u));
-    if (view === 'ledger_treasury') return canViewView('ledger', u) && (canAccessTable('loans', u) || canAccessPbiPage('p15_treasury', u));
+    if (view === 'external') return canViewView('cashflow', u) && canAccessTable('external_movements', u);
+    if (view === 'ledger_treasury') return canViewView('cashflow', u) && (canAccessTable('loans', u) || canAccessPbiPage('p15_treasury', u));
+    if (view === 'conversions') return canViewView('cashflow', u) && canAccessTable('conversions', u);
     if (UNIV_VIEW_TO_TABLE_KEY[view]) return canAccessTable(UNIV_VIEW_TO_TABLE_KEY[view], u);
     const role = String(u.role || '');
     const pbi = u.pbi_access || 'partial';
@@ -6564,6 +6587,10 @@
         </div>
       </div>
 
+      ${(window.MFG_PBI && typeof window.MFG_PBI.renderSalesVisualsSection === 'function')
+        ? window.MFG_PBI.renderSalesVisualsSection({ months: getScopedMonthly(getModel().monthly, 14), prodRows: allProds, k })
+        : ''}
+
       <div class="split-grid-2">
         <div class="panel-card" id="salesProdPanel">
           <div class="panel-head">
@@ -6647,6 +6674,114 @@
           </div>
         </div>
       </div>
+
+      ${(() => {
+        const padMap = new Map();
+        let maxSerial = 0;
+        base.forEach(t => {
+          const n = parseInt(String(t.ticket_no || '').replace(/\D+/g, ''), 10);
+          if (!Number.isFinite(n) || n <= 0) return;
+          if (n > maxSerial) maxSerial = n;
+          const bStart = Math.floor((n - 1) / 25) * 25 + 1;
+          const bEnd = bStart + 24;
+          const co = t.company || 'WTC';
+          const bKey = `${co}|${bStart}`;
+          let b = padMap.get(bKey);
+          if (!b) {
+            b = { key: bKey, company: co, start: bStart, end: bEnd, padRange: `#${bStart}–${bEnd}`, stream: 'Sales Pad (25)', minDate: t.date || '', maxDate: t.date || '', nums: new Set() };
+            padMap.set(bKey, b);
+          }
+          b.nums.add(n);
+          const dt = String(t.date || '');
+          if (dt && (!b.minDate || dt < b.minDate)) b.minDate = dt;
+          if (dt && (!b.maxDate || dt > b.maxDate)) b.maxDate = dt;
+        });
+        const padAll = Array.from(padMap.values()).map(b => {
+          const missing = [];
+          for (let i = b.start; i <= b.end; i++) {
+            if (!b.nums.has(i)) missing.push(i);
+          }
+          const enteredCount = b.nums.size;
+          const missingCount = missing.length;
+          const pct = Math.round((enteredCount / 25) * 100);
+          return {
+            ...b,
+            enteredCount,
+            missingCount,
+            pct,
+            dateSpan: `${fmtDateDMY(b.minDate)} → ${fmtDateDMY(b.maxDate)}`,
+            missingPreview: missingCount === 0 ? 'Complete (0 missing)' : (missing.slice(0, 4).map(x => '#' + x).join(', ') + (missingCount > 4 ? ` (+${missingCount - 4} more)` : ''))
+          };
+        }).sort((a, b) => b.start - a.start);
+        const padIncompCount = padAll.filter(b => b.missingCount > 0).length;
+        const padCompCount = padAll.length - padIncompCount;
+        const padFilter = STATE.salesPadFilter || 'all';
+        const padFiltered = sortRows(padAll.filter(b => {
+          if (padFilter === 'incomplete') return b.missingCount > 0;
+          if (padFilter === 'complete') return b.missingCount === 0;
+          if (padFilter === 'wtc') return b.company === 'WTC';
+          if (padFilter === 'bbc') return b.company === 'BBConstruction';
+          return true;
+        }), 'spad', 'start', 'desc');
+        const shownPads = padFiltered.slice(0, shownCount('spad'));
+        const padChip = (kKey, lbl) => `<button type="button" class="filter-chip ${padFilter === kKey ? 'active' : ''}" data-salespad-chip="${esc(kKey)}">${lbl}</button>`;
+        const totEntered = padFiltered.reduce((s, b) => s + b.enteredCount, 0);
+        const totMissing = padFiltered.reduce((s, b) => s + b.missingCount, 0);
+        const totCap = Math.max(1, padFiltered.length * 25);
+        const totPct = Math.round((totEntered / totCap) * 100);
+        return `
+        <div class="panel-card" id="salesPadPanel" style="margin-top:14px">
+          <div class="panel-head">
+            <div class="panel-title"><span>WEIGHBRIDGE 25-TICKET PAD COMPLETENESS &amp; MISSING-SERIAL AUDIT (${fmtNum(padFiltered.length)} PADS)</span></div>
+            <span class="panel-meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span class="badge badge-brass" title="Next sequential weighbridge ticket serial">Next Ticket #${fmtNum((maxSerial || 2750) + 1)}</span>
+              ${exportBtn('salesPadPanel', 'Sales_Ticket_Pads')}
+            </span>
+          </div>
+          <div class="table-toolbar" style="padding-top:6px;padding-bottom:6px">
+            <div class="chip-bar">
+              ${padChip('all', `All Pads (${padAll.length})`)}
+              ${padChip('incomplete', `Missing Serials (${padIncompCount})`)}
+              ${padChip('complete', `100% Complete (${padCompCount})`)}
+              ${padChip('wtc', 'WTC')}
+              ${padChip('bbc', 'BBConstruction')}
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('spad', 'Pad Range', 'start')}${th('spad', 'Co.', 'company')}${th('spad', 'Date Span', 'maxDate')}
+                  ${th('spad', 'Entered', 'enteredCount', 'r')}${th('spad', 'Missing', 'missingCount', 'r')}${th('spad', 'Completeness', 'pct', 'r')}${th('spad', 'Missing Serials Audit', 'missingPreview')}
+                </tr>
+              </thead>
+              <tbody>
+                ${shownPads.map(b => `
+                  <tr>
+                    <td class="mono"><strong>${esc(b.padRange)}</strong></td>
+                    <td>${coBadge(b.company)}</td>
+                    <td class="mono">${esc(b.dateSpan)}</td>
+                    <td class="r"><strong>${fmtNum(b.enteredCount)} / 25</strong></td>
+                    <td class="r">${b.missingCount > 0 ? `<span class="badge badge-warn">${fmtNum(b.missingCount)} gap${b.missingCount === 1 ? '' : 's'}</span>` : '<span class="badge badge-ok">0</span>'}</td>
+                    <td class="r"><strong>${b.pct}%</strong></td>
+                    <td style="font-size:11px;font-family:var(--font-mono);white-space:normal">${b.missingCount === 0 ? '<span class="badge badge-ok">Complete (25/25)</span>' : esc(b.missingPreview)}</td>
+                  </tr>
+                `).join('') || emptyRow(7, 'No weighbridge ticket pads match the active filter')}
+                ${showMoreRow('spad', padFiltered.length, 7)}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><b>TOTAL (${fmtNum(padFiltered.length)} PADS)</b></td>
+                  <td class="r"><b>${fmtNum(totEntered)}</b></td>
+                  <td class="r"><b>${fmtNum(totMissing)}</b></td>
+                  <td class="r"><b>${totPct}%</b></td>
+                  <td style="font-size:11px;font-family:var(--font-mono);white-space:normal"><b>${fmtNum(padCompCount)} complete · ${fmtNum(padIncompCount)} with gaps</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>`;
+      })()}
     `;
   }
 
@@ -7826,69 +7961,168 @@
         </div>
       </div>
 
-      <div class="split-grid-2">
-        <div class="panel-card" id="listPricePanel">
+      ${(() => {
+        const scopedProds = getScopedModelProducts();
+        const activeRulesList = base.filter(isActive);
+        const prodPriceComp = scopedProds.map(p => {
+          const pRules = activeRulesList.filter(r => norm(r.product) === norm(p.Product) && !isMatIndiffRule(r) && Number(r.unit_price ?? r.price ?? 0) > 0);
+          const prices = pRules.map(r => Number(r.unit_price ?? r.price));
+          const agreedAvg = prices.length ? prices.reduce((a, v) => a + v, 0) / prices.length : Number(p.avg_price_net || 0);
+          const lowest = prices.length ? Math.min(...prices) : Number(p.avg_price_net || 0);
+          const highest = prices.length ? Math.max(...prices) : Number(p.list_price || p.avg_price_net || 0);
+          return {
+            ...p,
+            rulesCount: pRules.length,
+            agreed: round2(agreedAvg),
+            realised: round2(Number(p.avg_price_net || 0)),
+            list: round2(Number(p.list_price || p.avg_price_ttc || 0)),
+            lowest: round2(lowest),
+            highest: round2(highest),
+            corridorLabel: prices.length ? `${fmtUSD(lowest, 2)} – ${fmtUSD(highest, 2)}` : '—'
+          };
+        });
+        const visualsHtml = (window.MFG_PBI && typeof window.MFG_PBI.renderPricingVisualsSection === 'function')
+          ? window.MFG_PBI.renderPricingVisualsSection({ prodPriceComp: prodPriceComp.slice(0, 8) })
+          : '';
+        const qSearch = STATE.search.trim().toLowerCase();
+        const rawBelow = ((sentinelSlice().pricing || {}).top_below_agreed_exceptions || []).filter(r => {
+          if (!qSearch) return true;
+          return `${r.customer || ''} ${r.product || ''}`.toLowerCase().includes(qSearch);
+        });
+        const belowRows = sortRows(rawBelow, 'pbelow', 'shortfall', 'desc');
+        const totBelowQty = belowRows.reduce((a, r) => a + Number(r.qty_sold || 0), 0);
+        const totBelowShortfall = belowRows.reduce((a, r) => a + Number(r.shortfall || 0), 0);
+        return `
+        ${visualsHtml}
+        <div class="panel-card" id="listPricePanel" style="margin-bottom:14px">
           <div class="panel-head">
-            <div class="panel-title"><span>LIST PRICE BENCHMARK VS. REALIZED SELLING PRICE BY GRADE</span></div>
-            <span class="panel-meta">Price vs. List ${exportBtn('listPricePanel', 'Price_Benchmark')}</span>
+            <div class="panel-title"><span>GRADE PRICE CORRIDOR: AGREED VS. LIST VS. REALIZED SELLING PRICE (${fmtNum(prodPriceComp.length)} GRADES)</span></div>
+            <span class="panel-meta">Agreed Min–Max Corridor &amp; Benchmark ${exportBtn('listPricePanel', 'Price_Benchmark')}</span>
           </div>
           <div class="table-wrap">
             <table class="ledger-table">
               <thead>
                 <tr>
-                  ${th('pbench', 'Product / Grade', 'Product')}${th('pbench', 'UoM', 'UoM')}${th('pbench', 'Loads', 'loads', 'r')}${th('pbench', 'List Price ($)', 'list_price', 'r')}
+                  ${th('pbench', 'Product / Grade', 'Product')}${th('pbench', 'UoM', 'UoM')}${th('pbench', 'Rules', 'rulesCount', 'r')}${th('pbench', 'Loads', 'loads', 'r')}
+                  ${th('pbench', 'Agreed Corridor ($)', 'lowest', 'r')}${th('pbench', 'Agreed Avg ($)', 'agreed', 'r')}${th('pbench', 'List Price ($)', 'list_price', 'r')}
                   ${th('pbench', 'Realized Net ($)', 'avg_price_net', 'r')}${th('pbench', 'Realized TTC ($)', 'avg_price_ttc', 'r')}${th('pbench', 'Sales TTC ($)', 'sales_ttc', 'r')}
                 </tr>
               </thead>
               <tbody>
-                ${sortRows(getScopedModelProducts(), 'pbench', 'sales_ttc', 'desc').map(p => `
+                ${sortRows(prodPriceComp, 'pbench', 'sales_ttc', 'desc').map(p => `
                   <tr class="rrow" data-rkey="products" data-rid="${esc((productByName(p.Product) || {}).id || p.Product)}">
                     <td>${relLink('products', p.Product, p.Product, true)}${appCell(productByName(p.Product) || { id: p.Product, name: p.Product }, 'products')}</td>
                     <td class="mono">${esc(p.UoM || 'm³')}</td>
+                    <td class="r">${fmtNum(p.rulesCount)}</td>
                     <td class="r">${fmtNum(p.loads)}</td>
+                    <td class="r mono">${esc(p.corridorLabel)}</td>
+                    <td class="r">${p.rulesCount ? fmtUSD(p.agreed, 2) : '—'}</td>
                     <td class="r">${p.list_price != null ? fmtUSD(p.list_price, 2) : '—'}</td>
                     <td class="r">${fmtUSD(p.avg_price_net, 2)}</td>
                     <td class="r"><strong>${fmtUSD(p.avg_price_ttc, 2)}</strong></td>
-                    <td class="r">${fmtUSD(p.sales_ttc, 0)}</td>
+                    <td class="r"><strong>${fmtUSD(p.sales_ttc, 0)}</strong></td>
                   </tr>
-                `).join('') || emptyRow(7, 'No product benchmark rows for this entity')}
+                `).join('') || emptyRow(10, 'No product benchmark rows for this entity')}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="2"><b>TOTAL (${fmtNum(getScopedModelProducts().length)} GRADES)</b></td>
-                  <td class="r"><b>${fmtNum(getScopedModelProducts().reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td colspan="2"><b>TOTAL (${fmtNum(prodPriceComp.length)} GRADES)</b></td>
+                  <td class="r"><b>${fmtNum(prodPriceComp.reduce((a, p) => a + Number(p.rulesCount || 0), 0))}</b></td>
+                  <td class="r"><b>${fmtNum(prodPriceComp.reduce((a, p) => a + Number(p.loads || 0), 0))}</b></td>
+                  <td class="r">—</td>
+                  <td class="r"><b>${avgUp ? fmtUSD(avgUp, 2) : '—'}</b></td>
                   <td class="r">—</td>
                   <td class="r"><b>${fmtUSD(k.avg_price_net, 2)}</b></td>
                   <td class="r"><b>${fmtUSD(k.avg_price_ttc, 2)}</b></td>
-                  <td class="r"><b>${fmtUSD(getScopedModelProducts().reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
+                  <td class="r"><b>${fmtUSD(prodPriceComp.reduce((a, p) => a + Number(p.sales_ttc || 0), 0), 0)}</b></td>
                 </tr>
               </tfoot>
             </table>
           </div>
         </div>
-      </div>
+
+        <div class="panel-card" id="belowAgreedPanel">
+          <div class="panel-head">
+            <div class="panel-title"><span>BELOW-AGREED PRICE EXCEPTIONS &amp; CUSTOMER × PRODUCT SHORTFALLS (${fmtNum(belowRows.length)} PAIRS)</span></div>
+            <span class="panel-meta">Shortfall ${fmtUSD(totBelowShortfall, 0)} ${exportBtn('belowAgreedPanel', 'Below_Agreed_Price_Audit')}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  ${th('pbelow', 'Customer', 'customer')}${th('pbelow', 'Product / Grade', 'product')}${th('pbelow', 'Qty Sold', 'qty_sold', 'r')}
+                  ${th('pbelow', 'Agreed ($)', 'agreed_price', 'r')}${th('pbelow', 'Last Sold ($)', 'last_sold_price', 'r')}${th('pbelow', 'Spread ($/u)', 'spread', 'r')}${th('pbelow', 'Shortfall ($)', 'shortfall', 'r')}
+                </tr>
+              </thead>
+              <tbody>
+                ${belowRows.map(r => `
+                  <tr class="rrow" data-rkey="customers" data-rid="${esc((customerInfo(r.customer) || {}).id || r.customer)}">
+                    <td>${relLink('customers', r.customer, r.customer, true)}</td>
+                    <td>${relLink('products', r.product)}</td>
+                    <td class="r">${fmtNum(r.qty_sold, 0)}</td>
+                    <td class="r">${fmtUSD(r.agreed_price, 2)}</td>
+                    <td class="r"><strong>${fmtUSD(r.last_sold_price, 2)}</strong></td>
+                    <td class="r" style="color:var(--crit)">${fmtUSD(r.spread, 2)}</td>
+                    <td class="r"><strong style="color:var(--crit)">${fmtUSD(r.shortfall, 0)}</strong></td>
+                  </tr>
+                `).join('') || emptyRow(7, 'Zero below-agreed price exceptions for the active filter')}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><b>TOTAL (${fmtNum(belowRows.length)} BELOW-AGREED PAIRS)</b></td>
+                  <td class="r"><b>${fmtNum(totBelowQty, 0)}</b></td>
+                  <td class="r">—</td>
+                  <td class="r">—</td>
+                  <td class="r">—</td>
+                  <td class="r"><b style="color:var(--crit)">${fmtUSD(totBelowShortfall, 0)}</b></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>`;
+      })()}
     `;
   }
 
   // ==========================================================================
-  // VIEW 07: CUSTOMERS & RECEIVABLES (AR) — FIFO ALLOCATION & AGING
+  // VIEW 07: CUSTOMERS & RECEIVABLES (AR) — FIFO ALLOCATION, 11% VAT & CREDIT TERMS
   // ==========================================================================
   function renderAR() {
     const k = getKPI();
     const m = getModel();
     const q = STATE.search.trim().toLowerCase();
-    const custAll = getScopedModelCustomers(m);
+    const ctMap = new Map();
+    filterRecords(SEED.records.credit_terms, { ignorePeriod: true, ignoreSearch: true }).forEach(ct => {
+      const ck = norm(ct.customer);
+      if (!ck) return;
+      const prev = ctMap.get(ck);
+      if (!prev || (ct.active !== false && prev.active === false) || Number(ct.credit_limit || 0) > Number(prev.credit_limit || 0)) {
+        ctMap.set(ck, ct);
+      }
+    });
+    const custAll = getScopedModelCustomers(m).map(c => {
+      const ct = ctMap.get(norm(c.Customer));
+      const cDays = ct && Number.isFinite(Number(ct.credit_days)) ? Number(ct.credit_days) : 30;
+      const cLimit = ct && Number.isFinite(Number(ct.credit_limit)) ? Number(ct.credit_limit) : 0;
+      return {
+        ...c,
+        credit_days: cDays,
+        credit_limit: cLimit,
+        sales_vat: round2(Number(c.sales_vat || 0)),
+        vat_receivable: round2(Number(c.vat_receivable || 0))
+      };
+    });
     const custs = sortRows(custAll.filter(c => {
       if (q && !String(c.Customer || '').toLowerCase().includes(q)) return false;
       if (STATE.chipFilter === 'open_ar') return Number(c.ar_balance || 0) > 0;
       if (STATE.chipFilter === 'overdue60') return Number(c.ar_60_plus || 0) > 0;
-      if (STATE.chipFilter === 'vat_reg') return c['VAT Registered'] === 'Yes';
+      if (STATE.chipFilter === 'vat_reg') return c['VAT Registered'] === 'Yes' || Number(c.sales_vat || 0) > 0;
       return true;
     }), 'custs', 'ar_balance', 'desc');
     const shownCusts = custs.slice(0, shownCount('custs'));
     const openArCustSet = new Set(custAll.filter(c => Number(c.ar_balance || 0) > 0).map(c => norm(c.Customer)));
     const over60CustSet = new Set(custAll.filter(c => Number(c.ar_60_plus || 0) > 0).map(c => norm(c.Customer)));
-    const vatRegCustSet = new Set(custAll.filter(c => c['VAT Registered'] === 'Yes').map(c => norm(c.Customer)));
+    const vatRegCustSet = new Set(custAll.filter(c => c['VAT Registered'] === 'Yes' || Number(c.sales_vat || 0) > 0).map(c => norm(c.Customer)));
     const base = filterRecords(SEED.records.receipts);
     const rcpts = sortRows(base.filter(r => {
       if (STATE.chipFilter === 'app') return isAppRecord(r);
@@ -7928,6 +8162,38 @@
     const bbcRc = byCoRcpt.BBConstruction;
     const isGroupScope = STATE.company === 'manufacturing-group';
 
+    // 11% Output VAT Tax Invoices & MOF Register (merged from sales_vat)
+    const vatBase = filterRecords(SEED.records.vat_invoices);
+    const isBilledVat = v => Number(v.net_amount || 0) > 0 || Number(v.total_ttc || 0) > 0 || Number(v.tickets_count || 0) > 0;
+    const billedVatCount = vatBase.filter(isBilledVat).length;
+    const unlinkedVatCount = vatBase.length - billedVatCount;
+    const vatFilter = STATE.vatInvFilter || 'all';
+    const vatFiltered = vatBase.filter(v => {
+      if (vatFilter === 'billed') return isBilledVat(v);
+      if (vatFilter === 'unlinked') return !isBilledVat(v);
+      if (vatFilter === 'wtc') return v.company === 'WTC';
+      if (vatFilter === 'bbc') return v.company === 'BBConstruction';
+      if (vatFilter === 'app') return isAppRecord(v);
+      return true;
+    });
+    const vatRows = STATE.sortBy.vatinv
+      ? sortRows(vatFiltered, 'vatinv', 'date', 'desc')
+      : vatFiltered.slice().sort((a, b) => {
+          const ba = isBilledVat(a) ? 1 : 0;
+          const bb = isBilledVat(b) ? 1 : 0;
+          if (bb !== ba) return bb - ba;
+          const da = String(a.date || '');
+          const db = String(b.date || '');
+          if (db !== da) return db.localeCompare(da);
+          return Number(b.invoice_no || 0) - Number(a.invoice_no || 0);
+        });
+    const shownVat = vatRows.slice(0, shownCount('vatinv'));
+    const vatChip = (kKey, lbl) => `<button type="button" class="filter-chip ${vatFilter === kKey ? 'active' : ''}" data-vatinv-chip="${esc(kKey)}">${lbl}</button>`;
+    const totVatNet = vatRows.reduce((s, r) => s + Number(r.net_amount || 0), 0);
+    const totVatAmt = vatRows.reduce((s, r) => s + Number(r.vat_amount || 0), 0);
+    const totVatTtc = vatRows.reduce((s, r) => s + Number(r.total_ttc || 0), 0);
+    const totVatTkts = vatRows.reduce((s, r) => s + Number(r.tickets_count || 0), 0);
+
     const collPct = Number(k.sales_ttc || 0) > 0 ? Math.min(100, (Number(k.receipts || 0) / Number(k.sales_ttc || 1)) * 100) : 0;
     const arCur = Number(k.ar_current || 0) + Number(k.ar_1_10 || 0);
     const arMid = Number(k.ar_11_30 || 0) + Number(k.ar_31_60 || 0);
@@ -7935,14 +8201,25 @@
     const arBucketTot = Math.max(1, arCur + arMid + ar60);
     const curPct = Math.max(0, Math.min(100, (arCur / arBucketTot) * 100));
     const over60Pct = Math.max(0, Math.min(100, (ar60 / arBucketTot) * 100));
-    const avgRcpt = rcpts.length > 0 ? ((sumAmt + sumDisc) / rcpts.length) : 0;
     const openCustCount = custAll.filter(c => Number(c.ar_balance || 0) > 0).length;
     const over60CustCount = custAll.filter(c => Number(c.ar_60_plus || 0) > 0).length;
+    const onAcct = round2(custAll.reduce((s, r) => s + (Number(r.ar_balance || 0) < 0 ? Number(r.ar_balance || 0) : 0), 0));
+    const agingBuckets = [
+      { label: 'Current', val: round2(k.ar_current || 0), color: '#1E293B' },
+      { label: '1–10d',   val: round2(k.ar_1_10 || 0),    color: '#1E293B' },
+      { label: '11–30d',  val: round2(k.ar_11_30 || 0),   color: '#1E293B' },
+      { label: '31–60d',  val: round2(k.ar_31_60 || 0),   color: '#0D9488' },
+      { label: '60+d',    val: round2(k.ar_60_plus || 0),  color: '#C8333B' },
+      { label: 'On Acct', val: onAcct,                    color: '#1E7A6E' }
+    ];
+    const arVisualsHtml = (window.MFG_PBI && typeof window.MFG_PBI.renderCustomersVisualsSection === 'function')
+      ? window.MFG_PBI.renderCustomersVisualsSection({ months: getScopedMonthly(m.monthly, 14), agingBuckets })
+      : '';
 
     return `
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
-          <div class="cockpit-eyebrow">ACCOUNTS RECEIVABLE · M165 FIFO ALLOCATION + M249 VAT-INCLUSIVE BALANCE</div>
+          <div class="cockpit-eyebrow">ACCOUNTS RECEIVABLE · M165 FIFO ALLOCATION + 11% VAT &amp; CREDIT TERMS</div>
           <div class="cockpit-title">Customers &amp; Receivables</div>
         </div>
         <div class="cockpit-pills insight-grid">
@@ -7969,11 +8246,14 @@
             tone: 'brass'
           })}
           ${insightCard({
-            label: 'Avg Settlement Voucher',
-            badge: `${fmtNum(rcpts.length)} Vouchers`,
-            val: `${fmtUSD(avgRcpt, 0)} <small>/ rcpt</small>`,
-            sub: `Settled <b>${fmtUSD(sumSettle, 0)}</b> · VAT rec. <b>${fmtUSD(sumVatRec, 0)}</b> · IVA <b>${fmtUSD(sumIvaInv, 0)}</b>`,
-            tone: 'steel'
+            label: '11% Output VAT (4427)',
+            badge: `${fmtNum(billedVatCount)} Billed / ${fmtNum(vatBase.length)} Inv.`,
+            badgeCls: 'brass',
+            val: fmtUSD(k.sales_vat || totVatAmt, 0),
+            valCls: 'brass',
+            sub: `Header VAT <b>${fmtUSD(totVatAmt, 0)}</b> · VAT rec. <b>${fmtUSD(sumVatRec, 0)}</b> · <u>Jump to Tax Invoices ↓</u>`,
+            tone: 'steel',
+            attr: 'data-scroll-panel="vatInvPanel" role="button" tabindex="0"'
           })}
           ${insightCard({
             label: 'Customer Credit Exposure',
@@ -7991,10 +8271,13 @@
       <div class="panel-card" id="rcptPanel">
         <div class="table-toolbar">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${searchBox('Search voucher #, customer, method, reference...')}
+            ${searchBox('Search voucher #, customer, invoice #, method, reference...')}
             <div class="chip-bar">${chip('all', `All (${base.length})`)}${chip('settlement_only', 'Settlements Only')}${chip('vat_rec', 'VAT Received')}${methods.map(mm => chip(mm, mm)).join('')}${chip('open_ar', 'Open AR')}${chip('overdue60', 'Overdue 60+')}${chip('vat_reg', '11% VAT')}${chip('app', 'App-entered')}</div>
           </div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost-bar" data-nav-jump="statements" data-stmt-jump="18">${ic('printer')} VAT Return RDL (#18)</button>
+            ${canEnterForm('creditterm') ? '<button type="button" class="btn" data-open-modal="creditterm">+ Credit Term</button>' : ''}
+            ${canEnterForm('vatinvoice') ? '<button type="button" class="btn" data-open-modal="vatinvoice">+ New VAT Invoice</button>' : ''}
             ${exportBtn('rcptPanel', 'Customer_Receipts')}
             ${canEnterForm('receipt') ? '<button class="btn btn-primary" data-open-modal="receipt">+ Customer Receipt (FIFO)</button>' : ''}
           </div>
@@ -8069,51 +8352,119 @@
         </div>
       </div>
 
-      <div class="split-grid-2">
-        <div class="panel-card" id="custPanel">
-          <div class="panel-head">
-            <div class="panel-title"><span>CUSTOMER AR AGING &amp; OPEN BALANCES (${fmtNum(custs.length)} CUSTOMERS)</span></div>
-            <span class="panel-meta" style="display:flex;gap:6px;align-items:center"><button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_customers">Universal Customers Registry →</button>${exportBtn('custPanel', 'AR_Aging')}</span>
-          </div>
-          ${renderColFilterBar('custs')}
-          <div class="table-wrap">
-            <table class="ledger-table">
-              <thead>
-                <tr>
-                  ${th('custs', 'Customer', 'Customer')}${th('custs', 'VAT Reg', 'VAT Registered')}${th('custs', 'Loads', 'loads', 'r')}${th('custs', 'Sales TTC', 'sales_ttc', 'r')}${th('custs', 'Receipts', 'receipts', 'r')}
-                  ${th('custs', 'Current', 'ar_current', 'r')}${th('custs', 'Overdue 60+', 'ar_60_plus', 'r')}${th('custs', 'Open AR ($)', 'ar_balance', 'r')}${th('custs', 'Last Sale', 'last_sale')}
+      ${arVisualsHtml}
+
+      <div class="panel-card" id="custPanel" style="margin-bottom:14px">
+        <div class="panel-head">
+          <div class="panel-title"><span>CUSTOMER AR AGING, 11% VAT &amp; CREDIT TERMS SUB-LEDGER (${fmtNum(custs.length)} CUSTOMERS)</span></div>
+          <span class="panel-meta" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            ${canEnterForm('creditterm') ? '<button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-open-modal="creditterm">+ Credit Term</button>' : ''}
+            <button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="reg_customers">Universal Customers Registry →</button>
+            ${exportBtn('custPanel', 'AR_Aging_VAT_SubLedger')}
+          </span>
+        </div>
+        ${renderColFilterBar('custs')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('custs', 'Customer', 'Customer')}${th('custs', 'IVA & Term', 'VAT Registered')}${th('custs', 'Loads', 'loads', 'r')}${th('custs', 'Sales TTC', 'sales_ttc', 'r')}${th('custs', 'Output VAT', 'sales_vat', 'r')}
+                ${th('custs', 'Receipts', 'receipts', 'r')}${th('custs', 'VAT Due', 'vat_receivable', 'r')}${th('custs', 'Current', 'ar_current', 'r')}${th('custs', 'Overdue 60+', 'ar_60_plus', 'r')}${th('custs', 'Open AR ($)', 'ar_balance', 'r')}${th('custs', 'Last Sale', 'last_sale')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownCusts.map(c => `
+                <tr class="rrow" data-rkey="customers" data-rid="${esc((customerInfo(c.Customer) || {}).id || c.Customer)}">
+                  <td>${relLink('customers', c.Customer, c.Customer, true)}${appCell(customerInfo(c.Customer) || { id: c.Customer, name: c.Customer }, 'customers')}</td>
+                  <td>${c['VAT Registered'] === 'Yes' ? '<span class="badge badge-info">11% VAT</span>' : '<span class="mu">No</span>'} <span class="mono mu" style="font-size:10px">· ${fmtNum(c.credit_days || 30)}d${c.credit_limit > 0 ? ' / ' + fmtUSDk(c.credit_limit) : ''}</span></td>
+                  <td class="r">${fmtNum(c.loads)}</td>
+                  <td class="r">${fmtUSD(c.sales_ttc, 0)}</td>
+                  <td class="r">${Number(c.sales_vat || 0) > 0 ? fmtUSD(c.sales_vat, 0) : '—'}</td>
+                  <td class="r">${fmtUSD(c.receipts, 0)}</td>
+                  <td class="r">${Number(c.vat_receivable || 0) !== 0 ? fmtUSD(c.vat_receivable, 0) : '—'}</td>
+                  <td class="r">${fmtUSD(c.ar_current, 0)}</td>
+                  <td class="r">${Number(c.ar_60_plus || 0) > 0 ? `<span style="color:var(--crit)">${fmtUSD(c.ar_60_plus, 0)}</span>` : '—'}</td>
+                  <td class="r"><strong>${fmtUSD(c.ar_balance, 2)}</strong></td>
+                  <td class="mono">${esc(fmtDateDMY(c.last_sale))}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${shownCusts.map(c => `
-                  <tr class="rrow" data-rkey="customers" data-rid="${esc((customerInfo(c.Customer) || {}).id || c.Customer)}">
-                    <td>${relLink('customers', c.Customer, c.Customer, true)}${appCell(customerInfo(c.Customer) || { id: c.Customer, name: c.Customer }, 'customers')}</td>
-                    <td>${c['VAT Registered'] === 'Yes' ? '<span class="badge badge-info">11% VAT</span>' : 'No'}</td>
-                    <td class="r">${fmtNum(c.loads)}</td>
-                    <td class="r">${fmtUSD(c.sales_ttc, 0)}</td>
-                    <td class="r">${fmtUSD(c.receipts, 0)}</td>
-                    <td class="r">${fmtUSD(c.ar_current, 0)}</td>
-                    <td class="r">${Number(c.ar_60_plus || 0) > 0 ? `<span style="color:var(--crit)">${fmtUSD(c.ar_60_plus, 0)}</span>` : '—'}</td>
-                    <td class="r"><strong>${fmtUSD(c.ar_balance, 2)}</strong></td>
-                    <td class="mono">${esc(fmtDateDMY(c.last_sale))}</td>
-                  </tr>
-                `).join('') || emptyRow(9, q ? `No customers match "${STATE.search}".` : 'No customer balances for this entity')}
-                ${showMoreRow('custs', custs.length, 9)}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="2"><b>TOTAL (${fmtNum(custs.length)} CUSTOMERS)</b></td>
-                  <td class="r"><b>${fmtNum(custs.reduce((a, c) => a + Number(c.loads || 0), 0))}</b></td>
-                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.sales_ttc || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.receipts || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_current || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_60_plus || 0), 0), 0)}</b></td>
-                  <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_balance || 0), 0), 2)}</b></td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+              `).join('') || emptyRow(11, q ? `No customers match "${STATE.search}".` : 'No customer balances for this entity')}
+              ${showMoreRow('custs', custs.length, 11)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2"><b>TOTAL (${fmtNum(custs.length)} CUSTOMERS)</b></td>
+                <td class="r"><b>${fmtNum(custs.reduce((a, c) => a + Number(c.loads || 0), 0))}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.sales_ttc || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.sales_vat || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.receipts || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.vat_receivable || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_current || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_60_plus || 0), 0), 0)}</b></td>
+                <td class="r"><b>${fmtUSD(custs.reduce((a, c) => a + Number(c.ar_balance || 0), 0), 2)}</b></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel-card" id="vatInvPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>11% OUTPUT VAT TAX INVOICES &amp; MOF REGISTER (${fmtNum(vatRows.length)} INVOICES · ${fmtNum(billedVatCount)} BILLED)</span></div>
+          <span class="panel-meta" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost-bar" style="padding:4px 9px;font-size:11px" data-nav-jump="statements" data-stmt-jump="18">${ic('printer')} VAT Return RDL (#18)</button>
+            ${canEnterForm('vatinvoice') ? '<button type="button" class="btn btn-primary" style="padding:4px 10px;font-size:11px" data-open-modal="vatinvoice">+ New VAT Invoice</button>' : ''}
+            ${exportBtn('vatInvPanel', 'VAT_11Pct_Tax_Invoices')}
+          </span>
+        </div>
+        <div class="table-toolbar" style="padding-top:6px;padding-bottom:6px">
+          <div class="chip-bar">
+            ${vatChip('all', `All (${vatBase.length})`)}
+            ${vatChip('billed', `Billed Invoices (${billedVatCount})`)}
+            ${vatChip('unlinked', `Blank Serials (${unlinkedVatCount})`)}
+            ${vatChip('wtc', 'WTC')}
+            ${vatChip('bbc', 'BBConstruction')}
+            ${vatChip('app', 'App-entered')}
           </div>
+        </div>
+        ${renderColFilterBar('vatinv')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('vatinv', 'Invoice #', 'invoice_no')}${th('vatinv', 'Date', 'date')}${th('vatinv', 'Co.', 'company')}${th('vatinv', 'Customer', 'customer')}${th('vatinv', 'Status', 'net_amount')}
+                ${th('vatinv', 'Tickets', 'tickets_count', 'r')}${th('vatinv', 'Net ($)', 'net_amount', 'r')}${th('vatinv', 'VAT 11% ($)', 'vat_amount', 'r')}${th('vatinv', 'Total TTC ($)', 'total_ttc', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownVat.map(v => {
+                const billed = isBilledVat(v);
+                return `
+                <tr class="rrow" data-rkey="vat_invoices" data-rid="${esc(v.id)}">
+                  <td class="mono"><strong>${esc(v.invoice_no || v.name)}</strong>${appCell(v, 'vat_invoices')}</td>
+                  <td class="mono">${esc(recordDateDMY(v))}</td>
+                  <td>${coBadge(v.company)}</td>
+                  <td>${relLink('customers', v.customer, v.customer, true)}</td>
+                  <td>${billed ? '<span class="badge badge-ok">Billed</span>' : '<span class="badge badge-neutral" title="Pre-numbered / unlinked tax invoice serial">Blank Serial</span>'}</td>
+                  <td class="r">${fmtNum(v.tickets_count || 0)}</td>
+                  <td class="r">${fmtUSD(v.net_amount || 0, 2)}</td>
+                  <td class="r" style="color:var(--brass)"><strong>${fmtUSD(v.vat_amount || 0, 2)}</strong></td>
+                  <td class="r"><strong>${fmtUSD(v.total_ttc || 0, 2)}</strong></td>
+                </tr>
+              `;
+              }).join('') || emptyRow(9, periodEmptyMsg(SEED.records.vat_invoices, '11% VAT tax invoices'))}
+              ${showMoreRow('vatinv', vatRows.length, 9)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5"><b>TOTAL (${fmtNum(vatRows.length)} TAX INVOICES · ${fmtNum(billedVatCount)} BILLED)</b></td>
+                <td class="r"><b>${fmtNum(totVatTkts)}</b></td>
+                <td class="r"><b>${fmtUSD(totVatNet, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(totVatAmt, 2)}</b></td>
+                <td class="r"><b>${fmtUSD(totVatTtc, 2)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     `;
@@ -9775,7 +10126,8 @@
             ${canEnterForm('expense', u) ? '<button type="button" class="btn" data-open-modal="expense">+ Cash Expense</button>' : ''}
             ${canEnterForm('settlement', u) ? '<button type="button" class="btn" data-open-modal="settlement">+ AP Payment</button>' : ''}
             ${canEnterForm('salary', u) ? '<button type="button" class="btn" data-open-modal="salary">+ Salary</button>' : ''}
-            ${canEnterForm('treasury', u) ? '<button type="button" class="btn" data-open-modal="treasury">+ External / Loan</button>' : ''}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn" data-open-modal="external">+ External</button>' : ''}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn" data-open-modal="treasury">+ Loan</button>' : ''}
             ${canEnterForm('treasury', u) ? '<button type="button" class="btn btn-primary" data-open-modal="conversion">+ FX Conversion</button>' : ''}
             ${exportBtn('tillRecentPanel', isDailyMode ? 'Daily_Till_Sheet' : 'Cash_Till_Entries')}
           </div>
@@ -10701,6 +11053,450 @@
     `;
   }
 
+  function renderExternalEntries() {
+    const u = activeUser();
+    const extAll = filterRecords(SEED.records.external_movements || []);
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+    const focusParty = STATE.cfFocusParty || '';
+
+    const isExtIn = r => /in|inject|received|credit|deposit/i.test(String(r.direction || '')) && !/out|withdraw|debit/i.test(String(r.direction || ''));
+    const isExtended = r => /^extended$/i.test(String(r.kind || ''));
+    const isConfig = r => /config|opening/i.test(String(r.counterparty || '') + ' ' + String(r.notes || ''));
+
+    const partyScoped = focusParty
+      ? extAll.filter(r => norm(r.counterparty || 'Partner / Bank') === norm(focusParty))
+      : extAll;
+
+    const extRows = sortRows(partyScoped.filter(r => {
+      if (STATE.chipFilter === 'ext_in') return isExtIn(r);
+      if (STATE.chipFilter === 'ext_out') return !isExtIn(r);
+      if (STATE.chipFilter === 'ext_external') return !isExtended(r);
+      if (STATE.chipFilter === 'ext_extended') return isExtended(r);
+      if (STATE.chipFilter === 'ext_config') return isConfig(r);
+      if (STATE.chipFilter === 'ext_lbp') return Math.abs(Number(r.lbp_amount || 0)) > 1;
+      if (STATE.chipFilter === 'app') return isAppRecord(r);
+      return true;
+    }), 'ext_entries', 'date', 'desc');
+    const shownExt = extRows.slice(0, shownCount('ext_entries'));
+
+    let inUsd = 0, outUsd = 0, inLbp = 0, outLbp = 0;
+    let extCnt = 0, extdCnt = 0, cfgCnt = 0, lbpCnt = 0;
+    const byCo = {
+      WTC: { n: 0, inUsd: 0, outUsd: 0, netLbp: 0 },
+      BBConstruction: { n: 0, inUsd: 0, outUsd: 0, netLbp: 0 }
+    };
+    const partyMap = new Map();
+
+    extAll.forEach(r => {
+      const inFlag = isExtIn(r);
+      const extdFlag = isExtended(r);
+      const uAmt = Math.abs(Number(r.usd_amount || 0));
+      const lAmt = Math.abs(Number(r.lbp_amount || 0));
+      if (extdFlag) extdCnt++; else extCnt++;
+      if (isConfig(r)) cfgCnt++;
+      if (lAmt > 1) lbpCnt++;
+      const cp = String(r.counterparty || 'Partner / Bank').trim() || 'Partner / Bank';
+      const pk = norm(cp);
+      let pb = partyMap.get(pk);
+      if (!pb) {
+        pb = { counterparty: cp, kind: extdFlag ? 'Extended' : 'External', entries_cnt: 0, in_usd: 0, out_usd: 0, net_usd: 0, net_lbp: 0, last_date: '' };
+        partyMap.set(pk, pb);
+      }
+      pb.entries_cnt++;
+      if (inFlag) { pb.in_usd += uAmt; pb.net_usd += uAmt; pb.net_lbp += lAmt; }
+      else { pb.out_usd += uAmt; pb.net_usd -= uAmt; pb.net_lbp -= lAmt; }
+      if (!pb.last_date || String(r.date || '') > pb.last_date) pb.last_date = String(r.date || '');
+    });
+
+    extRows.forEach(r => {
+      const inFlag = isExtIn(r);
+      const uAmt = Math.abs(Number(r.usd_amount || 0));
+      const lAmt = Math.abs(Number(r.lbp_amount || 0));
+      if (inFlag) { inUsd += uAmt; inLbp += lAmt; }
+      else { outUsd += uAmt; outLbp += lAmt; }
+      const b = byCo[r.company];
+      if (b) {
+        b.n++;
+        if (inFlag) { b.inUsd += uAmt; b.netLbp += lAmt; }
+        else { b.outUsd += uAmt; b.netLbp -= lAmt; }
+      }
+    });
+
+    const netUsd = round2(inUsd - outUsd);
+    const netLbp = Math.round(inLbp - outLbp);
+    const partyRows = sortRows(Array.from(partyMap.values()), 'ext_parties', 'entries_cnt', 'desc');
+    const shownParties = partyRows.slice(0, shownCount('ext_parties'));
+    const allowedNames = allowedCompanyNames(u);
+    const showGroupSplit = STATE.company === 'manufacturing-group' && allowedNames.includes('WTC') && allowedNames.includes('BBConstruction');
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">EXTERNAL TREASURY MOVEMENTS, PARTNER SWEEPS &amp; EXTENDED STAKEHOLDERS</div>
+          <div class="cockpit-title">External Entries</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'External Cash In (Injections)',
+            badge: `${fmtNum(extAll.filter(isExtIn).length)} Inflows`,
+            badgeCls: 'emerald',
+            val: `+${fmtUSD(inUsd, 2)}`,
+            valCls: 'emerald',
+            sub: `LBP In: <b>${inLbp > 1 ? '+' + fmtLBP(inLbp) : '0 LL'}</b> · Partner &amp; treasury injections`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'External Cash Out (Sweeps)',
+            badge: `${fmtNum(extAll.filter(r => !isExtIn(r)).length)} Outflows`,
+            badgeCls: 'amber',
+            val: `-${fmtUSD(outUsd, 2)}`,
+            valCls: 'amber',
+            sub: `LBP Out: <b>${outLbp > 1 ? '-' + fmtLBP(outLbp) : '0 LL'}</b> · Central treasury sweeps &amp; withdrawals`,
+            tone: 'amber'
+          })}
+          ${insightCard({
+            label: 'Net External Movement',
+            badge: `${fmtNum(extRows.length)} Entries`,
+            badgeCls: 'brass',
+            val: fmtSignedUSD(netUsd, 2),
+            valCls: 'brass',
+            sub: `Net LBP: <b>${Math.abs(netLbp) > 1 ? fmtSignedLBP(netLbp) : '0 LL'}</b> · Active scope balance`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'External vs Extended Split',
+            badge: `${fmtNum(partyRows.length)} Counterparties`,
+            val: `${fmtNum(extCnt)} <small>Ext</small> · ${fmtNum(extdCnt)} <small>Extd</small>`,
+            sub: `<b>${fmtNum(cfgCnt)}</b> opening configuration entries · <b>${fmtNum(lbpCnt)}</b> LBP movements`,
+            tone: 'steel'
+          })}
+        </div>
+      </div>
+
+      <div class="panel-card" id="extEntriesPanel" style="margin-bottom:14px">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search stakeholder, counterparty, direction, kind, notes, amount...')}
+            <div class="chip-bar">
+              ${chip('all', `All (${fmtNum(partyScoped.length)})`)}
+              ${chip('ext_in', '▲ External In')}
+              ${chip('ext_out', '▼ External Out')}
+              ${chip('ext_external', `External (${fmtNum(extCnt)})`)}
+              ${chip('ext_extended', `Extended (${fmtNum(extdCnt)})`)}
+              ${cfgCnt ? chip('ext_config', `Opening Config (${fmtNum(cfgCnt)})`) : ''}
+              ${chip('ext_lbp', `LBP (${fmtNum(lbpCnt)})`)}
+              ${chip('app', 'App-entered')}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            ${exportBtn('extEntriesPanel', 'External_Entries')}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn btn-primary" data-open-modal="external">+ External Entry</button>' : ''}
+          </div>
+        </div>
+
+        ${showGroupSplit ? `
+        <div class="sales-entity-recon" role="region" aria-label="External Entries by Entity">
+          <div class="sales-recon-card" data-jump-co="wtc" role="button" tabindex="0" title="Click to filter to WTC only">
+            <div class="sales-recon-head"><span class="badge badge-brass">WTC</span><b>External Treasury (${fmtNum(byCo.WTC.n)})</b><span class="sales-recon-act">Filter WTC Only →</span></div>
+            <div class="sales-recon-metrics">
+              <span><small>External In ($)</small><b class="good">+${fmtUSD(byCo.WTC.inUsd, 0)}</b></span>
+              <span><small>External Out ($)</small><b class="crit">-${fmtUSD(byCo.WTC.outUsd, 0)}</b></span>
+              <span><small>Net External ($)</small><b class="brass">${fmtSignedUSD(byCo.WTC.inUsd - byCo.WTC.outUsd, 0)}</b></span>
+            </div>
+          </div>
+          <div class="sales-recon-card" data-jump-co="bbconstruction" role="button" tabindex="0" title="Click to filter to BBConstruction only">
+            <div class="sales-recon-head"><span class="badge badge-info">BBConstruction</span><b>External Treasury (${fmtNum(byCo.BBConstruction.n)})</b><span class="sales-recon-act">Filter BBC Only →</span></div>
+            <div class="sales-recon-metrics">
+              <span><small>External In ($)</small><b class="good">+${fmtUSD(byCo.BBConstruction.inUsd, 0)}</b></span>
+              <span><small>External Out ($)</small><b class="crit">-${fmtUSD(byCo.BBConstruction.outUsd, 0)}</b></span>
+              <span><small>Net External ($)</small><b class="brass">${fmtSignedUSD(byCo.BBConstruction.inUsd - byCo.BBConstruction.outUsd, 0)}</b></span>
+            </div>
+          </div>
+        </div>` : ''}
+
+        ${focusParty ? `
+        <div class="cf-drill-strip" role="status">
+          <span class="cf-drill-lbl">Active Stakeholder Filter:</span>
+          <button type="button" class="cf-active-pill" data-cf-clear-drill="party"><span>Counterparty: <b>${esc(focusParty)}</b></span><span class="cf-pill-x">✕</span></button>
+          <button type="button" class="cf-clear-all-btn" data-cf-clear-drill="all">✕ Show All External Entries</button>
+        </div>` : ''}
+
+        ${renderColFilterBar('ext_entries')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('ext_entries', 'Date', 'date')}
+                ${th('ext_entries', 'Co.', 'company')}
+                ${th('ext_entries', 'Kind', 'kind')}
+                ${th('ext_entries', 'Direction', 'direction')}
+                ${th('ext_entries', 'Counterparty / Stakeholder', 'counterparty')}
+                ${th('ext_entries', 'Notes / Reference', 'notes')}
+                ${th('ext_entries', 'In ($)', 'usd_amount', 'r')}
+                ${th('ext_entries', 'Out ($)', 'usd_amount', 'r')}
+                ${th('ext_entries', 'LBP (LL)', 'lbp_amount', 'r')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownExt.map(r => {
+                const inFlag = isExtIn(r);
+                const extdFlag = isExtended(r);
+                const uAmt = Math.abs(Number(r.usd_amount || 0));
+                const lAmt = Math.abs(Number(r.lbp_amount || 0));
+                const signedLbp = inFlag ? lAmt : -lAmt;
+                const cp = r.counterparty || 'Partner / Bank';
+                return `
+                <tr class="rrow" data-rkey="external_movements" data-rid="${esc(r.id)}">
+                  <td class="mono">${esc(fmtDateDMY(r.date))}${appCell(r, 'external_movements')}</td>
+                  <td>${coBadge(r.company)}</td>
+                  <td><span class="badge ${extdFlag ? 'badge-brass' : 'badge-info'}">${esc(r.kind || 'External')}</span></td>
+                  <td class="cf-cat-cell"><span class="cf-flow-badge ${inFlag ? 'in' : 'out'}">${inFlag ? '▲' : '▼'}</span><span class="cf-cat-txt">${esc(r.direction || (inFlag ? 'External In' : 'External Out'))}</span></td>
+                  <td><button type="button" class="cf-party-btn" data-cf-focus-party="${esc(cp)}" title="Filter all external entries for ${esc(cp)}"><strong>${esc(cp)}</strong></button></td>
+                  <td class="cf-detail-cell" title="${esc(r.notes || '')}">${esc(r.notes || '—')}</td>
+                  <td class="r">${inFlag && uAmt >= 0.005 ? `<strong style="color:var(--good)">+${fmtUSD(uAmt, 2)}</strong>` : '—'}</td>
+                  <td class="r">${!inFlag && uAmt >= 0.005 ? `<strong style="color:var(--crit)">-${fmtUSD(uAmt, 2)}</strong>` : '—'}</td>
+                  <td class="r">${lAmt > 1 ? `<strong style="color:${signedLbp < 0 ? 'var(--crit)' : 'var(--good)'}">${fmtSignedLBP(signedLbp)}</strong>` : '—'}</td>
+                </tr>`;
+              }).join('') || emptyRow(9, 'No external entries match the active filter')}
+              ${showMoreRow('ext_entries', extRows.length, 9)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="6"><b>TOTAL (${fmtNum(extRows.length)} EXTERNAL ENTRIES · NET ${fmtSignedUSD(netUsd, 2)})</b></td>
+                <td class="r"><b style="color:var(--good)">+${fmtUSD(inUsd, 2)}</b></td>
+                <td class="r"><b style="color:var(--crit)">-${fmtUSD(outUsd, 2)}</b></td>
+                <td class="r"><b style="color:${netLbp < -1 ? 'var(--crit)' : (netLbp > 1 ? 'var(--good)' : 'inherit')}">${Math.abs(netLbp) > 1 ? fmtSignedLBP(netLbp) : '0 LL'}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel-card" id="extStakeholdersPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>EXTERNAL &amp; EXTENDED COUNTERPARTY SUMMARY (${fmtNum(partyRows.length)} STAKEHOLDERS)</span></div>
+          <span class="panel-meta">${exportBtn('extStakeholdersPanel', 'External_Stakeholders')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('ext_parties', 'Counterparty / Stakeholder', 'counterparty')}
+                ${th('ext_parties', 'Kind', 'kind')}
+                ${th('ext_parties', 'Entries', 'entries_cnt', 'r')}
+                ${th('ext_parties', 'Cash In ($)', 'in_usd', 'r')}
+                ${th('ext_parties', 'Cash Out ($)', 'out_usd', 'r')}
+                ${th('ext_parties', 'Net USD ($)', 'net_usd', 'r')}
+                ${th('ext_parties', 'Net LBP (LL)', 'net_lbp', 'r')}
+                ${th('ext_parties', 'Last Activity', 'last_date')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownParties.map(p => `
+                <tr class="cf-stream-row ${focusParty && norm(focusParty) === norm(p.counterparty) ? 'is-active' : ''}" data-cf-focus-party="${esc(p.counterparty)}" title="Click to filter External Entries by ${esc(p.counterparty)}">
+                  <td><strong>${esc(p.counterparty)}</strong></td>
+                  <td><span class="badge ${p.kind === 'Extended' ? 'badge-brass' : 'badge-info'}">${esc(p.kind)}</span></td>
+                  <td class="r">${fmtNum(p.entries_cnt)}</td>
+                  <td class="r">${p.in_usd >= 0.005 ? `<span style="color:var(--good)">+${fmtUSD(p.in_usd, 2)}</span>` : '—'}</td>
+                  <td class="r">${p.out_usd >= 0.005 ? `<span style="color:var(--crit)">-${fmtUSD(p.out_usd, 2)}</span>` : '—'}</td>
+                  <td class="r"><strong style="color:${p.net_usd < -0.005 ? 'var(--crit)' : (p.net_usd > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(p.net_usd, 2)}</strong></td>
+                  <td class="r">${Math.abs(p.net_lbp) > 1 ? fmtSignedLBP(p.net_lbp) : '—'}</td>
+                  <td class="mono">${esc(fmtDateDMY(p.last_date))}</td>
+                </tr>
+              `).join('') || emptyRow(8, 'No external stakeholders in this scope')}
+              ${showMoreRow('ext_parties', partyRows.length, 8)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2"><b>TOTAL (${fmtNum(partyRows.length)} STAKEHOLDERS)</b></td>
+                <td class="r"><b>${fmtNum(partyRows.reduce((a, p) => a + p.entries_cnt, 0))}</b></td>
+                <td class="r"><b style="color:var(--good)">+${fmtUSD(partyRows.reduce((a, p) => a + p.in_usd, 0), 2)}</b></td>
+                <td class="r"><b style="color:var(--crit)">-${fmtUSD(partyRows.reduce((a, p) => a + p.out_usd, 0), 2)}</b></td>
+                <td class="r"><b>${fmtSignedUSD(partyRows.reduce((a, p) => a + p.net_usd, 0), 2)}</b></td>
+                <td class="r"><b>${fmtSignedLBP(partyRows.reduce((a, p) => a + p.net_lbp, 0))}</b></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      ${moduleAnalyticsHtml('external')}
+    `;
+  }
+
+  function renderFxConversions() {
+    const u = activeUser();
+    const fxAll = filterRecords(SEED.records.conversions || []);
+    const chip = (key, label) => `<button type="button" class="filter-chip ${STATE.chipFilter === key ? 'active' : ''}" data-chip="${esc(key)}">${label}</button>`;
+    const isLbpToUsd = r => /LBP\s*(?:to|→|2)\s*USD/i.test(String(r.type || r.name || '')) || String(r.from_currency || '').toUpperCase() === 'LBP';
+
+    const fxRows = sortRows(fxAll.filter(f => {
+      if (STATE.chipFilter === 'fx_u2l') return !isLbpToUsd(f);
+      if (STATE.chipFilter === 'fx_l2u') return isLbpToUsd(f);
+      if (STATE.chipFilter === 'app') return isAppRecord(f);
+      return true;
+    }), 'fx_conv', 'date', 'desc');
+    const shownFx = fxRows.slice(0, shownCount('fx_conv'));
+
+    const u2lCount = fxAll.filter(f => !isLbpToUsd(f)).length;
+    const l2uCount = fxAll.filter(isLbpToUsd).length;
+    const sumFxVolUsd = fxRows.reduce((a, f) => a + convSignedDeltas(f).usdMag, 0);
+    const sumFxNetUsd = round2(fxRows.reduce((a, f) => a + convSignedDeltas(f).usd, 0));
+    const sumFxNetLbp = Math.round(fxRows.reduce((a, f) => a + convSignedDeltas(f).lbp, 0));
+    const avgRate = fxRows.length ? Math.round(fxRows.reduce((a, f) => a + (convSignedDeltas(f).rate || 89500), 0) / fxRows.length) : 89500;
+
+    const dirSummary = [
+      { dir: 'USD → LBP (Sell USD / Buy LBP)', key: 'fx_u2l', rows: fxAll.filter(f => !isLbpToUsd(f)) },
+      { dir: 'LBP → USD (Sell LBP / Buy USD)', key: 'fx_l2u', rows: fxAll.filter(isLbpToUsd) }
+    ].map(g => ({
+      dir: g.dir,
+      key: g.key,
+      cnt: g.rows.length,
+      volUsd: g.rows.reduce((a, f) => a + convSignedDeltas(f).usdMag, 0),
+      netUsd: round2(g.rows.reduce((a, f) => a + convSignedDeltas(f).usd, 0)),
+      netLbp: Math.round(g.rows.reduce((a, f) => a + convSignedDeltas(f).lbp, 0)),
+      avgRate: g.rows.length ? Math.round(g.rows.reduce((a, f) => a + (convSignedDeltas(f).rate || 89500), 0) / g.rows.length) : 89500
+    }));
+
+    return `
+      <div class="cockpit-banner has-insights">
+        <div class="cockpit-title-block sr-only">
+          <div class="cockpit-eyebrow">USD ↔ LBP CURRENCY EXCHANGE DESK &amp; DRAWER IMPACT</div>
+          <div class="cockpit-title">FX Conversions</div>
+        </div>
+        <div class="cockpit-pills insight-grid">
+          ${insightCard({
+            label: 'Total FX Volume',
+            badge: `${fmtNum(fxAll.length)} Conversions`,
+            badgeCls: 'brass',
+            val: fmtUSD(sumFxVolUsd, 2),
+            valCls: 'brass',
+            sub: `<b>${fmtNum(u2lCount)}</b> USD → LBP · <b>${fmtNum(l2uCount)}</b> LBP → USD`,
+            tone: 'brass'
+          })}
+          ${insightCard({
+            label: 'Net USD Drawer Impact',
+            badge: sumFxNetUsd <= 0 ? 'USD Outflow' : 'USD Inflow',
+            badgeCls: sumFxNetUsd < 0 ? 'amber' : 'emerald',
+            val: fmtSignedUSD(sumFxNetUsd, 2),
+            valCls: sumFxNetUsd < 0 ? 'amber' : 'emerald',
+            sub: `Physical USD till delta from currency exchange`,
+            tone: sumFxNetUsd < 0 ? 'amber' : 'emerald'
+          })}
+          ${insightCard({
+            label: 'Net LBP Drawer Impact',
+            badge: sumFxNetLbp >= 0 ? 'LBP Inflow' : 'LBP Outflow',
+            badgeCls: sumFxNetLbp >= 0 ? 'emerald' : 'amber',
+            val: fmtSignedLBP(sumFxNetLbp),
+            valCls: sumFxNetLbp >= 0 ? 'emerald' : 'amber',
+            sub: `Physical LBP till delta from currency exchange`,
+            tone: 'emerald'
+          })}
+          ${insightCard({
+            label: 'Average Exchange Rate',
+            badge: 'Market Rate',
+            val: `${fmtNum(avgRate, 0)} <small>LL/$</small>`,
+            sub: `Across <b>${fmtNum(fxRows.length)}</b> conversions in active scope`,
+            tone: 'steel'
+          })}
+        </div>
+      </div>
+
+      <div class="panel-card" id="fxConversionsPanel" style="margin-bottom:14px">
+        <div class="table-toolbar">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${searchBox('Search conversion code, direction, rate, notes...')}
+            <div class="chip-bar">
+              ${chip('all', `All (${fmtNum(fxAll.length)})`)}
+              ${chip('fx_u2l', `USD → LBP (${fmtNum(u2lCount)})`)}
+              ${chip('fx_l2u', `LBP → USD (${fmtNum(l2uCount)})`)}
+              ${chip('app', 'App-entered')}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            ${exportBtn('fxConversionsPanel', 'FX_Conversions')}
+            ${canEnterForm('treasury', u) ? '<button type="button" class="btn btn-primary" data-open-modal="conversion">+ FX Conversion</button>' : ''}
+          </div>
+        </div>
+        ${renderColFilterBar('fx_conv')}
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                ${th('fx_conv', 'Date', 'date')}
+                ${th('fx_conv', 'Co.', 'company')}
+                ${th('fx_conv', 'Direction', 'type')}
+                ${th('fx_conv', 'USD Change ($)', 'usd_delta', 'r')}
+                ${th('fx_conv', 'LBP Change (LL)', 'lbp_delta', 'r')}
+                ${th('fx_conv', 'Exchange Rate (LL/$)', 'exchange_rate', 'r')}
+                ${th('fx_conv', 'Reference / Notes', 'notes')}
+              </tr>
+            </thead>
+            <tbody>
+              ${shownFx.map(f => {
+                const d = convSignedDeltas(f);
+                return `
+                <tr class="rrow" data-rkey="conversions" data-rid="${esc(f.id)}">
+                  <td class="mono">${esc(fmtDateDMY(f.date))}${appCell(f, 'conversions')}</td>
+                  <td>${coBadge(f.company)}</td>
+                  <td class="mono"><strong>${esc(d.dirLabel)}</strong></td>
+                  <td class="r mono"><strong style="color:${d.usd < -0.005 ? 'var(--crit)' : (d.usd > 0.005 ? 'var(--good)' : 'inherit')}">${d.usd ? fmtSignedUSD(d.usd, 2) : '—'}</strong></td>
+                  <td class="r mono"><strong style="color:${d.lbp < -1 ? 'var(--crit)' : (d.lbp > 1 ? 'var(--good)' : 'inherit')}">${d.lbp ? fmtSignedLBP(d.lbp) : '—'}</strong></td>
+                  <td class="r mono">${fmtNum(d.rate, 0)}</td>
+                  <td class="mu">${esc(f.notes || f.name || '—')}</td>
+                </tr>`;
+              }).join('') || emptyRow(7, 'No FX conversions match the active filter')}
+              ${showMoreRow('fx_conv', fxRows.length, 7)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3"><b>NET DRAWER IMPACT (${fmtNum(fxRows.length)} CONVERSIONS · VOL ${fmtUSD(sumFxVolUsd, 2)})</b></td>
+                <td class="r mono"><b style="color:${sumFxNetUsd < -0.005 ? 'var(--crit)' : (sumFxNetUsd > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(sumFxNetUsd, 2)}</b></td>
+                <td class="r mono"><b style="color:${sumFxNetLbp < -1 ? 'var(--crit)' : (sumFxNetLbp > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(sumFxNetLbp)}</b></td>
+                <td class="r mono"><b>${fmtNum(avgRate, 0)}</b></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel-card" id="fxSummaryPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span>CURRENCY EXCHANGE DIRECTION BREAKDOWN</span></div>
+          <span class="panel-meta">${exportBtn('fxSummaryPanel', 'FX_Direction_Summary')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Exchange Direction</th>
+                <th class="r">Conversions</th>
+                <th class="r">USD Volume ($)</th>
+                <th class="r">Net USD Drawer ($)</th>
+                <th class="r">Net LBP Drawer (LL)</th>
+                <th class="r">Avg Rate (LL/$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dirSummary.map(s => `
+                <tr class="cf-stream-row ${STATE.chipFilter === s.key ? 'is-active' : ''}" data-chip="${esc(s.key)}" title="Click to filter by ${esc(s.dir)}">
+                  <td><strong>${esc(s.dir)}</strong></td>
+                  <td class="r">${fmtNum(s.cnt)}</td>
+                  <td class="r">${fmtUSD(s.volUsd, 2)}</td>
+                  <td class="r mono"><strong style="color:${s.netUsd < -0.005 ? 'var(--crit)' : (s.netUsd > 0.005 ? 'var(--good)' : 'inherit')}">${fmtSignedUSD(s.netUsd, 2)}</strong></td>
+                  <td class="r mono"><strong style="color:${s.netLbp < -1 ? 'var(--crit)' : (s.netLbp > 1 ? 'var(--good)' : 'inherit')}">${fmtSignedLBP(s.netLbp)}</strong></td>
+                  <td class="r mono">${fmtNum(s.avgRate, 0)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${moduleAnalyticsHtml('conversions')}
+    `;
+  }
+
   function renderLedgerTreasury() {
     const loansAll = filterRecords(SEED.records.loans || [], { ignorePeriod: true });
     const lsetAll = filterRecords(SEED.records.loan_settlements || []);
@@ -10742,7 +11538,7 @@
       <div class="cockpit-banner has-insights">
         <div class="cockpit-title-block sr-only">
           <div class="cockpit-eyebrow">PARTNER LOANS, REPAYMENTS, EXTERNAL TREASURY &amp; USD ↔ LBP FX</div>
-          <div class="cockpit-title">Loans &amp; FX Treasury</div>
+          <div class="cockpit-title">Loans &amp; Settlements</div>
         </div>
         <div class="cockpit-pills insight-grid">
           ${insightCard({
@@ -15938,7 +16734,8 @@
 
   function openEntryModal(formType) {
     const preselectConv = formType === 'conversion';
-    const resolvedForm = preselectConv ? 'treasury' : formType;
+    const preselectExt = formType === 'external';
+    const resolvedForm = (preselectConv || preselectExt) ? 'treasury' : formType;
     const form = FORM_TITLES[resolvedForm] ? resolvedForm : 'sales';
     if (!canEnterForm(form)) { toast('Your seat has no entry rights for this form', 'err'); return; }
     const kBody = $('kioskFormBody');
@@ -15949,7 +16746,11 @@
     const body = $('modalBody');
     const title = $('modalTitle');
     const tabsWrap = $('modalTabs');
-    if (title) title.textContent = FORM_TITLES[form];
+    if (title) {
+      title.textContent = preselectExt
+        ? 'New External Treasury Entry'
+        : (preselectConv ? 'New Currency Conversion (USD ↔ LBP)' : FORM_TITLES[form]);
+    }
     if (tabsWrap && window.MFG_FORMS) {
       tabsWrap.innerHTML = window.MFG_FORMS.renderModalTabsHtml(form, canEnterForm);
       tabsWrap.querySelectorAll('[data-pa-group]').forEach(gBtn => {
@@ -16015,6 +16816,8 @@
     document.body.classList.add('modal-open');
     if (preselectConv && $('f_trtype')) {
       $('f_trtype').value = 'conversion';
+    } else if (preselectExt && $('f_trtype')) {
+      $('f_trtype').value = 'external';
     }
     wireModalLiveCalc(wasClosed);
   }
@@ -19897,6 +20700,8 @@
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
     cashflow_analytics: 'Cash Flow Analytics',
+    external: 'External Entries',
+    conversions: 'FX Conversions',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
@@ -19909,7 +20714,7 @@
     payroll_analytics: 'Workforce Analytics',
     ledger: 'General Ledger & SOA',
     gl: 'General Ledger & SOA',
-    ledger_treasury: 'Loans & FX Treasury',
+    ledger_treasury: 'Loans & Settlements',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
     reg_sites: 'Sites',
@@ -19938,6 +20743,8 @@
     pricing: 'Pricing & Commissions',
     cashflow: 'Cash Flow & Till',
     cashflow_analytics: 'Cash Flow Analytics',
+    external: 'External Entries',
+    conversions: 'FX Conversions',
     customers: 'Customers & Receivables',
     ar: 'Customers & Receivables',
     suppliers: 'Suppliers & Payables',
@@ -19950,7 +20757,7 @@
     payroll_analytics: 'Workforce Analytics',
     ledger: 'General Ledger & SOA',
     gl: 'General Ledger & SOA',
-    ledger_treasury: 'Loans & FX Treasury',
+    ledger_treasury: 'Loans & Settlements',
     reg_equipment: 'Equipment & Trucks',
     reg_drivers: 'Drivers & Operators',
     reg_sites: 'Sites',
@@ -20616,6 +21423,7 @@
       fleet: 'fuel', fleet_analytics: 'fuel',
       pricing: 'pricerule',
       cashflow: 'receipt', cashflow_analytics: 'receipt',
+      external: 'external', conversions: 'conversion',
       customers: 'receipt', ar: 'receipt',
       suppliers: 'settlement', ap: 'settlement',
       expenses: 'expense', expenses_analytics: 'expense',
@@ -22218,6 +23026,8 @@
       case 'pricing': wsHtml = renderPricing(); break;
       case 'cashflow_analytics':
       case 'cashflow': wsHtml = renderCashFlowTill(); break;
+      case 'external': wsHtml = renderExternalEntries(); break;
+      case 'conversions': wsHtml = renderFxConversions(); break;
       case 'customers':
       case 'ar': wsHtml = renderAR(); break;
       case 'suppliers':
@@ -22648,6 +23458,10 @@
           if (!STATE.moduleSection) STATE.moduleSection = {};
           if (moved.modSec) STATE.moduleSection[moved.view] = moved.modSec;
           setView(moved.view);
+          if (moved.scrollPanel) {
+            const sp = $(moved.scrollPanel);
+            if (sp) scrollWorkspaceTo(sp, 10);
+          }
           return;
         }
         STATE.pbiPage = targetId;
@@ -22944,7 +23758,7 @@
       if (String(STATE.chipFilter || '').startsWith('cf_day_')) STATE.chipFilter = 'all';
       STATE.shown = {};
       renderApp();
-      const target = $('tillRecentPanel') || $('pbiCfEntriesPanel');
+      const target = $('tillRecentPanel') || $('extEntriesPanel') || $('pbiCfEntriesPanel');
       if (target) scrollWorkspaceTo(target, 10);
     }));
     container.querySelectorAll('[data-cf-focus-stream]').forEach(el => el.addEventListener('click', ev => {
@@ -22971,6 +23785,8 @@
     }));
     container.querySelectorAll('[data-rawsup-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.rawSupFilter = btn.getAttribute('data-rawsup-chip'); STATE.shown.rawsup = PAGE; renderApp(); }));
     container.querySelectorAll('[data-saleshaul-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.salesHaulFilter = btn.getAttribute('data-saleshaul-chip'); STATE.shown.saleshaul = PAGE; renderApp(); }));
+    container.querySelectorAll('[data-salespad-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.salesPadFilter = btn.getAttribute('data-salespad-chip'); STATE.shown.spad = PAGE; const ws = $('workspace'); const y = ws ? ws.scrollTop : 0; renderApp(); if (ws) ws.scrollTop = y; }));
+    container.querySelectorAll('[data-vatinv-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.vatInvFilter = btn.getAttribute('data-vatinv-chip'); STATE.shown.vatinv = PAGE; const ws = $('workspace'); const y = ws ? ws.scrollTop : 0; renderApp(); if (ws) ws.scrollTop = y; }));
     container.querySelectorAll('[data-rawsite-chip]').forEach(btn => btn.addEventListener('click', () => { STATE.rawSiteFilter = btn.getAttribute('data-rawsite-chip'); STATE.shown.sites = PAGE; renderApp(); }));
     container.querySelectorAll('[data-scroll-panel]').forEach(el => {
       el.addEventListener('click', ev => {
@@ -23385,6 +24201,8 @@
 
   function setView(view, opts = {}) {
     if (view === 'cashflow_analytics') view = 'cashflow';
+    if (view === 'sales_vat') view = 'customers';
+    if (view === 'sales_analytics') view = 'sales';
     if (!VIEW_TITLES[view]) view = 'overview';
     if (!canViewView(view)) { toast('Your seat has no access to that module', 'err'); view = defaultViewFor(); }
     if (STATE.kioskLocked && view !== 'kiosks') {
@@ -23404,6 +24222,8 @@
     if (opts.reset !== false) {
       STATE.search = '';
       STATE.chipFilter = 'all';
+      STATE.salesPadFilter = 'all';
+      STATE.vatInvFilter = 'all';
       STATE.shown = {};
       STATE.cfEntryMode = 'entries';
       STATE.cfBridgeMode = 'streams';
@@ -23463,7 +24283,7 @@
       }
     } catch (_) {}
     const rawQView = PARAMS.get('view') || (location.hash || '').replace(/^#/, '');
-    const qView = rawQView === 'cashflow_analytics' ? 'cashflow' : rawQView;
+    const qView = rawQView === 'cashflow_analytics' ? 'cashflow' : (rawQView === 'sales_vat' ? 'customers' : (rawQView === 'sales_analytics' ? 'sales' : rawQView));
     if (qView && VIEW_TITLES[qView]) STATE.view = qView;
     const qKiosk = PARAMS.get('kiosk');
     if (qKiosk && ['sales', 'raw', 'fuel', 'attendance'].includes(qKiosk.toLowerCase())) {

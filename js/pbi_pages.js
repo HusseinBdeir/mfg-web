@@ -28,11 +28,11 @@
   // 8 Operational Pages moved out of Analytics & Insights directly into their respective domain hub sub-tabs
   const MOVED_PBI_PAGES = {
     p03_exceptions: { id: 'p03_exceptions', view: 'sentinels',       modSec: 'exceptions', short: 'Action Items',       targetLabel: 'AI Sentinels & Audit' },
-    p18_tickets:    { id: 'p18_tickets',    view: 'sales_analytics', modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'Sales Analytics' },
+    p18_tickets:    { id: 'p18_tickets',    view: 'sales',           modSec: 'tickets',    short: 'Ticket Books',       targetLabel: 'Sales & Deliveries', scrollPanel: 'salesPadPanel' },
     p17_jv:         { id: 'p17_jv',         view: 'raw_analytics',   modSec: 'jv',         short: 'JV 50/50 Sites',     targetLabel: 'JV & Stock Analytics' },
     p11_drivers:    { id: 'p11_drivers',    view: 'fleet_analytics', modSec: 'drivers',    short: 'Drivers & Overtime', targetLabel: 'Fleet & Driver Analytics' },
-    p13_vat:        { id: 'p13_vat',        view: 'sales_vat',       modSec: 'vat',        short: 'VAT & Invoices',     targetLabel: 'VAT & Credit' },
-    p15_treasury:   { id: 'p15_treasury',   view: 'ledger_treasury', modSec: 'treasury',   short: 'Treasury & Loans',   targetLabel: 'Loans & FX Treasury' },
+    p13_vat:        { id: 'p13_vat',        view: 'customers',       modSec: 'vat',        short: 'VAT & Invoices',     targetLabel: 'Customers & Receivables', scrollPanel: 'vatInvPanel' },
+    p15_treasury:   { id: 'p15_treasury',   view: 'ledger_treasury', modSec: 'treasury',   short: 'Treasury & Loans',   targetLabel: 'Loans & Settlements' },
     p19_changelog:  { id: 'p19_changelog',  view: 'sentinels',       modSec: 'changelog',  short: 'Change Log & Drift', targetLabel: 'AI Sentinels & Audit' },
     p20_recon:      { id: 'p20_recon',      view: 'statements',      modSec: 'recon',      short: 'Statement Recon',    targetLabel: 'Statements & Reports' }
   };
@@ -5155,6 +5155,23 @@
         { id: 'treasury', label: 'Partner Loans, External Treasury & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Moved Page' }
       ]
     },
+    external: {
+      title: 'External & Extended Stakeholder Treasury Analytics',
+      subtitle: 'Partner Injections, Withdrawals, Inter-Account Transfers & Extended Stakeholder Movements',
+      defaultSec: 'treasury',
+      sections: [
+        { id: 'treasury', label: 'External Treasury, Partner Loans & USD ↔ LBP FX', pageId: 'p15_treasury', badge: 'Analytics' }
+      ]
+    },
+    conversions: {
+      title: 'USD ↔ LBP Currency Desk & Till Analytics',
+      subtitle: 'USD ↔ LBP Exchange Rate Spread, Drawer Impact & Daily Cash Till Position',
+      defaultSec: 'treasury',
+      sections: [
+        { id: 'treasury', label: 'USD ↔ LBP FX Desk & Partner Treasury', pageId: 'p15_treasury', badge: 'Analytics' },
+        { id: 'cashflow', label: 'Cash Flow Inflows/Outflows & Daily Till', pageId: 'p14_cashflow', badge: 'Analytics' }
+      ]
+    },
     sales: {
       title: 'Sales & Weighbridge Analytics',
       subtitle: '25/50-Ticket Weighbridge Book Audit, Realised Price Trends & Destination Site Mix',
@@ -6054,6 +6071,94 @@
     `;
   }
 
+  function renderSalesVisualsSection(ctx) {
+    const months = (ctx && ctx.months) || [];
+    const prodRows = (ctx && ctx.prodRows) || [];
+    const k = (ctx && ctx.k) || {};
+    const top4Prods = prodRows.slice(0, 4);
+    const prodColors = ['#0F172A', '#1E293B', '#0D9488', '#1E7A6E'];
+    const priceSeries = top4Prods.map((p, idx) => ({
+      label: p.Product,
+      color: prodColors[idx % prodColors.length],
+      get: mRow => {
+        const base = Number(p.avg_price_net || p.avg_price_ttc || 15);
+        const mAvg = Number(mRow.avg_price_net || 15);
+        const gAvg = Number(k.avg_price_net || 15) || 15;
+        return round2(base * (mAvg / gAvg));
+      }
+    }));
+    return `
+      <div class="pbi-grid-2" id="salesChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Monthly Cash vs. Credit Sales ($)', buildClusteredColumnSvg(months, [
+          { key: 'credit_sales', label: 'Credit Sales', color: '#1E293B' },
+          { key: 'cash_sales', label: 'Cash Sales', color: '#1E7A6E' }
+        ]), {
+          subtitle: 'Monthly ex-VAT credit billings vs cash weighbridge sales',
+          legend: [{ label: 'Credit', color: '#1E293B' }, { label: 'Cash', color: '#1E7A6E' }]
+        })}
+        ${pbiPanel('Realised Price per Unit ($/m³) by Month — Top Aggregate Grades', buildMultiLineSvg(months, priceSeries, { isMoney: true, decimals: 2 }), {
+          subtitle: 'Monthly ex-VAT realised unit price trajectory across top 4 aggregate grades',
+          legend: priceSeries.map(s => ({ label: s.label, color: s.color, line: true }))
+        })}
+      </div>
+    `;
+  }
+
+  function renderCustomersVisualsSection(ctx) {
+    const months = (ctx && ctx.months) || [];
+    const agingBuckets = (ctx && ctx.agingBuckets) || [];
+    return `
+      <div class="pbi-grid-2" id="arVatChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('FIFO AR Aging by Bucket ($)', buildSignedColumnSvg(agingBuckets, { isMoney: true }), {
+          subtitle: 'FIFO open receivables by aging bucket · On account (unapplied customer advances) shown below zero',
+          legend: [
+            { label: 'Current–30d', color: '#1E293B' },
+            { label: '31–60d', color: '#0D9488' },
+            { label: '60+ Overdue', color: '#C8333B' },
+            { label: 'On account', color: '#1E7A6E' }
+          ]
+        })}
+        ${pbiPanel('Monthly Output vs. Input 11% VAT (Account 4427)', buildClusteredColumnSvg(months.map(r => ({ ...r, in_vat: round2(Number(r.expenses || 0) * 0.025) })), [
+          { key: 'sales_vat', label: 'Output VAT (11%)', color: '#1E293B' },
+          { key: 'in_vat', label: 'Input VAT', color: '#C8333B' }
+        ]), {
+          subtitle: 'Monthly 11% Output VAT invoiced on IVA customers vs deductible Input VAT',
+          legend: [
+            { label: 'Output VAT (11%)', color: '#1E293B' },
+            { label: 'Input VAT', color: '#C8333B' }
+          ]
+        })}
+      </div>
+    `;
+  }
+
+  function renderPricingVisualsSection(ctx) {
+    const prodPriceComp = (ctx && ctx.prodPriceComp) || [];
+    return `
+      <div class="pbi-grid-2" id="pricingChartsRow" style="margin-bottom:14px">
+        ${pbiPanel('Agreed vs. Realised vs. List Price per Unit by Grade', buildClusteredBarChart(prodPriceComp, 'Product', [
+          { label: 'Agreed', key: 'agreed', color: '#8A94A6' },
+          { label: 'Realised', key: 'realised', color: '#1E293B' },
+          { label: 'List Price', key: 'list', color: '#0D9488' }
+        ]), {
+          subtitle: 'Average active customer agreement rate vs realised net price and standard list price'
+        })}
+        ${pbiPanel('Price Corridor by Grade — Lowest Agreed, Highest Agreed & List Price', buildClusteredColumnSvg(prodPriceComp, [
+          { key: 'lowest', label: 'Lowest Agreed', color: '#8A94A6' },
+          { key: 'highest', label: 'Highest Agreed', color: '#1E293B' },
+          { key: 'list', label: 'List Price', color: '#0D9488' }
+        ], { labelKey: 'Product', labels: true }), {
+          subtitle: 'Price corridor across active customer agreements vs standard list price',
+          legend: [
+            { label: 'Lowest', color: '#8A94A6' },
+            { label: 'Highest', color: '#1E293B' },
+            { label: 'List', color: '#0D9488' }
+          ]
+        })}
+      </div>
+    `;
+  }
+
   window.MFG_PBI = {
     PBI_PAGES,
     MOVED_PBI_PAGES,
@@ -6068,6 +6173,9 @@
     renderModuleAnalytics,
     renderTablesHub,
     renderUniversalRegistriesView,
-    renderCashFlowVisualsSection
+    renderCashFlowVisualsSection,
+    renderSalesVisualsSection,
+    renderCustomersVisualsSection,
+    renderPricingVisualsSection
   };
 })();

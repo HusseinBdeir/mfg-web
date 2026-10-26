@@ -30,6 +30,8 @@
     payroll_contracts: s('<path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><polyline points="14 2.5 14 8 19.5 8"/><path d="m9 14.5 2 2 4-4"/>'),
     payroll_analytics: s('<rect x="3.5" y="13" width="4.2" height="8" rx="1"/><rect x="9.9" y="8" width="4.2" height="13" rx="1"/><rect x="16.3" y="3" width="4.2" height="18" rx="1"/>'),
     ledger_treasury: s('<polyline points="17 2.5 21 6.5 17 10.5"/><line x1="3" y1="6.5" x2="21" y2="6.5"/><polyline points="7 21.5 3 17.5 7 13.5"/><line x1="21" y1="17.5" x2="3" y2="17.5"/>'),
+    external: s('<path d="M16 3h5v5"/><line x1="21" y1="3" x2="13.5" y2="10.5"/><path d="M8 21H3v-5"/><line x1="3" y1="21" x2="10.5" y2="13.5"/><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/>'),
+    conversions: s('<polyline points="17 2.5 21 6.5 17 10.5"/><line x1="3" y1="6.5" x2="21" y2="6.5"/><polyline points="7 21.5 3 17.5 7 13.5"/><line x1="21" y1="17.5" x2="3" y2="17.5"/>'),
 
     // ---- Plant, Dispatch & Kiosks ----
     sales: s('<rect x="1.8" y="5" width="12.7" height="11" rx="1.5"/><path d="M14.5 8.5h4.2l3.1 3.6V16h-7.3V8.5z"/><circle cx="6.2" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/>'),
